@@ -1,0 +1,150 @@
+name: Build Arch Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional package version override, for example 1.2.0
+        required: false
+        type: string
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - .github/workflows/build-arch.yml
+      - packaging/arch/**
+      - backend/**
+      - frontend/**
+      - bin/linux-amd64/**
+      - build/appicon.png
+      - chrome/README.md
+      - go.mod
+      - go.sum
+      - main.go
+      - publish/config.init.linux.yaml
+      - tools/runtime/**
+      - wails.json
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Arch x86_64 package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install checkout tools
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed git nodejs
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          pacman -S --noconfirm --needed \
+            git \
+            go \
+            gtk3 \
+            namcap \
+            nodejs \
+            npm \
+            pkgconf \
+            python \
+            webkit2gtk-4.1
+
+      - name: Prepare package version
+        run: |
+          set -euo pipefail
+          version="${{ github.event.inputs.version || '' }}"
+          if [[ -z "$version" ]]; then
+            version="$(python3 - <<'PY'
+          import json
+          with open("wails.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+          print((((data or {}).get("info") or {}).get("productVersion") or "").strip())
+          PY
+          )"
+          fi
+          if [[ -z "$version" ]]; then
+            echo "Package version is empty" >&2
+            exit 1
+          fi
+          python3 - "$version" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+          path = pathlib.Path("packaging/arch/PKGBUILD")
+          text = path.read_text(encoding="utf-8")
+          text = re.sub(r"^pkgver=.*$", f"pkgver={version}", text, count=1, flags=re.M)
+          path.write_text(text, encoding="utf-8")
+          PY
+          echo "ANT_BROWSER_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Create build user
+        run: |
+          set -euo pipefail
+          useradd -m -s /bin/bash builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Install Wails CLI
+        run: |
+          set -euo pipefail
+          runuser -u builder -- bash -lc "go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0"
+          runuser -u builder -- bash -lc "~/go/bin/wails version"
+
+      - name: Verify bundled runtimes
+        run: |
+          set -euo pipefail
+          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE' && bash tools/runtime/verify-runtime.sh linux-amd64"
+
+      - name: Build frontend
+        run: |
+          set -euo pipefail
+          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE/frontend' && BROWSERSLIST_IGNORE_OLD_DATA=1 npm ci --prefer-offline --no-audit --no-fund"
+          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE/frontend' && BROWSERSLIST_IGNORE_OLD_DATA=1 npm run build:clean"
+
+      - name: Build Wails binary
+        run: |
+          set -euo pipefail
+          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE' && PATH=\"\$HOME/go/bin:\$PATH\" wails build -s -m -skipbindings -platform linux/amd64 -o ant-chrome -tags webkit2_41"
+          test -x build/bin/ant-chrome
+          ldd build/bin/ant-chrome | tee /tmp/ant-browser-ldd.txt
+          if grep -q "not found" /tmp/ant-browser-ldd.txt; then
+            exit 1
+          fi
+          grep -q "libwebkit2gtk-4.1" /tmp/ant-browser-ldd.txt
+
+      - name: Build Arch package
+        run: |
+          set -euo pipefail
+          install -d -o builder -g builder publish/output
+          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE/packaging/arch' && PKGDEST='$GITHUB_WORKSPACE/publish/output' makepkg -f -C --clean --noconfirm"
+
+      - name: Validate Arch package
+        run: |
+          set -euo pipefail
+          pkg_file="$(ls -1 publish/output/ant-browser-${ANT_BROWSER_VERSION}-*-x86_64.pkg.tar.zst | head -n 1)"
+          echo "Validating: $pkg_file"
+          pacman -Qpi "$pkg_file"
+          pacman -Qlp "$pkg_file" >/dev/null
+          namcap packaging/arch/PKGBUILD "$pkg_file"
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ant-browser-arch-x86_64
+          path: publish/output/ant-browser-*-x86_64.pkg.tar.zst
+          if-no-files-found: error
