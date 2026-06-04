@@ -54,14 +54,39 @@ jobs:
           set -euo pipefail
           pacman -S --noconfirm --needed \
             git \
+            at-spi2-core \
+            cairo \
+            gdk-pixbuf2 \
             go \
+            glibc \
+            glib2 \
             gtk3 \
+            harfbuzz \
+            hicolor-icon-theme \
+            libnotify \
+            libsoup3 \
+            libx11 \
+            libxcb \
+            libxcomposite \
+            libxcursor \
+            libxdamage \
+            libxext \
+            libxfixes \
+            libxi \
+            libxrandr \
+            libxrender \
+            mesa \
             namcap \
+            nspr \
+            nss \
             nodejs \
             npm \
+            pango \
             pkgconf \
             python \
-            webkit2gtk-4.1
+            webkit2gtk-4.1 \
+            xdg-utils \
+            zlib
 
       - name: Prepare package version
         run: |
