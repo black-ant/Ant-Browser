@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, CheckCircle2, HardDrive, Link2, Monitor, RefreshCw, Store, WifiOff } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, HardDrive, Link2, ListChecks, RefreshCw, Store, WifiOff } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button, Card, toast } from '../../../shared/components'
 import {
@@ -7,25 +7,14 @@ import {
   fetchWorkspaceAuthorizedShops,
   fetchWorkspaceSummary,
 } from '../api'
+import {
+  deriveExecutionBlockers,
+  readyRate,
+  workspaceHealthLabel,
+  workspaceHealthTone,
+} from '../businessPresentation'
 import { WorkspaceSummaryCards } from '../components/WorkspaceSummaryCards'
 import type { WorkspaceAuthorizedShop, WorkspaceSummary } from '../types'
-
-function statusText(summary: WorkspaceSummary) {
-  if (!summary.serverReachable) return '工作台服务不可达'
-  if (!summary.antRuntimeReachable) return 'Ant Runtime 未连通'
-  if (!summary.sessionReady) return '会话未就绪'
-  return summary.deviceStatus || summary.agentStatus || summary.status || 'ready'
-}
-
-function statusTone(summary: WorkspaceSummary) {
-  if (!summary.serverReachable || !summary.antRuntimeReachable) {
-    return 'text-amber-600 bg-amber-50 border-amber-200'
-  }
-  if (!summary.sessionReady) {
-    return 'text-slate-600 bg-slate-100 border-slate-200'
-  }
-  return 'text-emerald-600 bg-emerald-50 border-emerald-200'
-}
 
 export function WorkspaceDashboardPage() {
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
@@ -34,6 +23,8 @@ export function WorkspaceDashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
 
   const stats = useMemo(() => deriveWorkspaceDashboardStats(shops), [shops])
+  const blockers = useMemo(() => summary ? deriveExecutionBlockers(summary, shops) : [], [summary, shops])
+  const readyRateText = readyRate(stats.totalAccounts, stats.readyShopCount)
 
   async function load(silent = false) {
     if (silent) {
@@ -73,16 +64,12 @@ export function WorkspaceDashboardPage() {
     deviceStatus: '',
   }
 
-  const readyRate = stats.totalAccounts > 0
-    ? `${Math.round((stats.readyShopCount / stats.totalAccounts) * 100)}%`
-    : '0%'
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">控制台</h1>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">Workspace 总览页，只看状态，不塞店铺主表。</p>
+          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">今日执行台</h1>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">先确认环境、凭据和店铺窗口状态，再进入当天的店铺动作。</p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void load(true)} loading={refreshing}>
           <RefreshCw className="h-4 w-4" />
@@ -95,10 +82,10 @@ export function WorkspaceDashboardPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Card
           title="设备与连接状态"
-          subtitle="展示当前 Workspace Host 与 Ant Runtime 的整体可用性"
+          subtitle="展示当前 Workspace Host 与 Maka Runtime 的整体可用性"
           actions={(
-            <div className={`rounded-full border px-3 py-1 text-xs font-medium ${statusTone(derivedSummary)}`}>
-              {loading ? '加载中' : statusText(derivedSummary)}
+            <div className={`rounded-full border px-3 py-1 text-xs font-medium ${workspaceHealthTone(derivedSummary)}`}>
+              {loading ? '加载中' : workspaceHealthLabel(derivedSummary)}
             </div>
           )}
         >
@@ -140,7 +127,7 @@ export function WorkspaceDashboardPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--color-text-muted)]">Ant Runtime</span>
+                  <span className="text-[var(--color-text-muted)]">Maka Runtime</span>
                   <span className={`inline-flex items-center gap-1 ${derivedSummary.antRuntimeReachable ? 'text-emerald-600' : 'text-amber-600'}`}>
                     {derivedSummary.antRuntimeReachable ? <CheckCircle2 className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
                     {loading ? '-' : (derivedSummary.antRuntimeReachable ? '已连通' : '未连通')}
@@ -158,44 +145,75 @@ export function WorkspaceDashboardPage() {
           </div>
         </Card>
 
-        <Card title="业务摘要" subtitle="控制台只保留可操作授权实例与入口。">
+        <Card title="业务摘要" subtitle="店铺可执行、当前卡点与当天动作入口。">
           <div className="space-y-4">
             <div className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-subtle)] p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
                 <Store className="h-4 w-4 text-[var(--color-text-secondary)]" />
-                授权实例概况
+                店铺可执行概况
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--color-text-muted)]">授权实例</span>
+                  <span className="text-[var(--color-text-muted)]">授权店铺</span>
                   <span className="text-[var(--color-text-primary)]">{loading ? '-' : stats.totalAccounts}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--color-text-muted)]">Ready 占比</span>
-                  <span className="text-[var(--color-text-primary)]">{loading ? '-' : readyRate}</span>
+                  <span className="text-[var(--color-text-muted)]">Ready 店铺</span>
+                  <span className="text-[var(--color-text-primary)]">{loading ? '-' : stats.readyShopCount}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--color-text-muted)]">待人工处理</span>
+                  <span className="text-[var(--color-text-muted)]">Ready 占比</span>
+                  <span className="text-[var(--color-text-primary)]">{loading ? '-' : readyRateText}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--color-text-muted)]">待处理凭据</span>
                   <span className="text-[var(--color-text-primary)]">{loading ? '-' : stats.manualAttentionCount}</span>
                 </div>
               </div>
             </div>
 
+            <div className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-card)] p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                当前卡点
+              </div>
+              {loading ? (
+                <div className="text-sm text-[var(--color-text-muted)]">加载中</div>
+              ) : blockers.length > 0 ? (
+                <div className="space-y-3">
+                  {blockers.slice(0, 3).map((blocker) => (
+                    <div key={blocker.kind} className="min-w-0">
+                      <div className="truncate text-sm font-medium text-[var(--color-text-primary)]">{blocker.title}</div>
+                      <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-[var(--color-text-muted)]">{blocker.message}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-emerald-600">暂无执行卡点</div>
+              )}
+            </div>
+
             <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-card)] p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
-                <Monitor className="h-4 w-4 text-[var(--color-text-secondary)]" />
-                实例列表入口
+                <ListChecks className="h-4 w-4 text-[var(--color-text-secondary)]" />
+                快捷入口
               </div>
-              <p className="mb-4 text-sm text-[var(--color-text-muted)]">
-                实例详情、配置、启动与批量操作仍留在原有实例列表页，本页只做导航。
-              </p>
-              <Link
-                to="/browser/list"
-                className="group inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-all hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-muted)]"
-              >
-                去实例列表
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </Link>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <Link
+                  to="/shops"
+                  className="group inline-flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-all hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-muted)]"
+                >
+                  <span className="truncate">店铺授权</span>
+                  <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+                <Link
+                  to="/operations"
+                  className="group inline-flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-all hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-muted)]"
+                >
+                  <span className="truncate">运营任务</span>
+                  <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              </div>
             </div>
           </div>
         </Card>
