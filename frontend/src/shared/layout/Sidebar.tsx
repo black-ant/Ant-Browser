@@ -116,7 +116,9 @@ export function Sidebar() {
             <div className="space-y-1">
               {section.items.map((item) => {
                 const Icon = getIcon(item.icon)
-                const isActive = location.pathname === item.path
+                const isActive = item.path === '/'
+                  ? location.pathname === '/'
+                  : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
                 
                 return (
                   <Link

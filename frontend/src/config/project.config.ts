@@ -26,32 +26,27 @@ export interface NavSection {
 
 export const navigationConfig: NavSection[] = [
   {
-    title: '业务运营',
+    title: '业务执行',
     items: [
-      { name: '控制台', path: '/', icon: 'LayoutDashboard' },
-      { name: '店铺资料', path: '/shops', icon: 'Store' },
+      { name: '今日执行台', path: '/', icon: 'LayoutDashboard' },
+      { name: '店铺授权', path: '/shops', icon: 'Store' },
       { name: '店铺工作台', path: '/workbench', icon: 'Monitor' },
       { name: '运营任务', path: '/operations', icon: 'ListChecks' },
-    ]
+    ],
   },
   {
-    title: '指纹浏览器',
+    title: '高级维护',
     items: [
-      { name: '自动化接口（实验）', path: '/browser/automation', icon: 'Bot' },
       { name: '内核管理', path: '/browser/cores', icon: 'Cpu' },
       { name: '代理池配置', path: '/browser/proxy-pool', icon: 'Globe' },
       { name: '默认书签', path: '/browser/bookmarks', icon: 'Bookmark' },
       { name: '标签管理', path: '/browser/tags', icon: 'Tag' },
-    ]
-  },
-  {
-    title: '系统维护',
-    items: [
+      { name: '自动化接口', path: '/browser/automation', icon: 'Bot' },
+      { name: '日志查看', path: '/browser/logs', icon: 'FileText' },
       { name: '系统设置', path: '/settings', icon: 'Settings' },
       { name: '使用教程', path: '/system/tutorial', icon: 'BookOpen' },
-      { name: '日志查看', path: '/browser/logs', icon: 'FileText' },
       { name: '接口文档', path: '/browser/launch-api', icon: 'BookOpen' },
-    ]
+    ],
   },
 ]
 
