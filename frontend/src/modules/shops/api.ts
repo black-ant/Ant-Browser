@@ -3,7 +3,7 @@ import { devShopProfiles, useDevWorkspaceFallback } from '../workspace/devData'
 import type { ShopProfile, ShopProfileStats } from './types'
 
 export type AsmStatusKind = 'connected' | 'error' | 'unavailable'
-const CLIENT_BACKEND_UNAVAILABLE = '未连接 Ant Browser 客户端后端，请在客户端本体中打开店铺资料。'
+const CLIENT_BACKEND_UNAVAILABLE = '未连接 Maka Browser 客户端后端，请在客户端本体中打开店铺授权页。'
 
 function hasWorkspaceShopProfileBinding(): boolean {
   return Boolean((window as any)?.go?.main?.App?.WorkspaceShopProfiles)
@@ -34,7 +34,7 @@ export function dataCompletenessLabel(status: string): string {
 }
 
 export function sourceLabel(source: string): string {
-  if (source === 'asm') return 'ASM 店铺资料'
+  if (source === 'asm') return 'ASM 店铺主数据'
   if (source === 'dev_mock') return '开发模拟资料'
   if (source === 'authorized_shop_projection') return '授权店铺投影'
   if (source) return source

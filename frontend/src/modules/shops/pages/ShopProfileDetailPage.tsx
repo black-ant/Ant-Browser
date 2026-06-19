@@ -113,14 +113,14 @@ export function ShopProfileDetailDrawer({ shopId, open, onClose }: ShopProfileDe
       open={open}
       onClose={onClose}
       title={title}
-      subtitle="ASM 店铺资料 / 客户端详情"
+      subtitle="ASM 店铺主数据 / 客户端授权详情"
     >
       {loading ? (
         <div className="py-12">
-          <Loading text="加载店铺资料..." />
+          <Loading text="加载店铺授权详情..." />
         </div>
       ) : errorMessage ? (
-        <Alert type="warning" title="店铺资料未连接真实客户端链路" message={errorMessage} />
+        <Alert type="warning" title="店铺授权未连接真实客户端链路" message={errorMessage} />
       ) : profile ? (
         <div className="space-y-5">
           <section className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-subtle)] p-4">
@@ -215,7 +215,7 @@ export function ShopProfileDetailDrawer({ shopId, open, onClose }: ShopProfileDe
           ))}
         </div>
       ) : (
-        <p className="text-sm text-[var(--color-text-muted)]">店铺资料不存在</p>
+        <p className="text-sm text-[var(--color-text-muted)]">店铺授权详情不存在</p>
       )}
     </Drawer>
   )
