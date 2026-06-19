@@ -23,7 +23,17 @@ export function WorkspaceDashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
 
   const stats = useMemo(() => deriveWorkspaceDashboardStats(shops), [shops])
-  const blockers = useMemo(() => summary ? deriveExecutionBlockers(summary, shops) : [], [summary, shops])
+  const derivedSummary = useMemo<WorkspaceSummary>(() => summary ?? {
+    status: '',
+    agentStatus: '',
+    sessionReady: false,
+    serverReachable: false,
+    antRuntimeReachable: false,
+    activeRunCount: 0,
+    deviceId: '',
+    deviceStatus: '',
+  }, [summary])
+  const blockers = useMemo(() => deriveExecutionBlockers(derivedSummary, shops), [derivedSummary, shops])
   const readyRateText = readyRate(stats.totalAccounts, stats.readyShopCount)
 
   async function load(silent = false) {
@@ -52,17 +62,6 @@ export function WorkspaceDashboardPage() {
   useEffect(() => {
     void load()
   }, [])
-
-  const derivedSummary = summary ?? {
-    status: '',
-    agentStatus: '',
-    sessionReady: false,
-    serverReachable: false,
-    antRuntimeReachable: false,
-    activeRunCount: 0,
-    deviceId: '',
-    deviceStatus: '',
-  }
 
   return (
     <div className="space-y-6 animate-fade-in">
