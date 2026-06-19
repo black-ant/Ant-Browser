@@ -99,7 +99,7 @@ export function WorkbenchTable({
     {
       key: 'profile',
       title: '入口',
-      width: 76,
+      width: 104,
       render: (_, row) => (
         <div className="flex items-center gap-2 text-sm">
           <Link
@@ -189,7 +189,7 @@ export function WorkbenchTable({
       emptyText="暂无可处理店铺"
       onRowClick={onOpenDrawer}
       maxHeight="calc(100vh - 240px)"
-      className="min-w-0 [&_table]:table-fixed [&_td]:px-3 [&_th]:px-3 max-2xl:[&_td:nth-child(3)]:hidden max-2xl:[&_td:nth-child(4)]:hidden max-2xl:[&_td:nth-child(6)]:hidden max-2xl:[&_th:nth-child(3)]:hidden max-2xl:[&_th:nth-child(4)]:hidden max-2xl:[&_th:nth-child(6)]:hidden"
+      className="min-w-0 [&_table]:table-fixed [&_td]:px-3 [&_th]:px-3 max-2xl:[&_td:nth-child(3)]:hidden max-2xl:[&_td:nth-child(4)]:hidden max-2xl:[&_td:nth-child(5)]:hidden max-2xl:[&_th:nth-child(3)]:hidden max-2xl:[&_th:nth-child(4)]:hidden max-2xl:[&_th:nth-child(5)]:hidden"
     />
   )
 }
