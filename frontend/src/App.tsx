@@ -42,7 +42,6 @@ const UsageTutorialPage = lazyNamed(() => import('./modules/browser/pages/UsageT
 const AccountManagementPage = lazyNamed(() => import('./modules/browser/pages/AccountManagementPage'), 'AccountManagementPage')
 const ExtensionManagementPage = lazyNamed(() => import('./modules/browser/pages/ExtensionManagementPage'), 'ExtensionManagementPage')
 const ExtensionStorePage = lazyNamed(() => import('./modules/browser/pages/ExtensionStorePage'), 'ExtensionStorePage')
-const BrowserDevToolsPage = lazyNamed(() => import('./modules/browser/pages/BrowserDevToolsPage'), 'BrowserDevToolsPage')
 const BrowserDevToolsPageNew = lazyNamed(() => import('./modules/browser/pages/BrowserDevToolsPageNew'), 'BrowserDevToolsPageNew')
 const QuickLaunchModal = lazyNamed(() => import('./modules/browser/components/QuickLaunchModal'), 'QuickLaunchModal')
 
@@ -303,7 +302,7 @@ function App() {
               <Route path="/browser/accounts" element={<AccountManagementPage />} />
               <Route path="/browser/extensions" element={<ExtensionManagementPage />} />
               <Route path="/browser/extension-store" element={<ExtensionStorePage />} />
-              <Route path="/browser/devtools" element={<BrowserDevToolsPage />} />
+              <Route path="/browser/devtools" element={<BrowserDevToolsPageNew />} />
               <Route path="/browser/devtools-new" element={<BrowserDevToolsPageNew />} />
               <Route path="/system/tutorial" element={<UsageTutorialPage />} />
             </Routes>
