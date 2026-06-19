@@ -163,15 +163,17 @@ func (s *CDPSession) Connect() error {
 	s.ws = ws
 	s.connected = true
 
-	// 4. 启用CDP domains
+	// 先启动事件读循环，再启用 domains：
+	// enableDomains 通过 SendCommand 等待命令响应，而响应由 listenEvents 读取分发；
+	// 若读循环未先启动，enableDomains 会一直等到超时，导致"连接失败"。
+	go s.listenEvents()
+	go s.maintainConnection()
+
+	// 启用CDP domains
 	if err := s.enableDomains(); err != nil {
 		s.ws.Close()
 		return fmt.Errorf("启用CDP domains失败: %w", err)
 	}
-
-	// 5. 开始监听事件
-	go s.listenEvents()
-	go s.maintainConnection()
 
 	return nil
 }

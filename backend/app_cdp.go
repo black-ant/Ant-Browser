@@ -30,6 +30,7 @@ func (a *App) CDPSessionCreate(profileID string, targetType string) (string, err
 	// 创建CDP会话
 	session, err := a.cdpManager.CreateSession(profileID, profile.DebugPort, targetType)
 	if err != nil {
+		logger.New("CDP").Error("[CDP] 创建会话失败", logger.F("profile_id", profileID), logger.F("debug_port", profile.DebugPort), logger.F("error", err.Error()))
 		return "", fmt.Errorf("创建CDP会话失败: %w", err)
 	}
 
