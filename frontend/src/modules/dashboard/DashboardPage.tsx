@@ -29,7 +29,7 @@ function StatCard({ title, value, icon, color }: StatCardProps) {
 }
 
 const QUICK_LINKS = [
-  { to: '/browser', icon: <Monitor className="w-5 h-5" />, label: '浏览器实例', desc: '管理所有指纹浏览器' },
+  { to: '/workbench', icon: <Monitor className="w-5 h-5" />, label: '店铺工作台', desc: '管理本机店铺窗口' },
   { to: '/browser/proxy-pool', icon: <Shield className="w-5 h-5" />, label: '代理池', desc: '配置和测试代理节点' },
   { to: '/browser/cores', icon: <Cpu className="w-5 h-5" />, label: '内核管理', desc: '管理 Chrome 内核版本' },
   { to: '/settings', icon: <Settings className="w-5 h-5" />, label: '系统设置', desc: '全局参数配置' },
@@ -100,7 +100,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">控制台</h1>
+        <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">今日执行台</h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-1">浏览器指纹管理平台概览</p>
       </div>
 

@@ -430,7 +430,7 @@ export function WorkbenchPage() {
           <Alert
             type="warning"
             title="该店铺还没有本地授权实例"
-            message="店铺资料已来自 ASM 主数据，但店铺工作台只处理已接入本地授权实例的店铺。请先完成授权接入或在管理端检查资料授权关系。"
+            message="ASM 店铺主数据已同步，但店铺工作台只处理已接入本地授权实例的店铺。请先完成授权接入或在管理端检查主数据授权关系。"
           />
         ) : null}
 

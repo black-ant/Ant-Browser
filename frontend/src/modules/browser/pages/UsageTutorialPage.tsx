@@ -112,7 +112,7 @@ export function UsageTutorialPage() {
       <StepCard icon={<Download className="w-4 h-4" />} title="1) 下载并准备浏览器内核">
         <p>推荐使用 fingerprint-chromium。你可以优先走应用内下载：</p>
         <pre className="text-xs font-mono bg-[var(--color-bg-secondary)] border border-[var(--color-border-muted)] rounded-lg p-3 overflow-x-auto">
-{`左侧菜单 -> 指纹浏览器 -> 内核管理 -> 下载内核`}
+{`左侧菜单 -> 高级维护 -> 内核管理 -> 下载内核`}
         </pre>
         <p>如果应用内下载失败，再使用 GitHub 手动下载 ZIP 包，下载后解压到项目目录的 <code>chrome/</code> 下。</p>
         <p>建议目录结构示例：</p>
@@ -129,19 +129,19 @@ export function UsageTutorialPage() {
       </StepCard>
 
       <StepCard icon={<Layers className="w-4 h-4" />} title="2) 在“内核管理”中确认可用内核">
-        <p>进入左侧 <code>指纹浏览器 &gt; 内核管理</code>。</p>
+        <p>进入左侧 <code>高级维护 &gt; 内核管理</code>。</p>
         <p>确认已识别到你解压后的内核路径，并设置一个默认内核。</p>
         <p>如果未识别到，请检查是否存在 <code>chrome.exe</code>，以及路径是否填写正确。</p>
       </StepCard>
 
       <StepCard icon={<Globe className="w-4 h-4" />} title="3) 创建代理池（HTTP/SOCKS5/Vmess/Vless/Trojan）">
-        <p>进入左侧 <code>指纹浏览器 &gt; 代理池配置</code>。</p>
+        <p>进入左侧 <code>高级维护 &gt; 代理池配置</code>。</p>
         <p>你可以逐条添加代理，也可以通过 YAML 批量导入。</p>
         <p>保存后，实例编辑页里即可选择这些代理节点。</p>
       </StepCard>
 
       <StepCard icon={<Monitor className="w-4 h-4" />} title="4) 创建实例并启动">
-        <p>进入 <code>指纹浏览器 &gt; 实例列表</code>，点击“新建配置”。</p>
+        <p>进入 <code>店铺工作台</code> 或高级维护入口，点击“新建配置”。</p>
         <p>设置实例名称、选择内核、选择代理（可选）、调整启动参数。</p>
         <p>保存后返回列表，点击“启动”即可运行浏览器实例。</p>
       </StepCard>
