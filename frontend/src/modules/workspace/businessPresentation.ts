@@ -38,8 +38,11 @@ export function workspaceHealthTone(summary: WorkspaceSummary) {
 }
 
 export function readyRate(total: number, ready: number) {
-  if (total <= 0) return '0%'
-  return `${Math.round((ready / total) * 100)}%`
+  if (!Number.isFinite(total) || total <= 0) return '0%'
+
+  const finiteReady = Number.isFinite(ready) ? ready : 0
+  const clampedReady = Math.min(Math.max(finiteReady, 0), total)
+  return `${Math.round((clampedReady / total) * 100)}%`
 }
 
 export function deriveExecutionBlockers(summary: WorkspaceSummary, shops: WorkspaceAuthorizedShop[]): ExecutionBlocker[] {
@@ -53,6 +56,7 @@ export function deriveExecutionBlockers(summary: WorkspaceSummary, shops: Worksp
       actionLabel: '查看系统设置',
       actionPath: '/settings',
     })
+    return blockers
   }
 
   if (summary.serverReachable && !makaRuntimeReachable(summary)) {
