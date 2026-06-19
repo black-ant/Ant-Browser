@@ -107,6 +107,47 @@ func cdpCall(debugPort int, method string, params map[string]any) (map[string]an
 	return cdpResp.Result, nil
 }
 
+// BrowserResolveDevtoolsWS 返回某实例可用于 DevTools 的页面级 WebSocket 调试地址。
+// 从 /json 解析 type==page 的 webSocketDebuggerUrl —— 前端 DevTools 应直连此地址，
+// 而非硬编码 /devtools/browser（新版 Chromium 拒绝无 id 的浏览器级地址，且浏览器级
+// target 不支持 Network/Runtime/Performance 等页面域）。后端拉取可绕过前端的跨域/Origin 限制。
+func (a *App) BrowserResolveDevtoolsWS(profileId string) (string, error) {
+	a.browserMgr.Mutex.Lock()
+	profile, exists := a.browserMgr.Profiles[profileId]
+	debugPort := 0
+	if exists && profile != nil {
+		debugPort = profile.DebugPort
+	}
+	a.browserMgr.Mutex.Unlock()
+	if !exists {
+		return "", fmt.Errorf("实例不存在")
+	}
+	if debugPort <= 0 {
+		return "", fmt.Errorf("实例未运行或无调试端口，请先启动实例")
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json", debugPort))
+	if err != nil {
+		return "", fmt.Errorf("CDP /json 请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var targets []cdpTarget
+	if err := json.Unmarshal(body, &targets); err != nil || len(targets) == 0 {
+		return "", fmt.Errorf("未发现可调试页面（请确保实例已打开标签页）")
+	}
+	for _, t := range targets {
+		if t.Type == "page" && t.WebSocketDebuggerUrl != "" {
+			return t.WebSocketDebuggerUrl, nil
+		}
+	}
+	if targets[0].WebSocketDebuggerUrl != "" {
+		return targets[0].WebSocketDebuggerUrl, nil
+	}
+	return "", fmt.Errorf("未找到可用的 WebSocket 调试地址")
+}
+
 func cdpBrowserCall(debugPort int, method string, params map[string]any) error {
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", debugPort))
 	if err != nil {

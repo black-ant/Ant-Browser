@@ -413,6 +413,12 @@ export async function cancelProxyBatch(): Promise<void> {
   await callBinding<void>('BrowserProxyCancelBatch', [], undefined as any)
 }
 
+// resolveDevtoolsWsUrl 解析实例的页面级 CDP WebSocket 调试地址（供 DevTools 直连）。
+// 返回空字符串表示无法解析（实例未运行 / 无打开页面）。
+export async function resolveDevtoolsWsUrl(profileId: string): Promise<string> {
+  return callBinding<string>('BrowserResolveDevtoolsWS', [profileId], '')
+}
+
 export async function saveBrowserProxies(proxies: BrowserProxy[]): Promise<boolean> {
   const bindings: any = await getBindings()
   if (bindings?.SaveBrowserProxies) {

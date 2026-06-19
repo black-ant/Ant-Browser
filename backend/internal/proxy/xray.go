@@ -125,9 +125,9 @@ func RequiresBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId s
 		return false
 	}
 	l := strings.ToLower(src)
-	// 标准代理格式，不需要桥接
+	// 标准代理格式：带账号密码的需要桥接（Chrome --proxy-server 无法鉴权），无凭据的直连
 	if strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "socks5://") {
-		return false
+		return proxyURLHasCredentials(src)
 	}
 	// hysteria2 Xray 不支持，不触发桥接
 	if strings.HasPrefix(l, "hysteria://") || strings.HasPrefix(l, "hysteria2://") {

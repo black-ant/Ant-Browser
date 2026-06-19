@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Play, Square, Download, Trash2, Search, Filter, RefreshCw, Copy, Terminal, Code, Image as ImageIcon, Database, Cpu, Eye } from 'lucide-react'
 import { Badge, Button, Card, Input, Modal, Select, toast, Textarea } from '../../../shared/components'
 import type { BrowserProfile } from '../types'
-import { fetchBrowserProfiles } from '../api'
+import { fetchBrowserProfiles, resolveDevtoolsWsUrl } from '../api'
 import type { ToolType, NetworkRequest, ConsoleLog, StorageItem, Statistics } from './devtools/types'
 import { useCdpSession } from '../hooks/useCdpSession'
 
@@ -137,7 +137,13 @@ export function BrowserDevToolsPage() {
       return
     }
 
-    const wsUrl = `ws://localhost:${profile.debugPort}/devtools/browser`
+    // 解析真实的页面级调试地址（不能硬编码 /devtools/browser：新版 Chromium 拒绝，
+    // 且浏览器级 target 不支持 Network/Console/Performance）。
+    const wsUrl = await resolveDevtoolsWsUrl(selectedProfileId)
+    if (!wsUrl) {
+      toast.error('无法获取调试地址：请确认实例已启动并至少打开一个标签页')
+      return
+    }
     start({
       wsUrl,
       onOpen: (sendMsg, isReconnect) => {

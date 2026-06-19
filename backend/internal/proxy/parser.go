@@ -93,6 +93,15 @@ func ParseProxyNode(node string) (string, map[string]interface{}, error) {
 	}
 	l := strings.ToLower(src)
 	if strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "socks5://") {
+		// 带账号密码的直连代理：Chrome 的 --proxy-server 无法做代理鉴权（407 challenge），
+		// 必须经 xray 桥接成本地无鉴权 socks5。无凭据的仍按原样直连，避免无谓开销。
+		if proxyURLHasCredentials(src) {
+			ob, err := buildStandardProxyOutbound(src)
+			if err != nil {
+				return "", nil, err
+			}
+			return "", ob, nil
+		}
 		return src, nil, nil
 	}
 	if strings.HasPrefix(l, "clash://") || strings.Contains(l, "type:") || strings.Contains(l, "proxies:") {
@@ -112,6 +121,56 @@ func ParseProxyNode(node string) (string, map[string]interface{}, error) {
 		return "", nil, err
 	}
 	return "", outbound, nil
+}
+
+// proxyURLHasCredentials 判断 http(s)/socks5 代理 URI 是否带账号密码（userinfo）。
+func proxyURLHasCredentials(src string) bool {
+	u, err := url.Parse(strings.TrimSpace(src))
+	if err != nil || u.User == nil {
+		return false
+	}
+	return u.User.Username() != ""
+}
+
+// buildStandardProxyOutbound 将带鉴权的 http(s)/socks5 直连代理构造为 xray 出站，
+// 使其经本地无鉴权 socks5 暴露给 Chrome（解决 Chrome --proxy-server 无法鉴权问题）。
+func buildStandardProxyOutbound(src string) (map[string]interface{}, error) {
+	u, err := url.Parse(strings.TrimSpace(src))
+	if err != nil {
+		return nil, fmt.Errorf("代理地址解析失败: %w", err)
+	}
+	host := u.Hostname()
+	port, _ := strconv.Atoi(u.Port())
+	if host == "" || port <= 0 {
+		return nil, fmt.Errorf("代理地址缺少主机或端口")
+	}
+	scheme := strings.ToLower(u.Scheme)
+	protocol := "http"
+	if scheme == "socks5" || scheme == "socks" {
+		protocol = "socks"
+	}
+
+	server := map[string]interface{}{"address": host, "port": port}
+	if u.User != nil {
+		if username := u.User.Username(); username != "" {
+			password, _ := u.User.Password()
+			server["users"] = []interface{}{map[string]interface{}{"user": username, "pass": password}}
+		}
+	}
+
+	outbound := map[string]interface{}{
+		"protocol": protocol,
+		"settings": map[string]interface{}{"servers": []interface{}{server}},
+		"tag":      "proxy-out",
+	}
+	// https 代理：在 http 出站上附加 TLS
+	if scheme == "https" {
+		outbound["streamSettings"] = map[string]interface{}{
+			"security":    "tls",
+			"tlsSettings": map[string]interface{}{"serverName": host},
+		}
+	}
+	return outbound, nil
 }
 
 func parseClashNode(src string) (map[string]interface{}, string, error) {
