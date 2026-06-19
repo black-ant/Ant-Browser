@@ -217,12 +217,16 @@ export function BrowserDevToolsPageNew() {
       {/* 控制栏 */}
       <Card>
         <div className="flex items-center gap-3 p-1">
-          <Select value={selectedProfileId} onChange={(e) => setSelectedProfileId(e.target.value)} disabled={capturing} className="flex-1" options={[]}>
-            <option value="">选择运行中的浏览器实例</option>
-            {profiles.map(p => (
-              <option key={p.profileId} value={p.profileId}>{p.profileName}（端口 {p.debugPort}）</option>
-            ))}
-          </Select>
+          <Select
+            value={selectedProfileId}
+            onChange={(e) => setSelectedProfileId(e.target.value)}
+            disabled={capturing}
+            className="flex-1"
+            options={[
+              { value: '', label: profiles.length ? '选择运行中的浏览器实例' : '暂无运行中的实例（先去实例列表启动）' },
+              ...profiles.map(p => ({ value: p.profileId, label: `${p.profileName}（端口 ${p.debugPort}）` })),
+            ]}
+          />
           <Button onClick={capturing ? stopCapture : startCapture} variant={capturing ? 'secondary' : undefined}>
             {capturing ? '停止' : '连接'}
           </Button>

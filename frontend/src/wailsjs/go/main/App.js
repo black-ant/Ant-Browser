@@ -358,6 +358,10 @@ export function CDPGetStatistics(arg1) {
   return window['go']['main']['App']['CDPGetStatistics'](arg1);
 }
 
+export function CDPGetStorage(arg1, arg2) {
+  return window['go']['main']['App']['CDPGetStorage'](arg1, arg2);
+}
+
 export function CDPListSessions() {
   return window['go']['main']['App']['CDPListSessions']();
 }

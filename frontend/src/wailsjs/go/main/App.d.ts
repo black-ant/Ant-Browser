@@ -187,6 +187,8 @@ export function CDPGetNetworkRequests(arg1:string):Promise<Array<cdp.NetworkRequ
 
 export function CDPGetStatistics(arg1:string):Promise<Record<string, any>>;
 
+export function CDPGetStorage(arg1:string,arg2:string):Promise<Record<string, string>>;
+
 export function CDPListSessions():Promise<Array<string>>;
 
 export function CDPSessionClose(arg1:string):Promise<void>;
