@@ -53,10 +53,26 @@ export function authorizationBadge(profile: ShopProfile) {
 
 export function shopProfileAction(profile: ShopProfile) {
   const presentation = authorizationStatusPresentation(profile.authorizationStatus, profile.authorizationStatusLabel)
+  if (presentation.recommendedAction === 'open') {
+    return {
+      label: '打开后台',
+      description: presentation.description,
+    }
+  }
+  if (presentation.recommendedAction === 'bind' || presentation.recommendedAction === 'validate') {
+    return {
+      label: '更新凭据',
+      description: presentation.description,
+    }
+  }
   return {
     label: presentation.primaryLabel,
     description: presentation.description,
   }
+}
+
+export function shopProfileTaskPath(profile: ShopProfile) {
+  return `/operations?shopId=${encodeURIComponent(profile.shopId)}`
 }
 
 function compactText(value: string, width = 180) {
@@ -521,8 +537,8 @@ export function buildShopProfileColumns(): DataTableColumn<ShopProfile>[] {
       key: 'actions',
       title: '操作',
       group: COLUMN_GROUPS.action,
-      width: 150,
-      minWidth: 140,
+      width: 210,
+      minWidth: 190,
       fixed: 'right',
       align: 'right',
       hideable: false,
@@ -536,6 +552,9 @@ export function buildShopProfileColumns(): DataTableColumn<ShopProfile>[] {
             </Link>
             <Link className="client-data-table-action-link" to={`/workbench?shopId=${encodeURIComponent(profile.shopId)}`} title={action.description}>
               {action.label}
+            </Link>
+            <Link className="client-data-table-action-link" to={shopProfileTaskPath(profile)}>
+              任务
             </Link>
           </div>
         )

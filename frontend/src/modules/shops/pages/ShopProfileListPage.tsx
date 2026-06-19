@@ -31,7 +31,7 @@ export function ShopProfileListPage() {
       setProfiles(await fetchShopProfiles())
     } catch (error) {
       console.error('load shop profiles failed', error)
-      const message = error instanceof Error ? error.message : String(error || '加载店铺资料失败')
+      const message = error instanceof Error ? error.message : String(error || '加载店铺授权失败')
       setProfiles([])
       setErrorMessage(message)
       toast.error(message)
@@ -57,9 +57,9 @@ export function ShopProfileListPage() {
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden animate-fade-in">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold text-[var(--color-text-primary)]">店铺资料</h1>
+          <h1 className="truncate text-xl font-semibold text-[var(--color-text-primary)]">店铺授权</h1>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            客户端查看 ASM 店铺主数据、经营归属与本地授权状态；同步与治理指标留在管理端。
+            查看 ASM 店铺主数据、本地授权状态和下一步可执行动作。
           </p>
         </div>
         <Button
@@ -79,7 +79,7 @@ export function ShopProfileListPage() {
           <div className="border-b border-[var(--color-border-muted)] p-4">
             <Alert
               type="warning"
-              title="店铺资料未连接真实客户端链路"
+              title="店铺授权未连接真实客户端链路"
               message={errorMessage}
             />
           </div>
@@ -87,7 +87,7 @@ export function ShopProfileListPage() {
           <div className="border-b border-[var(--color-border-muted)] p-4">
             <Alert
               type="warning"
-              title="ASM 店铺资料尚未同步"
+              title="还没有可展示的店铺授权数据"
               message="当前客户端已连接真实 workspace，但服务端没有可用的 ASM 店铺快照。请先在管理端执行 ASM 店铺同步，完成后再刷新本页。"
             />
           </div>
@@ -97,7 +97,7 @@ export function ShopProfileListPage() {
           data={profiles}
           rowKey="shopId"
           loading={loading}
-          emptyText={errorMessage ? '店铺资料未连接' : asmSnapshotMissing ? 'ASM 店铺资料尚未同步' : '暂无 ASM 店铺资料'}
+          emptyText={errorMessage ? '店铺授权未连接' : asmSnapshotMissing ? 'ASM 店铺授权尚未同步' : '暂无 ASM 店铺授权数据'}
           fillHeight
           selectable
           storageKey="client-shop-profile-table-columns"
