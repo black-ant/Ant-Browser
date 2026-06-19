@@ -101,6 +101,7 @@ type CDPSession struct {
 	// 锁
 	mu           sync.RWMutex
 	commandMu    sync.Mutex
+	writeMu      sync.Mutex // 串行化 WebSocket 写：gorilla 不允许并发写
 
 	// 生命周期
 	ctx          context.Context
@@ -248,11 +249,14 @@ func (s *CDPSession) SendCommand(method string, params map[string]interface{}) (
 		Params: params,
 	}
 
-	if err := s.ws.WriteJSON(msg); err != nil {
+	s.writeMu.Lock()
+	werr := s.ws.WriteJSON(msg)
+	s.writeMu.Unlock()
+	if werr != nil {
 		s.commandMu.Lock()
 		delete(s.pendingCommands, id)
 		s.commandMu.Unlock()
-		return nil, err
+		return nil, werr
 	}
 
 	// 等待响应（超时10秒）
