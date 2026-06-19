@@ -52,6 +52,7 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
         totalInstances: data?.totalInstances ?? 0,
         runningInstances: data?.runningInstances ?? 0,
         proxyCount: data?.proxyCount ?? 0,
+        proxyAvailable: data?.proxyAvailable ?? 0,
         coreCount: data?.coreCount ?? 0,
         memUsedMB: data?.memUsedMB ?? 0,
         maxProfileLimit: licenseStatus?.maxLimit ?? 100,
@@ -61,7 +62,7 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
       console.error('fetchDashboardStats error:', e)
     }
   }
-  return { totalInstances: 0, runningInstances: 0, proxyCount: 0, coreCount: 0, memUsedMB: 0, maxProfileLimit: 100, appVersion: 'unknown' }
+  return { totalInstances: 0, runningInstances: 0, proxyCount: 0, proxyAvailable: 0, coreCount: 0, memUsedMB: 0, maxProfileLimit: 100, appVersion: 'unknown' }
 }
 
 export async function redeemCDKey(cdkey: string): Promise<{ success: boolean, message?: string }> {

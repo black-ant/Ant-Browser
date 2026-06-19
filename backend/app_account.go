@@ -466,6 +466,11 @@ func (a *App) BrowserAccountExport(accountIDs []string, includeSecrets bool) (st
 		return "", fmt.Errorf("序列化导出失败: %w", err)
 	}
 	logger.New("Account").Info("[Account] 导出账号", logger.F("count", len(out)), logger.F("include_secrets", includeSecrets))
+	if includeSecrets {
+		a.recordActivity("export", "warn", fmt.Sprintf("导出账号（含敏感数据）%d 条", len(out)), "")
+	} else {
+		a.recordActivity("export", "info", fmt.Sprintf("导出账号（脱敏）%d 条", len(out)), "")
+	}
 	return string(data), nil
 }
 
@@ -497,5 +502,6 @@ func (a *App) BrowserAccountImport(payload string) (int, error) {
 		count++
 	}
 	logger.New("Account").Info("[Account] 批量导入账号", logger.F("count", count))
+	a.recordActivity("import", "info", fmt.Sprintf("批量导入账号：成功 %d / %d 条", count, len(items)), "")
 	return count, nil
 }

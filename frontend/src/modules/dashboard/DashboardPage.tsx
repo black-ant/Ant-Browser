@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Monitor, Play, Shield, Cpu, ExternalLink, Globe, FileText, Plus, Activity, CheckCircle, XCircle, AlertCircle, Settings, Zap } from 'lucide-react'
+import { Monitor, Play, Shield, Cpu, ExternalLink, Globe, FileText, Plus, Activity, CheckCircle, XCircle, AlertCircle, Settings, Zap, Download } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { Card, Button, toast } from '../../shared/components'
@@ -39,6 +39,7 @@ const ACTIVITY_ICON: Record<string, React.ReactNode> = {
   crash: <AlertCircle className="w-3.5 h-3.5 text-red-600" />,
   speedtest: <Zap className="w-3.5 h-3.5 text-yellow-600" />,
   import: <Globe className="w-3.5 h-3.5 text-blue-600" />,
+  export: <Download className="w-3.5 h-3.5 text-blue-500" />,
   config: <Settings className="w-3.5 h-3.5 text-purple-600" />,
 }
 
@@ -55,7 +56,7 @@ function timeAgo(unixSec: number) {
 export function DashboardPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats>({
-    totalInstances: 0, runningInstances: 0, proxyCount: 0, coreCount: 0, memUsedMB: 0, maxProfileLimit: 100, appVersion: 'unknown',
+    totalInstances: 0, runningInstances: 0, proxyCount: 0, proxyAvailable: 0, coreCount: 0, memUsedMB: 0, maxProfileLimit: 100, appVersion: 'unknown',
   })
   const [loading, setLoading] = useState(true)
   const [cdKey, setCdKey] = useState('')
@@ -171,7 +172,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="实例总数" value={v(stats.totalInstances)} icon={<Monitor className="w-5 h-5 text-blue-600" />} color="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20" to="/browser/list" />
         <StatCard title="运行中" value={v(stats.runningInstances)} icon={<Play className="w-5 h-5 text-green-600" />} color="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20" to="/browser/list" />
-        <StatCard title="代理节点" value={v(stats.proxyCount)} icon={<Globe className="w-5 h-5 text-purple-600" />} color="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20" to="/browser/proxy-pool" />
+        <StatCard title="代理节点（可用/总）" value={loading ? '-' : `${stats.proxyAvailable}/${stats.proxyCount}`} icon={<Globe className="w-5 h-5 text-purple-600" />} color="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20" to="/browser/proxy-pool" />
         <StatCard title="内核版本" value={v(stats.coreCount)} icon={<Cpu className="w-5 h-5 text-orange-600" />} color="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/20" to="/browser/cores" />
       </div>
 

@@ -439,6 +439,19 @@ func (a *App) GetDashboardStats() map[string]interface{} {
 	proxyCount := len(a.config.Browser.Proxies)
 	coreCount := len(a.config.Browser.Cores)
 
+	// 可用代理数：最近一次测速成功的代理（真实来源 last_test_ok）
+	proxyAvailable := 0
+	if a.browserMgr.ProxyDAO != nil {
+		if list, err := a.browserMgr.ProxyDAO.List(); err == nil {
+			proxyCount = len(list)
+			for _, p := range list {
+				if p.LastTestOk {
+					proxyAvailable++
+				}
+			}
+		}
+	}
+
 	var mem goruntime.MemStats
 	goruntime.ReadMemStats(&mem)
 	memUsedMB := float64(mem.Alloc) / 1024 / 1024
@@ -447,6 +460,7 @@ func (a *App) GetDashboardStats() map[string]interface{} {
 		"totalInstances":   totalInstances,
 		"runningInstances": runningInstances,
 		"proxyCount":       proxyCount,
+		"proxyAvailable":   proxyAvailable,
 		"coreCount":        coreCount,
 		"memUsedMB":        int(memUsedMB),
 		"appVersion":       a.appVersion(),

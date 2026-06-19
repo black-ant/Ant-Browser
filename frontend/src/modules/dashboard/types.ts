@@ -2,6 +2,7 @@ export interface DashboardStats {
   totalInstances: number
   runningInstances: number
   proxyCount: number
+  proxyAvailable: number
   coreCount: number
   memUsedMB: number
   maxProfileLimit: number
