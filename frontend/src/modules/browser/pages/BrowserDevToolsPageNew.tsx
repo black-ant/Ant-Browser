@@ -77,7 +77,8 @@ export function BrowserDevToolsPageNew() {
   const loadProfiles = async () => {
     try {
       const list = await fetchBrowserProfiles()
-      setProfiles(list.filter(p => p.running && p.debugReady))
+      // 只要在运行中即可选择（CDP 需要调试端口；debugReady 只是附加附着标志，不作为硬条件）。
+      setProfiles(list.filter(p => p.running))
     } catch {
       toast.error('加载浏览器实例失败')
     }
