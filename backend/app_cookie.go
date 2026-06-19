@@ -193,6 +193,49 @@ func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
 	return cookies, nil
 }
 
+// BrowserSetCookies 通过 CDP 将一组 Cookie 写入运行中的实例（回写/恢复）
+func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
+	debugPort, err := a.getDebugPort(profileId)
+	if err != nil {
+		return err
+	}
+	if len(cookies) == 0 {
+		return nil
+	}
+
+	arr := make([]map[string]any, 0, len(cookies))
+	for _, c := range cookies {
+		if strings.TrimSpace(c.Name) == "" {
+			continue
+		}
+		m := map[string]any{
+			"name":     c.Name,
+			"value":    c.Value,
+			"path":     c.Path,
+			"secure":   c.Secure,
+			"httpOnly": c.HttpOnly,
+		}
+		if strings.TrimSpace(c.Domain) != "" {
+			m["domain"] = c.Domain
+		}
+		if c.Expires > 0 {
+			m["expires"] = c.Expires
+		}
+		switch strings.ToLower(strings.TrimSpace(c.SameSite)) {
+		case "strict":
+			m["sameSite"] = "Strict"
+		case "lax":
+			m["sameSite"] = "Lax"
+		case "none":
+			m["sameSite"] = "None"
+		}
+		arr = append(arr, m)
+	}
+
+	_, err = cdpCall(debugPort, "Network.setCookies", map[string]any{"cookies": arr})
+	return err
+}
+
 // BrowserClearCookies 通过 CDP 清除实例所有 Cookie
 func (a *App) BrowserClearCookies(profileId string) error {
 	debugPort, err := a.getDebugPort(profileId)

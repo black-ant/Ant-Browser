@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/apppath"
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/cdp"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/database"
 	"ant-chrome/backend/internal/launchcode"
@@ -39,12 +40,15 @@ type App struct {
 	db              *database.DB
 	interceptor     *logger.MethodInterceptor
 	browserMgr      *browser.Manager
+	startupQueue    *browser.StartupQueue
+	cdpManager      *cdp.Manager
 	xrayMgr         *proxy.XrayManager
 	clashMgr        *proxy.ClashManager
 	singboxMgr      *proxy.SingBoxManager
 	launchCodeSvc   *launchcode.LaunchCodeService
 	launchServer    *launchcode.LaunchServer
 	speedScheduler  *browser.ProxySpeedScheduler
+	proxySourceScheduler *browser.ProxySourceScheduler
 	usernameScanner *usernamescan.Service
 	appRoot         string
 	version         string
@@ -54,6 +58,11 @@ type App struct {
 	maintenanceMu    sync.Mutex // 维护类操作（初始化/导入/导出）互斥锁
 	bridgeMu         sync.Mutex
 	xrayBridgeRefs   map[string]string
+	proxyBatchMu     sync.Mutex          // 保护 proxyBatchCancel / proxyBatchGen
+	proxyBatchCancel context.CancelFunc  // 当前批量测速/IP健康检测的取消函数
+	proxyBatchGen    int                 // 批量操作代数，用于安全清理 cancel
+	proxyRefreshInFlight sync.Map        // sourceId -> struct{}，防止同一订阅源并发刷新
+	dashboard        *dashboardMonitor   // 仪表盘真实指标采样 + 活动日志
 	stopServicesOnce sync.Once
 	finalizeOnce     sync.Once
 }
@@ -161,7 +170,12 @@ func (a *App) startup(ctx context.Context) {
 		log.Error("数据库迁移失败", logger.F("error", err))
 	}
 
+	// 初始化本机加密密钥并迁移旧密文（账号密码/Cookie 等敏感字段）
+	a.initAccountEncryptionKey()
+
 	a.browserMgr = browser.NewManager(cfg, a.appRoot)
+	a.startupQueue = browser.NewStartupQueue(browserStartMaxConcurrent(cfg))
+	a.cdpManager = cdp.NewManager()
 	a.xrayMgr = proxy.NewXrayManager(cfg, a.appRoot)
 	a.clashMgr = proxy.NewClashManager(cfg, a.appRoot)
 	a.singboxMgr = proxy.NewSingBoxManager(cfg, a.appRoot)
@@ -170,6 +184,7 @@ func (a *App) startup(ctx context.Context) {
 	conn := db.GetConn()
 	a.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(conn)
 	a.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(conn)
+	a.browserMgr.ProxySourceDAO = browser.NewSQLiteProxySourceDAO(conn)
 	a.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(conn)
 	a.browserMgr.BookmarkDAO = browser.NewSQLiteBookmarkDAO(conn)
 	a.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(conn)
@@ -238,6 +253,18 @@ func (a *App) startup(ctx context.Context) {
 		5,
 	)
 	a.speedScheduler.Start()
+
+	// 从现有代理聚合订阅源（仅首次），并启动订阅源自动刷新调度器
+	a.seedProxySourcesFromProxies()
+	a.proxySourceScheduler = browser.NewProxySourceScheduler(
+		a.browserMgr.ProxySourceDAO,
+		a.refreshProxySource,
+		60*time.Second,
+	)
+	a.proxySourceScheduler.Start()
+
+	// 启动仪表盘真实资源采样
+	a.startDashboardMonitor()
 
 	log.Info("应用启动成功")
 }
@@ -713,6 +740,44 @@ func (a *App) BrowserProxyTestSpeed(proxyId string) ProxyTestResult {
 	return ProxyTestResult{ProxyId: r.ProxyId, Ok: r.Ok, LatencyMs: r.LatencyMs, Error: r.Error}
 }
 
+// beginProxyBatch 创建可取消的批量操作上下文，并取消上一个未结束的批次。
+func (a *App) beginProxyBatch() (context.Context, int) {
+	base := a.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	ctx, cancel := context.WithCancel(base)
+	a.proxyBatchMu.Lock()
+	if a.proxyBatchCancel != nil {
+		a.proxyBatchCancel()
+	}
+	a.proxyBatchGen++
+	gen := a.proxyBatchGen
+	a.proxyBatchCancel = cancel
+	a.proxyBatchMu.Unlock()
+	return ctx, gen
+}
+
+// endProxyBatch 结束指定代数的批量操作（仅当它仍是当前批次时清理）。
+func (a *App) endProxyBatch(gen int) {
+	a.proxyBatchMu.Lock()
+	if a.proxyBatchGen == gen && a.proxyBatchCancel != nil {
+		a.proxyBatchCancel()
+		a.proxyBatchCancel = nil
+	}
+	a.proxyBatchMu.Unlock()
+}
+
+// BrowserProxyCancelBatch 取消正在进行的批量测速 / IP 健康检测（停止派发后续任务）。
+func (a *App) BrowserProxyCancelBatch() {
+	a.proxyBatchMu.Lock()
+	cancel := a.proxyBatchCancel
+	a.proxyBatchMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
 // BrowserProxyBatchTestSpeed 批量并发测速，concurrency 控制并发数（默认 20）
 func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []ProxyTestResult {
 	if len(proxyIds) == 0 {
@@ -724,6 +789,8 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 	if concurrency > len(proxyIds) {
 		concurrency = len(proxyIds)
 	}
+	ctx, gen := a.beginProxyBatch()
+	defer a.endProxyBatch(gen)
 	proxies := a.getLatestProxies()
 	results := make([]ProxyTestResult, len(proxyIds))
 	type speedJob struct {
@@ -739,6 +806,12 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
+				// 被取消则停止派发后续任务（在飞任务自然结束）
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 				r := proxy.SpeedTest(job.ProxyId, proxies, a.xrayMgr, a.singboxMgr, nil)
 				if a.browserMgr.ProxyDAO != nil {
 					testedAt := time.Now().Format(time.RFC3339)
@@ -761,6 +834,13 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 	close(jobs)
 
 	wg.Wait()
+	okCount := 0
+	for _, r := range results {
+		if r.Ok {
+			okCount++
+		}
+	}
+	a.recordActivity("speedtest", "info", fmt.Sprintf("批量测速完成：%d/%d 可用", okCount, len(results)), "")
 	return results
 }
 
@@ -788,6 +868,8 @@ func (a *App) BrowserProxyBatchCheckIPHealth(proxyIds []string, concurrency int)
 		concurrency = len(proxyIds)
 	}
 
+	ctx, gen := a.beginProxyBatch()
+	defer a.endProxyBatch(gen)
 	proxies := a.getLatestProxies()
 	results := make([]ProxyIPHealthResult, len(proxyIds))
 	type healthJob struct {
@@ -802,6 +884,11 @@ func (a *App) BrowserProxyBatchCheckIPHealth(proxyIds []string, concurrency int)
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 				data, err := proxy.FetchIPPureInfo(job.ProxyId, proxies, a.xrayMgr, a.singboxMgr)
 				result := buildProxyIPHealthResult(job.ProxyId, data, err)
 				a.persistProxyIPHealthResult(result)
@@ -1034,18 +1121,14 @@ func (a *App) SaveBrowserProxies(proxies []BrowserProxy) error {
 
 	// 优先写入 SQLite
 	if a.browserMgr.ProxyDAO != nil {
-		if err := a.browserMgr.ProxyDAO.DeleteAll(); err != nil {
-			log.Error("清空代理表失败", logger.F("error", err))
+		// 事务化整表替换并在事务内回填测速/IP 健康结果（避免部分失败丢数据，避免重插清空健康列）
+		if err := a.browserMgr.ProxyDAO.ReplaceAllProxies(normalized); err != nil {
+			log.Error("代理列表保存失败", logger.F("error", err))
 			return err
-		}
-		for _, p := range normalized {
-			if err := a.browserMgr.ProxyDAO.Upsert(p); err != nil {
-				log.Error("代理保存失败", logger.F("proxy_id", p.ProxyId), logger.F("error", err))
-				return err
-			}
 		}
 		log.Info("代理列表已保存到数据库", logger.F("count", len(normalized)))
 		a.reconcileProfileProxyBindings()
+		a.recordActivity("config", "info", fmt.Sprintf("代理配置已更新（%d 条）", len(normalized)), "")
 		return nil
 	}
 

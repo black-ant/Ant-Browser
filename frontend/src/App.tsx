@@ -39,7 +39,11 @@ const LaunchApiDocsPage = lazyNamed(() => import('./modules/browser/pages/Launch
 const TagManagementPage = lazyNamed(() => import('./modules/browser/pages/TagManagementPage'), 'TagManagementPage')
 const AutomationPage = lazyNamed(() => import('./modules/browser/pages/AutomationPage'), 'AutomationPage')
 const UsageTutorialPage = lazyNamed(() => import('./modules/browser/pages/UsageTutorialPage'), 'UsageTutorialPage')
-const UsernameScanPage = lazyNamed(() => import('./modules/username-scan/UsernameScanPage'), 'UsernameScanPage')
+const AccountManagementPage = lazyNamed(() => import('./modules/browser/pages/AccountManagementPage'), 'AccountManagementPage')
+const ExtensionManagementPage = lazyNamed(() => import('./modules/browser/pages/ExtensionManagementPage'), 'ExtensionManagementPage')
+const ExtensionStorePage = lazyNamed(() => import('./modules/browser/pages/ExtensionStorePage'), 'ExtensionStorePage')
+const BrowserDevToolsPage = lazyNamed(() => import('./modules/browser/pages/BrowserDevToolsPage'), 'BrowserDevToolsPage')
+const BrowserDevToolsPageNew = lazyNamed(() => import('./modules/browser/pages/BrowserDevToolsPageNew'), 'BrowserDevToolsPageNew')
 const QuickLaunchModal = lazyNamed(() => import('./modules/browser/components/QuickLaunchModal'), 'QuickLaunchModal')
 
 function useWailsNotifications() {
@@ -294,9 +298,13 @@ function App() {
               <Route path="/browser/cores" element={<CoreManagementPage />} />
               <Route path="/browser/bookmarks" element={<BookmarkSettingsPage />} />
               <Route path="/browser/automation" element={<AutomationPage />} />
-              <Route path="/tools/username-scan" element={<UsernameScanPage />} />
               <Route path="/browser/launch-api" element={<LaunchApiDocsPage />} />
               <Route path="/browser/tags" element={<TagManagementPage />} />
+              <Route path="/browser/accounts" element={<AccountManagementPage />} />
+              <Route path="/browser/extensions" element={<ExtensionManagementPage />} />
+              <Route path="/browser/extension-store" element={<ExtensionStorePage />} />
+              <Route path="/browser/devtools" element={<BrowserDevToolsPage />} />
+              <Route path="/browser/devtools-new" element={<BrowserDevToolsPageNew />} />
               <Route path="/system/tutorial" element={<UsageTutorialPage />} />
             </Routes>
           </Suspense>

@@ -10,6 +10,9 @@ const (
 	defaultBrowserStartReadyTimeout = 3 * time.Second
 	defaultBrowserStartStableWindow = 1200 * time.Millisecond
 	defaultBrowserStartMaxAttempts  = 5
+	defaultBrowserStartMaxConcurrent = 3
+	minBrowserStartMaxConcurrent     = 1
+	maxBrowserStartMaxConcurrent     = 8
 )
 
 func browserStartReadyTimeoutMillis(cfg *config.Config) int {
@@ -41,6 +44,21 @@ func (a *App) browserStartTimingSettings() (time.Duration, time.Duration) {
 
 func browserStartAttemptCount() int {
 	return defaultBrowserStartMaxAttempts
+}
+
+// browserStartMaxConcurrent 返回批量启动并发上限，读取配置并钳制到 [1, 8]，默认 3。
+func browserStartMaxConcurrent(cfg *config.Config) int {
+	value := defaultBrowserStartMaxConcurrent
+	if cfg != nil && cfg.Browser.StartMaxConcurrent > 0 {
+		value = cfg.Browser.StartMaxConcurrent
+	}
+	if value < minBrowserStartMaxConcurrent {
+		value = minBrowserStartMaxConcurrent
+	}
+	if value > maxBrowserStartMaxConcurrent {
+		value = maxBrowserStartMaxConcurrent
+	}
+	return value
 }
 
 func shouldRetryBrowserReadyFailure(err error) bool {

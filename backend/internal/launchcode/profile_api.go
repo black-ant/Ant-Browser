@@ -531,6 +531,7 @@ func mergeProfileRuntime(target, runtimeProfile *browser.Profile) {
 		return
 	}
 	target.Running = runtimeProfile.Running
+	target.Status = runtimeProfile.Status
 	target.DebugPort = runtimeProfile.DebugPort
 	target.DebugReady = runtimeProfile.DebugReady
 	target.Pid = runtimeProfile.Pid

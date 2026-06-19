@@ -28,17 +28,18 @@ export function Card({
   }
 
   return (
-    <div 
+    <div
       className={clsx(
-        'bg-[var(--color-bg-surface)] rounded-xl overflow-hidden',
+        'bg-[var(--color-bg-surface)] rounded-2xl overflow-hidden',
         'border border-[var(--color-border-default)]',
-        'transition-all duration-200',
-        hover && 'hover:shadow-[var(--shadow-md)] hover:border-[var(--color-border-strong)]',
+        'shadow-[var(--shadow-sm)]',
+        'transition-all duration-300',
+        hover && 'hover:shadow-[var(--shadow-lg)] hover:border-[var(--color-border-strong)] hover:-translate-y-1',
         className
       )}
     >
       {(title || actions) && (
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border-muted)]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border-muted)] bg-gradient-to-r from-[var(--color-bg-surface)] to-[var(--color-bg-subtle)]">
           <div>
             {title && (
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">

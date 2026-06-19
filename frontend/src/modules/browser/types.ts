@@ -1,3 +1,11 @@
+export type BrowserProfileStatus =
+  | 'stopped'
+  | 'starting'
+  | 'debug_pending'
+  | 'running'
+  | 'stopping'
+  | 'crashed'
+
 export interface BrowserProfile {
   profileId: string
   profileName: string
@@ -15,6 +23,7 @@ export interface BrowserProfile {
   keywords: string[]
   groupId?: string
   running: boolean
+  status?: BrowserProfileStatus
   debugPort: number
   debugReady: boolean
   pid: number
@@ -91,6 +100,30 @@ export interface BrowserProxy {
   lastTestOk?: boolean
   lastTestedAt?: string
   lastIPHealthJson?: string
+}
+
+// ProxySource 代理订阅源（后端独立建模）
+export interface ProxySource {
+  sourceId: string
+  sourceUrl: string
+  sourceName?: string
+  groupName?: string
+  namePrefix?: string
+  dnsServers?: string
+  autoRefresh?: boolean
+  refreshIntervalM?: number
+  importStrategy?: string // merge | replace
+  lastRefreshAt?: string
+  lastRefreshError?: string
+  createdAt?: string
+}
+
+// ProxySourceOverride 订阅源节点的忽略/重命名记录
+export interface ProxySourceOverride {
+  sourceId: string
+  nodeKey: string
+  action: string // ignore | rename
+  customName?: string
 }
 
 export interface ProxyIPHealthResult {

@@ -1,4 +1,4 @@
-import type { DashboardStats } from './types'
+import type { DashboardStats, DashboardMetrics, ActivityEntry } from './types'
 
 const getBindings = async () => {
   try {
@@ -6,6 +6,40 @@ const getBindings = async () => {
   } catch {
     return null
   }
+}
+
+// callDash 解析并调用绑定方法，回退到 window.go.main.App（兼容 wailsjs 未重新生成）
+async function callDash<T>(method: string, args: any[], fallback: T): Promise<T> {
+  const bindings: any = await getBindings()
+  if (bindings?.[method]) {
+    return ((await bindings[method](...args)) as T) ?? fallback
+  }
+  const goApp = (window as any).go?.main?.App
+  if (goApp?.[method]) {
+    return ((await goApp[method](...args)) as T) ?? fallback
+  }
+  return fallback
+}
+
+const EMPTY_METRICS: DashboardMetrics = {
+  live: { timestamp: 0, cpuPercent: 0, memUsedMB: 0, memTotalMB: 0, appMemMB: 0, runningInstances: 0 },
+  history: [],
+}
+
+// 真实资源指标（实时 + 历史，供图表）
+export async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
+  const m = await callDash<DashboardMetrics>('GetDashboardMetrics', [], EMPTY_METRICS)
+  return { live: m?.live ?? EMPTY_METRICS.live, history: m?.history ?? [] }
+}
+
+// 真实活动日志（最新在前）
+export async function fetchActivityLog(): Promise<ActivityEntry[]> {
+  return callDash<ActivityEntry[]>('GetActivityLog', [], [])
+}
+
+// 最近错误（最新在前）
+export async function fetchRecentErrors(): Promise<ActivityEntry[]> {
+  return callDash<ActivityEntry[]>('GetRecentErrors', [], [])
 }
 
 export async function fetchDashboardStats(): Promise<DashboardStats> {

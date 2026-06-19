@@ -221,6 +221,7 @@ export function ProxyPickerModal({ open, currentProxyId, onSelect, onClose, onPr
   const [allProxies, setAllProxies] = useState<BrowserProxy[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUP)
   const [search, setSearch] = useState('')
+  const [onlyAvailable, setOnlyAvailable] = useState(false)
   const [loading, setLoading] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [speedMap, setSpeedMap] = useState<Record<string, SpeedResult>>({})
@@ -267,6 +268,7 @@ export function ProxyPickerModal({ open, currentProxyId, onSelect, onClose, onPr
     if (!open) return
     setSelectedGroup(ALL_GROUP)
     setSearch('')
+    setOnlyAvailable(false)
     setSpeedMap({})
     setTestingIds(new Set())
     setEditingProxy(null)
@@ -287,6 +289,18 @@ export function ProxyPickerModal({ open, currentProxyId, onSelect, onClose, onPr
         (proxy.proxyName || '').toLowerCase().includes(query) ||
         (proxy.proxyConfig || '').toLowerCase().includes(query)
       )
+    }
+
+    // 仅可用：保留实测成功（ok 且延迟>=0）或直连的代理
+    if (onlyAvailable) {
+      list = list.filter(proxy => {
+        if (proxy.proxyConfig === 'direct://') return true
+        const latest = speedMap[proxy.proxyId]
+        const result = latest || (proxy.lastTestedAt
+          ? { ok: proxy.lastTestOk ?? false, latencyMs: proxy.lastLatencyMs ?? -1 }
+          : undefined)
+        return !!result?.ok && result.latencyMs >= 0
+      })
     }
 
     const getSortTuple = (proxy: BrowserProxy): [number, number, string] => {
@@ -320,7 +334,7 @@ export function ProxyPickerModal({ open, currentProxyId, onSelect, onClose, onPr
         proxy,
         displayConfig: formatProxyConfigForDisplay(proxy.proxyConfig),
       }))
-  }, [selectedGroup, search, allProxies, speedMap])
+  }, [selectedGroup, search, onlyAvailable, allProxies, speedMap])
 
   const groupCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -561,6 +575,17 @@ export function ProxyPickerModal({ open, currentProxyId, onSelect, onClose, onPr
                   className="w-full pl-8 pr-3 py-1.5 text-sm bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)]"
                 />
               </div>
+              <button
+                onClick={() => setOnlyAvailable(v => !v)}
+                title="仅显示实测可用或直连的代理"
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                  onlyAvailable
+                    ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                    : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)]'
+                }`}
+              >
+                仅可用
+              </button>
               <button
                 onClick={() => setImportOpen(true)}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"

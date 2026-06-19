@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus, Pencil, Trash2, FolderInput } from 'lucide-react'
 import type { BrowserGroupWithCount, BrowserGroupInput } from '../types'
 import { createGroup, updateGroup, deleteGroup } from '../api'
+import { useConfirm } from '../../../shared/components'
 
 interface GroupTreeNavProps {
   groups: BrowserGroupWithCount[]
@@ -96,8 +97,10 @@ export function GroupTreeNav({ groups, selectedGroupId, onSelectGroup, onRefresh
     onRefresh()
   }
 
+  const { confirm, dialog: confirmDialog } = useConfirm()
+
   const handleDelete = async (groupId: string) => {
-    if (!confirm('确定删除此分组？子分组和实例将移动到父分组。')) return
+    if (!(await confirm({ content: '确定删除此分组？子分组和实例将移动到父分组。', danger: true }))) return
     await deleteGroup(groupId)
     if (selectedGroupId === groupId) {
       onSelectGroup(null)
@@ -148,6 +151,7 @@ export function GroupTreeNav({ groups, selectedGroupId, onSelectGroup, onRefresh
 
   return (
     <div className="w-48 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
+      {confirmDialog}
       <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
         <span className="text-sm font-medium">分组</span>
         <button

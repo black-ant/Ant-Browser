@@ -19,50 +19,7 @@ const (
 
 // BrowserProxyFetchClashByURL 拉取 Clash 订阅 URL，并返回可直接导入的 YAML 文本与建议配置。
 func (a *App) BrowserProxyFetchClashByURL(rawURL string) (map[string]interface{}, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
-		return nil, fmt.Errorf("订阅 URL 不能为空")
-	}
-
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil || parsedURL.Host == "" {
-		return nil, fmt.Errorf("URL 格式无效")
-	}
-	scheme := strings.ToLower(strings.TrimSpace(parsedURL.Scheme))
-	if scheme != "http" && scheme != "https" {
-		return nil, fmt.Errorf("仅支持 http/https URL")
-	}
-
-	req, err := http.NewRequest(http.MethodGet, parsedURL.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("User-Agent", "clash-verge/2.0 ant-chrome/1.0")
-	req.Header.Set("Accept", "application/yaml,text/yaml,text/plain,*/*")
-	req.Header.Set("Cache-Control", "no-cache")
-
-	client := &http.Client{
-		Timeout: clashSubscriptionTimeout,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("拉取订阅失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("拉取订阅失败: HTTP %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxClashSubscriptionBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("读取订阅内容失败: %w", err)
-	}
-	if len(body) > maxClashSubscriptionBytes {
-		return nil, fmt.Errorf("订阅内容过大（超过 8MB）")
-	}
-
-	content, payload, err := normalizeClashSubscriptionContent(body)
+	parsedURL, content, payload, err := a.fetchClashSubscriptionPayload(rawURL)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +39,59 @@ func (a *App) BrowserProxyFetchClashByURL(rawURL string) (map[string]interface{}
 		"dnsServers":     dnsYAML,
 		"suggestedGroup": suggestedGroup,
 	}, nil
+}
+
+// fetchClashSubscriptionPayload 抓取订阅 URL 并归一化为可解析的 payload。
+// 供前端导入预览（BrowserProxyFetchClashByURL）与后端自动刷新（refreshProxySource）共用。
+func (a *App) fetchClashSubscriptionPayload(rawURL string) (*url.URL, string, interface{}, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, "", nil, fmt.Errorf("订阅 URL 不能为空")
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Host == "" {
+		return nil, "", nil, fmt.Errorf("URL 格式无效")
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsedURL.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return nil, "", nil, fmt.Errorf("仅支持 http/https URL")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, parsedURL.String(), nil)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+	req.Header.Set("User-Agent", "clash-verge/2.0 ant-chrome/1.0")
+	req.Header.Set("Accept", "application/yaml,text/yaml,text/plain,*/*")
+	req.Header.Set("Cache-Control", "no-cache")
+
+	client := &http.Client{
+		Timeout: clashSubscriptionTimeout,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("拉取订阅失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", nil, fmt.Errorf("拉取订阅失败: HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxClashSubscriptionBytes+1))
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("读取订阅内容失败: %w", err)
+	}
+	if len(body) > maxClashSubscriptionBytes {
+		return nil, "", nil, fmt.Errorf("订阅内容过大（超过 8MB）")
+	}
+
+	content, payload, err := normalizeClashSubscriptionContent(body)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	return parsedURL, content, payload, nil
 }
 
 func normalizeClashSubscriptionContent(body []byte) (string, interface{}, error) {
@@ -160,21 +170,40 @@ func parseClashPayload(text string) (interface{}, bool) {
 }
 
 func clashProxyCount(payload interface{}) int {
+	return len(extractClashProxyNodes(payload))
+}
+
+// extractClashProxyNodes 从已解析 payload 取出 proxies 数组，每个节点为字符串键 map。
+func extractClashProxyNodes(payload interface{}) []map[string]interface{} {
+	var arr []interface{}
 	if m := toStringMap(payload); m != nil {
-		if arr, ok := m["proxies"].([]interface{}); ok {
-			return len(arr)
+		if a, ok := m["proxies"].([]interface{}); ok {
+			arr = a
+		} else if a, ok := m["proxy"].([]interface{}); ok {
+			arr = a
+		} else if a, ok := m["Proxy"].([]interface{}); ok {
+			arr = a
 		}
-		if arr, ok := m["proxy"].([]interface{}); ok {
-			return len(arr)
-		}
-		if arr, ok := m["Proxy"].([]interface{}); ok {
-			return len(arr)
+	} else if a, ok := payload.([]interface{}); ok {
+		arr = a
+	}
+	nodes := make([]map[string]interface{}, 0, len(arr))
+	for _, item := range arr {
+		if node := toStringMap(item); node != nil {
+			nodes = append(nodes, node)
 		}
 	}
-	if arr, ok := payload.([]interface{}); ok {
-		return len(arr)
+	return nodes
+}
+
+// proxyNodeToConfig 将单个 clash 节点序列化为应用内 proxyConfig（单元素 YAML 数组），
+// 与前端 proxyToYaml(yaml.dump([node])) 等价；后端测速/桥接消费同一格式。
+func proxyNodeToConfig(node map[string]interface{}) (string, error) {
+	data, err := yaml.Marshal([]interface{}{node})
+	if err != nil {
+		return "", err
 	}
-	return 0
+	return strings.TrimSpace(string(data)), nil
 }
 
 func extractClashDNSYAML(payload interface{}) string {

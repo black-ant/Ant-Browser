@@ -1,5 +1,145 @@
 export namespace backend {
 	
+	export class ActivityEntry {
+	    timestamp: number;
+	    type: string;
+	    level: string;
+	    message: string;
+	    profileName?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ActivityEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.type = source["type"];
+	        this.level = source["level"];
+	        this.message = source["message"];
+	        this.profileName = source["profileName"];
+	    }
+	}
+	export class BrowserAccount {
+	    accountId: string;
+	    accountName: string;
+	    platform: string;
+	    username: string;
+	    email: string;
+	    password: string;
+	    relatedProfileIds: string[];
+	    notes: string;
+	    cookies: string;
+	    createdAt: string;
+	    updatedAt: string;
+	    cookieCount: number;
+	    cookieEarliestExpiry: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrowserAccount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.accountId = source["accountId"];
+	        this.accountName = source["accountName"];
+	        this.platform = source["platform"];
+	        this.username = source["username"];
+	        this.email = source["email"];
+	        this.password = source["password"];
+	        this.relatedProfileIds = source["relatedProfileIds"];
+	        this.notes = source["notes"];
+	        this.cookies = source["cookies"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.cookieCount = source["cookieCount"];
+	        this.cookieEarliestExpiry = source["cookieEarliestExpiry"];
+	    }
+	}
+	export class BrowserAccountInput {
+	    accountName: string;
+	    platform: string;
+	    username: string;
+	    email: string;
+	    password: string;
+	    relatedProfileIds: string[];
+	    notes: string;
+	    cookies: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrowserAccountInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.accountName = source["accountName"];
+	        this.platform = source["platform"];
+	        this.username = source["username"];
+	        this.email = source["email"];
+	        this.password = source["password"];
+	        this.relatedProfileIds = source["relatedProfileIds"];
+	        this.notes = source["notes"];
+	        this.cookies = source["cookies"];
+	    }
+	}
+	export class BrowserExtension {
+	    extensionId: string;
+	    extensionName: string;
+	    extensionPath: string;
+	    version: string;
+	    enabled: boolean;
+	    boundProfileIds: string[];
+	    sourceType: string;
+	    sourceUrl: string;
+	    description: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrowserExtension(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.extensionId = source["extensionId"];
+	        this.extensionName = source["extensionName"];
+	        this.extensionPath = source["extensionPath"];
+	        this.version = source["version"];
+	        this.enabled = source["enabled"];
+	        this.boundProfileIds = source["boundProfileIds"];
+	        this.sourceType = source["sourceType"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.description = source["description"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class BrowserExtensionInput {
+	    extensionName: string;
+	    extensionPath: string;
+	    version: string;
+	    enabled: boolean;
+	    boundProfileIds: string[];
+	    sourceType: string;
+	    sourceUrl: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrowserExtensionInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.extensionName = source["extensionName"];
+	        this.extensionPath = source["extensionPath"];
+	        this.version = source["version"];
+	        this.enabled = source["enabled"];
+	        this.boundProfileIds = source["boundProfileIds"];
+	        this.sourceType = source["sourceType"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.description = source["description"];
+	    }
+	}
 	export class CookieInfo {
 	    name: string;
 	    value: string;
@@ -26,6 +166,78 @@ export namespace backend {
 	        this.sameSite = source["sameSite"];
 	    }
 	}
+	export class MetricSample {
+	    timestamp: number;
+	    cpuPercent: number;
+	    memUsedMB: number;
+	    memTotalMB: number;
+	    appMemMB: number;
+	    runningInstances: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MetricSample(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.cpuPercent = source["cpuPercent"];
+	        this.memUsedMB = source["memUsedMB"];
+	        this.memTotalMB = source["memTotalMB"];
+	        this.appMemMB = source["appMemMB"];
+	        this.runningInstances = source["runningInstances"];
+	    }
+	}
+	export class DashboardMetrics {
+	    live: MetricSample;
+	    history: MetricSample[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DashboardMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.live = this.convertValues(source["live"], MetricSample);
+	        this.history = this.convertValues(source["history"], MetricSample);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ExtensionValidateResult {
+	    valid: boolean;
+	    message: string;
+	    name: string;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExtensionValidateResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.valid = source["valid"];
+	        this.message = source["message"];
+	        this.name = source["name"];
+	        this.version = source["version"];
+	    }
+	}
 	export class LicenseStatus {
 	    maxLimit: number;
 	    usedCount: number;
@@ -42,6 +254,7 @@ export namespace backend {
 	        this.usedKeys = source["usedKeys"];
 	    }
 	}
+	
 	export class ProxyIPHealthResult {
 	    proxyId: string;
 	    ok: boolean;
@@ -410,6 +623,7 @@ export namespace browser {
 	    groupId: string;
 	    launchCode: string;
 	    running: boolean;
+	    status: string;
 	    debugPort: number;
 	    debugReady: boolean;
 	    pid: number;
@@ -443,6 +657,7 @@ export namespace browser {
 	        this.groupId = source["groupId"];
 	        this.launchCode = source["launchCode"];
 	        this.running = source["running"];
+	        this.status = source["status"];
 	        this.debugPort = source["debugPort"];
 	        this.debugReady = source["debugReady"];
 	        this.pid = source["pid"];
@@ -484,6 +699,58 @@ export namespace browser {
 	        this.groupId = source["groupId"];
 	    }
 	}
+	export class ProxySource {
+	    sourceId: string;
+	    sourceUrl: string;
+	    sourceName: string;
+	    groupName: string;
+	    namePrefix: string;
+	    dnsServers: string;
+	    autoRefresh: boolean;
+	    refreshIntervalM: number;
+	    importStrategy: string;
+	    lastRefreshAt: string;
+	    lastRefreshError: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxySource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceId = source["sourceId"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.sourceName = source["sourceName"];
+	        this.groupName = source["groupName"];
+	        this.namePrefix = source["namePrefix"];
+	        this.dnsServers = source["dnsServers"];
+	        this.autoRefresh = source["autoRefresh"];
+	        this.refreshIntervalM = source["refreshIntervalM"];
+	        this.importStrategy = source["importStrategy"];
+	        this.lastRefreshAt = source["lastRefreshAt"];
+	        this.lastRefreshError = source["lastRefreshError"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class ProxySourceOverride {
+	    sourceId: string;
+	    nodeKey: string;
+	    action: string;
+	    customName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxySourceOverride(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceId = source["sourceId"];
+	        this.nodeKey = source["nodeKey"];
+	        this.action = source["action"];
+	        this.customName = source["customName"];
+	    }
+	}
 	export class Settings {
 	    userDataRoot: string;
 	    defaultFingerprintArgs: string[];
@@ -522,6 +789,73 @@ export namespace browser {
 	        this.title = source["title"];
 	        this.url = source["url"];
 	        this.active = source["active"];
+	    }
+	}
+
+}
+
+export namespace cdp {
+	
+	export class ConsoleLog {
+	    id: string;
+	    type: string;
+	    message: string;
+	    timestamp: number;
+	    stackTrace?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConsoleLog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.message = source["message"];
+	        this.timestamp = source["timestamp"];
+	        this.stackTrace = source["stackTrace"];
+	    }
+	}
+	export class NetworkRequest {
+	    requestId: string;
+	    url: string;
+	    method: string;
+	    statusCode: number;
+	    statusText: string;
+	    type: string;
+	    timestamp: number;
+	    requestHeaders: Record<string, string>;
+	    responseHeaders: Record<string, string>;
+	    requestBody: string;
+	    responseBody: string;
+	    duration: number;
+	    size: number;
+	    mimeType: string;
+	    startTime: number;
+	    endTime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NetworkRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requestId = source["requestId"];
+	        this.url = source["url"];
+	        this.method = source["method"];
+	        this.statusCode = source["statusCode"];
+	        this.statusText = source["statusText"];
+	        this.type = source["type"];
+	        this.timestamp = source["timestamp"];
+	        this.requestHeaders = source["requestHeaders"];
+	        this.responseHeaders = source["responseHeaders"];
+	        this.requestBody = source["requestBody"];
+	        this.responseBody = source["responseBody"];
+	        this.duration = source["duration"];
+	        this.size = source["size"];
+	        this.mimeType = source["mimeType"];
+	        this.startTime = source["startTime"];
+	        this.endTime = source["endTime"];
 	    }
 	}
 
@@ -665,7 +999,7 @@ export namespace logger {
 }
 
 export namespace usernamescan {
-
+	
 	export class BrowserScanOptions {
 	    profileId: string;
 	    url: string;
@@ -677,11 +1011,11 @@ export namespace usernamescan {
 	    holdText: string;
 	    waitAfterSubmitMs: number;
 	    timeoutMs: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new BrowserScanOptions(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profileId = source["profileId"];
@@ -701,11 +1035,11 @@ export namespace usernamescan {
 	    targetLength: number;
 	    allowDigits: boolean;
 	    maxResults: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new GeneratorOptions(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sourceText = source["sourceText"];
@@ -718,11 +1052,11 @@ export namespace usernamescan {
 	    checked: number[];
 	    hit: number[];
 	    rate: number[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new History(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.checked = source["checked"];
@@ -735,11 +1069,11 @@ export namespace usernamescan {
 	    message: string;
 	    params: Record<string, any>;
 	    timestamp: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LogEntry(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.level = source["level"];
@@ -753,11 +1087,11 @@ export namespace usernamescan {
 	    status: string;
 	    message: string;
 	    checkedAt: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Result(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -773,11 +1107,11 @@ export namespace usernamescan {
 	    hold: number;
 	    error: number;
 	    rate: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Stats(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.checked = source["checked"];
@@ -799,11 +1133,11 @@ export namespace usernamescan {
 	    history: History;
 	    results: Result[];
 	    logs: LogEntry[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Snapshot(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.running = source["running"];
@@ -817,7 +1151,7 @@ export namespace usernamescan {
 	        this.results = this.convertValues(source["results"], Result);
 	        this.logs = this.convertValues(source["logs"], LogEntry);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -843,11 +1177,11 @@ export namespace usernamescan {
 	    browser: BrowserScanOptions;
 	    intervalMs: number;
 	    limit: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new StartRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.seeds = source["seeds"];
@@ -857,7 +1191,7 @@ export namespace usernamescan {
 	        this.intervalMs = source["intervalMs"];
 	        this.limit = source["limit"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

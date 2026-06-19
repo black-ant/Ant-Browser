@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/logger"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -56,6 +57,7 @@ func browserInstanceEventPayload(profile *BrowserProfile, reused bool) map[strin
 	return map[string]interface{}{
 		"profileId":      profile.ProfileId,
 		"profileName":    profile.ProfileName,
+		"status":         profile.Status,
 		"debugPort":      profile.DebugPort,
 		"debugReady":     profile.DebugReady,
 		"pid":            profile.Pid,
@@ -87,6 +89,11 @@ func (a *App) markProfileRunningLocked(profileId string, profile *BrowserProfile
 	profile.DebugPort = debugPort
 	profile.DebugReady = debugReady
 	profile.Pid = pid
+	if debugReady {
+		profile.Status = browser.StatusRunning
+	} else {
+		profile.Status = browser.StatusDebugPending
+	}
 	profile.LastStartAt = time.Now().Format(time.RFC3339)
 	profile.RuntimeWarning = runtimeWarning
 	profile.LastError = ""
@@ -104,8 +111,39 @@ func (a *App) markProfileDebugReadyLocked(profile *BrowserProfile, debugPort int
 	}
 	profile.DebugPort = debugPort
 	profile.DebugReady = true
+	profile.Status = browser.StatusRunning
 	profile.RuntimeWarning = ""
 	profile.LastError = ""
+}
+
+// commitBrowserStart 在短临界区内提交一次启动结果（Phase 3）。
+// 若实例在启动期间被删除（Profiles 中不存在）或启动认领已被清除（被 Stop 取消），
+// 返回 committed=false，调用方应杀掉已启动的进程并释放代理桥接等资源。
+func (a *App) commitBrowserStart(profileId string, cmd *exec.Cmd, pid int, debugPort int, debugReady bool, runtimeWarning string) (*BrowserProfile, bool) {
+	a.browserMgr.Mutex.Lock()
+	defer a.browserMgr.Mutex.Unlock()
+
+	profile, exists := a.browserMgr.Profiles[profileId]
+	if !exists || profile == nil {
+		delete(a.browserMgr.StartingProfiles, profileId)
+		return nil, false
+	}
+	if !a.browserMgr.StartingProfiles[profileId] {
+		// 认领已被清除（启动过程中被停止/取消）
+		return nil, false
+	}
+	delete(a.browserMgr.StartingProfiles, profileId)
+	a.markProfileRunningLocked(profileId, profile, cmd, pid, debugPort, debugReady, runtimeWarning)
+	return copyBrowserProfileSnapshot(profile), true
+}
+
+// setProfileLastError 在短临界区内写回实例的 LastError（用于待接管提示等）。
+func (a *App) setProfileLastError(profileId string, msg string) {
+	a.browserMgr.Mutex.Lock()
+	if p, ok := a.browserMgr.Profiles[profileId]; ok && p != nil {
+		p.LastError = msg
+	}
+	a.browserMgr.Mutex.Unlock()
 }
 
 func (a *App) setProfileDebugReady(profileId string, debugPort int) (*BrowserProfile, bool) {
@@ -191,7 +229,12 @@ func isBrowserProfileLive(profile *BrowserProfile, trackedCmd *exec.Cmd) bool {
 		return true
 	}
 	if trackedCmd != nil && trackedCmd.Process != nil && trackedCmd.Process.Pid > 0 {
-		return isProcessAlive(trackedCmd.Process.Pid)
+		// Before exec.Cmd.Wait returns, ProcessState is nil. Treat this as alive so
+		// a pending debug endpoint is not mistaken for a stopped browser instance.
+		if trackedCmd.ProcessState == nil {
+			return true
+		}
+		return !trackedCmd.ProcessState.Exited() || isProcessAlive(trackedCmd.Process.Pid)
 	}
 	return false
 }

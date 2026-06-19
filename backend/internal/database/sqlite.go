@@ -135,6 +135,83 @@ var migrations = []migration{
 			`ALTER TABLE browser_profiles ADD COLUMN proxy_bind_updated_at TEXT NOT NULL DEFAULT ''`,
 		},
 	},
+	{
+		version: 7,
+		desc:    "添加账号管理表",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_accounts (
+				account_id      TEXT PRIMARY KEY,
+				account_name    TEXT NOT NULL,
+				platform        TEXT NOT NULL DEFAULT '',
+				username        TEXT NOT NULL DEFAULT '',
+				email           TEXT NOT NULL DEFAULT '',
+				password_enc    TEXT NOT NULL DEFAULT '',
+				related_profile_ids TEXT NOT NULL DEFAULT '[]',
+				notes           TEXT NOT NULL DEFAULT '',
+				cookies_enc     TEXT NOT NULL DEFAULT '',
+				created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_accounts_platform ON browser_accounts(platform)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_accounts_created_at ON browser_accounts(created_at)`,
+		},
+	},
+	{
+		version: 8,
+		desc:    "添加扩展管理表",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_extensions (
+				extension_id    TEXT PRIMARY KEY,
+				extension_name  TEXT NOT NULL,
+				extension_path  TEXT NOT NULL,
+				version         TEXT NOT NULL DEFAULT '',
+				enabled         INTEGER NOT NULL DEFAULT 1,
+				bound_profile_ids TEXT NOT NULL DEFAULT '[]',
+				source_type     TEXT NOT NULL DEFAULT '',
+				source_url      TEXT NOT NULL DEFAULT '',
+				description     TEXT NOT NULL DEFAULT '',
+				created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_extensions_enabled ON browser_extensions(enabled)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_extensions_created_at ON browser_extensions(created_at)`,
+		},
+	},
+	{
+		version: 9,
+		desc:    "代理订阅源独立建模与忽略/重命名记录",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS proxy_sources (
+				source_id          TEXT PRIMARY KEY,
+				source_url         TEXT NOT NULL,
+				source_name        TEXT NOT NULL DEFAULT '',
+				group_name         TEXT NOT NULL DEFAULT '',
+				name_prefix        TEXT NOT NULL DEFAULT '',
+				dns_servers        TEXT NOT NULL DEFAULT '',
+				auto_refresh       INTEGER NOT NULL DEFAULT 0,
+				refresh_interval_m INTEGER NOT NULL DEFAULT 60,
+				import_strategy    TEXT NOT NULL DEFAULT 'merge',
+				last_refresh_at    TEXT NOT NULL DEFAULT '',
+				last_refresh_error TEXT NOT NULL DEFAULT '',
+				created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+			`CREATE TABLE IF NOT EXISTS proxy_source_overrides (
+				source_id   TEXT NOT NULL,
+				node_key    TEXT NOT NULL,
+				action      TEXT NOT NULL DEFAULT 'ignore',
+				custom_name TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (source_id, node_key)
+			)`,
+		},
+	},
+	{
+		version: 10,
+		desc:    "账号表添加 Cookie 过期统计列（用于过期提醒，非敏感）",
+		stmts: []string{
+			`ALTER TABLE browser_accounts ADD COLUMN cookie_count INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE browser_accounts ADD COLUMN cookie_earliest_expiry INTEGER NOT NULL DEFAULT 0`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

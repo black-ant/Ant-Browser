@@ -168,6 +168,9 @@ func userStateRootForOS(goos, fallback string) string {
 			return filepath.Join(home, ".local", "share", appStateDirName)
 		}
 	case "darwin":
+		if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
+			return filepath.Join(home, "Library", "Application Support", appStateDirName)
+		}
 		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 			return filepath.Join(home, "Library", "Application Support", appStateDirName)
 		}

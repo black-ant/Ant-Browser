@@ -24,6 +24,9 @@ func (m *Manager) InitData() {
 	if m.XrayBridges == nil {
 		m.XrayBridges = make(map[string]*XrayBridge)
 	}
+	if m.StartingProfiles == nil {
+		m.StartingProfiles = make(map[string]bool)
+	}
 	// 执行配置迁移
 	m.MigrateConfig()
 	if len(m.Profiles) > 0 {

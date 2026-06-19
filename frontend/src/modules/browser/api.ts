@@ -1,4 +1,4 @@
-import type { BrowserProfile, BrowserProfileInput, BrowserTab, BrowserSettings, BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserProxy, BrowserCoreExtended, CookieInfo, SnapshotInfo, BrowserBookmark, BrowserGroup, BrowserGroupInput, BrowserGroupWithCount, ProxyIPHealthResult } from './types'
+import type { BrowserProfile, BrowserProfileInput, BrowserTab, BrowserSettings, BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserProxy, BrowserCoreExtended, CookieInfo, SnapshotInfo, BrowserBookmark, BrowserGroup, BrowserGroupInput, BrowserGroupWithCount, ProxyIPHealthResult, ProxySource, ProxySourceOverride } from './types'
 
 const getBindings = async () => {
   try {
@@ -6,6 +6,20 @@ const getBindings = async () => {
   } catch {
     return null
   }
+}
+
+// callBinding 解析并调用一个 Wails 绑定方法：优先用生成模块，回落到 window.go.main.App，
+// 以便在 wailsjs 尚未重新生成时仍能调用新增的后端方法。
+async function callBinding<T>(method: string, args: any[], fallback: T): Promise<T> {
+  const bindings: any = await getBindings()
+  if (bindings?.[method]) {
+    return ((await bindings[method](...args)) as T) ?? fallback
+  }
+  const goApp = (window as any).go?.main?.App
+  if (goApp?.[method]) {
+    return ((await goApp[method](...args)) as T) ?? fallback
+  }
+  return fallback
 }
 
 let mockProfiles: BrowserProfile[] = [
@@ -73,7 +87,7 @@ export async function createBrowserProfile(input: BrowserProfileInput): Promise<
   const profile: BrowserProfile = {
     profileId: `mock-${Date.now()}`,
     ...input,
-    keywords: input.keywords || {},
+    keywords: input.keywords || [],
     running: false,
     debugPort: 0,
     debugReady: false,
@@ -356,6 +370,47 @@ export async function fetchClashImportFromURL(targetURL: string): Promise<ClashI
   }
 
   throw new Error('当前环境不支持 URL 导入 Clash 配置')
+}
+
+// ============================================================================
+// Proxy Source（订阅源后端建模）API
+// ============================================================================
+
+export async function fetchProxySources(): Promise<ProxySource[]> {
+  return callBinding<ProxySource[]>('BrowserProxySourceList', [], [])
+}
+
+export async function fetchProxySourceOverrides(sourceId: string): Promise<ProxySourceOverride[]> {
+  return callBinding<ProxySourceOverride[]>('BrowserProxySourceListOverrides', [sourceId], [])
+}
+
+export async function upsertProxySource(source: ProxySource): Promise<ProxySource | null> {
+  return callBinding<ProxySource | null>('BrowserProxySourceUpsert', [source], null)
+}
+
+export async function deleteProxySource(sourceId: string, deleteProxies: boolean): Promise<void> {
+  await callBinding<void>('BrowserProxySourceDelete', [sourceId, deleteProxies], undefined as any)
+}
+
+export async function refreshProxySource(sourceId: string): Promise<void> {
+  await callBinding<void>('BrowserProxySourceRefresh', [sourceId], undefined as any)
+}
+
+export async function refreshAllProxySources(): Promise<void> {
+  await callBinding<void>('BrowserProxySourceRefreshAll', [], undefined as any)
+}
+
+export async function setProxySourceOverride(sourceId: string, nodeKey: string, action: 'ignore' | 'rename', customName = ''): Promise<void> {
+  await callBinding<void>('BrowserProxySourceSetOverride', [sourceId, nodeKey, action, customName], undefined as any)
+}
+
+export async function removeProxySourceOverride(sourceId: string, nodeKey: string): Promise<void> {
+  await callBinding<void>('BrowserProxySourceRemoveOverride', [sourceId, nodeKey], undefined as any)
+}
+
+// cancelProxyBatch 取消正在进行的批量测速 / IP 健康检测
+export async function cancelProxyBatch(): Promise<void> {
+  await callBinding<void>('BrowserProxyCancelBatch', [], undefined as any)
 }
 
 export async function saveBrowserProxies(proxies: BrowserProxy[]): Promise<boolean> {
@@ -798,4 +853,305 @@ export async function moveInstancesToGroup(profileIds: string[], groupId: string
     return true
   }
   return false
+}
+
+// ============================================================================
+// Account API
+// ============================================================================
+
+export interface BrowserAccount {
+  accountId: string
+  accountName: string
+  platform: string
+  username: string
+  email: string
+  password: string
+  relatedProfileIds: string[]
+  notes: string
+  cookies: string
+  createdAt: string
+  updatedAt: string
+  cookieCount?: number
+  cookieEarliestExpiry?: number
+}
+
+export interface BrowserAccountInput {
+  accountName: string
+  platform: string
+  username: string
+  email: string
+  password: string
+  relatedProfileIds: string[]
+  notes: string
+  cookies: string
+}
+
+export async function fetchAccounts(): Promise<BrowserAccount[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountList) {
+    return (await bindings.BrowserAccountList()) || []
+  }
+  return []
+}
+
+export async function fetchAccount(accountId: string): Promise<BrowserAccount | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountGet) {
+    return (await bindings.BrowserAccountGet(accountId)) || null
+  }
+  return null
+}
+
+export async function createAccount(input: BrowserAccountInput): Promise<BrowserAccount | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountCreate) {
+    return (await bindings.BrowserAccountCreate(input)) || null
+  }
+  return null
+}
+
+export async function updateAccount(accountId: string, input: BrowserAccountInput): Promise<BrowserAccount | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountUpdate) {
+    return (await bindings.BrowserAccountUpdate(accountId, input)) || null
+  }
+  return null
+}
+
+export async function deleteAccount(accountId: string): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountDelete) {
+    await bindings.BrowserAccountDelete(accountId)
+    return true
+  }
+  return false
+}
+
+// 设置账号关联的实例集合（一对多）
+export async function setAccountProfiles(accountId: string, profileIds: string[]): Promise<void> {
+  await callBinding<void>('BrowserAccountSetProfiles', [accountId, profileIds], undefined as any)
+}
+
+// 从运行中实例读取 Cookie 并保存到账号；返回保存条数
+export async function saveAccountCookiesFromProfile(accountId: string, profileId: string): Promise<number> {
+  return callBinding<number>('BrowserAccountSaveCookiesFromProfile', [accountId, profileId], 0)
+}
+
+// 把账号已存 Cookie 回写到运行中实例；返回回写条数
+export async function restoreAccountCookiesToProfile(accountId: string, profileId: string, clearFirst: boolean): Promise<number> {
+  return callBinding<number>('BrowserAccountRestoreCookiesToProfile', [accountId, profileId, clearFirst], 0)
+}
+
+// 导出账号 JSON；includeSecrets=false 时不含密码/Cookie
+export async function exportAccounts(accountIds: string[], includeSecrets: boolean): Promise<string> {
+  return callBinding<string>('BrowserAccountExport', [accountIds, includeSecrets], '')
+}
+
+// 批量导入账号 JSON；返回导入条数
+export async function importAccounts(payload: string): Promise<number> {
+  return callBinding<number>('BrowserAccountImport', [payload], 0)
+}
+
+// ============================================================================
+// Extension API
+// ============================================================================
+
+export interface BrowserExtension {
+  extensionId: string
+  extensionName: string
+  extensionPath: string
+  version: string
+  enabled: boolean
+  boundProfileIds: string[]
+  sourceType: string
+  sourceUrl: string
+  description: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BrowserExtensionInput {
+  extensionName: string
+  extensionPath: string
+  version: string
+  enabled: boolean
+  boundProfileIds: string[]
+  sourceType: string
+  sourceUrl: string
+  description: string
+}
+
+export async function fetchExtensions(): Promise<BrowserExtension[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserExtensionList) {
+    return (await bindings.BrowserExtensionList()) || []
+  }
+  return []
+}
+
+export async function fetchExtension(extensionId: string): Promise<BrowserExtension | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserExtensionGet) {
+    return (await bindings.BrowserExtensionGet(extensionId)) || null
+  }
+  return null
+}
+
+export async function createExtension(input: BrowserExtensionInput): Promise<BrowserExtension | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserExtensionCreate) {
+    return (await bindings.BrowserExtensionCreate(input)) || null
+  }
+  return null
+}
+
+export async function updateExtension(extensionId: string, input: BrowserExtensionInput): Promise<BrowserExtension | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserExtensionUpdate) {
+    return (await bindings.BrowserExtensionUpdate(extensionId, input)) || null
+  }
+  return null
+}
+
+export async function deleteExtension(extensionId: string): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserExtensionDelete) {
+    await bindings.BrowserExtensionDelete(extensionId)
+    return true
+  }
+  return false
+}
+
+export async function toggleExtension(extensionId: string, enabled: boolean): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserExtensionToggle) {
+    await bindings.BrowserExtensionToggle(extensionId, enabled)
+    return true
+  }
+  return false
+}
+
+export interface ExtensionValidateResult {
+  valid: boolean
+  message: string
+  name: string
+  version: string
+}
+
+// 校验扩展目录（manifest.json）并回填 name/version
+export async function validateExtensionPath(path: string): Promise<ExtensionValidateResult> {
+  return callBinding<ExtensionValidateResult>('BrowserExtensionValidatePath', [path], { valid: false, message: '后端不可用', name: '', version: '' })
+}
+
+// 设置扩展绑定的实例集合
+export async function setExtensionProfiles(extensionId: string, profileIds: string[]): Promise<void> {
+  await callBinding<void>('BrowserExtensionSetProfiles', [extensionId, profileIds], undefined as any)
+}
+
+// ============================================================================
+// CDP API
+// ============================================================================
+
+export interface CDPNetworkRequest {
+  requestId: string
+  url: string
+  method: string
+  statusCode: number
+  statusText: string
+  type: string
+  timestamp: number
+  requestHeaders: Record<string, string>
+  responseHeaders: Record<string, string>
+  requestBody: string
+  responseBody: string
+  duration: number
+  size: number
+  mimeType: string
+  startTime: number
+  endTime: number
+}
+
+export interface CDPConsoleLog {
+  id: string
+  type: string // log/warn/error/info
+  message: string
+  timestamp: number
+  stackTrace?: string
+}
+
+export async function CDPSessionCreate(profileId: string, targetType: string): Promise<string> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPSessionCreate) {
+    return await bindings.CDPSessionCreate(profileId, targetType)
+  }
+  throw new Error('CDP功能不可用')
+}
+
+export async function CDPSessionClose(sessionId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPSessionClose) {
+    await bindings.CDPSessionClose(sessionId)
+  }
+}
+
+export async function CDPGetNetworkRequests(sessionId: string): Promise<CDPNetworkRequest[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPGetNetworkRequests) {
+    return (await bindings.CDPGetNetworkRequests(sessionId)) || []
+  }
+  return []
+}
+
+export async function CDPGetConsoleLogs(sessionId: string): Promise<CDPConsoleLog[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPGetConsoleLogs) {
+    return (await bindings.CDPGetConsoleLogs(sessionId)) || []
+  }
+  return []
+}
+
+export async function CDPClearNetworkRequests(sessionId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPClearNetworkRequests) {
+    await bindings.CDPClearNetworkRequests(sessionId)
+  }
+}
+
+export async function CDPClearConsoleLogs(sessionId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPClearConsoleLogs) {
+    await bindings.CDPClearConsoleLogs(sessionId)
+  }
+}
+
+export async function CDPExecuteJavaScript(sessionId: string, code: string): Promise<string> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPExecuteJavaScript) {
+    return await bindings.CDPExecuteJavaScript(sessionId, code)
+  }
+  throw new Error('JavaScript执行失败')
+}
+
+export async function CDPCaptureScreenshot(sessionId: string): Promise<string> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPCaptureScreenshot) {
+    return await bindings.CDPCaptureScreenshot(sessionId)
+  }
+  throw new Error('截图失败')
+}
+
+export async function CDPExportHAR(sessionId: string): Promise<string> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPExportHAR) {
+    return await bindings.CDPExportHAR(sessionId)
+  }
+  throw new Error('导出HAR失败')
+}
+
+export async function CDPGetStatistics(sessionId: string): Promise<any> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPGetStatistics) {
+    return await bindings.CDPGetStatistics(sessionId)
+  }
+  return null
 }

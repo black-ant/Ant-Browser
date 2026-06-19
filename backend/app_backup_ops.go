@@ -419,6 +419,10 @@ func (a *App) backupStopRuntimeForMaintenance() {
 		a.speedScheduler.Stop()
 		a.speedScheduler = nil
 	}
+	if a.proxySourceScheduler != nil {
+		a.proxySourceScheduler.Stop()
+		a.proxySourceScheduler = nil
+	}
 }
 
 func (a *App) backupReloadAfterMutation() error {
@@ -469,6 +473,17 @@ func (a *App) backupReloadAfterMutation() error {
 			5,
 		)
 		a.speedScheduler.Start()
+	}
+
+	// 恢复后重新聚合订阅源并重启自动刷新调度器
+	if a.browserMgr != nil && a.browserMgr.ProxySourceDAO != nil {
+		a.seedProxySourcesFromProxies()
+		a.proxySourceScheduler = browser.NewProxySourceScheduler(
+			a.browserMgr.ProxySourceDAO,
+			a.refreshProxySource,
+			60*time.Second,
+		)
+		a.proxySourceScheduler.Start()
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"os/exec"
@@ -37,6 +38,13 @@ func (a *App) stopRuntimeServices() {
 			a.speedScheduler.Stop()
 			a.speedScheduler = nil
 		}
+
+		if a.proxySourceScheduler != nil {
+			a.proxySourceScheduler.Stop()
+			a.proxySourceScheduler = nil
+		}
+
+		a.stopDashboardMonitor()
 
 		if a.launchServer != nil {
 			if err := a.launchServer.Stop(); err != nil {
@@ -75,6 +83,7 @@ func (a *App) stopAllBrowserProcessesForExit(log *logger.Logger) {
 	for profileID, cmd := range a.browserMgr.BrowserProcesses {
 		if profile, ok := a.browserMgr.Profiles[profileID]; ok && profile != nil {
 			profile.Running = false
+			profile.Status = browser.StatusStopped
 			profile.LastStopAt = stoppedAt
 		}
 		if cmd != nil && cmd.Process != nil {

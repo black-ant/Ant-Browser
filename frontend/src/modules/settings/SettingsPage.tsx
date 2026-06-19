@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Save, RotateCcw, Upload, Download } from 'lucide-react'
-import { Card, Button, FormItem, Input, Select, Switch, ThemeSwitcher, toast, Modal, Progress } from '../../shared/components'
+import { Card, Button, FormItem, Input, Select, Switch, ThemeSwitcher, toast, Modal, Progress, useConfirm } from '../../shared/components'
 import { fetchSettings, saveSettings, resetSettings, initializeSystemData, exportSystemConfig, importSystemConfig } from './api'
 import type { AppSettings } from './types'
 import { defaultSettings } from './types'
@@ -26,6 +26,7 @@ interface BackupExportLogItem {
 }
 
 export function SettingsPage() {
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -188,7 +189,7 @@ export function SettingsPage() {
   }
 
   const handleReset = async () => {
-    if (confirm('确定要重置所有设置吗？')) {
+    if (await confirm({ content: '确定要重置所有设置吗？', danger: true })) {
       const data = await resetSettings()
       setSettings(data)
       setHasChanges(false)
@@ -196,7 +197,7 @@ export function SettingsPage() {
   }
 
   const handleInitializeSystem = async () => {
-    if (!confirm('初始化会清空当前数据并恢复默认状态，是否继续？')) {
+    if (!(await confirm({ content: '初始化会清空当前数据并恢复默认状态，是否继续？', danger: true }))) {
       return
     }
     setActionLoading('init')
@@ -311,6 +312,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6 w-full animate-fade-in">
+      {confirmDialog}
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>

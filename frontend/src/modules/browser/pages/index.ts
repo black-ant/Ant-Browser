@@ -11,3 +11,9 @@ export { BookmarkSettingsPage } from './BookmarkSettingsPage'
 export { LaunchApiDocsPage } from './LaunchApiDocsPage'
 export { AutomationPage } from './AutomationPage'
 export { UsageTutorialPage } from './UsageTutorialPage'
+
+// 新增页面
+export { AccountManagementPage } from './AccountManagementPage'
+export { ExtensionManagementPage } from './ExtensionManagementPage'
+export { ExtensionStorePage } from './ExtensionStorePage'
+export { BrowserDevToolsPage } from './BrowserDevToolsPage'

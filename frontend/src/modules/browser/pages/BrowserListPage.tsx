@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, CheckCircle, ChevronDown, ChevronRight, ChevronUp, Copy, Edit2, ExternalLink, FileText, Key, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Sliders, Square, Star, Trash2, XCircle, Gift, LayoutGrid, List } from 'lucide-react'
-import { Badge, Button, Card, FormItem, Input, Modal, StatCard, Table, Textarea, toast } from '../../../shared/components'
+import { Activity, CheckCircle, ChevronRight, ChevronUp, Copy, Edit2, ExternalLink, FileText, Key, Play, Plus, RefreshCw, RotateCcw, Settings, Sliders, Square, Star, Trash2, XCircle, Gift, LayoutGrid, List } from 'lucide-react'
+import { Badge, Button, Card, FormItem, Input, Modal, StatCard, Table, Textarea, toast, useConfirm } from '../../../shared/components'
 import { fetchDashboardStats, redeemCDKey, redeemGithubStar, reloadConfig } from '../../dashboard/api'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserCore, BrowserCoreInput, BrowserProfile, BrowserProxy, BrowserSettings, BrowserGroupWithCount } from '../types'
@@ -11,6 +11,12 @@ import { KeywordsModal } from '../components/KeywordsModal'
 import { EventsOn, BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 import { PROJECT_GITHUB_URL } from '../../../config/links'
 import { resolveActionErrorMessage, resolveActionFeedback } from '../utils/actionErrors'
+import { runWithConcurrency } from '../utils/concurrency'
+import { BatchToolbar } from './browser-list/BatchToolbar'
+import { resolveProfileStatus, formatTime } from './browser-list/helpers'
+import { LaunchCodeCell } from './browser-list/LaunchCodeCell'
+import { KeywordInlineRow } from './browser-list/KeywordInlineRow'
+import { ProfileCard } from './browser-list/ProfileCard'
 import {
   copyBrowserProfile,
   deleteBrowserCore,
@@ -20,11 +26,9 @@ import {
   fetchBrowserProxies,
   fetchBrowserSettings,
   fetchGroups,
-  regenerateBrowserProfileCode,
   restartBrowserInstance,
   saveBrowserCore,
   saveBrowserSettings,
-  setBrowserProfileCode,
   setDefaultBrowserCore,
   startBrowserInstance,
   stopBrowserInstance,
@@ -32,178 +36,12 @@ import {
   validateProxyConfig,
 } from '../api'
 
-// 批量操作工具栏
-function BatchToolbar({
-  selectedCount,
-  totalCount,
-  onSelectAll,
-  onDeselectAll,
-  onBatchStart,
-  onBatchStop,
-  onBatchDelete,
-  batchLoading,
-}: {
-  selectedCount: number
-  totalCount: number
-  onSelectAll: () => void
-  onDeselectAll: () => void
-  onBatchStart: () => void
-  onBatchStop: () => void
-  onBatchDelete: () => void
-  batchLoading: boolean
-}) {
-  if (selectedCount === 0) return null
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5 bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20 rounded-lg">
-      <span className="text-sm font-medium text-[var(--color-accent)]">已选 {selectedCount} / {totalCount}</span>
-      <div className="flex gap-1.5 ml-auto">
-        <Button size="sm" variant="ghost" onClick={onSelectAll}>全选</Button>
-        <Button size="sm" variant="ghost" onClick={onDeselectAll}>取消</Button>
-        <Button size="sm" onClick={onBatchStart} loading={batchLoading} title="批量启动">
-          <Play className="w-3.5 h-3.5" />启动
-        </Button>
-        <Button size="sm" variant="secondary" onClick={onBatchStop} loading={batchLoading} title="批量停止">
-          <Square className="w-3.5 h-3.5" />停止
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onBatchDelete} title="批量删除" className="text-red-500 hover:text-red-600">
-          <Trash2 className="w-3.5 h-3.5" />删除
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const resolveProfileStatus = (running: boolean, debugReady: boolean, starting: boolean, stopping: boolean) => {
-  if (starting) {
-    return { variant: 'info' as const, label: '启动中' }
-  }
-  if (stopping) {
-    return { variant: 'default' as const, label: '停止中' }
-  }
-  if (running && !debugReady) {
-    return { variant: 'info' as const, label: '运行中（待就绪）' }
-  }
-  if (running) {
-    return { variant: 'success' as const, label: '运行中' }
-  }
-  return { variant: 'warning' as const, label: '已停止' }
-}
-const formatTime = (value?: string) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN')
-}
-
-function LaunchCodeCell({ profileId, code, onRefresh }: { profileId: string; code: string; onRefresh: () => void }) {
-  const [loading, setLoading] = useState(false)
-
-  const handleCopy = () => {
-    if (!code) return
-    navigator.clipboard.writeText(code).then(() => toast.success('已复制快捷码'))
-  }
-
-  const handleRegenerate = async () => {
-    setLoading(true)
-    try {
-      await regenerateBrowserProfileCode(profileId)
-      onRefresh()
-      toast.success('快捷码已重新生成')
-    } catch {
-      toast.error('重新生成失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCustomCode = async () => {
-    const next = prompt('请输入自定义 Code（4-32位，仅支持字母/数字/_/-）', code || '')
-    if (next == null) return
-    const value = next.trim()
-    if (!value) {
-      toast.error('Code 不能为空')
-      return
-    }
-    setLoading(true)
-    try {
-      const applied = await setBrowserProfileCode(profileId, value)
-      onRefresh()
-      toast.success(`Code 已更新为 ${applied}`)
-    } catch (error: any) {
-      toast.error(error?.message || '设置自定义 Code 失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (!code) return <span className="text-[var(--color-text-muted)] text-xs">-</span>
-
-  return (
-    <div className="flex items-center gap-1">
-      <code className="text-xs font-mono bg-[var(--color-bg-secondary)] px-1.5 py-0.5 rounded text-[var(--color-accent)]">{code}</code>
-      <button onClick={handleCopy} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors" title="复制">
-        <Copy className="w-3 h-3" />
-      </button>
-      <button onClick={handleRegenerate} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="重新生成">
-        <RefreshCw className="w-3 h-3" />
-      </button>
-      <button onClick={handleCustomCode} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="自定义">
-        <Pencil className="w-3 h-3" />
-      </button>
-    </div>
-  )
-}
-
-function KeywordInlineRow({ keywords }: { keywords: string[] }) {
-  const [expanded, setExpanded] = useState(false)
-  const cRef = (useMemo(() => ({ current: null as HTMLDivElement | null }), []) as unknown) as React.MutableRefObject<HTMLDivElement | null>
-  const [isOverflowing, setIsOverflowing] = useState(false)
-
-  useEffect(() => {
-    if (cRef.current) {
-      setIsOverflowing(cRef.current.scrollHeight > 36)
-    }
-  }, [keywords])
-
-  if (!keywords?.length) {
-    return <span className="text-xs text-[var(--color-text-muted)] italic">暂无关键字</span>
-  }
-
-  return (
-    <div className="flex items-start gap-4 w-full">
-      <div
-        ref={cRef}
-        className={`flex flex-wrap gap-2 flex-1 transition-all duration-300 ${expanded ? '' : 'overflow-hidden max-h-[32px]'}`}
-      >
-        {keywords.map((kw, i) => (
-          <span
-            key={i}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs
-              bg-[var(--color-bg-surface)] border border-[var(--color-border-default)]
-              text-[var(--color-text-secondary)] max-w-[200px]"
-            title={kw}
-          >
-            <span className="text-[var(--color-text-muted)] font-mono shrink-0">{i + 1}.</span>
-            <span className="truncate">{kw}</span>
-          </span>
-        ))}
-      </div>
-      {isOverflowing && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="shrink-0 flex items-center gap-1 text-xs font-medium text-[var(--color-accent)] hover:text-indigo-400 mt-1 focus:outline-none"
-        >
-          {expanded ? (
-            <>收回 <ChevronUp className="w-3.5 h-3.5" /></>
-          ) : (
-            <>展开详情 <ChevronDown className="w-3.5 h-3.5" /></>
-          )}
-        </button>
-      )}
-    </div>
-  )
-}
+// 批量操作的前端并发上限。真正的启动并发由后端启动队列限流；
+// 这里只是避免一次性向后端发起过多 RPC 调用。
+const BATCH_OP_CONCURRENCY = 8
 
 export function BrowserListPage() {
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const [profiles, setProfiles] = useState<BrowserProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
@@ -338,6 +176,26 @@ export function BrowserListPage() {
     )))
   }
 
+  // patchProfileRuntime 按 profileId 增量合并部分运行时字段（用于事件驱动更新，避免全量拉取）
+  const patchProfileRuntime = (profileId: string, patch: Partial<BrowserProfile>) => {
+    if (!profileId) return
+    updateProfilesState(prev => prev.map(item => (
+      item.profileId === profileId ? { ...item, ...patch } : item
+    )))
+  }
+
+  // runtimePatchFromEvent 从生命周期事件载荷提取已知运行时字段
+  const runtimePatchFromEvent = (payload: any): Partial<BrowserProfile> => {
+    const patch: Partial<BrowserProfile> = {}
+    if (typeof payload?.running === 'boolean') patch.running = payload.running
+    if (typeof payload?.status === 'string') patch.status = payload.status
+    if (typeof payload?.debugReady === 'boolean') patch.debugReady = payload.debugReady
+    if (typeof payload?.debugPort === 'number') patch.debugPort = payload.debugPort
+    if (typeof payload?.pid === 'number') patch.pid = payload.pid
+    if (typeof payload?.runtimeWarning === 'string') patch.runtimeWarning = payload.runtimeWarning
+    return patch
+  }
+
   const syncProfiles = (items: BrowserProfile[], syncRuntimeState: boolean) => {
     if (syncRuntimeState) {
       const previousById = new Map(profilesRef.current.map(item => [item.profileId, item]))
@@ -410,39 +268,40 @@ export function BrowserListPage() {
     fetchBrowserProxies().then(setProxies)
     fetchBrowserCores().then(setCores)
 
-    // 监听浏览器实例生命周期事件，自动更新状态
+    // 监听浏览器实例生命周期事件，按事件载荷增量更新单个实例状态（不再全量拉取）
     const offStarted = EventsOn('browser:instance:started', (payload: any) => {
       const profileId = typeof payload === 'string' ? payload : payload?.profileId
-      if (profileId) {
-        updatePendingIds(setStartingIds, profileId, false)
-        updatePendingIds(setStoppingIds, profileId, false)
-      }
-      void loadProfiles({ silent: true, syncRuntimeState: true })
+      if (!profileId) return
+      updatePendingIds(setStartingIds, profileId, false)
+      updatePendingIds(setStoppingIds, profileId, false)
+      patchProfileRuntime(profileId, runtimePatchFromEvent(payload))
     })
-    const offUpdated = EventsOn('browser:instance:updated', () => {
-      void loadProfiles({ silent: true, syncRuntimeState: true })
+    const offUpdated = EventsOn('browser:instance:updated', (payload: any) => {
+      const profileId = typeof payload === 'string' ? payload : payload?.profileId
+      if (!profileId) return
+      patchProfileRuntime(profileId, runtimePatchFromEvent(payload))
     })
     const offStopped = EventsOn('browser:instance:stopped', (payload: any) => {
       const profileId = typeof payload === 'string' ? payload : payload?.profileId
-      if (profileId) {
-        updatePendingIds(setStartingIds, profileId, false)
-        updatePendingIds(setStoppingIds, profileId, false)
-      }
-      void loadProfiles({ silent: true, syncRuntimeState: true })
+      if (!profileId) return
+      updatePendingIds(setStartingIds, profileId, false)
+      updatePendingIds(setStoppingIds, profileId, false)
+      patchProfileRuntime(profileId, { running: false, status: 'stopped', debugReady: false, debugPort: 0, pid: 0, runtimeWarning: '' })
     })
     const offCrashed = EventsOn('browser:instance:crashed', (payload: any) => {
       const profileId = typeof payload === 'string' ? payload : payload?.profileId
-      if (profileId) {
-        updatePendingIds(setStartingIds, profileId, false)
-        updatePendingIds(setStoppingIds, profileId, false)
-      }
-      void loadProfiles({ silent: true, syncRuntimeState: true })
+      if (!profileId) return
+      updatePendingIds(setStartingIds, profileId, false)
+      updatePendingIds(setStoppingIds, profileId, false)
+      const lastError = typeof payload?.error === 'string' ? payload.error : undefined
+      patchProfileRuntime(profileId, { running: false, status: 'crashed', debugReady: false, debugPort: 0, pid: 0, ...(lastError ? { lastError } : {}) })
     })
 
+    // 兜底对账轮询：事件驱动为主，轮询频率放宽到 5s，仅用于补偿漏掉的事件与外部变更
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void loadProfiles({ silent: true, syncRuntimeState: true })
-    }, 2000)
+    }, 5000)
 
     return () => {
       window.clearInterval(timer)
@@ -490,7 +349,7 @@ export function BrowserListPage() {
   const isProfileBusy = (profileId: string) => isProfileStarting(profileId) || isProfileStopping(profileId)
 
   const getProfileStatus = (profile: BrowserProfile) => (
-    resolveProfileStatus(profile.running, profile.debugReady, isProfileStarting(profile.profileId), isProfileStopping(profile.profileId))
+    resolveProfileStatus(profile.running, profile.debugReady, isProfileStarting(profile.profileId), isProfileStopping(profile.profileId), profile.status)
   )
 
   const filteredProfiles = useMemo(() => {
@@ -632,16 +491,19 @@ export function BrowserListPage() {
   }
 
   const handleBatchStart = async () => {
-    const ids = Array.from(selectedIds)
+    const ids = Array.from(selectedIds).filter(id => {
+      const profile = profiles.find(p => p.profileId === id)
+      return profile && !profile.running
+    })
     if (ids.length === 0) return
     setBatchLoading(true)
+    // 立即将所有待启动实例标记为启动中（含尚在前端队列等待的），状态变化清晰
+    ids.forEach(id => updatePendingIds(setStartingIds, id, true))
     let success = 0, pending = 0, failed = 0
     const pendingMessages: string[] = []
     const failureMessages: string[] = []
-    for (const id of ids) {
+    await runWithConcurrency(ids, BATCH_OP_CONCURRENCY, async (id) => {
       const profile = profiles.find(p => p.profileId === id)
-      if (!profile || profile.running) continue
-      updatePendingIds(setStartingIds, id, true)
       try {
         const startedProfile = await startBrowserInstance(id)
         mergeProfileState(startedProfile)
@@ -650,15 +512,15 @@ export function BrowserListPage() {
         const feedback = resolveActionFeedback(error, '实例启动失败')
         if (feedback.pendingAttach) {
           pending++
-          pendingMessages.push(`${profile.profileName}：${feedback.message}`)
+          pendingMessages.push(`${profile?.profileName ?? id}：${feedback.message}`)
         } else {
           failed++
-          failureMessages.push(`${profile.profileName}：${feedback.message}`)
+          failureMessages.push(`${profile?.profileName ?? id}：${feedback.message}`)
         }
       } finally {
         updatePendingIds(setStartingIds, id, false)
       }
-    }
+    })
     setBatchLoading(false)
     const summary = [`成功 ${success}`]
     if (pending > 0) summary.push(`待接管 ${pending}`)
@@ -678,14 +540,15 @@ export function BrowserListPage() {
   }
 
   const handleBatchStop = async () => {
-    const ids = Array.from(selectedIds)
+    const ids = Array.from(selectedIds).filter(id => {
+      const profile = profiles.find(p => p.profileId === id)
+      return profile && profile.running
+    })
     if (ids.length === 0) return
     setBatchLoading(true)
+    ids.forEach(id => updatePendingIds(setStoppingIds, id, true))
     let success = 0, failed = 0
-    for (const id of ids) {
-      const profile = profiles.find(p => p.profileId === id)
-      if (!profile || !profile.running) continue
-      updatePendingIds(setStoppingIds, id, true)
+    await runWithConcurrency(ids, BATCH_OP_CONCURRENCY, async (id) => {
       try {
         const stoppedProfile = await stopBrowserInstance(id)
         mergeProfileState(stoppedProfile)
@@ -695,7 +558,7 @@ export function BrowserListPage() {
       } finally {
         updatePendingIds(setStoppingIds, id, false)
       }
-    }
+    })
     setBatchLoading(false)
     toast.success(`批量停止完成：成功 ${success}${failed > 0 ? `，失败 ${failed}` : ''}`)
     loadProfiles()
@@ -704,7 +567,7 @@ export function BrowserListPage() {
   const handleBatchDelete = async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    if (!confirm(`确定删除选中的 ${ids.length} 个实例？`)) return
+    if (!(await confirm({ content: `确定删除选中的 ${ids.length} 个实例？`, danger: true }))) return
     setBatchLoading(true)
     for (const id of ids) {
       await deleteBrowserProfile(id)
@@ -978,6 +841,7 @@ export function BrowserListPage() {
 
   return (
     <div className="overflow-auto p-5 space-y-5 animate-fade-in h-full">
+      {confirmDialog}
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
@@ -1051,9 +915,37 @@ export function BrowserListPage() {
         <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
           {/* Replace table with Flex column of Cards */}
           {loading ? (
-            <div className="py-16 flex items-center justify-center text-sm text-[var(--color-text-muted)]">加载中...</div>
+            <div className="py-20 flex flex-col items-center justify-center gap-3">
+              <div className="w-8 h-8 border-4 border-[var(--color-border-default)] border-t-[var(--color-accent)] rounded-full animate-spin"></div>
+              <p className="text-sm text-[var(--color-text-muted)]">加载中...</p>
+            </div>
           ) : filteredProfiles.length === 0 ? (
-            <div className="py-16 flex items-center justify-center text-sm text-[var(--color-text-muted)]">暂无数据</div>
+            <div className="py-20 flex flex-col items-center justify-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center">
+                <FileText className="w-8 h-8 text-blue-600" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">
+                  {profiles.length === 0 ? '还没有浏览器实例' : '没有符合条件的实例'}
+                </h3>
+                <p className="text-sm text-[var(--color-text-muted)] mb-4">
+                  {profiles.length === 0
+                    ? '创建第一个浏览器实例，开始管理多账号环境'
+                    : '试试调整筛选条件或清空筛选'}
+                </p>
+                {profiles.length === 0 ? (
+                  <Link to="/browser/edit/new">
+                    <Button size="sm">
+                      <Plus className="w-4 h-4" />新建实例
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => setFilters(EMPTY_FILTERS)}>
+                    <XCircle className="w-4 h-4" />清空筛选
+                  </Button>
+                )}
+              </div>
+            </div>
           ) : viewMode === 'table' ? (
             <Table
               columns={columns}
@@ -1063,96 +955,28 @@ export function BrowserListPage() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[500px] p-4 items-start content-start">
               {filteredProfiles.map((record) => {
-                const isSelected = selectedIds.has(record.profileId)
                 const core = resolveProfileCore(record)
                 const proxy = proxies.find(p => p.proxyId === record.proxyId)
-                const status = getProfileStatus(record)
-                const isStarting = isProfileStarting(record.profileId)
-                const isStopping = isProfileStopping(record.profileId)
-                const isBusy = isProfileBusy(record.profileId)
-
                 return (
-                  <div
+                  <ProfileCard
                     key={record.profileId}
-                    className={`flex flex-col border rounded-xl bg-[var(--color-bg-surface)] p-3 shadow-[0_1px_4px_rgba(0,0,0,0.08)] transition-all duration-200 h-[320px] overflow-hidden
-                        ${isSelected ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/20' : 'border-[var(--color-border-default)] hover:border-[var(--color-accent)]'}
-                      `}
-                  >
-                    {/* Header Row: Title, Status, Checkbox, Actions */}
-                    <div className="flex flex-col gap-3 pb-3 border-b border-[var(--color-border-muted)]/50 shrink-0">
-
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 rounded cursor-pointer accent-[var(--color-accent)] mt-0.5 shrink-0"
-                            checked={isSelected}
-                            onChange={() => toggleSelect(record.profileId)}
-                          />
-                          <Link className="text-[var(--color-accent)] font-medium text-sm hover:text-[var(--color-accent)] transition-colors truncate max-w-[200px]" to={`/browser/detail/${record.profileId}`}>
-                            {record.profileName}
-                          </Link>
-                          {record.tags && record.tags.length > 0 && (
-                            <div className="flex gap-1 ml-1">
-                              {record.tags.map(tag => <Badge variant="default" key={tag}>{tag}</Badge>)}
-                            </div>
-                          )}
-                        </div>
-
-                        <Badge variant={status.variant} dot dotClassName="w-2 h-2 shrink-0">
-                          {status.label}
-                        </Badge>
-                      </div>
-
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {record.running ? (
-                          <Button size="sm" variant="secondary" onClick={() => handleStop(record.profileId)} title={isStopping ? '停止中' : '停止'} loading={isStopping}>
-                            {!isStopping && <Square className="w-4 h-4 mr-1.5" />}
-                            {isStopping ? '停止中' : '停止'}
-                          </Button>
-                        ) : (
-                          <Button size="sm" onClick={() => handleStart(record.profileId)} title={isStarting ? '启动中' : '启动'} loading={isStarting}>
-                            {!isStarting && <Play className="w-4 h-4 fill-current mr-1.5" />}
-                            {isStarting ? '启动中' : '启动'}
-                          </Button>
-                        )}
-                        <span className="w-px h-4 bg-[var(--color-border-muted)] mx-1"></span>
-                        <Button size="sm" variant="ghost" onClick={() => handleRestart(record.profileId)} title="重启" className="px-3" disabled={isBusy}><RotateCcw className="w-4 h-4 mr-1.5" />重启</Button>
-                        <Button size="sm" variant="ghost" onClick={() => openKwModal(record)} title="关键字管理" className="px-3" disabled={isBusy}><Key className="w-4 h-4 mr-1.5" />关键字</Button>
-                        <Link to={`/browser/edit/${record.profileId}`}><Button size="sm" variant="ghost" title="配置" className="px-3" disabled={isBusy}><Settings className="w-4 h-4 mr-1.5" />配置</Button></Link>
-                        <Button size="sm" variant="ghost" onClick={() => openCopyModal(record)} title="克隆" className="px-3" disabled={isBusy}><Copy className="w-4 h-4 mr-1.5" />克隆</Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDelete(record.profileId)} title="删除" className="px-3 text-red-500 hover:text-red-600 hover:bg-red-50" disabled={isBusy}><Trash2 className="w-4 h-4 mr-1.5" />删除</Button>
-                      </div>
-                    </div>
-
-                    {/* Body Grid: Key-Value Pairs */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-2 shrink-0">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs text-[var(--color-text-muted)] font-medium">内核版本</span>
-                        <span className="text-xs text-[var(--color-text-primary)]">{core?.coreName || getProfileCoreLabel(record)}</span>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs text-[var(--color-text-muted)] font-medium">代理配置</span>
-                        <span className="text-xs text-[var(--color-text-primary)]">{proxy?.proxyName || record.proxyId || '-'}</span>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs text-[var(--color-text-muted)] font-medium">快捷配置码</span>
-                        <div className="mt-0.5"><LaunchCodeCell profileId={record.profileId} code={record.launchCode || ''} onRefresh={loadProfiles} /></div>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs text-[var(--color-text-muted)] font-medium">上次更新时间</span>
-                        <span className="text-xs text-[var(--color-text-primary)]">{formatTime(record.updatedAt)}</span>
-                      </div>
-                    </div>
-
-                    {/* Footer: Keywords */}
-                    <div className="border-t border-[var(--color-border-muted)]/50 pt-2 flex items-start gap-2 flex-1 min-h-0">
-                      <span className="text-xs font-medium text-[var(--color-text-primary)] shrink-0 pt-0.5">系统关键字</span>
-                      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-                        <KeywordInlineRow keywords={record.keywords || []} />
-                      </div>
-                    </div>
-                  </div>
+                    record={record}
+                    selected={selectedIds.has(record.profileId)}
+                    coreLabel={core?.coreName || getProfileCoreLabel(record)}
+                    proxyName={proxy?.proxyName || record.proxyId || '-'}
+                    status={getProfileStatus(record)}
+                    isStarting={isProfileStarting(record.profileId)}
+                    isStopping={isProfileStopping(record.profileId)}
+                    isBusy={isProfileBusy(record.profileId)}
+                    onToggleSelect={toggleSelect}
+                    onStart={handleStart}
+                    onStop={handleStop}
+                    onRestart={handleRestart}
+                    onKeywords={openKwModal}
+                    onCopy={openCopyModal}
+                    onDelete={handleDelete}
+                    onRefreshCode={loadProfiles}
+                  />
                 )
               })}
             </div>

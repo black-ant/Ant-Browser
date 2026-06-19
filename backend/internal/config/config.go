@@ -120,6 +120,7 @@ type BrowserConfig struct {
 	DefaultProxy           string                 `yaml:"default_proxy"`
 	StartReadyTimeoutMs    int                    `yaml:"start_ready_timeout_ms,omitempty"`
 	StartStableWindowMs    int                    `yaml:"start_stable_window_ms,omitempty"`
+	StartMaxConcurrent     int                    `yaml:"start_max_concurrent,omitempty"` // 批量启动并发上限（默认 3，钳制 1-8）
 	DefaultBookmarks       []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
 	Cores                  []BrowserCore          `yaml:"cores,omitempty"`
 	Proxies                []BrowserProxy         `yaml:"proxies,omitempty"`
@@ -349,6 +350,9 @@ func normalizeConfig(config *Config) {
 	if config.Browser.StartStableWindowMs <= 0 {
 		config.Browser.StartStableWindowMs = defaultConfig.Browser.StartStableWindowMs
 	}
+	if config.Browser.StartMaxConcurrent <= 0 {
+		config.Browser.StartMaxConcurrent = defaultConfig.Browser.StartMaxConcurrent
+	}
 	if config.Browser.DefaultBookmarks == nil {
 		config.Browser.DefaultBookmarks = []BrowserBookmark{}
 	}
@@ -412,6 +416,7 @@ func DefaultConfig() *Config {
 			DefaultProxy:           "",
 			StartReadyTimeoutMs:    3000,
 			StartStableWindowMs:    1200,
+			StartMaxConcurrent:     3,
 		},
 		Logging: LoggingConfig{
 			Level:           "info",
