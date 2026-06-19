@@ -85,7 +85,7 @@ export function OperationTaskCenterPage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">运营任务</h1>
           <p className="mt-1 break-words text-sm text-[var(--color-text-muted)]">
-            {shopId ? `当前仅看店铺 ${shopId} 的运营任务。` : '跨店铺任务视图，本阶段先建立任务归属和状态边界。'}
+            {shopId ? `当前仅看店铺 ${shopId} 的运营任务。` : '跨店铺任务视图，按状态查看等待、执行、阻塞和失败任务。'}
           </p>
         </div>
         <Button className="w-full shrink-0 sm:w-auto" variant="secondary" size="sm" onClick={() => void load(true)} loading={refreshing}>
@@ -97,8 +97,8 @@ export function OperationTaskCenterPage() {
       {shopId ? (
         <Alert
           type="info"
-          title="店铺级运营任务入口已接线"
-          message="本轮只保留店铺资料和工作台到运营任务的承载位置，不新增任务 schema、执行器或批量任务流。"
+          title="已进入店铺级任务视图"
+          message="这里展示该店铺关联的运营任务。若没有任务，说明当前服务端还没有为该店铺生成待执行事项。"
         />
       ) : null}
 
@@ -116,7 +116,7 @@ export function OperationTaskCenterPage() {
           data={tasks}
           rowKey="taskId"
           loading={loading}
-          emptyText="暂无运营任务"
+          emptyText={shopId ? '该店铺暂无运营任务' : '暂无运营任务'}
           maxHeight="calc(100vh - 340px)"
         />
       </Card>

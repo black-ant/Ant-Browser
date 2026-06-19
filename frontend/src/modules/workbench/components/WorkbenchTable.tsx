@@ -98,16 +98,25 @@ export function WorkbenchTable({
     },
     {
       key: 'profile',
-      title: '资料',
-      width: 64,
+      title: '入口',
+      width: 76,
       render: (_, row) => (
-        <Link
-          className="inline-flex text-sm text-[var(--color-accent)] hover:underline"
-          to={`/shops/${encodeURIComponent(row.shop.shopId)}`}
-          onClick={(event) => event.stopPropagation()}
-        >
-          查看
-        </Link>
+        <div className="flex items-center gap-2 text-sm">
+          <Link
+            className="inline-flex text-[var(--color-accent)] hover:underline"
+            to={`/shops/${encodeURIComponent(row.shop.shopId)}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            详情
+          </Link>
+          <Link
+            className="inline-flex text-[var(--color-accent)] hover:underline"
+            to={`/operations?shopId=${encodeURIComponent(row.shop.shopId)}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            任务
+          </Link>
+        </div>
       ),
     },
     {

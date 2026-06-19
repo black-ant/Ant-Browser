@@ -411,7 +411,7 @@ export function WorkbenchPage() {
           <div className="min-w-0">
             <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">店铺工作台</h1>
             <p className="mt-1 break-words text-sm text-[var(--color-text-muted)]">
-              围绕店铺可执行性处理打开、凭据、验证和失败修复。
+              管理本机店铺窗口：打开后台、调到前台、关闭实例，并查看最近失败原因。
             </p>
           </div>
           <Button className="w-full shrink-0 sm:w-auto" variant="secondary" size="sm" onClick={() => void load(true)} loading={refreshing}>
@@ -422,7 +422,7 @@ export function WorkbenchPage() {
 
         {runningAction ? (
           <div className="rounded-lg border border-[var(--color-accent)]/20 bg-[var(--color-accent)]/10 px-4 py-2 text-sm text-[var(--color-accent)]">
-            正在执行：{runningAction.shopId}
+            正在处理店铺窗口：{runningAction.shopId}
           </div>
         ) : null}
 
