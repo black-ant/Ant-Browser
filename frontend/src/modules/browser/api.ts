@@ -1161,3 +1161,8 @@ export async function CDPGetStatistics(sessionId: string): Promise<any> {
   }
   return null
 }
+
+// CDPGetStorage 获取 localStorage / sessionStorage（用 callBinding 兼容未重生成的绑定）
+export async function CDPGetStorage(sessionId: string, storageType: 'localStorage' | 'sessionStorage'): Promise<Record<string, string>> {
+  return callBinding<Record<string, string>>('CDPGetStorage', [sessionId, storageType], {})
+}

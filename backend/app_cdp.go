@@ -150,6 +150,19 @@ func (a *App) CDPGetStatistics(sessionID string) (map[string]interface{}, error)
 	return session.GetStatistics(), nil
 }
 
+// CDPGetStorage 获取 localStorage / sessionStorage 数据
+func (a *App) CDPGetStorage(sessionID string, storageType string) (map[string]string, error) {
+	session, err := a.cdpManager.GetSession(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	data, err := session.GetStorageData(storageType)
+	if err != nil {
+		return nil, fmt.Errorf("获取存储数据失败: %w", err)
+	}
+	return data, nil
+}
+
 // CDPListSessions 列出所有会话
 func (a *App) CDPListSessions() ([]string, error) {
 	return a.cdpManager.ListSessions(), nil
