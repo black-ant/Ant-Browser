@@ -106,6 +106,15 @@ require_cmd hdiutil
 require_cmd wails
 require_cmd xattr
 
+NODE_RUNTIME_SRC="${MAKA_BROWSER_NODE_RUNTIME_SRC:-${NODE_RUNTIME_SRC:-}}"
+if [[ -z "$NODE_RUNTIME_SRC" ]] && command -v node >/dev/null 2>&1; then
+  NODE_RUNTIME_SRC="$(command -v node)"
+fi
+if [[ -z "$NODE_RUNTIME_SRC" || ! -f "$NODE_RUNTIME_SRC" ]]; then
+  echo "[ERROR] Node runtime source missing. Set MAKA_BROWSER_NODE_RUNTIME_SRC to a portable macOS node binary." >&2
+  exit 1
+fi
+
 echo "[0/4] Verifying publish contract..."
 python3 "$ROOT_DIR/tools/runtime/verify-publish-contract.py"
 echo
@@ -136,11 +145,11 @@ CONFIG_INIT_SRC="$ROOT_DIR/publish/config.init.mac.yaml"
 FINGERPRINT_CORE_TAG="142.0.7444.175"
 FINGERPRINT_CORE_ASSET="ungoogled-chromium_142.0.7444.175-1.1_macos.dmg"
 FINGERPRINT_CORE_URL="https://github.com/adryfish/fingerprint-chromium/releases/download/${FINGERPRINT_CORE_TAG}/${FINGERPRINT_CORE_ASSET}"
-ZIP_NAME="AntBrowser-${VERSION}-macos-${ARCH}.zip"
-APP_UPDATE_ZIP_NAME="AntBrowser-${VERSION}-${TARGET}.zip"
-APP_EXPORT="$OUTPUT_DIR/AntBrowser-${VERSION}-macos-${ARCH}.app"
+ZIP_NAME="MakaBrowser-${VERSION}-macos-${ARCH}.zip"
+APP_UPDATE_ZIP_NAME="MakaBrowser-${VERSION}-${TARGET}.zip"
+APP_EXPORT="$OUTPUT_DIR/MakaBrowser-${VERSION}-macos-${ARCH}.app"
 STAGE_DIR="$STAGING_ROOT/$TARGET"
-APP_STAGE="$STAGE_DIR/Ant Browser.app"
+APP_STAGE="$STAGE_DIR/Maka Browser.app"
 APP_UPDATE_MANIFEST="$OUTPUT_DIR/app-update-stable.json"
 
 find_built_app_bundle() {
@@ -222,7 +231,8 @@ manifest["version"] = version
 manifest["minimumRuntimeResourceVersion"] = version
 manifest["minimumAppVersion"] = version
 manifest["publishedAt"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-manifest["notes"] = manifest.get("notes") or f"Ant Browser {version}"
+notes = str(manifest.get("notes") or "").strip()
+manifest["notes"] = notes if notes and "Ant Browser" not in notes else f"Maka Browser {version}"
 
 digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
 package = {
@@ -258,7 +268,7 @@ PY
 }
 
 echo "========================================"
-echo "  Ant Browser macOS Publish"
+echo "  Maka Browser macOS Publish"
 echo "========================================"
 echo "Target : $TARGET"
 echo "Version: $VERSION"
@@ -324,6 +334,11 @@ cp "$XRAY_SRC" "$APP_MACOS_DIR/bin/xray"
 cp "$SINGBOX_SRC" "$APP_MACOS_DIR/bin/sing-box"
 cp "$CONFIG_INIT_SRC" "$APP_MACOS_DIR/config.yaml"
 chmod +x "$APP_MACOS_DIR/bin/xray" "$APP_MACOS_DIR/bin/sing-box"
+
+mkdir -p "$APP_MACOS_DIR/runtime/node/bin" "$APP_MACOS_DIR/apps"
+cp "$NODE_RUNTIME_SRC" "$APP_MACOS_DIR/runtime/node/bin/node"
+chmod +x "$APP_MACOS_DIR/runtime/node/bin/node"
+ditto "$ROOT_DIR/apps/agent" "$APP_MACOS_DIR/apps/agent"
 
 APP_PUBLISH_DIR="$APP_MACOS_DIR/publish"
 mkdir -p "$APP_PUBLISH_DIR/bin/$TARGET"

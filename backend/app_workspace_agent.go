@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -571,8 +572,10 @@ func reserveWorkspaceAgentPort() (string, string, error) {
 
 func resolveWorkspaceNodeExecutable(installRoot string) (string, error) {
 	candidates := []string{
+		bundledWorkspaceNodePath(installRoot),
 		filepath.Join(installRoot, "runtime", "node", "node.exe"),
 		filepath.Join(installRoot, "runtime", "node", "win-x64", "node.exe"),
+		filepath.Join(installRoot, "runtime", "node", "bin", "node"),
 	}
 	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
@@ -595,8 +598,12 @@ func requiresBundledWorkspaceAgentRuntime(installRoot string) bool {
 	if strings.TrimSpace(installRoot) == "" {
 		return false
 	}
-	_, err := os.Stat(filepath.Join(installRoot, "ant-chrome.exe"))
-	return err == nil
+	for _, marker := range []string{"ant-chrome.exe", "ant-chrome"} {
+		if _, err := os.Stat(filepath.Join(installRoot, marker)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func workspaceAgentEntryPath(installRoot string) string {
@@ -604,7 +611,10 @@ func workspaceAgentEntryPath(installRoot string) string {
 }
 
 func bundledWorkspaceNodePath(installRoot string) string {
-	return filepath.Join(installRoot, "runtime", "node", "node.exe")
+	if runtime.GOOS == "windows" {
+		return filepath.Join(installRoot, "runtime", "node", "node.exe")
+	}
+	return filepath.Join(installRoot, "runtime", "node", "bin", "node")
 }
 
 func validateBundledWorkspaceAgentPayload(installRoot string) error {
