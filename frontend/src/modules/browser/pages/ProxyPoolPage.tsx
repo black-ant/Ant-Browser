@@ -32,7 +32,7 @@ function ensureBuiltinProxies(proxies: BrowserProxy[]): BrowserProxy[] {
   return result
 }
 
-type ProxyImportMode = 'clash' | 'direct' | 'chain'
+type ProxyImportMode = 'auto' | 'clash' | 'direct' | 'chain'
 
 interface DirectImportForm {
   proxyName: string
@@ -410,6 +410,66 @@ function buildImportCandidatesFromClash(parsedProxies: ClashProxy[], prefix: str
   }))
 }
 
+// 支持自动识别的单条节点链接协议（ssr/tuc-URI 暂不支持，故不在此列）
+const PROXY_URI_RE = /^(vmess|vless|trojan|hysteria2|hysteria|ss|socks5|socks|https?):\/\//i
+
+// deriveNodeNameFromUri 从节点链接提取展示名：优先 #fragment（备注名），其次 协议-主机。
+function deriveNodeNameFromUri(uri: string, index: number): string {
+  const hashIdx = uri.indexOf('#')
+  if (hashIdx >= 0) {
+    try {
+      const frag = decodeURIComponent(uri.slice(hashIdx + 1)).trim()
+      if (frag) return frag
+    } catch { /* ignore */ }
+  }
+  const schemeMatch = uri.match(/^([a-z0-9]+):\/\//i)
+  const scheme = schemeMatch ? schemeMatch[1].toUpperCase() : 'PROXY'
+  try {
+    // 把自定义 scheme 换成 http 以便用 URL 解析主机
+    const u = new URL(uri.replace(/^[a-z0-9]+:/i, 'http:'))
+    if (u.hostname) return `${scheme}-${u.hostname}`
+  } catch { /* ignore */ }
+  return `节点 ${index + 1}`
+}
+
+function detectUriCandidates(text: string): ImportCandidate[] {
+  const out: ImportCandidate[] = []
+  text.split(/\r?\n/).forEach((line, i) => {
+    const v = line.trim()
+    if (v && PROXY_URI_RE.test(v)) {
+      out.push({ proxyName: deriveNodeNameFromUri(v, i), proxyConfig: v })
+    }
+  })
+  return out
+}
+
+// detectImportCandidates 自动识别任意粘贴内容：Clash YAML → 节点链接（逐行）→ base64 订阅。
+function detectImportCandidates(raw: string): ImportCandidate[] {
+  const input = raw.trim()
+  if (!input) return []
+
+  // 1. Clash YAML / proxies 列表
+  try {
+    const clash = parseClashImportText(input)
+    if (clash.length) return buildImportCandidatesFromClash(clash, '')
+  } catch { /* 非 YAML，继续 */ }
+
+  // 2. 逐行节点链接
+  const uriCands = detectUriCandidates(input)
+  if (uriCands.length) return uriCands
+
+  // 3. base64 订阅（整体解码后再按 1/2 识别）
+  try {
+    const decoded = atob(input.replace(/\s+/g, ''))
+    const decodedUris = detectUriCandidates(decoded)
+    if (decodedUris.length) return decodedUris
+    const clash2 = parseClashImportText(decoded)
+    if (clash2.length) return buildImportCandidatesFromClash(clash2, '')
+  } catch { /* 非 base64 */ }
+
+  return []
+}
+
 function buildImportPreview(candidates: ImportCandidate[], groupName: string): ProxyDisplayInfo[] {
   return candidates.map((candidate, index) => {
     const info = parseProxyInfo(candidate.proxyConfig)
@@ -746,7 +806,7 @@ export function ProxyPoolPage() {
   const [batchDeleteConfirmOpen, setBatchDeleteConfirmOpen] = useState(false)
 
   const [importModalOpen, setImportModalOpen] = useState(false)
-  const [importMode, setImportMode] = useState<ProxyImportMode>('clash')
+  const [importMode, setImportMode] = useState<ProxyImportMode>('auto')
   const [importUrl, setImportUrl] = useState('')
   const [importResolvedUrl, setImportResolvedUrl] = useState('')
   const [importText, setImportText] = useState('')
@@ -1544,13 +1604,15 @@ export function ProxyPoolPage() {
   const handleParseImport = () => {
     try {
       const prefix = importNamePrefix.trim()
-      const candidates = importMode === 'clash'
-        ? buildImportCandidatesFromClash(parseClashImportText(importText), prefix)
-        : importMode === 'direct'
-          ? [buildDirectImportCandidate(directImportForm)]
-          : [buildChainImportCandidate(chainImportForm)]
+      const candidates = importMode === 'auto'
+        ? detectImportCandidates(importText)
+        : importMode === 'clash'
+          ? buildImportCandidatesFromClash(parseClashImportText(importText), prefix)
+          : importMode === 'direct'
+            ? [buildDirectImportCandidate(directImportForm)]
+            : [buildChainImportCandidate(chainImportForm)]
       if (!candidates.length) {
-        toast.error('未解析到可导入代理')
+        toast.error(importMode === 'auto' ? '未能自动识别：请粘贴节点链接、Clash YAML 或订阅内容' : '未解析到可导入代理')
         return
       }
       const preview = buildImportPreview(candidates, importGroupName.trim())
@@ -1649,11 +1711,13 @@ export function ProxyPoolPage() {
   }
 
   const selectedCount = selectedIds.size
-  const canParseImport = importMode === 'clash'
+  const canParseImport = importMode === 'auto'
     ? !!importText.trim()
-    : importMode === 'direct'
-      ? !!directImportForm.server.trim() && !!directImportForm.port.trim()
-      : !!chainImportForm.first.server.trim() && !!chainImportForm.first.port.trim() && !!chainImportForm.second.server.trim() && !!chainImportForm.second.port.trim()
+    : importMode === 'clash'
+      ? !!importText.trim()
+      : importMode === 'direct'
+        ? !!directImportForm.server.trim() && !!directImportForm.port.trim()
+        : !!chainImportForm.first.server.trim() && !!chainImportForm.first.port.trim() && !!chainImportForm.second.server.trim() && !!chainImportForm.second.port.trim()
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -1854,7 +1918,13 @@ export function ProxyPoolPage() {
           </>
         }>
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant={importMode === 'auto' ? undefined : 'secondary'}
+              onClick={() => handleImportModeChange('auto')}
+            >
+              智能识别（推荐）
+            </Button>
             <Button
               variant={importMode === 'clash' ? undefined : 'secondary'}
               onClick={() => handleImportModeChange('clash')}
@@ -1875,12 +1945,22 @@ export function ProxyPoolPage() {
             </Button>
           </div>
           <p className="text-sm text-[var(--color-text-muted)]">
-            {importMode === 'clash'
+            {importMode === 'auto'
+              ? '粘贴任意格式自动识别：节点链接（vmess/vless/trojan/ss/hysteria2/socks5/http(s)://，可多行）、Clash YAML，或 base64 订阅内容'
+              : importMode === 'clash'
               ? '支持粘贴 Clash YAML，或通过订阅 URL 自动拉取并解析（含 proxies、dns、proxy-groups）'
               : importMode === 'direct'
                 ? '支持单条录入 HTTP / HTTPS / SOCKS5 代理，账号和密码均可留空，导入后直接生效，不走 Clash 桥接'
                 : '支持两层 SOCKS5 链式代理，导入后将由本地桥接生成 127.0.0.1 SOCKS5 供 Chromium 使用'}
           </p>
+          {importMode === 'auto' && (
+            <Textarea
+              value={importText}
+              onChange={e => setImportText(e.target.value)}
+              rows={10}
+              placeholder={`粘贴节点链接（每行一个）或 Clash YAML 或 base64 订阅，例如：\nvmess://eyJ2IjoiMiIsInBzIjoi...\nsocks5://user:pass@1.2.3.4:1080#我的节点\ntrojan://pass@host:443?sni=...#HK`}
+            />
+          )}
           {importMode === 'clash' && (
             <>
               <FormItem label="订阅 URL（可选）">
