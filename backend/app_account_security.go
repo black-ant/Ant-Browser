@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"ant-chrome/backend/internal/crypto"
+	"ant-chrome/backend/internal/fileutil"
 	"ant-chrome/backend/internal/logger"
 )
 
@@ -43,7 +44,7 @@ func (a *App) initAccountEncryptionKey() error {
 			log.Error("创建密钥目录失败", logger.F("error", e))
 			return e
 		}
-		if e := os.WriteFile(path, key, 0600); e != nil {
+		if e := fileutil.SecureFileWrite(path, key); e != nil {
 			log.Error("写入本机密钥失败", logger.F("error", e))
 			return e
 		}
