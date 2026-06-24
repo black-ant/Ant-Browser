@@ -59,7 +59,9 @@ func (a *App) initAccountEncryptionKey() error {
 	return nil
 }
 
-// migrateAccountEncryption 把用 LegacyKey 加密的账号敏感字段重写为当前本机密钥。幂等、绝不写坏数据。
+// migrateAccountEncryption 把用 LegacyKey 加密的账号敏感字段重写为当前本机密钥。
+// 使用版本检测机制，强制将所有v1或无版本前缀的密文迁移到v2（本机密钥）。
+// 幂等、绝不写坏数据。
 func (a *App) migrateAccountEncryption() {
 	if a.db == nil {
 		return
@@ -83,8 +85,8 @@ func (a *App) migrateAccountEncryption() {
 
 	migrated := 0
 	for _, r := range list {
-		newPw, pwMig := reEncryptLegacy(r.pw)
-		newCk, ckMig := reEncryptLegacy(r.ck)
+		newPw, pwMig := reEncryptToV2(r.pw)
+		newCk, ckMig := reEncryptToV2(r.ck)
 		if !pwMig && !ckMig {
 			continue
 		}
@@ -97,28 +99,37 @@ func (a *App) migrateAccountEncryption() {
 		migrated++
 	}
 	if migrated > 0 {
-		log.Info("账号敏感字段已迁移到本机密钥", logger.F("count", migrated))
+		log.Info("账号敏感字段已迁移到v2加密（本机密钥）", logger.F("count", migrated))
 	}
 }
 
-// reEncryptLegacy 处理单个密文字段：
-//   - 能用当前密钥解出 → 已是新密钥，原样返回 (enc, false)
-//   - 否则用 LegacyKey 解出再用当前密钥重写 → (newEnc, true)
-//   - 两者都失败（非法/未知密文）→ 保持原值 (enc, false)，绝不写坏
-func reEncryptLegacy(enc string) (string, bool) {
+// reEncryptToV2 处理单个密文字段，强制迁移到v2版本：
+//   - 已是v2版本 → 原样返回 (enc, false)
+//   - v1版本或无版本 → 解密后用v2重新加密 → (newEnc, true)
+//   - 解密失败 → 保持原值 (enc, false)，绝不写坏
+func reEncryptToV2(enc string) (string, bool) {
 	if strings.TrimSpace(enc) == "" {
 		return enc, false
 	}
-	if _, err := crypto.Decrypt(enc); err == nil {
+
+	// 检查是否需要迁移
+	if !crypto.NeedsMigration(enc) {
 		return enc, false
 	}
-	plain, err := crypto.DecryptWith(enc, crypto.LegacyKey)
+
+	// 尝试解密（自动处理v1/无版本）
+	plain, err := crypto.Decrypt(enc)
 	if err != nil {
+		// 解密失败，保持原值
 		return enc, false
 	}
+
+	// 用当前密钥重新加密为v2版本
 	reEnc, err := crypto.Encrypt(plain)
 	if err != nil {
+		// 重新加密失败，保持原值
 		return enc, false
 	}
+
 	return reEnc, true
 }
