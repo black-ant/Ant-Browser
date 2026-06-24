@@ -329,6 +329,8 @@ func (m *SingBoxManager) stopBridgeProcess(bridge *SingBoxBridge) {
 		return
 	}
 	_ = bridge.Cmd.Process.Kill()
+	// 后台回收僵尸进程(仅 Unix 需要,Windows 的 Kill 立即释放资源)
+	go bridge.Cmd.Wait()
 }
 
 func (m *SingBoxManager) resolveBinary() (string, error) {

@@ -508,6 +508,8 @@ func (m *XrayManager) stopBridgeProcess(bridge *XrayBridge) {
 		return
 	}
 	_ = bridge.Cmd.Process.Kill()
+	// 后台回收僵尸进程(仅 Unix 需要,Windows 的 Kill 立即释放资源)
+	go bridge.Cmd.Wait()
 }
 
 func (m *XrayManager) resolveBinary() (string, error) {
@@ -701,7 +703,7 @@ func (m *XrayManager) buildRuntimeConfig(key string, outbound map[string]interfa
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(cfgPath, data, 0644); err != nil {
+	if err := os.WriteFile(cfgPath, data, 0600); err != nil {
 		return "", err
 	}
 	return cfgPath, nil
@@ -798,7 +800,7 @@ func (m *XrayManager) buildRuntimeConfigWithRoute(
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(cfgPath, data, 0644); err != nil {
+	if err := os.WriteFile(cfgPath, data, 0600); err != nil {
 		return "", err
 	}
 	return cfgPath, nil
