@@ -82,9 +82,11 @@ const DOC_QUICKSTART = `# 快速接入（3 分钟）
 
 推荐至少准备一种稳定标识：
 
-- \`launchCode\`：最稳，适合生产脚本
+- \`launchCode\`：最稳，适合生产脚本（🔒 v1.2.0+ 长度为 12 位）
 - \`profileId\`：适合系统内部编排
-- \`key / keywords / tags\`：适合“按业务语义找实例”的场景
+- \`key / keywords / tags\`：适合”按业务语义找实例”的场景
+
+> 🔒 **安全提示**（v1.2.0+）：Launch Code 长度已从 6 位增加到 12 位，旧的 6 位 Code 将失效，需重新生成。
 
 如果你准备使用关键字或标签：
 
@@ -92,7 +94,7 @@ const DOC_QUICKSTART = `# 快速接入（3 分钟）
 2. 给目标实例填好 \`keywords\`
 3. 视情况补上 \`tags\`、\`groupId\`
 
-如果你的外部脚本手里只有“账号 / 业务关键字”：
+如果你的外部脚本手里只有”账号 / 业务关键字”：
 
 - 推荐直接走 \`POST /api/launch\`
 - 可以把账号或关键字直接放进 \`code\`
@@ -990,15 +992,35 @@ const DOC_ERRORS = `# 错误码与重试策略
 | 404 | GET 的 Code 不存在 / POST 的 code 关键字兜底后仍未命中 / selector 没命中实例 | 检查 code、keywords、tags、groupId |
 | 405 | 方法错误 | 使用正确 HTTP 方法 |
 | 409 | selector 命中多个实例 / 创建或更新时 launchCode 冲突 / 达到实例上限 / 删除运行中实例 | 收窄条件、换一个 launchCode，或先停掉实例后重试 |
+| 429 | 🔒 速率限制：Launch Code 解析超过 10 次/秒 | 降低请求频率，实现客户端速率控制 |
 | 500 | 启动失败 | 查 \`/api/launch/logs\` + 应用日志 |
 | 503 | 访问 CDP 统一入口时还没有活动实例，或启动响应仍处于 \`debugReady=false\` | 先确认启动接口成功，再等待 \`debugReady=true\` 后访问 \`cdpUrl\` |
+
+## 🔒 安全增强（v1.2.0）
+
+**错误消息保护**：为防止信息泄漏，错误消息不再包含敏感信息（如具体的 code、profileId、sessionId 值）。建议使用 HTTP 状态码判断错误类型，而非依赖错误消息文本。
+
+**响应头增强**：所有 API 响应现在包含安全响应头：
+- \`X-Content-Type-Options: nosniff\`
+- \`X-Frame-Options: DENY\`
+- \`Content-Security-Policy: default-src 'none'\`
+- \`X-XSS-Protection: 1; mode=block\`
+
+**速率限制**：
+- Launch Code 解析限制为 10 次/秒（令牌桶算法）
+- 超限返回 429 状态码和 \`{"ok":false,"error":"rate limit exceeded"}\`
+- 建议客户端实现请求队列和速率控制
+
+**审计日志**：认证失败会被记录到应用日志，便于检测异常行为和暴力破解尝试。
 
 ## 自动化建议
 
 - 设置请求超时（3-10 秒）
 - 对 \`500\` 可短暂重试（指数退避）
 - 对 \`400/404/409\` 不建议盲目重试
+- 🔒 对 \`429\` 必须实现退避策略，建议等待 1-2 秒后重试
 - 对复杂 selector，先在低风险环境验证日志是否命中正确实例
+- 使用 HTTP 状态码而非错误消息文本判断错误类型
 `
 
 const DOC_EXAMPLES = `# 多语言调用示例（同一协议）
@@ -1223,6 +1245,37 @@ const DOC_TROUBLESHOOT = `# 常见问题
 - 先调用一次 \`GET /api/launch/{code}\` 或 \`POST /api/launch\`
 - 如果启动响应里 \`debugReady=false\`，说明实例正在后台附着，稍后再访问 \`cdpUrl\`
 - 如果刚启动完实例仍然出现这个问题，再检查启动接口是否真的返回了 \`200\`
+
+## Q9：🔒 返回 \`429 rate limit exceeded\`（v1.2.0+）
+
+- Launch Code 解析超过速率限制（10 次/秒）
+- 这是安全保护机制，防止暴力破解
+- 请在客户端实现请求队列或速率控制
+- 建议：批量启动时加入延迟（每次请求间隔 100-200ms）
+- 如果是正常业务需求，考虑优化为批量接口调用
+
+## Q10：🔒 错误消息不再显示具体的 code 或 profileId（v1.2.0+）
+
+- 这是安全增强，防止信息泄漏和枚举攻击
+- 错误消息现在是通用格式，例如：
+  - \`"launch code not found"\` 而非 \`"launch code not found: ABC123"\`
+  - \`"profile not found"\` 而非 \`"profile not found: profile_xyz"\`
+- 建议使用 HTTP 状态码判断错误类型，而非解析错误消息文本
+- 详细调试信息可查看应用日志（\`data/logs/\`）
+
+## Q11：🔒 为什么错误响应包含额外的安全响应头？（v1.2.0+）
+
+- 所有 API 响应现在包含安全响应头（X-Frame-Options、CSP 等）
+- 这是 Web 安全最佳实践，防止 XSS、点击劫持等攻击
+- 不影响 API 功能，客户端无需特殊处理
+- 浏览器会自动应用这些安全策略
+
+## Q12：🔒 Launch Code 长度变化（v1.2.0+）
+
+- Launch Code 长度从 6 位增加到 12 位
+- 旧的 6 位 Code 在升级后将失效
+- 需要重新生成 12 位 Launch Code
+- 这是安全增强，大幅提高暴力破解难度
 `
 
 // ============================================================================
