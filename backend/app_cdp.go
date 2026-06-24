@@ -16,7 +16,7 @@ func (a *App) CDPSessionCreate(profileID string, targetType string) (string, err
 	a.browserMgr.Mutex.Unlock()
 
 	if !exists {
-		return "", fmt.Errorf("实例不存在: %s", profileID)
+		return "", fmt.Errorf("实例不存在")
 	}
 
 	if !profile.Running {

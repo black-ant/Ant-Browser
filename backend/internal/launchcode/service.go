@@ -131,7 +131,7 @@ func (s *LaunchCodeService) Resolve(code string) (string, error) {
 
 	profileId, ok := s.codeToProfile[code]
 	if !ok {
-		return "", fmt.Errorf("launch code not found: %s", code)
+		return "", fmt.Errorf("launch code not found")
 	}
 	return profileId, nil
 }

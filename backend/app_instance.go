@@ -43,7 +43,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 	profile, exists := a.browserMgr.Profiles[profileId]
 	if !exists {
 		a.browserMgr.Mutex.Unlock()
-		err := fmt.Errorf("实例启动失败：未找到实例配置（ID=%s）。请刷新列表后重试。", profileId)
+		err := fmt.Errorf("实例启动失败：未找到实例配置。请刷新列表后重试。")
 		log.Error("实例不存在", logger.F("profile_id", profileId), logger.F("reason", err.Error()))
 		return nil, err
 	}

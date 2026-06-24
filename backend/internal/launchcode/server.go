@@ -780,6 +780,11 @@ func (s *LaunchServer) launchBySelectorInternal(selector LaunchSelector, params 
 	if selector.OnlyCode() {
 		profileID, err = s.service.Resolve(selector.Code)
 		if err != nil {
+			// 记录认证失败
+			log := logger.New("LaunchServer")
+			log.Warn("Launch Code认证失败",
+				logger.F("code", selector.Code),
+				logger.F("error", err.Error()))
 			return nil, "", http.StatusNotFound, "launch code not found"
 		}
 		launchCode = selector.Code
@@ -938,6 +943,10 @@ func summarizeLaunchedProfiles(profiles []*browser.Profile) (*browser.Profile, s
 // writeJSON 写入 JSON 响应
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'")
+	w.Header().Set("X-XSS-Protection", "1; mode=block")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }

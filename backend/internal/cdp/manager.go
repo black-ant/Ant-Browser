@@ -44,7 +44,7 @@ func (m *Manager) GetSession(sessionID string) (*CDPSession, error) {
 
 	session, exists := m.sessions[sessionID]
 	if !exists {
-		return nil, fmt.Errorf("会话不存在: %s", sessionID)
+		return nil, fmt.Errorf("会话不存在")
 	}
 
 	return session, nil
@@ -57,7 +57,7 @@ func (m *Manager) GetSessionWithOwnerCheck(sessionID string, profileID string) (
 
 	session, exists := m.sessions[sessionID]
 	if !exists {
-		return nil, fmt.Errorf("会话不存在: %s", sessionID)
+		return nil, fmt.Errorf("会话不存在")
 	}
 
 	owner, hasOwner := m.sessionOwners[sessionID]
@@ -79,7 +79,7 @@ func (m *Manager) CloseSession(sessionID string) error {
 	m.mu.Unlock()
 
 	if !exists {
-		return fmt.Errorf("会话不存在: %s", sessionID)
+		return fmt.Errorf("会话不存在")
 	}
 
 	return session.Close()

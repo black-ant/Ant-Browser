@@ -53,6 +53,8 @@ func (a *App) initAccountEncryptionKey() error {
 			return e
 		}
 		log.Info("已生成本机加密密钥", logger.F("path", path))
+		// 审计日志：记录密钥生成事件
+		log.Info("安全审计：本机加密密钥已生成", logger.F("path", path))
 	}
 
 	a.migrateAccountEncryption()
@@ -100,6 +102,8 @@ func (a *App) migrateAccountEncryption() {
 	}
 	if migrated > 0 {
 		log.Info("账号敏感字段已迁移到v2加密（本机密钥）", logger.F("count", migrated))
+		// 审计日志：记录加密迁移事件
+		log.Info("安全审计：账号数据加密已迁移", logger.F("migrated_count", migrated), logger.F("encryption_version", "v2"))
 	}
 }
 

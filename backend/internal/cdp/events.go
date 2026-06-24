@@ -345,19 +345,8 @@ func (s *CDPSession) handleExceptionThrown(params map[string]interface{}) {
 		message, _ = exception["value"].(string)
 	}
 
-	// 提取堆栈信息
-	var stackTrace string
-	if stackTraceData, ok := exceptionDetails["stackTrace"].(map[string]interface{}); ok {
-		if callFrames, ok := stackTraceData["callFrames"].([]interface{}); ok {
-			for _, frame := range callFrames {
-				frameMap, _ := frame.(map[string]interface{})
-				functionName, _ := frameMap["functionName"].(string)
-				url, _ := frameMap["url"].(string)
-				lineNumber, _ := frameMap["lineNumber"].(float64)
-				stackTrace += fmt.Sprintf("\n  at %s (%s:%d)", functionName, url, int(lineNumber))
-			}
-		}
-	}
+	// 安全修复：不包含完整堆栈跟踪，仅保留错误消息
+	// 详细堆栈信息可能暴露内部实现细节
 
 	timestamp, _ := exceptionDetails["timestamp"].(float64)
 
@@ -366,7 +355,7 @@ func (s *CDPSession) handleExceptionThrown(params map[string]interface{}) {
 		Type:       "error",
 		Message:    message,
 		Timestamp:  int64(timestamp * 1000),
-		StackTrace: stackTrace,
+		StackTrace: "", // 不包含堆栈跟踪
 	}
 
 	s.mu.Lock()

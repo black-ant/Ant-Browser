@@ -161,7 +161,7 @@ func (a *App) getDebugPort(profileId string) (int, error) {
 	defer a.browserMgr.Mutex.Unlock()
 	profile, exists := a.browserMgr.Profiles[profileId]
 	if !exists {
-		return 0, fmt.Errorf("profile not found: %s", profileId)
+		return 0, fmt.Errorf("profile not found")
 	}
 	if !profile.Running {
 		return 0, fmt.Errorf("实例未运行")

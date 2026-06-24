@@ -66,6 +66,14 @@ func (a *App) BrowserProxySourceUpsert(input browser.ProxySource) (*browser.Prox
 	if err := a.browserMgr.ProxySourceDAO.UpsertSource(input); err != nil {
 		return nil, err
 	}
+
+	// 审计日志：记录代理源添加/更新
+	log := logger.New("ProxySource")
+	log.Info("安全审计：代理源配置已更新",
+		logger.F("source_id", input.SourceID),
+		logger.F("source_name", input.SourceName),
+		logger.F("source_url", input.SourceURL))
+
 	return a.browserMgr.ProxySourceDAO.GetSource(input.SourceID)
 }
 
@@ -75,6 +83,13 @@ func (a *App) BrowserProxySourceDelete(sourceId string, deleteProxies bool) erro
 		return fmt.Errorf("数据库未就绪")
 	}
 	sourceId = strings.TrimSpace(sourceId)
+
+	// 审计日志：记录代理源删除
+	log := logger.New("ProxySource")
+	log.Info("安全审计：代理源已删除",
+		logger.F("source_id", sourceId),
+		logger.F("delete_proxies", deleteProxies))
+
 	if deleteProxies && a.browserMgr.ProxyDAO != nil {
 		if proxies, err := a.browserMgr.ProxyDAO.List(); err == nil {
 			for _, p := range proxies {

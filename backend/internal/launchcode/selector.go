@@ -303,24 +303,11 @@ func sortProfilesForSelector(items []browser.Profile) {
 }
 
 func buildAmbiguousSelectorError(items []browser.Profile) string {
-	const maxPreview = 5
-	parts := make([]string, 0, minInt(len(items), maxPreview))
-	for i := 0; i < len(items) && i < maxPreview; i++ {
-		label := strings.TrimSpace(items[i].ProfileName)
-		if label == "" {
-			label = items[i].ProfileId
-		}
-		if items[i].LaunchCode != "" {
-			parts = append(parts, fmt.Sprintf("%s[id=%s, code=%s]", label, items[i].ProfileId, items[i].LaunchCode))
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s[id=%s]", label, items[i].ProfileId))
-	}
-	suffix := ""
-	if len(items) > maxPreview {
-		suffix = fmt.Sprintf(" ... and %d more", len(items)-maxPreview)
-	}
-	return fmt.Sprintf("selector matched %d profiles: %s%s; use code/profileId or add groupId/tags/keywords, or set matchMode=first", len(items), strings.Join(parts, ", "), suffix)
+	// 防止信息泄漏：不暴露profileId、launchCode和profileName等敏感信息
+	return fmt.Sprintf(
+		"selector matched %d profiles; refine using profileId, groupId, tags, keywords, or set matchMode=first",
+		len(items),
+	)
 }
 
 func appendSelectorTerms(dst []string, single string, many []string, moreSinglesAndSlices ...interface{}) []string {
