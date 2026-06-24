@@ -16,15 +16,22 @@ import (
 	"time"
 )
 
+const (
+	singboxBridgeIdleTTL         = 45 * time.Second
+	singboxBridgeCleanupInterval = 15 * time.Second
+)
+
 // SingBoxBridge sing-box 桥接进程
 type SingBoxBridge struct {
-	NodeKey   string
-	Port      int
-	Cmd       *exec.Cmd
-	Pid       int
-	Running   bool
-	Stopping  bool
-	LastError string
+	NodeKey    string
+	Port       int
+	Cmd        *exec.Cmd
+	Pid        int
+	Running    bool
+	Stopping   bool
+	LastError  string
+	RefCount   int       // 当前引用计数（有多少实例正使用此桥接）
+	LastUsedAt time.Time // 上次被使用的时间（用于空闲回收）
 }
 
 // SingBoxManager sing-box 桥接管理器
@@ -34,15 +41,20 @@ type SingBoxManager struct {
 	Bridges      map[string]*SingBoxBridge
 	OnBridgeDied func(key string, err error)
 	mu           sync.Mutex
+	stopCh       chan struct{}
+	stopOnce     sync.Once
 }
 
 // NewSingBoxManager 创建 sing-box 管理器
 func NewSingBoxManager(cfg *config.Config, appRoot string) *SingBoxManager {
-	return &SingBoxManager{
+	manager := &SingBoxManager{
 		Config:  cfg,
 		AppRoot: appRoot,
 		Bridges: make(map[string]*SingBoxBridge),
+		stopCh:  make(chan struct{}),
 	}
+	go manager.cleanupLoop()
+	return manager
 }
 
 // EnsureBridge 确保 sing-box 桥接进程运行，返回 socks5://127.0.0.1:port
@@ -115,11 +127,13 @@ func (m *SingBoxManager) EnsureBridge(proxyConfig string, proxies []config.Brows
 		}
 
 		bridge := &SingBoxBridge{
-			NodeKey: key,
-			Port:    port,
-			Cmd:     cmd,
-			Pid:     cmd.Process.Pid,
-			Running: true,
+			NodeKey:    key,
+			Port:       port,
+			Cmd:        cmd,
+			Pid:        cmd.Process.Pid,
+			Running:    true,
+			RefCount:   1,
+			LastUsedAt: time.Now(),
 		}
 		log.Info("sing-box 启动", logger.F("key", key[:8]), logger.F("pid", bridge.Pid), logger.F("port", port))
 
@@ -175,6 +189,59 @@ func (m *SingBoxManager) StopAll() {
 	for _, bridge := range bridges {
 		m.stopBridgeProcess(bridge)
 	}
+
+	// 通知回收循环退出
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
+}
+
+func (m *SingBoxManager) cleanupLoop() {
+	ticker := time.NewTicker(singboxBridgeCleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.recycleIdleBridges()
+		case <-m.stopCh:
+			return
+		}
+	}
+}
+
+func (m *SingBoxManager) recycleIdleBridges() {
+	now := time.Now()
+	var stale []*SingBoxBridge
+
+	m.mu.Lock()
+	for key, bridge := range m.Bridges {
+		if bridge == nil {
+			delete(m.Bridges, key)
+			continue
+		}
+		if bridge.RefCount > 0 {
+			continue
+		}
+		if now.Sub(bridge.LastUsedAt) < singboxBridgeIdleTTL {
+			continue
+		}
+
+		bridge.Stopping = true
+		stale = append(stale, bridge)
+		delete(m.Bridges, key)
+	}
+	m.mu.Unlock()
+
+	if len(stale) == 0 {
+		return
+	}
+
+	log := logger.New("SingBox")
+	for _, bridge := range stale {
+		log.Info("回收空闲桥接进程", logger.F("key", bridge.NodeKey), logger.F("pid", bridge.Pid))
+		m.stopBridgeProcess(bridge)
+	}
 }
 
 func (m *SingBoxManager) tryReuseBridge(key string) (string, bool) {
@@ -184,6 +251,8 @@ func (m *SingBoxManager) tryReuseBridge(key string) (string, bool) {
 	if bridge, ok := m.Bridges[key]; ok && bridge != nil {
 		alive := bridge.Running && bridge.Cmd != nil && bridge.Cmd.Process != nil && bridge.Cmd.ProcessState == nil
 		if alive && waitPortReady("127.0.0.1", bridge.Port, 800*time.Millisecond) == nil {
+			bridge.RefCount++
+			bridge.LastUsedAt = time.Now()
 			socksURL := fmt.Sprintf("socks5://127.0.0.1:%d", bridge.Port)
 			m.mu.Unlock()
 			return socksURL, true
@@ -372,7 +441,7 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 	}
 
 	cfgPath := filepath.Join(baseDir, "singbox-config.json")
-	if err := os.WriteFile(cfgPath, data, 0644); err != nil {
+	if err := os.WriteFile(cfgPath, data, 0600); err != nil {
 		return "", err
 	}
 	return cfgPath, nil
