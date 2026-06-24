@@ -286,9 +286,9 @@ func TestRealConnectivityWithSingBox(
 		client = &http.Client{Transport: transport, Timeout: timeout}
 	} else {
 		// DirectProxy：http/https/socks5 直接代理
-		proxyURL, err := url.Parse(src)
+		proxyURL, err := parseAndValidateProxyURL(src)
 		if err != nil {
-			return TestResult{ProxyId: proxyId, Ok: false, Error: fmt.Sprintf("代理地址解析失败: %v", err)}
+			return TestResult{ProxyId: proxyId, Ok: false, Error: err.Error()}
 		}
 		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 		client = &http.Client{Transport: transport, Timeout: timeout}
@@ -306,4 +306,56 @@ func TestRealConnectivityWithSingBox(
 		return TestResult{ProxyId: proxyId, Ok: false, LatencyMs: latency, Error: fmt.Sprintf("HTTP %d", resp.StatusCode)}
 	}
 	return TestResult{ProxyId: proxyId, Ok: true, LatencyMs: latency}
+}
+
+// parseAndValidateProxyURL 解析并验证代理URL，防止SSRF和注入攻击
+func parseAndValidateProxyURL(src string) (*url.URL, error) {
+	proxyURL, err := url.Parse(src)
+	if err != nil {
+		return nil, fmt.Errorf("代理地址解析失败: %w", err)
+	}
+
+	// 验证scheme
+	scheme := strings.ToLower(proxyURL.Scheme)
+	if scheme != "http" && scheme != "https" && scheme != "socks5" {
+		return nil, fmt.Errorf("不支持的代理协议: %s", scheme)
+	}
+
+	// 验证host
+	host := proxyURL.Hostname()
+	if host == "" {
+		return nil, fmt.Errorf("代理地址无效: 缺少主机名")
+	}
+
+	// 防止SSRF到本地/内网
+	if isLocalOrPrivateHost(host) {
+		return nil, fmt.Errorf("代理地址不能指向本地或内网")
+	}
+
+	// 验证端口
+	port := proxyURL.Port()
+	if port != "" {
+		portNum, err := strconv.Atoi(port)
+		if err != nil || portNum < 1 || portNum > 65535 {
+			return nil, fmt.Errorf("无效的端口号: %s", port)
+		}
+	}
+
+	return proxyURL, nil
+}
+
+// isLocalOrPrivateHost 检查是否为本地或内网地址
+func isLocalOrPrivateHost(host string) bool {
+	// 检查localhost
+	if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
+		return true
+	}
+
+	// 解析IP并检查私有地址段
+	ip := net.ParseIP(host)
+	if ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	}
+
+	return false
 }

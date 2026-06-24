@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -244,9 +246,14 @@ func (s *CDPSession) Connect() error {
 		return fmt.Errorf("未找到合适的CDP target")
 	}
 
+	// 3. 验证WebSocket URL安全性
+	if err := s.validateWebSocketURL(wsURL); err != nil {
+		return fmt.Errorf("invalid WebSocket URL: %w", err)
+	}
+
 	s.wsURL = wsURL
 
-	// 3. 建立WebSocket连接
+	// 4. 建立WebSocket连接
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
@@ -439,6 +446,39 @@ func (s *CDPSession) Close() error {
 
 	if s.ws != nil {
 		return s.ws.Close()
+	}
+
+	return nil
+}
+
+// validateWebSocketURL 验证WebSocket URL安全性，防止URL注入攻击
+func (s *CDPSession) validateWebSocketURL(wsURL string) error {
+	parsed, err := url.Parse(wsURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse WebSocket URL: %w", err)
+	}
+
+	// 必须是 ws:// 或 wss://
+	if parsed.Scheme != "ws" && parsed.Scheme != "wss" {
+		return fmt.Errorf("invalid scheme: %s (must be ws or wss)", parsed.Scheme)
+	}
+
+	// 必须是 localhost 或 127.0.0.1
+	host := parsed.Hostname()
+	if host != "localhost" && host != "127.0.0.1" && host != "[::1]" {
+		return fmt.Errorf("WebSocket URL must point to localhost, got: %s", host)
+	}
+
+	// 验证端口匹配预期的调试端口
+	portStr := parsed.Port()
+	if portStr != "" {
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return fmt.Errorf("invalid port: %s", portStr)
+		}
+		if port != s.DebugPort {
+			return fmt.Errorf("port mismatch: expected %d, got %d", s.DebugPort, port)
+		}
 	}
 
 	return nil

@@ -806,12 +806,31 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 	if len(proxyIds) == 0 {
 		return []ProxyTestResult{}
 	}
+
+	// 防止资源耗尽：限制最大代理数量和并发数
+	const (
+		maxProxiesPerBatch = 1000
+		maxConcurrency     = 50
+	)
+
+	if len(proxyIds) > maxProxiesPerBatch {
+		log := logger.New("Proxy")
+		log.Warn("批量测速数量超过限制，已截断",
+			logger.F("requested", len(proxyIds)),
+			logger.F("limit", maxProxiesPerBatch))
+		proxyIds = proxyIds[:maxProxiesPerBatch]
+	}
+
 	if concurrency <= 0 {
 		concurrency = 20
+	}
+	if concurrency > maxConcurrency {
+		concurrency = maxConcurrency
 	}
 	if concurrency > len(proxyIds) {
 		concurrency = len(proxyIds)
 	}
+
 	ctx, gen := a.beginProxyBatch()
 	defer a.endProxyBatch(gen)
 	proxies := a.getLatestProxies()
