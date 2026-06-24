@@ -34,6 +34,7 @@ func TestCDPProxyReturnsUnavailableWithoutActiveTarget(t *testing.T) {
 	handler := buildTestHandler(newInMemoryService(), newMockStarter())
 
 	req := httptest.NewRequest(http.MethodGet, "/json/version", nil)
+	req.Host = "127.0.0.1:19876"
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -105,6 +106,7 @@ func TestCDPProxySwitchesToLatestLaunchedProfile(t *testing.T) {
 		{code: codeB, wantMarker: "Mock-B"},
 	} {
 		launchReq := httptest.NewRequest(http.MethodGet, "/api/launch/"+tc.code, nil)
+		launchReq.Header.Set("X-Launch-Request", "1")
 		launchResp := httptest.NewRecorder()
 		handler.ServeHTTP(launchResp, launchReq)
 		if launchResp.Code != http.StatusOK {
@@ -112,6 +114,7 @@ func TestCDPProxySwitchesToLatestLaunchedProfile(t *testing.T) {
 		}
 
 		proxyReq := httptest.NewRequest(http.MethodGet, "/json/version", nil)
+		proxyReq.Host = "127.0.0.1:19876"
 		proxyResp := httptest.NewRecorder()
 		handler.ServeHTTP(proxyResp, proxyReq)
 		if proxyResp.Code != http.StatusOK {
@@ -145,6 +148,7 @@ func TestCDPProxySkipsPendingDebugProfile(t *testing.T) {
 	handler := buildTestHandler(svc, starter)
 
 	launchReq := httptest.NewRequest(http.MethodGet, "/api/launch/"+code, nil)
+	launchReq.Header.Set("X-Launch-Request", "1")
 	launchResp := httptest.NewRecorder()
 	handler.ServeHTTP(launchResp, launchReq)
 	if launchResp.Code != http.StatusOK {
@@ -160,9 +164,63 @@ func TestCDPProxySkipsPendingDebugProfile(t *testing.T) {
 	}
 
 	proxyReq := httptest.NewRequest(http.MethodGet, "/json/version", nil)
+	proxyReq.Host = "127.0.0.1:19876"
 	proxyResp := httptest.NewRecorder()
 	handler.ServeHTTP(proxyResp, proxyReq)
 	if proxyResp.Code != http.StatusServiceUnavailable {
 		t.Fatalf("pending 实例不应成为活动 CDP target: status=%d body=%s", proxyResp.Code, proxyResp.Body.String())
+	}
+}
+
+// TestCDPProxyRejectsBrowserOriginatedRequests 验证 CDP 代理对浏览器发起的
+// DNS-rebinding / localhost-CSRF 攻击的防护：非回环 Host 或跨源 Origin 一律拒绝，
+// 而合法的命令行自动化工具（无 Origin、Host 指向回环）不受影响。
+func TestCDPProxyRejectsBrowserOriginatedRequests(t *testing.T) {
+	svc := newInMemoryService()
+	starter := newMockStarter()
+	profile := &browser.Profile{
+		ProfileId:   "profile-sec",
+		ProfileName: "Profile Sec",
+		Pid:         3001,
+		DebugPort:   9778,
+	}
+	starter.addProfile(profile)
+
+	code, err := svc.EnsureCode(profile.ProfileId)
+	if err != nil {
+		t.Fatalf("EnsureCode 失败: %v", err)
+	}
+
+	handler := buildTestHandler(svc, starter)
+
+	launchReq := httptest.NewRequest(http.MethodGet, "/api/launch/"+code, nil)
+	launchReq.Header.Set("X-Launch-Request", "1")
+	launchResp := httptest.NewRecorder()
+	handler.ServeHTTP(launchResp, launchReq)
+	if launchResp.Code != http.StatusOK {
+		t.Fatalf("启动请求失败: status=%d body=%s", launchResp.Code, launchResp.Body.String())
+	}
+
+	cases := []struct {
+		name   string
+		host   string
+		origin string
+	}{
+		{name: "rebinding host", host: "attacker.example.com", origin: ""},
+		{name: "cross-origin", host: "127.0.0.1:19876", origin: "https://evil.example.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/json/version", nil)
+			req.Host = tc.host
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+			if resp.Code != http.StatusForbidden {
+				t.Fatalf("期望 403，实际 %d，body=%s", resp.Code, resp.Body.String())
+			}
+		})
 	}
 }

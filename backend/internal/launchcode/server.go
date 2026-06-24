@@ -23,6 +23,11 @@ type BrowserStarter interface {
 	StartInstance(profileId string) (*browser.Profile, error)
 }
 
+// BrowserStopper 浏览器停止接口（由 App 层实现并注入）
+type BrowserStopper interface {
+	StopInstance(profileId string) error
+}
+
 // LaunchRequestParams 支持外部自动化透传的一次性启动参数
 type LaunchRequestParams struct {
 	LaunchArgs           []string `json:"launchArgs"`
@@ -72,6 +77,7 @@ type LaunchCallRecord struct {
 type LaunchServer struct {
 	service    *LaunchCodeService
 	starter    BrowserStarter
+	stopper    BrowserStopper
 	browserMgr *browser.Manager
 	port       int
 	server     *http.Server
@@ -87,10 +93,11 @@ type LaunchServer struct {
 }
 
 // NewLaunchServer 创建 LaunchServer
-func NewLaunchServer(service *LaunchCodeService, starter BrowserStarter, mgr *browser.Manager, port int) *LaunchServer {
+func NewLaunchServer(service *LaunchCodeService, starter BrowserStarter, stopper BrowserStopper, mgr *browser.Manager, port int) *LaunchServer {
 	srv := &LaunchServer{
 		service:    service,
 		starter:    starter,
+		stopper:    stopper,
 		browserMgr: mgr,
 		port:       port,
 	}
@@ -113,7 +120,13 @@ func (s *LaunchServer) Start() error {
 
 	s.mu.Lock()
 	s.port = port
-	s.server = &http.Server{Handler: handler}
+	s.server = &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 	s.mu.Unlock()
 
 	log := logger.New("LaunchServer")
@@ -147,6 +160,7 @@ func (s *LaunchServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/launch", s.handleLaunchWithBody)
 	mux.HandleFunc("/api/launch/logs", s.handleLaunchLogs)
 	mux.HandleFunc("/api/launch/", s.handleLaunch)
+	mux.HandleFunc("/api/stop", s.handleStop)
 	mux.HandleFunc("/", s.handleCDPProxy)
 	return mux
 }
@@ -274,6 +288,57 @@ func (s *LaunchServer) activeTarget() (int, string, string) {
 	return s.activePort, s.activeID, s.activeName
 }
 
+// isLoopbackHostname 判断主机名是否为本机回环地址（不含端口）。
+func isLoopbackHostname(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return false
+	}
+	// 去掉 IPv6 字面量的方括号，如 [::1]
+	host = strings.Trim(host, "[]")
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+// hostnameOnly 提取 host[:port] 中的主机名部分。
+func hostnameOnly(hostport string) string {
+	hostport = strings.TrimSpace(hostport)
+	if hostport == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(hostport); err == nil {
+		return host
+	}
+	return hostport
+}
+
+// validateCDPProxyRequest 校验转发到 CDP 端口的请求来源，阻断浏览器发起的
+// DNS-rebinding / localhost-CSRF 攻击。返回 (拒绝原因, 是否允许)。
+//
+// 规则（与 Chromium 调试端口一致）：
+//   - Host 头必须指向回环地址（127.0.0.1 / localhost / ::1）。DNS-rebinding
+//     攻击会携带攻击者控制的域名，从而被拒绝。
+//   - 若存在 Origin 头（浏览器跨源请求必然携带），其主机名也必须为回环地址。
+//     合法的命令行自动化工具不会发送 Origin，因此不受影响。
+func validateCDPProxyRequest(r *http.Request) (string, bool) {
+	if host := hostnameOnly(r.Host); host != "" && !isLoopbackHostname(host) {
+		return "invalid Host header for CDP proxy", false
+	}
+	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil || !isLoopbackHostname(hostnameOnly(u.Host)) {
+			return "cross-origin requests are not allowed on the CDP proxy", false
+		}
+	}
+	return "", true
+}
+
 // localhostMiddleware 只允许 127.0.0.1 访问
 func (s *LaunchServer) localhostMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -295,7 +360,23 @@ func (s *LaunchServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCDPProxy 将统一端口上的非 /api 请求转发到当前活动实例的 CDP 端口。
+//
+// 安全说明：该端口转发的是 Chromium 调试协议（CDP），可执行任意 JS、读取
+// cookie/存储、导航到 file:// 等，等同于完全控制浏览器。CDP 端点对 WebSocket
+// 升级不做 CORS 限制，因此任何用户访问的网站都可能直接连到本机端口发起
+// DNS-rebinding / localhost-CSRF 攻击。这里采用 Chromium 调试端口同款防护：
+// 校验 Host 与 Origin —— 浏览器发起的跨源请求必然带有外部 Host 或 Origin，
+// 而合法的命令行自动化工具（Selenium/Puppeteer 等）不会携带 Origin 且 Host
+// 指向 127.0.0.1，因此可被放行。
 func (s *LaunchServer) handleCDPProxy(w http.ResponseWriter, r *http.Request) {
+	if reason, ok := validateCDPProxyRequest(r); !ok {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"ok":    false,
+			"error": "forbidden: " + reason,
+		})
+		return
+	}
+
 	debugPort, profileID, profileName := s.activeTarget()
 	if debugPort <= 0 {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
@@ -321,6 +402,9 @@ func (s *LaunchServer) handleCDPProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLaunch GET /api/launch/{code}
+// ⚠️ GET 方法有副作用（启动浏览器实例），存在 CSRF 风险。
+// 为了防止跨站请求伪造攻击，当 API 认证未启用时，要求自定义请求头 X-Launch-Request。
+// 推荐使用 POST /api/launch 接口。
 func (s *LaunchServer) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	startAt := time.Now()
 	clientIP := remoteIP(r.RemoteAddr)
@@ -333,6 +417,20 @@ func (s *LaunchServer) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		})
 		s.appendLaunchLog(r.Method, r.URL.Path, clientIP, "", selector, LaunchRequestParams{}, false, http.StatusMethodNotAllowed, msg, "", "", startAt)
 		return
+	}
+
+	// CSRF 防护：当 API 认证未启用时，要求自定义请求头
+	auth := s.apiAuthConfig()
+	if !auth.Active() {
+		if r.Header.Get("X-Launch-Request") == "" {
+			msg := "Missing required header X-Launch-Request. For security, GET requests with side-effects require this header to prevent CSRF attacks. Consider using POST /api/launch instead."
+			writeJSON(w, http.StatusForbidden, map[string]interface{}{
+				"ok":    false,
+				"error": msg,
+			})
+			s.appendLaunchLog(r.Method, r.URL.Path, clientIP, "", selector, LaunchRequestParams{}, false, http.StatusForbidden, msg, "", "", startAt)
+			return
+		}
 	}
 
 	code := strings.TrimPrefix(r.URL.Path, "/api/launch/")
@@ -487,6 +585,119 @@ func (s *LaunchServer) handleLaunchLogs(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":    true,
 		"items": items,
+	})
+}
+
+// handleStop POST /api/stop 停止实例
+func (s *LaunchServer) handleStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"ok":    false,
+			"error": "method not allowed",
+		})
+		return
+	}
+
+	// 检查是否注入了 stopper
+	if s.stopper == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]interface{}{
+			"ok":    false,
+			"error": "stop functionality not available",
+		})
+		return
+	}
+
+	// 解析请求体
+	type StopRequest struct {
+		Code        string   `json:"code"`
+		ProfileID   string   `json:"profileId"`
+		ProfileName string   `json:"profileName"`
+		Keyword     string   `json:"keyword"`
+		Keywords    []string `json:"keywords"`
+		Tag         string   `json:"tag"`
+		Tags        []string `json:"tags"`
+		GroupID     string   `json:"groupId"`
+	}
+
+	var req StopRequest
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	if err := dec.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"ok":    false,
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	// 构建选择器
+	selector := LaunchSelector{
+		Code:        req.Code,
+		ProfileID:   req.ProfileID,
+		ProfileName: req.ProfileName,
+		Keyword:     req.Keyword,
+		Keywords:    req.Keywords,
+		Tag:         req.Tag,
+		Tags:        req.Tags,
+		GroupID:     req.GroupID,
+	}
+
+	// 归一化并验证选择器
+	selector = normalizeLaunchSelector(selector)
+	if selector.IsEmpty() {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"ok":    false,
+			"error": "selector is required",
+		})
+		return
+	}
+	if err := selector.Validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// 解析 profileID
+	var profileID string
+	var err error
+
+	if selector.OnlyCode() {
+		// 通过 LaunchCode 解析
+		profileID, err = s.service.Resolve(selector.Code)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]interface{}{
+				"ok":    false,
+				"error": "launch code not found",
+			})
+			return
+		}
+	} else {
+		// 通过其他选择器查找
+		profileSnapshot, status, errMsg := s.findProfileBySelector(selector)
+		if errMsg != "" {
+			writeJSON(w, status, map[string]interface{}{
+				"ok":    false,
+				"error": errMsg,
+			})
+			return
+		}
+		profileID = profileSnapshot.ProfileId
+	}
+
+	// 停止实例
+	if err := s.stopper.StopInstance(profileID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"ok":    false,
+			"error": fmt.Sprintf("stop instance failed: %v", err),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":        true,
+		"profileId": profileID,
+		"message":   "instance stopped successfully",
 	})
 }
 

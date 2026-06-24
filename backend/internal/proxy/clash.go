@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // ClashManager Clash 进程管理器
@@ -14,6 +15,7 @@ type ClashManager struct {
 	Config    *config.Config
 	AppRoot   string // 应用根目录，所有相对路径基于此解析
 	Processes map[string]*exec.Cmd
+	mu        sync.Mutex
 }
 
 // NewClashManager 创建 Clash 管理器
@@ -93,35 +95,62 @@ func (m *ClashManager) StartForProfile(profile ClashProfile, userDataDir string)
 		log.Error("Clash 启动失败", logger.F("profile_id", profile.GetProfileId()), logger.F("error", err))
 		return err
 	}
-	m.Processes[profile.GetProfileId()] = cmd
+	profileID := profile.GetProfileId()
+	m.mu.Lock()
+	m.Processes[profileID] = cmd
+	m.mu.Unlock()
+	go m.watchProcess(profileID, cmd)
 	profile.SetClashRunning(true)
 	profile.SetClashPid(cmd.Process.Pid)
 	profile.SetClashLastError("")
-	log.Info("Clash 启动成功", logger.F("profile_id", profile.GetProfileId()), logger.F("pid", cmd.Process.Pid), logger.F("port", port))
+	log.Info("Clash 启动成功", logger.F("profile_id", profileID), logger.F("pid", cmd.Process.Pid), logger.F("port", port))
 	return nil
 }
 
 // StopForProfile 停止配置的 Clash 进程
 func (m *ClashManager) StopForProfile(profile ClashProfile) {
 	log := logger.New("Clash")
-	cmd := m.Processes[profile.GetProfileId()]
+	profileID := profile.GetProfileId()
+	m.mu.Lock()
+	cmd := m.Processes[profileID]
+	delete(m.Processes, profileID)
+	m.mu.Unlock()
 	if cmd != nil && cmd.Process != nil {
 		if err := cmd.Process.Kill(); err != nil {
-			log.Error("Clash 停止失败", logger.F("profile_id", profile.GetProfileId()), logger.F("error", err))
+			log.Error("Clash 停止失败", logger.F("profile_id", profileID), logger.F("error", err))
 		}
 	}
-	delete(m.Processes, profile.GetProfileId())
 	profile.SetClashRunning(false)
 	profile.SetClashPid(0)
-	log.Info("Clash 已停止", logger.F("profile_id", profile.GetProfileId()))
+	log.Info("Clash 已停止", logger.F("profile_id", profileID))
 }
 
 // StopAll 停止所有 Clash 进程
 func (m *ClashManager) StopAll() {
+	m.mu.Lock()
+	processes := make(map[string]*exec.Cmd, len(m.Processes))
 	for profileID, cmd := range m.Processes {
+		processes[profileID] = cmd
+		delete(m.Processes, profileID)
+	}
+	m.mu.Unlock()
+
+	for _, cmd := range processes {
 		if cmd != nil && cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
+	}
+}
+
+func (m *ClashManager) watchProcess(profileID string, cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	_ = cmd.Wait()
+
+	m.mu.Lock()
+	if current := m.Processes[profileID]; current == cmd {
 		delete(m.Processes, profileID)
 	}
+	m.mu.Unlock()
 }

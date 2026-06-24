@@ -10,7 +10,7 @@ import (
 )
 
 func buildAuthProtectedTestHandler() http.Handler {
-	srv := launchcode.NewLaunchServer(newInMemoryService(), newMockStarter(), nil, 0)
+	srv := launchcode.NewLaunchServer(newInMemoryService(), newMockStarter(), nil, nil, 0)
 	srv.SetAPIAuthConfig(launchcode.APIAuthConfig{
 		Enabled: true,
 		APIKey:  "secret-key",
@@ -68,10 +68,13 @@ func TestAPIAuthAllowsCorrectKey(t *testing.T) {
 	}
 }
 
-func TestAPIAuthDoesNotProtectCDPProxyRoutes(t *testing.T) {
+func TestAPIAuthProtectsCDPProxyRoutes(t *testing.T) {
 	handler := buildAuthProtectedTestHandler()
 
 	req := httptest.NewRequest(http.MethodGet, "/json/version", nil)
+	// 回环 Host 满足 CDP 代理的来源校验，确保此处验证的是「不被 API 认证拦截」，
+	// 而非被来源校验拦截。
+	req.Host = "127.0.0.1:19876"
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 

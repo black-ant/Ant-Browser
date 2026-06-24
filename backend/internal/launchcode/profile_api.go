@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,7 +87,7 @@ func (s *LaunchServer) handleCreateProfile(w http.ResponseWriter, r *http.Reques
 	}
 
 	input := normalizeProfileInput(*req.Profile)
-	profile, launchCode, status, errMsg := s.createProfile(input, req.LaunchCode)
+	profile, launchCode, status, errMsg := s.createProfile(input, resolveRequestedLaunchCode(req.LaunchCode, input.LaunchCode))
 	if errMsg != "" {
 		writeJSON(w, status, map[string]interface{}{
 			"ok":    false,
@@ -191,7 +192,7 @@ func (s *LaunchServer) handleUpdateProfile(w http.ResponseWriter, r *http.Reques
 	}
 
 	input := normalizeProfileInput(*req.Profile)
-	profile, launchCode, status, errMsg := s.updateProfile(profileID, input, req.LaunchCode, previous)
+	profile, launchCode, status, errMsg := s.updateProfile(profileID, input, resolveRequestedLaunchCode(req.LaunchCode, input.LaunchCode), previous)
 	if errMsg != "" {
 		writeJSON(w, status, map[string]interface{}{
 			"ok":    false,
@@ -496,7 +497,7 @@ func decodeProfileWriteRequest(r *http.Request) (ProfileWriteRequest, int, strin
 func normalizeProfileInput(input browser.ProfileInput) browser.ProfileInput {
 	return browser.ProfileInput{
 		ProfileName:     strings.TrimSpace(input.ProfileName),
-		UserDataDir:     strings.TrimSpace(input.UserDataDir),
+		UserDataDir:     sanitizeAPIUserDataDir(input.UserDataDir),
 		CoreId:          strings.TrimSpace(input.CoreId),
 		FingerprintArgs: normalizeStringSlice(input.FingerprintArgs),
 		ProxyId:         strings.TrimSpace(input.ProxyId),
@@ -505,7 +506,37 @@ func normalizeProfileInput(input browser.ProfileInput) browser.ProfileInput {
 		Tags:            normalizeStringSlice(input.Tags),
 		Keywords:        normalizeStringSlice(input.Keywords),
 		GroupId:         strings.TrimSpace(input.GroupId),
+		LaunchCode:      strings.TrimSpace(input.LaunchCode),
+		AccountIds:      normalizeStringSlice(input.AccountIds),
 	}
+}
+
+// sanitizeAPIUserDataDir 约束通过 HTTP API 传入的 UserDataDir。
+//
+// 该接口是未鉴权的外部攻击面（profile 写入），若放任调用方指定绝对路径或包含
+// ".." 的相对路径，可将浏览器用户数据目录写入文件系统任意位置（如覆盖系统文件
+// 或越权读写）。这里只允许「单层、无分隔符」的相对目录名，其余一律丢弃并回退到
+// 由 ProfileId 派生的受管默认目录（UserDataDir 为空时的既有行为）。
+//
+// 注意：本地可信的 Wails UI 走 App.CreateProfile，不经过本函数，因此用户在桌面端
+// 仍可使用绝对路径自定义数据目录。
+func sanitizeAPIUserDataDir(dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	// 绝对路径（含 Windows 盘符 / UNC）一律拒绝。
+	if filepath.IsAbs(dir) || strings.HasPrefix(dir, `\\`) || strings.Contains(dir, ":") {
+		return ""
+	}
+	// 归一化后若逃逸出单层目录（含 ".." 或路径分隔符），一律拒绝。
+	cleaned := filepath.ToSlash(filepath.Clean(dir))
+	if cleaned == "." || cleaned == ".." ||
+		strings.HasPrefix(cleaned, "../") ||
+		strings.Contains(cleaned, "/") {
+		return ""
+	}
+	return cleaned
 }
 
 func profileToInput(profile *browser.Profile) browser.ProfileInput {
@@ -523,7 +554,16 @@ func profileToInput(profile *browser.Profile) browser.ProfileInput {
 		Tags:            append([]string{}, profile.Tags...),
 		Keywords:        append([]string{}, profile.Keywords...),
 		GroupId:         strings.TrimSpace(profile.GroupId),
+		LaunchCode:      strings.TrimSpace(profile.LaunchCode),
+		AccountIds:      nil, // 回滚时不恢复账号关联
 	}
+}
+
+func resolveRequestedLaunchCode(topLevelCode, profileCode string) string {
+	if strings.TrimSpace(topLevelCode) != "" {
+		return topLevelCode
+	}
+	return profileCode
 }
 
 func mergeProfileRuntime(target, runtimeProfile *browser.Profile) {

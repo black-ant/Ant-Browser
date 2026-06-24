@@ -8,7 +8,7 @@ import (
 
 const DefaultAPIKeyHeader = "X-Ant-Api-Key"
 
-// APIAuthConfig 定义 LaunchServer 对 /api/* 请求的可选认证配置。
+// APIAuthConfig 定义 LaunchServer 对 HTTP API 与 CDP 代理请求的可选认证配置。
 type APIAuthConfig struct {
 	Enabled bool
 	APIKey  string
@@ -67,6 +67,8 @@ func (s *LaunchServer) APIAuthEnabled() bool {
 
 func (s *LaunchServer) apiAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 仅拦截 /api/* 路径。CDP 代理挂在 / 下,由 handleCDPProxy 自己的
+		// Host/Origin 校验保护,不走 API Key 认证(CLI 自动化工具不带 Key)。
 		if !strings.HasPrefix(r.URL.Path, "/api/") {
 			next.ServeHTTP(w, r)
 			return
