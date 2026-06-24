@@ -22,38 +22,40 @@ func (a *App) keystorePath() string {
 }
 
 // initAccountEncryptionKey 加载或生成本机密钥并设为加密默认密钥，随后迁移旧密文。
-// 失败时保持回退到 LegacyKey（不阻断启动）。
-func (a *App) initAccountEncryptionKey() {
+// 失败时终止启动：硬编码 LegacyKey 已知不安全，必须强制使用本机密钥保护账号敏感数据。
+func (a *App) initAccountEncryptionKey() error {
 	log := logger.New("Account")
 	path := a.keystorePath()
 
 	if key, err := os.ReadFile(path); err == nil && len(key) == 32 {
 		if e := crypto.SetKey(key); e != nil {
-			log.Error("设置加密密钥失败，回退默认密钥", logger.F("error", e))
-			return
+			log.Error("设置加密密钥失败", logger.F("error", e))
+			return e
 		}
+		log.Info("已加载本机加密密钥", logger.F("path", path))
 	} else {
 		key = make([]byte, 32)
 		if _, e := rand.Read(key); e != nil {
-			log.Error("生成本机密钥失败，回退默认密钥", logger.F("error", e))
-			return
+			log.Error("生成本机密钥失败", logger.F("error", e))
+			return e
 		}
 		if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 			log.Error("创建密钥目录失败", logger.F("error", e))
-			return
+			return e
 		}
 		if e := os.WriteFile(path, key, 0600); e != nil {
 			log.Error("写入本机密钥失败", logger.F("error", e))
-			return
+			return e
 		}
 		if e := crypto.SetKey(key); e != nil {
 			log.Error("设置加密密钥失败", logger.F("error", e))
-			return
+			return e
 		}
 		log.Info("已生成本机加密密钥", logger.F("path", path))
 	}
 
 	a.migrateAccountEncryption()
+	return nil
 }
 
 // migrateAccountEncryption 把用 LegacyKey 加密的账号敏感字段重写为当前本机密钥。幂等、绝不写坏数据。

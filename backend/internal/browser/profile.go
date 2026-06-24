@@ -334,10 +334,21 @@ func (m *Manager) Delete(profileId string) error {
 	m.InitData()
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
-	if _, exists := m.Profiles[profileId]; !exists {
+
+	profile, exists := m.Profiles[profileId]
+	if !exists {
 		log.Error("浏览器配置不存在", logger.F("profile_id", profileId))
 		return fmt.Errorf("profile not found")
 	}
+
+	// 防止删除运行中的实例：保护用户数据和会话。
+	// API 层 (profile_api.go:250) 有此检查，但 Wails 绑定层 (app.go:565) 直接调用本方法，
+	// 因此必须在底层也加检查，形成纵深防御。
+	if profile.Running {
+		log.Error("运行中的实例不可删除", logger.F("profile_id", profileId))
+		return fmt.Errorf("cannot delete running profile")
+	}
+
 	delete(m.Profiles, profileId)
 	log.Info("浏览器配置删除", logger.F("profile_id", profileId))
 

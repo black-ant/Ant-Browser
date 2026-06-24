@@ -2,6 +2,7 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/cdp"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
 	"fmt"
@@ -154,8 +155,21 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 
 	sanitizedProfileLaunchArgs, managedProfileArgs := sanitizeManagedLaunchArgs(snap.LaunchArgs)
 	sanitizedExtraLaunchArgs, managedExtraArgs := sanitizeManagedLaunchArgs(normalizedExtraLaunchArgs)
+	var profileSearchEngine string
+	var extraSearchEngine string
+	sanitizedProfileLaunchArgs, profileSearchEngine = extractSearchEngineLaunchArg(sanitizedProfileLaunchArgs)
+	sanitizedExtraLaunchArgs, extraSearchEngine = extractSearchEngineLaunchArg(sanitizedExtraLaunchArgs)
+	effectiveSearchEngine := profileSearchEngine
+	if extraSearchEngine != "" {
+		effectiveSearchEngine = extraSearchEngine
+	}
+	fingerprintArgs, consistencyControls := extractProxyConsistencyControlArgs(snap.FingerprintArgs)
+	filteredFingerprintArgs, explicitGeolocation, geolocationWarnings := extractProfileGeolocationArgs(fingerprintArgs)
 	logManagedLaunchArgOverrides(log, profileId, "profile.launchArgs", managedProfileArgs)
 	logManagedLaunchArgOverrides(log, profileId, "start.extraLaunchArgs", managedExtraArgs)
+	for _, warning := range geolocationWarnings {
+		log.Warn("忽略无效的内部地理定位参数", logger.F("profile_id", profileId), logger.F("warning", warning))
+	}
 
 	chromeBinaryPath, err := a.browserMgr.ResolveChromeBinary(&snap)
 	if err != nil {
@@ -166,13 +180,19 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 
 	userDataDir := a.browserMgr.ResolveUserDataDir(&snap)
 	if err := os.MkdirAll(userDataDir, 0755); err != nil {
-		startErr := fmt.Errorf("实例启动失败：无法创建用户数据目录 %s。原因：%w。请检查目录权限或路径配置。", userDataDir, err)
+		startErr := fmt.Errorf("实例启动失败：无法创建用户数据目录。请检查目录权限或路径配置。")
+		log.Error("创建用户数据目录失败", logger.F("profile_id", profileId), logger.F("user_data_dir", userDataDir), logger.F("error", err))
 		log.Error("用户数据目录创建失败", logger.F("profile_id", profileId), logger.F("dir", userDataDir), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
 		return commitFailure(startErr), startErr
 	}
 	// 每次启动时合并默认书签（已存在的 URL 不重复添加）
 	if err := browser.EnsureDefaultBookmarks(userDataDir, a.BookmarkList()); err != nil {
 		log.Error("默认书签写入失败", logger.F("error", err.Error()))
+	}
+	if effectiveSearchEngine != "" {
+		if err := ensureDefaultSearchEngine(userDataDir, effectiveSearchEngine); err != nil {
+			log.Error("默认搜索引擎写入失败", logger.F("profile_id", profileId), logger.F("search_engine", effectiveSearchEngine), logger.F("error", err.Error()))
+		}
 	}
 
 	proxies := a.getLatestProxies()
@@ -186,10 +206,14 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 
 	// 解析实际代理配置（可能来自 proxyId 引用）
 	resolvedProxyConfig := strings.TrimSpace(snap.ProxyConfig)
+	resolvedProxyHealthJSON := ""
+	resolvedProxyFromPool := false
 	if snap.ProxyId != "" {
 		for _, item := range proxies {
 			if strings.EqualFold(item.ProxyId, snap.ProxyId) {
 				resolvedProxyConfig = strings.TrimSpace(item.ProxyConfig)
+				resolvedProxyHealthJSON = strings.TrimSpace(item.LastIPHealthJSON)
+				resolvedProxyFromPool = true
 				break
 			}
 		}
@@ -198,8 +222,8 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 	log.Info("代理配置检查",
 		logger.F("profile_id", profileId),
 		logger.F("proxy_id", snap.ProxyId),
-		logger.F("profile_proxy_config", snap.ProxyConfig),
-		logger.F("resolved_proxy_config", resolvedProxyConfig),
+		logger.F("profile_proxy_config", sanitizeProxyConfigField(snap.ProxyConfig)),
+		logger.F("resolved_proxy_config", sanitizeProxyConfigField(resolvedProxyConfig)),
 	)
 	if supported, errorMsg := proxy.ValidateProxyConfig(resolvedProxyConfig, proxies, snap.ProxyId); !supported {
 		startErr := fmt.Errorf("实例启动失败：%s", errorMsg)
@@ -223,7 +247,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 			return commitFailure(startErr), startErr
 		}
 		effectiveProxy = socksURL
-		log.Info("sing-box 桥接成功", logger.F("socks_url", socksURL))
+		log.Info("sing-box 桥接成功", logger.F("socks_url", sanitizeProxyConfigField(socksURL)))
 	} else if proxy.RequiresBridge(resolvedProxyConfig, proxies, snap.ProxyId) {
 		// vmess / vless / trojan / ss → xray 桥接
 		socksURL, bridgeKey, bridgeErr := a.xrayMgr.AcquireBridge(resolvedProxyConfig, proxies, snap.ProxyId)
@@ -242,27 +266,51 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		acquiredXrayBridgeKey = bridgeKey
 		releaseXrayBridge = bridgeKey != ""
 		effectiveProxy = socksURL
-		log.Info("xray 桥接成功", logger.F("socks_url", socksURL))
+		log.Info("xray 桥接成功", logger.F("socks_url", sanitizeProxyConfigField(socksURL)))
 	}
 
 	startReadyTimeout, startStableWindow := a.browserStartTimingSettings()
 	maxStartAttempts := browserStartAttemptCount()
 	totalReadyTimeout := time.Duration(maxStartAttempts) * startReadyTimeout
-	assignedDebugPort, err := nextAvailablePort()
-	if err != nil {
-		startErr := fmt.Errorf("实例启动失败：本地调试端口分配失败。原因：%v。请关闭占用端口的程序后重试。", err)
-		log.Error("调试端口分配失败", logger.F("profile_id", profileId), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
-		return commitFailure(startErr), startErr
+
+	// ===== CDP 传输方式：pipe 或端口 =====
+	usePipe := a.cdpUsePipe()
+	var debugPipe *cdp.DebugPipe
+	assignedDebugPort := 0
+
+	if usePipe {
+		var err error
+		debugPipe, err = cdp.NewDebugPipe()
+		if err != nil {
+			// pipe 不支持（Windows 或平台限制）→ 自动回退端口模式
+			usePipe = false
+			log.Warn("pipe 模式不支持，回退调试端口",
+				logger.F("profile_id", profileId),
+				logger.F("error", err.Error()))
+		}
+	}
+	if !usePipe {
+		var err error
+		assignedDebugPort, err = nextAvailablePort()
+		if err != nil {
+			startErr := fmt.Errorf("实例启动失败：本地调试端口分配失败。原因：%v。请关闭占用端口的程序后重试。", err)
+			log.Error("调试端口分配失败", logger.F("profile_id", profileId), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
+			return commitFailure(startErr), startErr
+		}
 	}
 
 	args := []string{
 		fmt.Sprintf("--user-data-dir=%s", userDataDir),
-		fmt.Sprintf("--remote-debugging-port=%d", assignedDebugPort),
 		"--disable-session-crashed-bubble",
+	}
+	if usePipe {
+		args = append(args, "--remote-debugging-pipe")
+	} else {
+		args = append(args, fmt.Sprintf("--remote-debugging-port=%d", assignedDebugPort))
 	}
 
 	hasFingerprint := false
-	for _, arg := range snap.FingerprintArgs {
+	for _, arg := range filteredFingerprintArgs {
 		if strings.HasPrefix(arg, "--fingerprint=") {
 			hasFingerprint = true
 			break
@@ -285,39 +333,101 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 	} else if effectiveProxy != "" {
 		args = append(args, fmt.Sprintf("--proxy-server=%s", effectiveProxy))
 	}
-	args = append(args, snap.FingerprintArgs...)
+	args = append(args, filteredFingerprintArgs...)
 	args = append(args, sanitizedProfileLaunchArgs...)
 	args = append(args, sanitizedExtraLaunchArgs...)
+	// 反检测一致性：按代理出口 IP 地理信息补齐缺失的时区 / 语言 / WebRTC 策略。
+	// 仅补缺失项，绝不覆盖用户在指纹/启动参数里的显式设置。时区/语言只在挂真实代理时
+	// 依据出口地理注入；WebRTC 防泄露策略无论是否代理都缺失即补。
+	isRealProxy := effectiveProxy != "" && effectiveProxy != "direct://"
+	healthForInjection := ""
+	if isRealProxy {
+		if resolvedProxyHealthJSON == "" && snap.ProxyId != "" {
+			resolvedProxyHealthJSON = a.ensureProxyGeoCacheForLaunch(snap.ProxyId, resolvedProxyHealthJSON)
+		}
+		if resolvedProxyHealthJSON == "" && !resolvedProxyFromPool {
+			resolvedProxyHealthJSON = a.ensureManualProxyGeoForLaunch(resolvedProxyConfig)
+		}
+		healthForInjection = resolvedProxyHealthJSON
+	}
+	effectiveGeolocation := explicitGeolocation
+	if !effectiveGeolocation.Explicit && isRealProxy {
+		if proxyGeo, ok := proxyGeolocationOverride(resolvedProxyHealthJSON); ok {
+			effectiveGeolocation = proxyGeo
+		}
+	}
+	if consistencyArgs := buildProxyConsistencyArgs(args, healthForInjection, consistencyControls); len(consistencyArgs) > 0 {
+		args = append(args, consistencyArgs...)
+		log.Info("注入代理一致性指纹参数",
+			logger.F("profile_id", profileId),
+			logger.F("args", strings.Join(consistencyArgs, " ")))
+	}
+	// 挂了真实代理但尚无出口地理缓存时，后台补查一次，使下次启动可按代理地区注入时区/语言。
+	if isRealProxy && resolvedProxyHealthJSON == "" && snap.ProxyId != "" {
+		a.refreshProxyGeoCacheAsync(snap.ProxyId)
+	}
+	runtimeOverrides := browserRuntimeOverrides{
+		Geolocation: effectiveGeolocation,
+		Timezone:    timezoneOverrideFromLaunchArgs(args),
+	}
 	// 注入绑定到该实例的本地扩展（启用 + 目录含 manifest.json）
 	if extPaths := a.extensionLoadPathsForProfile(profileId); len(extPaths) > 0 {
 		args = append(args, fmt.Sprintf("--load-extension=%s", strings.Join(extPaths, ",")))
 		log.Info("注入扩展", logger.F("profile_id", profileId), logger.F("count", len(extPaths)))
 	}
-	args = appendLaunchTargets(args, &snap, normalizedStartURLs, skipDefaultStartURLs)
+	args = appendLaunchTargets(args, &snap, normalizedStartURLs, skipDefaultStartURLs, a.config.Browser.DefaultStartURLs)
 
 	cmd := exec.Command(chromeBinaryPath, args...)
 	cmd.Dir = filepath.Dir(chromeBinaryPath)
+	if usePipe {
+		cmd.ExtraFiles = debugPipe.ExtraFiles()
+	}
 	monitor, err := newBrowserProcessMonitor(cmd)
 	if err != nil {
+		if debugPipe != nil {
+			debugPipe.Close()
+		}
 		startErr := fmt.Errorf("实例启动失败：无法建立浏览器错误输出捕获。可执行文件：%s。原因：%v。", chromeBinaryPath, err)
 		log.Error("浏览器错误输出捕获初始化失败", logger.F("profile_id", profileId), logger.F("chrome", chromeBinaryPath), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
 		return commitFailure(startErr), startErr
 	}
 	if err := cmd.Start(); err != nil {
+		if debugPipe != nil {
+			debugPipe.Close()
+		}
 		startErr := fmt.Errorf("%s", describeChromeProcessStartError(chromeBinaryPath, err))
 		log.Error("浏览器进程启动失败", logger.F("profile_id", profileId), logger.F("chrome", chromeBinaryPath), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
 		return commitFailure(startErr), startErr
 	}
 	monitor.Start()
 
+	// pipe 模式：子进程已继承管道端，父进程必须关闭子端避免泄露 + 读循环能收到 EOF。
+	var pipeConn *cdp.PipeConn
+	if usePipe {
+		debugPipe.CloseChildEnds()
+		pipeConn = debugPipe.NewConn()
+	}
+
 	var lastStartErr error
 	for attempt := 1; attempt <= maxStartAttempts; attempt++ {
-		stableDebugPort, readyErr := waitBrowserDebugPortStable(assignedDebugPort, userDataDir, startReadyTimeout, startStableWindow, monitor)
+		var stableDebugPort int
+		var readyErr error
+
+		if usePipe {
+			readyErr = waitBrowserPipeReady(pipeConn, startReadyTimeout, startStableWindow)
+			stableDebugPort = 0 // pipe 模式无端口
+		} else {
+			stableDebugPort, readyErr = waitBrowserDebugPortStable(assignedDebugPort, userDataDir, startReadyTimeout, startStableWindow, monitor)
+		}
+
 		if readyErr == nil {
 			// ===== Phase 3：提交成功（短临界区，持大锁）=====
 			snapshot, committed := a.commitBrowserStart(profileId, cmd, cmd.Process.Pid, stableDebugPort, true, "")
 			if !committed {
 				_ = a.stopProcessCmd(cmd)
+				if pipeConn != nil {
+					pipeConn.Close()
+				}
 				startErr := fmt.Errorf("实例启动已取消（实例在启动过程中被移除或停止）")
 				log.Warn("启动提交被取消", logger.F("profile_id", profileId), logger.F("debug_port", stableDebugPort))
 				return nil, startErr
@@ -326,20 +436,31 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 				a.bindProfileXrayBridge(profileId, acquiredXrayBridgeKey)
 				releaseXrayBridge = false
 			}
+			if pipeConn != nil {
+				a.registerPipeConn(profileId, pipeConn)
+			}
+			if err := a.applyAndWatchBrowserRuntimeOverrides(profileId, stableDebugPort, runtimeOverrides); err != nil {
+				log.Warn("运行时指纹覆盖应用失败",
+					logger.F("profile_id", profileId),
+					logger.F("geolocation_source", runtimeOverrides.geolocationSource()),
+					logger.F("timezone_source", runtimeOverrides.timezoneSource()),
+					logger.F("error", err.Error()))
+			}
 
 			log.Info("实例启动",
 				logger.F("profile_id", profileId),
 				logger.F("debug_port", stableDebugPort),
 				logger.F("pid", snapshot.Pid),
-				logger.F("proxy", effectiveProxy),
+				logger.F("proxy", sanitizeProxyConfigField(effectiveProxy)),
+				logger.F("cdp_transport", map[bool]string{true: "pipe", false: "port"}[usePipe]),
 				logger.F("attempt", attempt),
 				logger.F("max_attempts", maxStartAttempts),
-				logger.F("args", strings.Join(args, " ")),
+				logger.F("args", strings.Join(sanitizeLaunchArgs(args), " ")),
 			)
 			a.emitBrowserInstanceStarted(snapshot, false)
 			a.recordActivity("start", "info", "实例启动成功", snapshot.ProfileName)
 
-			go a.waitBrowserProcess(profileId, monitor)
+			go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
 			return snapshot, nil
 		}
 
@@ -370,8 +491,10 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		break
 	}
 
-	// 调试端口未就绪，但进程仍存活 → 转入后台附着（debug_pending）
-	if shouldKeepBrowserRunningPendingDebugReady(assignedDebugPort, monitor) {
+	// ===== Phase 4：最终失败/待接管 =====
+	// pipe 模式下不进入"待接管"（pipe 就绪失败 = 进程通信故障，保留无益）；
+	// 仅端口模式在"进程存活 + 端口未响应"时转后台附着。
+	if !usePipe && shouldKeepBrowserRunningPendingDebugReady(assignedDebugPort, monitor) {
 		runtimeWarning := browserDebugPendingWarning(totalReadyTimeout)
 		pendingStartNotice := browserDebugPendingStartNotice(totalReadyTimeout)
 		snapshot, committed := a.commitBrowserStart(profileId, cmd, cmd.Process.Pid, assignedDebugPort, false, runtimeWarning)
@@ -395,8 +518,8 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		)
 		a.emitBrowserInstanceStarted(snapshot, false)
 		a.recordActivity("start", "warn", "实例已启动，调试接口后台接管中", snapshot.ProfileName)
-		go a.waitBrowserProcess(profileId, monitor)
-		go a.waitBrowserDebugReadyAsync(profileId, assignedDebugPort, browserAsyncDebugAttachTimeout)
+		go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
+		go a.waitBrowserDebugReadyAsync(profileId, assignedDebugPort, browserAsyncDebugAttachTimeout, runtimeOverrides)
 
 		a.setProfileLastError(profileId, pendingStartNotice)
 		snapshot.LastError = pendingStartNotice
@@ -404,6 +527,9 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 	}
 
 	// 进程已退出且未就绪 → 失败
+	if pipeConn != nil {
+		pipeConn.Close()
+	}
 	if lastStartErr == nil {
 		lastStartErr = fmt.Errorf("实例启动失败：浏览器在等待窗口内仍未就绪")
 	}
@@ -616,7 +742,7 @@ func (a *App) BrowserInstanceGetTabs(profileId string) []BrowserTab {
 	}
 }
 
-func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonitor) {
+func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonitor, overrides ...browserRuntimeOverrides) {
 	err := monitor.Wait()
 
 	log := logger.New("Browser")
@@ -641,6 +767,15 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 					logger.F("profile_id", profileId),
 					logger.F("debug_port", debugPort),
 				)
+				if len(overrides) > 0 {
+					if err := a.applyAndWatchBrowserRuntimeOverrides(profileId, debugPort, overrides[0]); err != nil {
+						log.Warn("运行时指纹覆盖应用失败",
+							logger.F("profile_id", profileId),
+							logger.F("geolocation_source", overrides[0].geolocationSource()),
+							logger.F("timezone_source", overrides[0].timezoneSource()),
+							logger.F("error", err.Error()))
+					}
+				}
 				a.emitBrowserInstanceUpdated(snapshot)
 			}
 		}
@@ -780,12 +915,12 @@ func ensureNewWindowLaunchArg(args []string) []string {
 	return append(args, "--new-window")
 }
 
-func appendLaunchTargets(args []string, profile *BrowserProfile, startURLs []string, skipDefaultStartURLs bool) []string {
+func appendLaunchTargets(args []string, profile *BrowserProfile, startURLs []string, skipDefaultStartURLs bool, defaultStartURLs []string) []string {
 	if len(startURLs) > 0 {
 		return append(args, startURLs...)
 	}
 	if !skipDefaultStartURLs {
-		return browser.BuildLaunchArgs(args, profile)
+		return browser.BuildLaunchArgs(args, defaultStartURLs)
 	}
 	return args
 }
@@ -806,6 +941,13 @@ func (a *App) markProfileStoppedLocked(profileId string, profile *BrowserProfile
 	// 检测到认领丢失而中止（见 browserInstanceStartInternal 的 Phase 3）。
 	delete(a.browserMgr.StartingProfiles, profileId)
 	a.releaseProfileXrayBridge(profileId)
+	a.closePipeConn(profileId) // 关闭 pipe 连接（若有）
+
+	// 关闭该实例的所有 CDP sessions
+	if a.cdpManager != nil {
+		a.cdpManager.CloseSessionsByProfile(profileId)
+	}
+
 	if a.launchServer != nil {
 		a.launchServer.ClearActiveProfile(profileId)
 	}
@@ -819,13 +961,14 @@ func (a *App) openBrowserWindowForRunningProfile(profile *BrowserProfile, extraL
 
 	userDataDir := a.browserMgr.ResolveUserDataDir(profile)
 	if err := os.MkdirAll(userDataDir, 0755); err != nil {
-		return fmt.Errorf("无法创建用户数据目录 %s：%w", userDataDir, err)
+		return fmt.Errorf("无法创建用户数据目录，请检查权限")
 	}
 
 	args := []string{
 		fmt.Sprintf("--user-data-dir=%s", userDataDir),
 	}
 	sanitizedExtraLaunchArgs, managedExtraArgs := sanitizeManagedLaunchArgs(extraLaunchArgs)
+	sanitizedExtraLaunchArgs, _ = extractSearchEngineLaunchArg(sanitizedExtraLaunchArgs)
 	logManagedLaunchArgOverrides(logger.New("Browser"), profile.ProfileId, "running-window.extraLaunchArgs", managedExtraArgs)
 	args = append(args, sanitizedExtraLaunchArgs...)
 	if len(startURLs) > 0 {
@@ -940,4 +1083,25 @@ func isProcessAliveWindows(pid int) (bool, error) {
 	}
 	token := fmt.Sprintf("\",\"%d\",", pid)
 	return strings.Contains(line, token), nil
+}
+
+// waitBrowserPipeReady 通过共享 pipe 连接探测浏览器是否就绪（pipe 模式专用）。
+// 周期性发送 Browser.getVersion，成功响应视为就绪。
+func waitBrowserPipeReady(conn *cdp.PipeConn, timeout time.Duration, stableWindow time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	probeInterval := 300 * time.Millisecond
+	if stableWindow > 0 {
+		probeInterval = stableWindow / 3
+		if probeInterval < 100*time.Millisecond {
+			probeInterval = 100 * time.Millisecond
+		}
+	}
+
+	for time.Now().Before(deadline) {
+		if err := conn.WaitReady(3 * time.Second); err == nil {
+			return nil
+		}
+		time.Sleep(probeInterval)
+	}
+	return fmt.Errorf("pipe 连接在 %v 内未就绪", timeout)
 }

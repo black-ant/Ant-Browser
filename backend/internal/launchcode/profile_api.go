@@ -529,14 +529,13 @@ func sanitizeAPIUserDataDir(dir string) string {
 	if filepath.IsAbs(dir) || strings.HasPrefix(dir, `\\`) || strings.Contains(dir, ":") {
 		return ""
 	}
-	// 归一化后若逃逸出单层目录（含 ".." 或路径分隔符），一律拒绝。
-	cleaned := filepath.ToSlash(filepath.Clean(dir))
-	if cleaned == "." || cleaned == ".." ||
-		strings.HasPrefix(cleaned, "../") ||
-		strings.Contains(cleaned, "/") {
+	// 仅允许单层目录名，不含任何路径分隔符（Unix / 或 Windows \）。
+	// 这样可防止路径遍历、子目录注入、Unicode 路径分隔符混淆。
+	// 不再使用 filepath.Clean + 事后检查，直接拒绝所有含分隔符的输入。
+	if dir == "." || dir == ".." || strings.ContainsAny(dir, `/\`) {
 		return ""
 	}
-	return cleaned
+	return dir
 }
 
 func profileToInput(profile *browser.Profile) browser.ProfileInput {

@@ -35,36 +35,41 @@ const (
 
 // App 应用结构体
 type App struct {
-	ctx             context.Context
-	config          *config.Config
-	db              *database.DB
-	interceptor     *logger.MethodInterceptor
-	browserMgr      *browser.Manager
-	startupQueue    *browser.StartupQueue
-	cdpManager      *cdp.Manager
-	xrayMgr         *proxy.XrayManager
-	clashMgr        *proxy.ClashManager
-	singboxMgr      *proxy.SingBoxManager
-	launchCodeSvc   *launchcode.LaunchCodeService
-	launchServer    *launchcode.LaunchServer
-	speedScheduler  *browser.ProxySpeedScheduler
+	ctx                  context.Context
+	config               *config.Config
+	db                   *database.DB
+	interceptor          *logger.MethodInterceptor
+	browserMgr           *browser.Manager
+	startupQueue         *browser.StartupQueue
+	cdpManager           *cdp.Manager
+	xrayMgr              *proxy.XrayManager
+	clashMgr             *proxy.ClashManager
+	singboxMgr           *proxy.SingBoxManager
+	launchCodeSvc        *launchcode.LaunchCodeService
+	launchServer         *launchcode.LaunchServer
+	speedScheduler       *browser.ProxySpeedScheduler
 	proxySourceScheduler *browser.ProxySourceScheduler
-	usernameScanner *usernamescan.Service
-	appRoot         string
-	version         string
+	usernameScanner      *usernamescan.Service
+	appRoot              string
+	version              string
 
-	forceQuit        bool       // 强制退出标志，用于跳过 OnBeforeClose 的拦截
-	quitMode         quitMode   // 退出模式：全量退出 / 仅退出应用
-	maintenanceMu    sync.Mutex // 维护类操作（初始化/导入/导出）互斥锁
-	bridgeMu         sync.Mutex
-	xrayBridgeRefs   map[string]string
-	proxyBatchMu     sync.Mutex          // 保护 proxyBatchCancel / proxyBatchGen
-	proxyBatchCancel context.CancelFunc  // 当前批量测速/IP健康检测的取消函数
-	proxyBatchGen    int                 // 批量操作代数，用于安全清理 cancel
-	proxyRefreshInFlight sync.Map        // sourceId -> struct{}，防止同一订阅源并发刷新
-	dashboard        *dashboardMonitor   // 仪表盘真实指标采样 + 活动日志
-	stopServicesOnce sync.Once
-	finalizeOnce     sync.Once
+	forceQuit            bool       // 强制退出标志，用于跳过 OnBeforeClose 的拦截
+	quitMode             quitMode   // 退出模式：全量退出 / 仅退出应用
+	maintenanceMu        sync.Mutex // 维护类操作（初始化/导入/导出）互斥锁
+	bridgeMu             sync.Mutex
+	xrayBridgeRefs       map[string]string
+	proxyBatchMu         sync.Mutex         // 保护 proxyBatchCancel / proxyBatchGen
+	proxyBatchCancel     context.CancelFunc // 当前批量测速/IP健康检测的取消函数
+	proxyBatchGen        int                // 批量操作代数，用于安全清理 cancel
+	proxyRefreshInFlight sync.Map           // sourceId -> struct{}，防止同一订阅源并发刷新
+	dashboard            *dashboardMonitor  // 仪表盘真实指标采样 + 活动日志
+	stopServicesOnce     sync.Once
+	finalizeOnce         sync.Once
+
+	// pipeConns 保存 --remote-debugging-pipe 模式下每个实例的共享 CDP 连接
+	// （key=profileId）。端口模式下不使用。懒初始化，受 pipeConnsMu 保护。
+	pipeConnsMu sync.Mutex
+	pipeConns   map[string]*cdp.PipeConn
 }
 
 // NewApp 创建新的应用实例
@@ -171,7 +176,11 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	// 初始化本机加密密钥并迁移旧密文（账号密码/Cookie 等敏感字段）
-	a.initAccountEncryptionKey()
+	// 强制密钥加载成功，失败则终止启动（保护敏感数据安全）
+	if err := a.initAccountEncryptionKey(); err != nil {
+		log.Error("加密密钥初始化失败，启动终止", logger.F("error", err))
+		panic(fmt.Sprintf("Failed to initialize encryption key: %v", err))
+	}
 
 	a.browserMgr = browser.NewManager(cfg, a.appRoot)
 	a.startupQueue = browser.NewStartupQueue(browserStartMaxConcurrent(cfg))
@@ -207,7 +216,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// 启动 LaunchServer
 	port := a.config.LaunchServer.Port
-	a.launchServer = launchcode.NewLaunchServer(a.launchCodeSvc, a, a.browserMgr, port)
+	a.launchServer = launchcode.NewLaunchServer(a.launchCodeSvc, a, a, a.browserMgr, port)
 	a.launchServer.SetAPIAuthConfig(launchcode.APIAuthConfig{
 		Enabled: a.config.LaunchServer.Auth.Enabled,
 		APIKey:  a.config.LaunchServer.Auth.APIKey,
@@ -550,11 +559,11 @@ func (a *App) BrowserProfileSetKeywords(profileId string, keywords []string) (*B
 }
 
 func (a *App) BrowserProfileCreate(input BrowserProfileInput) (*BrowserProfile, error) {
-	return a.browserMgr.Create(input)
+	return a.createBrowserProfileFromInput(input)
 }
 
 func (a *App) BrowserProfileUpdate(profileId string, input BrowserProfileInput) (*BrowserProfile, error) {
-	return a.browserMgr.Update(profileId, input)
+	return a.updateBrowserProfileFromInput(profileId, input)
 }
 
 func (a *App) BrowserProfileDelete(profileId string) error { return a.browserMgr.Delete(profileId) }
