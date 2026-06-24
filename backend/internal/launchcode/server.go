@@ -167,8 +167,20 @@ func (s *LaunchServer) buildMux() *http.ServeMux {
 	return mux
 }
 
+// requestBodyLimitMiddleware 限制所有 POST/PUT/PATCH 请求体大小
+func (s *LaunchServer) requestBodyLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
+			// 限制 1MB,与 /api/launch 保持一致
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *LaunchServer) buildHandler(includeLocalhost bool) http.Handler {
 	var handler http.Handler = s.buildMux()
+	handler = s.requestBodyLimitMiddleware(handler)
 	handler = s.apiAuthMiddleware(handler)
 	if includeLocalhost {
 		handler = s.localhostMiddleware(handler)
@@ -510,7 +522,7 @@ func (s *LaunchServer) handleLaunchWithBody(w http.ResponseWriter, r *http.Reque
 	}
 
 	var req LaunchRequest
-	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		msg := "invalid request body"
