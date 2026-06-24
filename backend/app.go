@@ -1255,6 +1255,14 @@ func (a *App) OpenCorePath(corePath string) error {
 // openPathInFileManager 调用系统文件管理器打开路径。
 // Windows 下不能复用 hideWindow，否则可能导致资源管理器窗口被隐藏。
 func openPathInFileManager(absPath string) error {
+	// 防止命令注入：清理路径并验证无shell元字符
+	absPath = filepath.Clean(absPath)
+
+	// 验证路径不包含shell元字符
+	if strings.ContainsAny(absPath, ";|&$`\\\"'<>") {
+		return fmt.Errorf("invalid path: contains shell metacharacters")
+	}
+
 	info, err := os.Stat(absPath)
 	if err != nil {
 		return err

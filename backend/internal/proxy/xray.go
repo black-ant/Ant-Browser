@@ -190,13 +190,19 @@ func (m *XrayManager) StopAll() {
 	})
 
 	m.mu.Lock()
-	bridges := make([]*XrayBridge, 0, len(m.Bridges))
-	for key, bridge := range m.Bridges {
-		if bridge != nil {
+	// 复制键以避免在迭代时修改map
+	keys := make([]string, 0, len(m.Bridges))
+	for key := range m.Bridges {
+		keys = append(keys, key)
+	}
+
+	bridges := make([]*XrayBridge, 0, len(keys))
+	for _, key := range keys {
+		if bridge, exists := m.Bridges[key]; exists && bridge != nil {
 			bridge.Stopping = true
 			bridges = append(bridges, bridge)
+			delete(m.Bridges, key)
 		}
-		delete(m.Bridges, key)
 	}
 	m.mu.Unlock()
 
@@ -474,7 +480,17 @@ func (m *XrayManager) recycleIdleBridges() {
 	var stale []*XrayBridge
 
 	m.mu.Lock()
-	for key, bridge := range m.Bridges {
+	// 复制键以避免在迭代时修改map
+	keys := make([]string, 0, len(m.Bridges))
+	for key := range m.Bridges {
+		keys = append(keys, key)
+	}
+
+	for _, key := range keys {
+		bridge, exists := m.Bridges[key]
+		if !exists {
+			continue
+		}
 		if bridge == nil {
 			delete(m.Bridges, key)
 			continue

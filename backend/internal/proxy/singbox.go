@@ -176,13 +176,19 @@ func (m *SingBoxManager) EnsureBridge(proxyConfig string, proxies []config.Brows
 // StopAll 关闭所有 sing-box 桥接进程
 func (m *SingBoxManager) StopAll() {
 	m.mu.Lock()
-	bridges := make([]*SingBoxBridge, 0, len(m.Bridges))
-	for key, bridge := range m.Bridges {
-		if bridge != nil {
+	// 复制键以避免在迭代时修改map
+	keys := make([]string, 0, len(m.Bridges))
+	for key := range m.Bridges {
+		keys = append(keys, key)
+	}
+
+	bridges := make([]*SingBoxBridge, 0, len(keys))
+	for _, key := range keys {
+		if bridge, exists := m.Bridges[key]; exists && bridge != nil {
 			bridge.Stopping = true
 			bridges = append(bridges, bridge)
+			delete(m.Bridges, key)
 		}
-		delete(m.Bridges, key)
 	}
 	m.mu.Unlock()
 
@@ -215,7 +221,17 @@ func (m *SingBoxManager) recycleIdleBridges() {
 	var stale []*SingBoxBridge
 
 	m.mu.Lock()
-	for key, bridge := range m.Bridges {
+	// 复制键以避免在迭代时修改map
+	keys := make([]string, 0, len(m.Bridges))
+	for key := range m.Bridges {
+		keys = append(keys, key)
+	}
+
+	for _, key := range keys {
+		bridge, exists := m.Bridges[key]
+		if !exists {
+			continue
+		}
 		if bridge == nil {
 			delete(m.Bridges, key)
 			continue

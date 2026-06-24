@@ -166,6 +166,12 @@ func validateClashSubscriptionURL(parsedURL *url.URL) error {
 	if ip := net.ParseIP(host); ip != nil && isBlockedSubscriptionIP(ip) {
 		return fmt.Errorf("订阅 URL 指向受限地址: %s", ip.String())
 	}
+
+	// 防止路径遍历：URL路径不能包含 ..
+	if strings.Contains(parsedURL.Path, "..") {
+		return fmt.Errorf("invalid URL: contains path traversal")
+	}
+
 	return nil
 }
 
