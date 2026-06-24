@@ -75,31 +75,33 @@ type LaunchCallRecord struct {
 
 // LaunchServer 本地 HTTP 唤起服务
 type LaunchServer struct {
-	service    *LaunchCodeService
-	starter    BrowserStarter
-	stopper    BrowserStopper
-	browserMgr *browser.Manager
-	port       int
-	server     *http.Server
-	mu         sync.Mutex
-	authMu     sync.RWMutex
-	logMu      sync.Mutex
-	callLogs   []LaunchCallRecord
-	activeMu   sync.RWMutex
-	activePort int
-	activeID   string
-	activeName string
-	apiAuth    APIAuthConfig
+	service       *LaunchCodeService
+	starter       BrowserStarter
+	stopper       BrowserStopper
+	browserMgr    *browser.Manager
+	port          int
+	server        *http.Server
+	mu            sync.Mutex
+	authMu        sync.RWMutex
+	logMu         sync.Mutex
+	callLogs      []LaunchCallRecord
+	activeMu      sync.RWMutex
+	activePort    int
+	activeID      string
+	activeName    string
+	apiAuth       APIAuthConfig
+	cdpRateLimit  *rateLimiter // CDP 代理速率限制器
 }
 
 // NewLaunchServer 创建 LaunchServer
 func NewLaunchServer(service *LaunchCodeService, starter BrowserStarter, stopper BrowserStopper, mgr *browser.Manager, port int) *LaunchServer {
 	srv := &LaunchServer{
-		service:    service,
-		starter:    starter,
-		stopper:    stopper,
-		browserMgr: mgr,
-		port:       port,
+		service:      service,
+		starter:      starter,
+		stopper:      stopper,
+		browserMgr:   mgr,
+		port:         port,
+		cdpRateLimit: newRateLimiter(100, 200), // 每秒 100 请求,突发 200
 	}
 	srv.SetAPIAuthConfig(APIAuthConfig{})
 	return srv
@@ -373,6 +375,16 @@ func (s *LaunchServer) handleCDPProxy(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{
 			"ok":    false,
 			"error": "forbidden: " + reason,
+		})
+		return
+	}
+
+	// 速率限制: 防止本地恶意进程 DoS
+	clientIP := extractIP(r.RemoteAddr)
+	if !s.cdpRateLimit.allow(clientIP) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+			"ok":    false,
+			"error": "rate limit exceeded",
 		})
 		return
 	}
