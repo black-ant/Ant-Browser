@@ -15,4 +15,4 @@ export const themeConfigs: ThemeConfig[] = [
   { id: 'ocean', name: '海洋主题', description: '深邃宁静的蓝色风格' },
 ]
 
-export const DEFAULT_THEME: ThemeType = 'light'
+export const DEFAULT_THEME: ThemeType = 'dark'

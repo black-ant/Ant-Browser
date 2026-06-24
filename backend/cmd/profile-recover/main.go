@@ -55,44 +55,44 @@ type candidateInspection struct {
 }
 
 type reportEntry struct {
-	DirName              string              `json:"dirName"`
-	ResolvedPath         string              `json:"resolvedPath"`
-	Action               string              `json:"action"`
-	Reason               string              `json:"reason,omitempty"`
-	ExistingProfileID    string              `json:"existingProfileId,omitempty"`
-	ExistingProfileName  string              `json:"existingProfileName,omitempty"`
-	RestoredProfileID    string              `json:"restoredProfileId,omitempty"`
-	RestoredProfileName  string              `json:"restoredProfileName,omitempty"`
-	RegisteredUserDataDir string             `json:"registeredUserDataDir,omitempty"`
-	Repair               *repairResult       `json:"repair,omitempty"`
-	Inspection           candidateInspection `json:"inspection"`
+	DirName               string              `json:"dirName"`
+	ResolvedPath          string              `json:"resolvedPath"`
+	Action                string              `json:"action"`
+	Reason                string              `json:"reason,omitempty"`
+	ExistingProfileID     string              `json:"existingProfileId,omitempty"`
+	ExistingProfileName   string              `json:"existingProfileName,omitempty"`
+	RestoredProfileID     string              `json:"restoredProfileId,omitempty"`
+	RestoredProfileName   string              `json:"restoredProfileName,omitempty"`
+	RegisteredUserDataDir string              `json:"registeredUserDataDir,omitempty"`
+	Repair                *repairResult       `json:"repair,omitempty"`
+	Inspection            candidateInspection `json:"inspection"`
 }
 
 type reportSummary struct {
-	Scanned        int `json:"scanned"`
-	Candidates     int `json:"candidates"`
-	Existing       int `json:"existing"`
-	Restored       int `json:"restored"`
-	RepairCopies   int `json:"repairCopies"`
-	Skipped        int `json:"skipped"`
-	Warnings       int `json:"warnings"`
+	Scanned      int `json:"scanned"`
+	Candidates   int `json:"candidates"`
+	Existing     int `json:"existing"`
+	Restored     int `json:"restored"`
+	RepairCopies int `json:"repairCopies"`
+	Skipped      int `json:"skipped"`
+	Warnings     int `json:"warnings"`
 }
 
 type recoveryReport struct {
-	Timestamp       string         `json:"timestamp"`
-	AppRoot         string         `json:"appRoot"`
-	ConfigPath      string         `json:"configPath"`
-	DBPath          string         `json:"dbPath"`
-	UserDataRoot    string         `json:"userDataRoot"`
-	Apply           bool           `json:"apply"`
-	RepairStrategy  string         `json:"repairStrategy"`
-	NamePrefix      string         `json:"namePrefix"`
-	SelectedCore    selectedCore   `json:"selectedCore"`
-	BackupDir       string         `json:"backupDir,omitempty"`
-	ReportPath      string         `json:"reportPath,omitempty"`
-	Warnings        []string       `json:"warnings,omitempty"`
-	Summary         reportSummary  `json:"summary"`
-	Entries         []reportEntry  `json:"entries"`
+	Timestamp      string        `json:"timestamp"`
+	AppRoot        string        `json:"appRoot"`
+	ConfigPath     string        `json:"configPath"`
+	DBPath         string        `json:"dbPath"`
+	UserDataRoot   string        `json:"userDataRoot"`
+	Apply          bool          `json:"apply"`
+	RepairStrategy string        `json:"repairStrategy"`
+	NamePrefix     string        `json:"namePrefix"`
+	SelectedCore   selectedCore  `json:"selectedCore"`
+	BackupDir      string        `json:"backupDir,omitempty"`
+	ReportPath     string        `json:"reportPath,omitempty"`
+	Warnings       []string      `json:"warnings,omitempty"`
+	Summary        reportSummary `json:"summary"`
+	Entries        []reportEntry `json:"entries"`
 }
 
 type existingProfile struct {
@@ -103,16 +103,16 @@ type existingProfile struct {
 }
 
 var volatileDirNames = map[string]struct{}{
-	"browsermetrics":        {},
+	"browsermetrics":         {},
 	"deferredbrowsermetrics": {},
-	"graphitedawncache":     {},
-	"grshadercache":         {},
-	"shadercache":           {},
-	"component_crx_cache":   {},
-	"extensions_crx_cache":  {},
-	"cache":                 {},
-	"code cache":            {},
-	"gpucache":              {},
+	"graphitedawncache":      {},
+	"grshadercache":          {},
+	"shadercache":            {},
+	"component_crx_cache":    {},
+	"extensions_crx_cache":   {},
+	"cache":                  {},
+	"code cache":             {},
+	"gpucache":               {},
 }
 
 var volatileFileNames = map[string]struct{}{

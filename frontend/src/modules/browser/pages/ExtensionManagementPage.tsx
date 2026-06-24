@@ -284,7 +284,7 @@ export function ExtensionManagementPage() {
       title: '扩展信息',
       render: (_, record) => (
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
             <Download className="w-5 h-5 text-blue-600" />
           </div>
           <div className="min-w-0">
@@ -364,7 +364,7 @@ export function ExtensionManagementPage() {
                 </div>
               ) : filteredExtensions.length === 0 ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
                     <Download className="w-8 h-8 text-blue-600" />
                   </div>
                   <div className="text-center">
@@ -392,7 +392,7 @@ export function ExtensionManagementPage() {
               <Card key={ext.id} padding="md" className="hover:shadow-lg transition-shadow">
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center flex-shrink-0">
+                    <div className="w-12 h-12 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
                       <Package className="w-6 h-6 text-blue-600" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -415,7 +415,7 @@ export function ExtensionManagementPage() {
           </div>
           {filteredStoreExtensions.length === 0 && (
             <div className="py-20 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900/30 dark:to-gray-800/20 flex items-center justify-center"><Package className="w-8 h-8 text-gray-400" /></div>
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-50 dark:bg-gray-900/30 flex items-center justify-center"><Package className="w-8 h-8 text-gray-400" /></div>
               <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">未找到扩展</h3>
               <p className="text-sm text-[var(--color-text-muted)]">尝试其他搜索关键词</p>
             </div>

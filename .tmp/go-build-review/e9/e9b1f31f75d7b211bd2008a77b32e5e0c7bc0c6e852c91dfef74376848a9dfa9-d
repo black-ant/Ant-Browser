@@ -1,0 +1,4 @@
+./poly1305.go
+./poly1305_amd64.go
+./poly1305_AVX2_amd64.s
+./poly1305_amd64.s

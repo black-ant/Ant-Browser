@@ -25,6 +25,10 @@ export function BookmarkReset():Promise<void>;
 
 export function BookmarkSave(arg1:Array<config.BrowserBookmark>):Promise<void>;
 
+export function BrowserAccountBatchLinkProfiles(arg1:Array<string>,arg2:Array<string>):Promise<Record<string, string>>;
+
+export function BrowserAccountBatchUnlinkProfiles(arg1:Array<string>,arg2:Array<string>):Promise<Record<string, string>>;
+
 export function BrowserAccountCreate(arg1:backend.BrowserAccountInput):Promise<backend.BrowserAccount>;
 
 export function BrowserAccountDelete(arg1:string):Promise<void>;
@@ -42,6 +46,8 @@ export function BrowserAccountRestoreCookiesToProfile(arg1:string,arg2:string,ar
 export function BrowserAccountSaveCookiesFromProfile(arg1:string,arg2:string):Promise<number>;
 
 export function BrowserAccountSetProfiles(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function BrowserAccountUnlinkProfile(arg1:string,arg2:string):Promise<void>;
 
 export function BrowserAccountUpdate(arg1:string,arg2:backend.BrowserAccountInput):Promise<backend.BrowserAccount>;
 
@@ -171,11 +177,25 @@ export function BrowserSnapshotList(arg1:string):Promise<Array<backend.SnapshotI
 
 export function BrowserSnapshotRestore(arg1:string,arg2:string):Promise<void>;
 
+export function CDPAddInterceptRule(arg1:string,arg2:cdp.InterceptRule):Promise<void>;
+
 export function CDPCaptureScreenshot(arg1:string):Promise<string>;
+
+export function CDPClearAllCookies(arg1:string):Promise<void>;
 
 export function CDPClearConsoleLogs(arg1:string):Promise<void>;
 
 export function CDPClearNetworkRequests(arg1:string):Promise<void>;
+
+export function CDPClearWebSocketMessages(arg1:string):Promise<void>;
+
+export function CDPDeleteCookie(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function CDPDisableIntercept(arg1:string):Promise<void>;
+
+export function CDPEnableConsoleCapture(arg1:string):Promise<void>;
+
+export function CDPEnableIntercept(arg1:string):Promise<void>;
 
 export function CDPExecuteJavaScript(arg1:string,arg2:string):Promise<string>;
 
@@ -183,23 +203,41 @@ export function CDPExportHAR(arg1:string):Promise<string>;
 
 export function CDPGetConsoleLogs(arg1:string):Promise<Array<cdp.ConsoleLog>>;
 
+export function CDPGetCookies(arg1:string):Promise<Array<cdp.Cookie>>;
+
+export function CDPGetInterceptRules(arg1:string):Promise<Array<cdp.InterceptRule>>;
+
 export function CDPGetNetworkRequests(arg1:string):Promise<Array<cdp.NetworkRequest>>;
 
 export function CDPGetStatistics(arg1:string):Promise<Record<string, any>>;
 
 export function CDPGetStorage(arg1:string,arg2:string):Promise<Record<string, string>>;
 
+export function CDPGetWebSocketMessages(arg1:string):Promise<Array<cdp.WebSocketMessage>>;
+
 export function CDPListSessions():Promise<Array<string>>;
+
+export function CDPReloadPage(arg1:string):Promise<void>;
+
+export function CDPRemoveInterceptRule(arg1:string,arg2:string):Promise<void>;
 
 export function CDPSessionClose(arg1:string):Promise<void>;
 
 export function CDPSessionCreate(arg1:string,arg2:string):Promise<string>;
 
+export function CDPSetCookie(arg1:string,arg2:cdp.Cookie):Promise<void>;
+
+export function CDPUpdateInterceptRule(arg1:string,arg2:cdp.InterceptRule):Promise<void>;
+
 export function ClearAppLogs():Promise<void>;
 
 export function CreateGroup(arg1:browser.GroupInput):Promise<browser.Group>;
 
+export function CreateProfile(arg1:browser.ProfileInput):Promise<browser.Profile>;
+
 export function DeleteGroup(arg1:string):Promise<void>;
+
+export function DeleteProfile(arg1:string):Promise<void>;
 
 export function FetchRemoteAuthorProfile(arg1:string,arg2:number):Promise<Record<string, any>>;
 
@@ -259,6 +297,8 @@ export function StartInstance(arg1:string):Promise<browser.Profile>;
 
 export function StartInstanceWithParams(arg1:string,arg2:launchcode.LaunchRequestParams):Promise<browser.Profile>;
 
+export function StopInstance(arg1:string):Promise<void>;
+
 export function TestProxyConnectivity(arg1:string,arg2:string):Promise<backend.ProxyTestResult>;
 
 export function TestProxyRealConnectivity(arg1:string):Promise<backend.ProxyTestResult>;
@@ -266,6 +306,8 @@ export function TestProxyRealConnectivity(arg1:string):Promise<backend.ProxyTest
 export function TriggerGC():Promise<void>;
 
 export function UpdateGroup(arg1:string,arg2:browser.GroupInput):Promise<browser.Group>;
+
+export function UpdateProfile(arg1:string,arg2:browser.ProfileInput):Promise<browser.Profile>;
 
 export function UsernameScanGenerate(arg1:usernamescan.GeneratorOptions):Promise<Array<string>>;
 

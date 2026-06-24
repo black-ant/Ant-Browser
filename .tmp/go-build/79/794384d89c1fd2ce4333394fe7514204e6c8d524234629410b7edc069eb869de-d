@@ -1,0 +1,7 @@
+./env_create.go
+./env_create_completed.go
+./env_create_options.go
+./find_dll.go
+./find_dll_installed.go
+./syscall.go
+./version.go

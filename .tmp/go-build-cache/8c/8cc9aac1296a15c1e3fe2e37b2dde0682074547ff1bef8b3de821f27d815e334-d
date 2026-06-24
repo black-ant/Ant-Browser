@@ -1,0 +1,14 @@
+./cmsghdr_stub.go
+./complete_nodontwait.go
+./error_windows.go
+./iovec_stub.go
+./mmsghdr_stub.go
+./msghdr_stub.go
+./norace.go
+./rawconn.go
+./rawconn_msg.go
+./rawconn_nommsg.go
+./socket.go
+./sys.go
+./sys_posix.go
+./sys_windows.go

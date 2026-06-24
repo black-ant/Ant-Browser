@@ -114,17 +114,24 @@ type BrowserBookmark struct {
 }
 
 type BrowserConfig struct {
-	UserDataRoot           string                 `yaml:"user_data_root"`
-	DefaultFingerprintArgs []string               `yaml:"default_fingerprint_args"`
-	DefaultLaunchArgs      []string               `yaml:"default_launch_args"`
-	DefaultProxy           string                 `yaml:"default_proxy"`
-	StartReadyTimeoutMs    int                    `yaml:"start_ready_timeout_ms,omitempty"`
-	StartStableWindowMs    int                    `yaml:"start_stable_window_ms,omitempty"`
-	StartMaxConcurrent     int                    `yaml:"start_max_concurrent,omitempty"` // 批量启动并发上限（默认 3，钳制 1-8）
-	DefaultBookmarks       []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
-	Cores                  []BrowserCore          `yaml:"cores,omitempty"`
-	Proxies                []BrowserProxy         `yaml:"proxies,omitempty"`
-	Profiles               []BrowserProfileConfig `yaml:"profiles,omitempty"`
+	UserDataRoot           string   `yaml:"user_data_root"`
+	DefaultFingerprintArgs []string `yaml:"default_fingerprint_args"`
+	DefaultLaunchArgs      []string `yaml:"default_launch_args"`
+	// DefaultStartURLs 实例启动且未指定网址时打开的默认起始页。默认空（落到浏览器
+	// 新标签页），避免每次启动都自动外联第三方 IP 检测站点而暴露行为特征。
+	DefaultStartURLs []string `yaml:"default_start_urls,omitempty"`
+	// CDPTransport 选择 CDP 与浏览器的通信方式："port"(默认，调试端口，全平台稳定) /
+	// "pipe"(经 --remote-debugging-pipe，不开本地端口；仅 Linux/macOS 支持，实验性)。
+	// 留空等同 "port"。Windows 始终回退端口（os/exec 无法映射 fd 3/4）。
+	CDPTransport        string                 `yaml:"cdp_transport,omitempty"`
+	DefaultProxy        string                 `yaml:"default_proxy"`
+	StartReadyTimeoutMs int                    `yaml:"start_ready_timeout_ms,omitempty"`
+	StartStableWindowMs int                    `yaml:"start_stable_window_ms,omitempty"`
+	StartMaxConcurrent  int                    `yaml:"start_max_concurrent,omitempty"` // 批量启动并发上限（默认 3，钳制 1-8）
+	DefaultBookmarks    []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
+	Cores               []BrowserCore          `yaml:"cores,omitempty"`
+	Proxies             []BrowserProxy         `yaml:"proxies,omitempty"`
+	Profiles            []BrowserProfileConfig `yaml:"profiles,omitempty"`
 	// 废弃字段，保留用于迁移
 	ChromeBinaryPath     string               `yaml:"chrome_binary_path,omitempty"`
 	ClashBinaryPath      string               `yaml:"clash_binary_path,omitempty"`
@@ -412,11 +419,19 @@ func DefaultConfig() *Config {
 		Browser: BrowserConfig{
 			UserDataRoot:           "data",
 			DefaultFingerprintArgs: defaultFingerprintArgsForOS(goruntime.GOOS),
-			DefaultLaunchArgs:      []string{"--disable-sync", "--no-first-run"},
-			DefaultProxy:           "",
-			StartReadyTimeoutMs:    3000,
-			StartStableWindowMs:    1200,
-			StartMaxConcurrent:     3,
+			// 移除已过时的 --disable-blink-features=AutomationControlled
+			// 现代 Chrome 已经不支持该参数，会导致警告
+			// 添加语言支持以修复中文显示乱码问题
+			DefaultLaunchArgs: []string{
+				"--disable-sync",
+				"--no-first-run",
+				"--lang=zh-CN",               // 设置界面语言为简体中文
+				"--accept-language=zh-CN,zh", // 设置接受语言，修复网页中文显示
+			},
+			DefaultProxy:        "",
+			StartReadyTimeoutMs: 3000,
+			StartStableWindowMs: 1200,
+			StartMaxConcurrent:  3,
 		},
 		Logging: LoggingConfig{
 			Level:           "info",
@@ -459,7 +474,14 @@ func defaultFingerprintArgsForOS(goos string) []string {
 	case "linux":
 		platform = "linux"
 	}
-	return []string{"--fingerprint-brand=Chrome", "--fingerprint-platform=" + platform}
+	// --webrtc-ip-handling-policy=disable_non_proxied_udp：默认阻止 WebRTC 经
+	// 非代理通道泄露真实公网/内网 IP（挂代理时尤为关键，直连下亦安全）。
+	// 时区 / 语言不在此处硬编码，避免与代理地区不符——启动时按代理出口 IP 推导。
+	return []string{
+		"--fingerprint-brand=Chrome",
+		"--fingerprint-platform=" + platform,
+		"--webrtc-ip-handling-policy=disable_non_proxied_udp",
+	}
 }
 
 // Save 保存配置到文件

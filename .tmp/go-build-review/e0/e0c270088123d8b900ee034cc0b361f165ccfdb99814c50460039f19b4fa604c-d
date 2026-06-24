@@ -1,0 +1,6 @@
+./binary.go
+./bytes.go
+./hash.go
+./hex.go
+./math.go
+./strings_go118.go

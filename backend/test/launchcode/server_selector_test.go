@@ -13,7 +13,7 @@ import (
 )
 
 func buildTestHandlerWithManager(svc *launchcode.LaunchCodeService, starter launchcode.BrowserStarter, mgr *browser.Manager) http.Handler {
-	srv := launchcode.NewLaunchServer(svc, starter, mgr, 0)
+	srv := launchcode.NewLaunchServer(svc, starter, nil, mgr, 0)
 	return launchcode.NewTestHandler(srv)
 }
 
@@ -400,6 +400,7 @@ func TestGetLaunchByCodeDoesNotFallbackToKeyword(t *testing.T) {
 
 	handler := buildTestHandlerWithManager(svc, starter, manager)
 	req := httptest.NewRequest(http.MethodGet, "/api/launch/buyer-002", nil)
+	req.Header.Set("X-Launch-Request", "1") // CSRF protection
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 

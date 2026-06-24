@@ -1,0 +1,48 @@
+# test log
+getenv GOTMPDIR
+getenv HOME
+stat C:\Users\Jun\AppData\Local\Temp\TestResolveDarwinAppBundleUsesApplicationSupportStateRoot3599168000
+stat C:\Users\Jun\AppData\Local\Temp\TestResolveDarwinAppBundleUsesApplicationSupportStateRoot3599168000\002\Ant Browser.app\Contents\MacOS\bin
+stat C:\Users\Jun\AppData\Local\Temp\TestResolveDarwinAppBundleUsesApplicationSupportStateRoot3599168000\002\Ant Browser.app\Contents\MacOS
+stat C:\Users\Jun\AppData\Local\Temp\TestResolveDarwinAppBundleUsesApplicationSupportStateRoot3599168000\002\Ant Browser.app\Contents
+stat C:\Users\Jun\AppData\Local\Temp\TestResolveDarwinAppBundleUsesApplicationSupportStateRoot3599168000\002\Ant Browser.app
+stat C:\Users\Jun\AppData\Local\Temp\TestResolveDarwinAppBundleUsesApplicationSupportStateRoot3599168000\002
+getenv HOME
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+getenv HOME
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\chrome
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\chrome\README.md
+getenv HOME
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\data
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\config.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\config.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\proxies.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\proxies.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\chrome
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\chrome
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\chrome
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\chrome
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\chrome
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\chrome\README.md
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\chrome
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\002\Ant Browser.app\Contents\MacOS\chrome\README.md
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\chrome\README.md
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\chrome\README.md
+stat C:\Users\Jun\AppData\Local\Temp\TestEnsureWritableLayoutSeedsDarwinBundleStateRoot2031896005\001\Library\Application Support\ant-browser\data
+open C:\Users\Jun\AppData\Local\Temp

@@ -1,0 +1,8 @@
+./events.go
+./har.go
+./manager.go
+./parser.go
+./pipe.go
+./pipe_attach_windows.go
+./pipe_session.go
+./session.go

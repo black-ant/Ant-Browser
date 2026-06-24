@@ -1,0 +1,5 @@
+./discard.go
+./file.go
+./read.go
+./varint.go
+./write.go

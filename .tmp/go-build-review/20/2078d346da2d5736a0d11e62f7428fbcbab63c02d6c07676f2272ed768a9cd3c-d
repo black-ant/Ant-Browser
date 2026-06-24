@@ -1,0 +1,7 @@
+./asm.go
+./constants.go
+./doc.go
+./instructions.go
+./setter.go
+./vm.go
+./vm_instructions.go

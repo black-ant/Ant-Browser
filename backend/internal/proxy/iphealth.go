@@ -32,6 +32,31 @@ func FetchIPPureInfo(
 		return nil, fmt.Errorf("未找到代理配置")
 	}
 
+	return fetchIPPureInfoWithConfig(src, proxyId, proxies, xrayMgr, singboxMgr)
+}
+
+// FetchIPPureInfoByConfig 通过一段临时代理配置查询出口 IP 健康信息。
+// 它用于尚未保存到代理池、没有 proxyId 的手动代理配置。
+func FetchIPPureInfoByConfig(
+	proxyConfig string,
+	proxies []config.BrowserProxy,
+	xrayMgr *XrayManager,
+	singboxMgr *SingBoxManager,
+) (map[string]interface{}, error) {
+	src := strings.TrimSpace(proxyConfig)
+	if src == "" {
+		return nil, fmt.Errorf("代理配置为空")
+	}
+	return fetchIPPureInfoWithConfig(src, "", proxies, xrayMgr, singboxMgr)
+}
+
+func fetchIPPureInfoWithConfig(
+	src string,
+	proxyId string,
+	proxies []config.BrowserProxy,
+	xrayMgr *XrayManager,
+	singboxMgr *SingBoxManager,
+) (map[string]interface{}, error) {
 	client, err := buildIPPureHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, 20*time.Second)
 	if err != nil {
 		return nil, err

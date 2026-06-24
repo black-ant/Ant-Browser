@@ -1,0 +1,8 @@
+./auth.go
+./dao.go
+./dao_memory.go
+./profile_api.go
+./selector.go
+./server.go
+./service.go
+./server_auth_internal_test.go

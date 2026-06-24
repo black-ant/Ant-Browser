@@ -1,0 +1,25 @@
+# test log
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_DefaultConfigKeepsCoreEntries468429581\001\config.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_DefaultConfigKeepsCoreEntries468429581\001\proxies.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_DefaultConfigKeepsCoreEntries468429581\001\data
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_DefaultConfigKeepsCoreEntries468429581\001\chrome
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\config.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\proxies.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\data
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\profiles
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\chrome
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\external-core-a
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\db\main.db
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\db\main.db-wal
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\db\main.db-shm
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries252117233\001\runtime\logs
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildManifest_StripsSourcePath3405443083\001\config.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildManifest_StripsSourcePath3405443083\001\proxies.yaml
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildManifest_StripsSourcePath3405443083\001\data
+stat C:\Users\Jun\AppData\Local\Temp\TestBuildManifest_StripsSourcePath3405443083\001\chrome
+open C:\Users\Jun\AppData\Local\Temp

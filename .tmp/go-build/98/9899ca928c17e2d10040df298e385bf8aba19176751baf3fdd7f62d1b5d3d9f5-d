@@ -1,0 +1,14 @@
+./bitmap.go
+./builder.go
+./fmt.go
+./fromstr32.go
+./get.go
+./join.go
+./mask.go
+./next.go
+./of.go
+./ofmany.go
+./rank.go
+./select.go
+./slice.go
+./toarray.go

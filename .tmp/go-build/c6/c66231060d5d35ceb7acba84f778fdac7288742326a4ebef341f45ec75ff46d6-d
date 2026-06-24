@@ -1,0 +1,4 @@
+./defs_windows.go
+./defs_windows_amd64.go
+./syscall_windows.go
+./asm_windows_amd64.s

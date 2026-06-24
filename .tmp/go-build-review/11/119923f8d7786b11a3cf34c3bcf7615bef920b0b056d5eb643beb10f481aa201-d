@@ -1,0 +1,10 @@
+./cipher.go
+./dialer.go
+./extenstion.go
+./handler.go
+./helper.go
+./reader.go
+./upgrader.go
+./utf8.go
+./writer.go
+./wsutil.go

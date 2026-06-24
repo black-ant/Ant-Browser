@@ -1,0 +1,5 @@
+./compress_amd64.go
+./compress_generic.go
+./cpu.go
+./node.go
+./compress_amd64.s

@@ -1,53 +1,62 @@
 database:
-  type: sqlite
-  sqlite:
-    path: data/app.db
+    type: sqlite
+    sqlite:
+        path: data/app.db
 app:
-  name: Ant Browser
-  window:
-    width: 1750
-    height: 1000
-    min_width: 1200
-    min_height: 700
-  max_profile_limit: 20
-  used_cd_keys: []
+    name: Ant Browser
+    window:
+        width: 1750
+        height: 1000
+        min_width: 1200
+        min_height: 700
+    max_profile_limit: 100
+    used_cd_keys: []
 runtime:
-  max_memory_mb: 0
-  gc_percent: 100
+    max_memory_mb: 0
+    gc_percent: 100
 logging:
-  level: info
-  file_enabled: false
-  file_path: data/logs/app.log
-  format: text
-  buffer_size: 4
-  async_queue_size: 1000
-  flush_interval_ms: 1000
-  rotation:
-    enabled: false
-    max_size_mb: 100
-    max_age: 7
-    max_backups: 5
-    time_interval: daily
-  interceptor:
-    enabled: true
-    log_parameters: true
-    log_results: true
-    sensitive_fields:
-      - password
-      - token
-      - secret
+    level: info
+    file_enabled: false
+    file_path: data/logs/app.log
+    format: text
+    buffer_size: 4
+    async_queue_size: 1000
+    flush_interval_ms: 1000
+    rotation:
+        enabled: false
+        max_size_mb: 100
+        max_age: 7
+        max_backups: 5
+        time_interval: daily
+    interceptor:
+        enabled: true
+        log_parameters: true
+        log_results: true
+        sensitive_fields:
+            - password
+            - token
+            - secret
 browser:
-  user_data_root: data
-  default_fingerprint_args:
-    - --fingerprint-brand=Chrome
-    - --fingerprint-platform=windows
-  default_launch_args:
-    - --disable-sync
-    - --no-first-run
-  default_proxy: ""
-  default_bookmarks: []
-  cores: []
-  proxies: []
-  profiles: []
+    user_data_root: data
+    default_fingerprint_args:
+        - --fingerprint-brand=Chrome
+        - --fingerprint-platform=windows
+        - --webrtc-ip-handling-policy=disable_non_proxied_udp
+    default_launch_args:
+        - --disable-sync
+        - --no-first-run
+    default_start_urls: []
+    default_proxy: ""
+    start_ready_timeout_ms: 3000
+    start_stable_window_ms: 1200
+    cores:
+        - core_id: core-fingerprint-chromium-144
+          core_name: Chrome fingerprint-chromium-144
+          core_path: chrome\fingerprint-chromium-144
+          is_default: true
 launch_server:
-  port: 19876
+    port: 19876
+    auth:
+        enabled: false
+        api_key: ""
+        header: X-Ant-Api-Key

@@ -1,0 +1,13 @@
+./formatter.go
+./interceptor.go
+./interfaces.go
+./logger.go
+./memory_writer.go
+./rotation.go
+./writer.go
+./formatter_test.go
+./interceptor_test.go
+./interfaces_test.go
+./logger_test.go
+./rotation_test.go
+./writer_test.go

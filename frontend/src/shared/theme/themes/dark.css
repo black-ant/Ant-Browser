@@ -1,34 +1,84 @@
-/* 深色主题 - 沉稳专业 */
+/* 深色主题 - 专业工作台风格 */
 
 [data-theme='dark'] {
-  --color-bg-base: #0c0c0e;
-  --color-bg-surface: #18181b;
-  --color-bg-elevated: #27272a;
-  --color-bg-muted: #27272a;
-  --color-bg-subtle: #18181b;
-  --color-bg-input: #27272a;
-  --color-bg-card: #18181b;
+  /* 背景色 - 深色层级 */
+  --color-bg-base: #0a0a0b;           /* 最底层背景 */
+  --color-bg-surface: #141416;        /* 卡片/面板背景 */
+  --color-bg-elevated: #1c1c1f;       /* 悬浮元素背景 */
+  --color-bg-muted: #232327;          /* 鼠标悬停背景 */
+  --color-bg-subtle: #141416;         /* 微妙背景 */
+  --color-bg-input: #1c1c1f;          /* 输入框背景 */
+  --color-bg-card: #141416;           /* 卡片背景 */
 
-  --color-border-default: #27272a;
-  --color-border-muted: #1f1f23;
-  --color-border-strong: #3f3f46;
+  /* 兼容旧 token - 向后兼容 */
+  --color-bg-primary: #141416;        /* 兼容：主背景 -> surface */
+  --color-bg-secondary: #1c1c1f;      /* 兼容：次要背景 -> elevated */
+  --color-bg-hover: #232327;          /* 兼容：悬停背景 -> muted */
+  --color-surface-elevated: #1c1c1f;  /* 兼容：悬浮表面 -> elevated */
 
-  --color-text-primary: #fafafa;
-  --color-text-secondary: #a1a1aa;
-  --color-text-muted: #71717a;
-  --color-text-inverse: #18181b;
+  /* 边框色 - 层次分明 */
+  --color-border-default: #2a2a2e;    /* 默认边框 */
+  --color-border-muted: #1f1f23;      /* 微弱边框 */
+  --color-border-strong: #3f3f46;     /* 强调边框 */
 
-  --color-accent: #fafafa;
-  --color-accent-hover: #e4e4e7;
-  --color-accent-muted: #27272a;
+  /* 兼容旧 token */
+  --color-border: #2a2a2e;            /* 兼容：默认边框 */
 
-  --color-primary: #60a5fa;
-  --color-success: #4ade80;
-  --color-warning: #fbbf24;
-  --color-error: #f87171;
-  --color-info: #60a5fa;
+  /* 文字色 - 清晰层级 */
+  --color-text-primary: #e8e8ea;      /* 主要文字 */
+  --color-text-secondary: #9d9da3;    /* 次要文字 */
+  --color-text-muted: #6b6b70;        /* 微弱文字 */
+  --color-text-inverse: #0a0a0b;      /* 反色文字 */
 
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.5);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.6);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.7);
+  /* 强调色 */
+  --color-accent: #e8e8ea;
+  --color-accent-hover: #d4d4d7;
+  --color-accent-muted: #232327;
+
+  /* 状态色 - 专业配色（提高深色主题可读性）*/
+  --color-primary: #60a5fa;           /* 主色调 - 亮蓝色 */
+  --color-success: #34d399;           /* 成功 - 亮绿色 */
+  --color-warning: #fbbf24;           /* 警告 - 亮橙色 */
+  --color-error: #f87171;             /* 错误 - 亮红色 */
+  --color-info: #22d3ee;              /* 信息 - 亮青色 */
+
+  /* 阴影 - 深色环境 */
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.6), 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.7), 0 2px 4px -1px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.8), 0 4px 6px -2px rgb(0 0 0 / 0.6);
+}
+
+/* 全局深色主题 - 仅基础样式 */
+[data-theme='dark'] {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+}
+
+[data-theme='dark'] body {
+  background-color: var(--color-bg-base);
+}
+
+/* 选择文本颜色 */
+[data-theme='dark'] ::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: var(--color-text-primary);
+}
+
+/* 滚动条优化 - 深色风格 */
+[data-theme='dark'] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-track {
+  background-color: var(--color-bg-surface);
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background-color: var(--color-bg-muted);
+  border-radius: 4px;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-border-strong);
 }

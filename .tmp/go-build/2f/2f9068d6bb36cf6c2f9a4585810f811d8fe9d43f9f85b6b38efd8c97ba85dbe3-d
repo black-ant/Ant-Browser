@@ -1,0 +1,13 @@
+./clash.go
+./http_client.go
+./iphealth.go
+./parser.go
+./singbox.go
+./singbox_parser.go
+./speedtest.go
+./sysproc_windows.go
+./types.go
+./utils.go
+./xray.go
+./singbox_test.go
+./xray_validate_test.go

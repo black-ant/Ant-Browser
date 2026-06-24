@@ -1,0 +1,9 @@
+./awg.go
+./junk_creator.go
+./magic_header.go
+./prng.go
+./special_handshake_handler.go
+./tag_generator.go
+./tag_junk_packet_generator.go
+./tag_junk_packet_generators.go
+./tag_parser.go

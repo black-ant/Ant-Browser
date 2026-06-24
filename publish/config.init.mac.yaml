@@ -41,10 +41,12 @@ browser:
   default_fingerprint_args:
     - --fingerprint-brand=Chrome
     - --fingerprint-platform=mac
+    - --webrtc-ip-handling-policy=disable_non_proxied_udp
   default_launch_args:
     - --disable-sync
     - --no-first-run
   default_proxy: ""
+  default_start_urls: []
   default_bookmarks: []
   cores: []
   proxies: []

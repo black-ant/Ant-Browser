@@ -680,6 +680,8 @@ export namespace browser {
 	    tags: string[];
 	    keywords: string[];
 	    groupId: string;
+	    launchCode: string;
+	    accountIds: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ProfileInput(source);
@@ -697,6 +699,8 @@ export namespace browser {
 	        this.tags = source["tags"];
 	        this.keywords = source["keywords"];
 	        this.groupId = source["groupId"];
+	        this.launchCode = source["launchCode"];
+	        this.accountIds = source["accountIds"];
 	    }
 	}
 	export class ProxySource {
@@ -816,6 +820,196 @@ export namespace cdp {
 	        this.stackTrace = source["stackTrace"];
 	    }
 	}
+	export class Cookie {
+	    name: string;
+	    value: string;
+	    domain: string;
+	    path: string;
+	    expires: number;
+	    size: number;
+	    httpOnly: boolean;
+	    secure: boolean;
+	    session: boolean;
+	    sameSite: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Cookie(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.domain = source["domain"];
+	        this.path = source["path"];
+	        this.expires = source["expires"];
+	        this.size = source["size"];
+	        this.httpOnly = source["httpOnly"];
+	        this.secure = source["secure"];
+	        this.session = source["session"];
+	        this.sameSite = source["sameSite"];
+	    }
+	}
+	export class InterceptActions {
+	    block: boolean;
+	    modifyRequest: boolean;
+	    modifyResponse: boolean;
+	    delay: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new InterceptActions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.block = source["block"];
+	        this.modifyRequest = source["modifyRequest"];
+	        this.modifyResponse = source["modifyResponse"];
+	        this.delay = source["delay"];
+	    }
+	}
+	export class ResponseModification {
+	    statusCode: number;
+	    headers: Record<string, string>;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResponseModification(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.statusCode = source["statusCode"];
+	        this.headers = source["headers"];
+	        this.body = source["body"];
+	    }
+	}
+	export class RequestModification {
+	    url: string;
+	    method: string;
+	    headers: Record<string, string>;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RequestModification(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.method = source["method"];
+	        this.headers = source["headers"];
+	        this.body = source["body"];
+	    }
+	}
+	export class InterceptRule {
+	    id: string;
+	    name: string;
+	    enabled: boolean;
+	    urlPattern: string;
+	    method: string;
+	    actions: InterceptActions;
+	    modifyRequest?: RequestModification;
+	    modifyResponse?: ResponseModification;
+	
+	    static createFrom(source: any = {}) {
+	        return new InterceptRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.enabled = source["enabled"];
+	        this.urlPattern = source["urlPattern"];
+	        this.method = source["method"];
+	        this.actions = this.convertValues(source["actions"], InterceptActions);
+	        this.modifyRequest = this.convertValues(source["modifyRequest"], RequestModification);
+	        this.modifyResponse = this.convertValues(source["modifyResponse"], ResponseModification);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ResponseData {
+	    raw: string;
+	    type: string;
+	    structured: any;
+	    preview: string;
+	    size: number;
+	    encoding: string;
+	    error: string;
+	    metadata: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResponseData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.raw = source["raw"];
+	        this.type = source["type"];
+	        this.structured = source["structured"];
+	        this.preview = source["preview"];
+	        this.size = source["size"];
+	        this.encoding = source["encoding"];
+	        this.error = source["error"];
+	        this.metadata = source["metadata"];
+	    }
+	}
+	export class RequestTiming {
+	    requestTime: number;
+	    proxyStart: number;
+	    proxyEnd: number;
+	    dnsStart: number;
+	    dnsEnd: number;
+	    connectStart: number;
+	    connectEnd: number;
+	    sslStart: number;
+	    sslEnd: number;
+	    sendStart: number;
+	    sendEnd: number;
+	    pushStart: number;
+	    pushEnd: number;
+	    receiveHeadersEnd: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RequestTiming(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requestTime = source["requestTime"];
+	        this.proxyStart = source["proxyStart"];
+	        this.proxyEnd = source["proxyEnd"];
+	        this.dnsStart = source["dnsStart"];
+	        this.dnsEnd = source["dnsEnd"];
+	        this.connectStart = source["connectStart"];
+	        this.connectEnd = source["connectEnd"];
+	        this.sslStart = source["sslStart"];
+	        this.sslEnd = source["sslEnd"];
+	        this.sendStart = source["sendStart"];
+	        this.sendEnd = source["sendEnd"];
+	        this.pushStart = source["pushStart"];
+	        this.pushEnd = source["pushEnd"];
+	        this.receiveHeadersEnd = source["receiveHeadersEnd"];
+	    }
+	}
 	export class NetworkRequest {
 	    requestId: string;
 	    url: string;
@@ -833,6 +1027,9 @@ export namespace cdp {
 	    mimeType: string;
 	    startTime: number;
 	    endTime: number;
+	    timing?: RequestTiming;
+	    truncated: boolean;
+	    parsedData?: ResponseData;
 	
 	    static createFrom(source: any = {}) {
 	        return new NetworkRequest(source);
@@ -856,6 +1053,61 @@ export namespace cdp {
 	        this.mimeType = source["mimeType"];
 	        this.startTime = source["startTime"];
 	        this.endTime = source["endTime"];
+	        this.timing = this.convertValues(source["timing"], RequestTiming);
+	        this.truncated = source["truncated"];
+	        this.parsedData = this.convertValues(source["parsedData"], ResponseData);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	export class WebSocketMessage {
+	    id: string;
+	    requestId: string;
+	    url: string;
+	    direction: string;
+	    timestamp: number;
+	    opcode: number;
+	    data: string;
+	    payloadSize: number;
+	    masked: boolean;
+	    connectionId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WebSocketMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.requestId = source["requestId"];
+	        this.url = source["url"];
+	        this.direction = source["direction"];
+	        this.timestamp = source["timestamp"];
+	        this.opcode = source["opcode"];
+	        this.data = source["data"];
+	        this.payloadSize = source["payloadSize"];
+	        this.masked = source["masked"];
+	        this.connectionId = source["connectionId"];
 	    }
 	}
 

@@ -1,0 +1,11 @@
+./elf.go
+./label.go
+./map.go
+./pe.go
+./pprof.go
+./pprof_windows.go
+./proto.go
+./proto_windows.go
+./protobuf.go
+./protomem.go
+./runtime.go

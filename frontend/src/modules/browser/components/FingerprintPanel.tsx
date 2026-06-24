@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, RefreshCw, Wand2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, RefreshCw, Wand2, Sparkles } from 'lucide-react'
 import { ConfirmModal, FormItem, Input, Select, Textarea } from '../../../shared/components'
 import {
   type FingerprintConfig,
@@ -10,6 +10,7 @@ import {
   randomFingerprintSeed,
   serialize,
 } from '../utils/fingerprintSerializer'
+import { generateSmartFingerprint } from '../utils/fingerprintGenerator'
 
 interface FingerprintPanelProps {
   value: string[]
@@ -82,6 +83,19 @@ const WEBGL_VENDOR_OPTIONS = [
   { value: 'NVIDIA', label: 'NVIDIA' },
   { value: 'AMD', label: 'AMD' },
   { value: 'Apple', label: 'Apple' },
+]
+
+const WEBGL_STRATEGY_OPTIONS = [
+  { value: 'auto', label: '自动混淆（推荐）' },
+  { value: 'real', label: '使用真实硬件' },
+  { value: 'custom', label: '自定义（已废弃）' },
+]
+
+const SMART_GENERATE_SCENARIO_OPTIONS = [
+  { value: 'random', label: '🎲 随机生成' },
+  { value: 'office', label: '💼 办公场景（中低配）' },
+  { value: 'home', label: '🏠 家用场景（均衡）' },
+  { value: 'gaming', label: '🎮 游戏场景（高配）' },
 ]
 
 const WEBGL_RENDERER_OPTIONS: Record<string, { value: string; label: string }[]> = {
@@ -176,6 +190,20 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
   const [, setCustomRenderer] = useState('')
   const [confirmSeedOpen, setConfirmSeedOpen] = useState(false)
 
+  // 检测当前 WebGL 策略
+  const getWebGLStrategy = (): string => {
+    if (config.disableSpoofing?.includes('gpu')) {
+      return 'real'
+    } else if (config.webglVendor || config.webglRenderer) {
+      return 'custom'
+    }
+    return 'auto'
+  }
+
+  const [webglStrategy, setWebglStrategy] = useState<string>(() => getWebGLStrategy())
+  const [smartGenerateOpen, setSmartGenerateOpen] = useState(false)
+  const [smartScenario, setSmartScenario] = useState<'random' | 'office' | 'home' | 'gaming'>('random')
+
   useEffect(() => {
     setConfig(deserialize(value))
   }, [value.join('\n')])
@@ -205,6 +233,49 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
     const parsed = deserialize(args)
     setConfig(parsed)
     onChange(serialize(parsed))
+  }
+
+  const handleWebGLStrategyChange = (strategy: string) => {
+    setWebglStrategy(strategy)
+
+    if (strategy === 'auto') {
+      // 自动混淆：移除 GPU 禁用标记和自定义 vendor/renderer
+      const newDisableSpoofing = (config.disableSpoofing || []).filter(s => s !== 'gpu')
+      update({
+        disableSpoofing: newDisableSpoofing.length > 0 ? newDisableSpoofing : undefined,
+        webglVendor: undefined,
+        webglRenderer: undefined,
+      })
+    } else if (strategy === 'real') {
+      // 使用真实硬件：添加 GPU 到禁用列表
+      const newDisableSpoofing = [...new Set([...(config.disableSpoofing || []), 'gpu'])]
+      update({
+        disableSpoofing: newDisableSpoofing,
+        webglVendor: undefined,
+        webglRenderer: undefined,
+      })
+    }
+    // strategy === 'custom' 时保持 webglVendor/webglRenderer 不变
+  }
+
+  const handleSmartGenerate = () => {
+    // TODO: 从代理设置中获取国家代码和时区
+    // 这里先使用默认值，后续可以集成代理信息
+    const generated = generateSmartFingerprint({
+      scenario: smartScenario,
+      // proxyCountry: 从代理获取
+      // proxyTimezone: 从代理获取
+    })
+
+    // 保留未知参数
+    const next: FingerprintConfig = {
+      ...generated,
+      unknownArgs: config.unknownArgs,
+    }
+
+    setConfig(next)
+    onChange(serialize(next))
+    setSmartGenerateOpen(false)
   }
 
   const rendererOptions = config.webglVendor
@@ -273,6 +344,46 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
         <span className="text-xs text-[var(--color-text-muted)] shrink-0">选择后覆盖当前配置</span>
       </div>
 
+      {/* 智能生成 */}
+      <div className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <span className="text-sm font-medium text-purple-900 dark:text-purple-100">智能生成指纹</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSmartGenerateOpen(!smartGenerateOpen)}
+            className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+          >
+            {smartGenerateOpen ? '收起' : '展开'}
+          </button>
+        </div>
+
+        {smartGenerateOpen && (
+          <div className="space-y-3 mt-3">
+            <p className="text-xs text-purple-800 dark:text-purple-200">
+              根据统计学数据智能生成合理的指纹配置，包括浏览器、平台、分辨率、硬件配置等，确保配置真实可信。
+            </p>
+            <FormItem label="生成场景">
+              <Select
+                value={smartScenario}
+                onChange={e => setSmartScenario(e.target.value as any)}
+                options={SMART_GENERATE_SCENARIO_OPTIONS}
+              />
+            </FormItem>
+            <button
+              type="button"
+              onClick={handleSmartGenerate}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-md hover:shadow-lg"
+            >
+              <Sparkles className="w-4 h-4" />
+              立即生成
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* 基础身份 */}
       <div>
         <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2 uppercase tracking-wide">基础身份</p>
@@ -294,6 +405,9 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
             )} />
           </FormItem>
         </div>
+        <p className="text-xs text-[var(--color-text-muted)] mt-2">
+          语言与时区留空（不设置）时，已有代理出口检测缓存会自动补齐相应语言/时区；无缓存时会后台检测代理出口 IP，下次启动生效。需固定值时再手动选择。
+        </p>
       </div>
 
       {/* 屏幕与硬件 */}
@@ -330,45 +444,72 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
       {/* 渲染指纹 */}
       <div>
         <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2 uppercase tracking-wide">渲染指纹</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormItem label="WebGL 供应商">
+
+        {/* WebGL 策略选择 */}
+        <div className="mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+          <FormItem label="WebGL 指纹策略">
             <Select
-              value={config.webglVendor ?? ''}
-              onChange={e => update({ webglVendor: e.target.value || undefined, webglRenderer: undefined })}
-              options={WEBGL_VENDOR_OPTIONS}
+              value={webglStrategy}
+              onChange={e => handleWebGLStrategyChange(e.target.value)}
+              options={WEBGL_STRATEGY_OPTIONS}
             />
           </FormItem>
-          <FormItem label="WebGL 渲染器">
-            {isCustomRenderer ? (
-              <Input
-                value={config.webglRenderer ?? ''}
-                onChange={e => update({ webglRenderer: e.target.value || undefined })}
-                placeholder="自定义渲染器名称"
-              />
-            ) : (
-              <Select
-                value={config.webglRenderer ?? ''}
-                onChange={e => {
-                  if (e.target.value === 'custom') {
-                    setCustomRenderer('')
-                    update({ webglRenderer: undefined })
-                  } else {
-                    update({ webglRenderer: e.target.value || undefined })
-                  }
-                }}
-                options={rendererOptions}
-                disabled={!config.webglVendor}
-              />
+          <div className="mt-2 text-xs text-[var(--color-text-muted)] space-y-1">
+            {webglStrategy === 'auto' && (
+              <p>✅ <strong>自动混淆（推荐）</strong>：内核基于指纹种子自动生成一致的 Canvas/Audio/WebGL 指纹，所有指纹特征相互匹配，不会被检测为异常。</p>
             )}
-          </FormItem>
-          <FormItem label="Canvas 噪声">
+            {webglStrategy === 'real' && (
+              <p>✅ <strong>使用真实硬件</strong>：禁用 GPU 指纹混淆，使用本机真实 GPU 信息。适合单机多账号场景，但所有实例将共享相同的 GPU 指纹。</p>
+            )}
+            {webglStrategy === 'custom' && (
+              <p>⚠️ <strong>自定义（已废弃）</strong>：Chrome 144+ 已移除自定义 GPU 参数支持。如果使用此选项，设置的 vendor/renderer 会被内核忽略，可能导致指纹不一致被检测为异常。</p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {webglStrategy === 'custom' && (
+            <>
+              <FormItem label="WebGL 供应商（已废弃）">
+                <Select
+                  value={config.webglVendor ?? ''}
+                  onChange={e => update({ webglVendor: e.target.value || undefined, webglRenderer: undefined })}
+                  options={WEBGL_VENDOR_OPTIONS}
+                />
+              </FormItem>
+              <FormItem label="WebGL 渲染器（已废弃）">
+                {isCustomRenderer ? (
+                  <Input
+                    value={config.webglRenderer ?? ''}
+                    onChange={e => update({ webglRenderer: e.target.value || undefined })}
+                    placeholder="自定义渲染器名称"
+                  />
+                ) : (
+                  <Select
+                    value={config.webglRenderer ?? ''}
+                    onChange={e => {
+                      if (e.target.value === 'custom') {
+                        setCustomRenderer('')
+                        update({ webglRenderer: undefined })
+                      } else {
+                        update({ webglRenderer: e.target.value || undefined })
+                      }
+                    }}
+                    options={rendererOptions}
+                    disabled={!config.webglVendor}
+                  />
+                )}
+              </FormItem>
+            </>
+          )}
+          <FormItem label="Canvas 噪声（已废弃）">
             <Select
               value={config.canvasNoise === undefined ? '' : String(config.canvasNoise)}
               onChange={e => { const v = e.target.value; update({ canvasNoise: v === '' ? undefined : v === 'true' }) }}
               options={BOOL_OPTIONS}
             />
           </FormItem>
-          <FormItem label="Audio 噪声">
+          <FormItem label="Audio 噪声（已废弃）">
             <Select
               value={config.audioNoise === undefined ? '' : String(config.audioNoise)}
               onChange={e => { const v = e.target.value; update({ audioNoise: v === '' ? undefined : v === 'true' }) }}
@@ -376,6 +517,9 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
             />
           </FormItem>
         </div>
+        <p className="text-xs text-[var(--color-text-muted)] mt-2">
+          Chrome 144+ 内核已内置自动混淆，Canvas/Audio/WebGL 噪声由 --fingerprint 种子统一控制。手动设置的 Canvas/Audio/WebGL 参数已被废弃。
+        </p>
       </div>
 
       {/* 网络与隐私 */}

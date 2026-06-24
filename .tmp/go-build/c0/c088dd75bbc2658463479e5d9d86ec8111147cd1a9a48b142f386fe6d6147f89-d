@@ -1,0 +1,14 @@
+./galois.go
+./galois_amd64.go
+./galois_gen_amd64.go
+./galois_gen_switch_amd64.go
+./inversion_tree.go
+./leopard.go
+./leopard8.go
+./matrix.go
+./options.go
+./reedsolomon.go
+./streaming.go
+./unsafe.go
+./galois_amd64.s
+./galois_gen_amd64.s

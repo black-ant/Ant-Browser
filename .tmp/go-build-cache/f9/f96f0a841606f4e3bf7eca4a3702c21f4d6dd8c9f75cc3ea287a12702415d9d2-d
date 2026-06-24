@@ -1,0 +1,5 @@
+./auth.go
+./halfpipe.go
+./masker.go
+./pathroot.go
+./tunnel.go

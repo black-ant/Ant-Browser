@@ -471,7 +471,19 @@ function detectImportCandidates(raw: string): ImportCandidate[] {
 }
 
 function buildImportPreview(candidates: ImportCandidate[], groupName: string): ProxyDisplayInfo[] {
-  return candidates.map((candidate, index) => {
+  // 去重逻辑：基于 proxyConfig 去重（相同配置视为重复）
+  const seen = new Map<string, ImportCandidate>()
+  const uniqueCandidates: ImportCandidate[] = []
+
+  for (const candidate of candidates) {
+    const normalizedConfig = candidate.proxyConfig.trim()
+    if (!seen.has(normalizedConfig)) {
+      seen.set(normalizedConfig, candidate)
+      uniqueCandidates.push(candidate)
+    }
+  }
+
+  return uniqueCandidates.map((candidate, index) => {
     const info = parseProxyInfo(candidate.proxyConfig)
     return {
       proxyId: `preview-${index}`,
@@ -1935,7 +1947,7 @@ export function ProxyPoolPage() {
               variant={importMode === 'direct' ? undefined : 'secondary'}
               onClick={() => handleImportModeChange('direct')}
             >
-              HTTP / SOCKS5（测试中）
+              HTTP / SOCKS5
             </Button>
             <Button
               variant={importMode === 'chain' ? undefined : 'secondary'}

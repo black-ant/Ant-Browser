@@ -2,8 +2,26 @@ package cdp
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
+
+const (
+	maxResponseBodySize = 10 * 1024 * 1024  // 10MB 单个响应体大小限制
+	maxTotalHARSize     = 50 * 1024 * 1024  // 50MB HAR总大小限制
+)
+
+// 敏感HTTP头（导出HAR时需要清理）
+var sensitiveHeaders = map[string]bool{
+	"authorization":  true,
+	"cookie":         true,
+	"set-cookie":     true,
+	"proxy-authorization": true,
+	"www-authenticate": true,
+	"x-api-key":      true,
+	"x-auth-token":   true,
+}
 
 // HAR HAR格式根结构
 type HAR struct {
@@ -12,11 +30,11 @@ type HAR struct {
 
 // HARLog HAR日志
 type HARLog struct {
-	Version string      `json:"version"`
-	Creator HARCreator  `json:"creator"`
-	Browser HARBrowser  `json:"browser,omitempty"`
-	Pages   []HARPage   `json:"pages"`
-	Entries []HAREntry  `json:"entries"`
+	Version string     `json:"version"`
+	Creator HARCreator `json:"creator"`
+	Browser HARBrowser `json:"browser,omitempty"`
+	Pages   []HARPage  `json:"pages"`
+	Entries []HAREntry `json:"entries"`
 }
 
 // HARCreator 创建者信息
@@ -33,10 +51,10 @@ type HARBrowser struct {
 
 // HARPage 页面信息
 type HARPage struct {
-	StartedDateTime string            `json:"startedDateTime"`
-	ID              string            `json:"id"`
-	Title           string            `json:"title"`
-	PageTimings     HARPageTimings    `json:"pageTimings"`
+	StartedDateTime string         `json:"startedDateTime"`
+	ID              string         `json:"id"`
+	Title           string         `json:"title"`
+	PageTimings     HARPageTimings `json:"pageTimings"`
 }
 
 // HARPageTimings 页面时间
@@ -108,9 +126,9 @@ type HARCookie struct {
 
 // HARPostData POST数据
 type HARPostData struct {
-	MimeType string      `json:"mimeType"`
-	Params   []HARParam  `json:"params,omitempty"`
-	Text     string      `json:"text,omitempty"`
+	MimeType string     `json:"mimeType"`
+	Params   []HARParam `json:"params,omitempty"`
+	Text     string     `json:"text,omitempty"`
 }
 
 // HARContent 内容
@@ -147,7 +165,7 @@ type HARTimings struct {
 	SSL     float64 `json:"ssl,omitempty"`
 }
 
-// ExportHAR 导出HAR格式
+// ExportHAR 导出HAR格式（带大小限制和敏感头清理）
 func (s *CDPSession) ExportHAR() ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -171,21 +189,42 @@ func (s *CDPSession) ExportHAR() ([]byte, error) {
 	// 添加一个默认页面
 	if len(s.networkRequests) > 0 {
 		firstReq := s.networkRequests[0]
-		har.Log.Pages = append(har.Log.Pages, HARPage{
-			StartedDateTime: formatTimestamp(firstReq.Timestamp),
-			ID:              "page_1",
-			Title:           "Captured Traffic",
-			PageTimings: HARPageTimings{
-				OnContentLoad: -1,
-				OnLoad:        -1,
-			},
-		})
+		if firstReq != nil {
+			har.Log.Pages = append(har.Log.Pages, HARPage{
+				StartedDateTime: formatTimestamp(firstReq.Timestamp),
+				ID:              "page_1",
+				Title:           "Captured Traffic",
+				PageTimings: HARPageTimings{
+					OnContentLoad: -1,
+					OnLoad:        -1,
+				},
+			})
+		}
 	}
 
-	// 转换所有请求
+	// 转换所有请求，带大小限制
+	var totalSize int64
 	for _, req := range s.networkRequests {
-		entry := s.convertToHAREntry(&req)
-		har.Log.Entries = append(har.Log.Entries, entry)
+		if req != nil {
+			// 检查单个响应体大小
+			if len(req.ResponseBody) > maxResponseBodySize {
+				// 截断过大的响应体
+				truncatedReq := *req
+				truncatedReq.ResponseBody = fmt.Sprintf("[Response body truncated: %d bytes > %d bytes limit]",
+					len(req.ResponseBody), maxResponseBodySize)
+				entry := s.convertToHAREntry(&truncatedReq)
+				har.Log.Entries = append(har.Log.Entries, entry)
+			} else {
+				entry := s.convertToHAREntry(req)
+				har.Log.Entries = append(har.Log.Entries, entry)
+			}
+
+			// 累计大小检查
+			totalSize += int64(len(req.ResponseBody) + len(req.RequestBody))
+			if totalSize > maxTotalHARSize {
+				return nil, fmt.Errorf("HAR导出失败：总大小超过限制 (%d bytes > %d bytes)", totalSize, maxTotalHARSize)
+			}
+		}
 	}
 
 	return json.MarshalIndent(har, "", "  ")
@@ -209,14 +248,22 @@ func (s *CDPSession) convertToHAREntry(req *NetworkRequest) HAREntry {
 	return entry
 }
 
-// convertToHARRequest 转换为HAR请求
+// convertToHARRequest 转换为HAR请求（清理敏感头）
 func (s *CDPSession) convertToHARRequest(req *NetworkRequest) HARRequest {
 	headers := make([]HARHeader, 0, len(req.RequestHeaders))
 	for name, value := range req.RequestHeaders {
-		headers = append(headers, HARHeader{
-			Name:  name,
-			Value: value,
-		})
+		// 清理敏感HTTP头
+		if isSensitiveHeader(name) {
+			headers = append(headers, HARHeader{
+				Name:  name,
+				Value: "[REDACTED]",
+			})
+		} else {
+			headers = append(headers, HARHeader{
+				Name:  name,
+				Value: value,
+			})
+		}
 	}
 
 	harReq := HARRequest{
@@ -240,14 +287,22 @@ func (s *CDPSession) convertToHARRequest(req *NetworkRequest) HARRequest {
 	return harReq
 }
 
-// convertToHARResponse 转换为HAR响应
+// convertToHARResponse 转换为HAR响应（清理敏感头）
 func (s *CDPSession) convertToHARResponse(req *NetworkRequest) HARResponse {
 	headers := make([]HARHeader, 0, len(req.ResponseHeaders))
 	for name, value := range req.ResponseHeaders {
-		headers = append(headers, HARHeader{
-			Name:  name,
-			Value: value,
-		})
+		// 清理敏感HTTP头
+		if isSensitiveHeader(name) {
+			headers = append(headers, HARHeader{
+				Name:  name,
+				Value: "[REDACTED]",
+			})
+		} else {
+			headers = append(headers, HARHeader{
+				Name:  name,
+				Value: value,
+			})
+		}
 	}
 
 	return HARResponse{
@@ -265,6 +320,11 @@ func (s *CDPSession) convertToHARResponse(req *NetworkRequest) HARResponse {
 		HeadersSize: -1,
 		BodySize:    req.Size,
 	}
+}
+
+// isSensitiveHeader 检查是否为敏感HTTP头
+func isSensitiveHeader(name string) bool {
+	return sensitiveHeaders[strings.ToLower(name)]
 }
 
 // formatTimestamp 格式化时间戳

@@ -53,6 +53,13 @@ func (a *App) stopRuntimeServices() {
 			a.launchServer = nil
 		}
 
+		// 关闭所有 CDP sessions
+		if a.cdpManager != nil {
+			for _, sessionID := range a.cdpManager.ListSessions() {
+				_ = a.cdpManager.CloseSession(sessionID)
+			}
+		}
+
 		if err := killResidualRuntimeProcesses(a.appRoot); err != nil {
 			log.Error("退出前清理残留进程失败", logger.F("error", err.Error()))
 		}

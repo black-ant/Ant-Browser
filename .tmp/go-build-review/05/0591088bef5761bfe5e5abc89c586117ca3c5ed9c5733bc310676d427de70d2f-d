@@ -1,0 +1,17 @@
+./autotune.go
+./bufferpool.go
+./clear_go121.go
+./crypt.go
+./entropy.go
+./fec.go
+./kcp.go
+./kcp_trace_off.go
+./pkg.go
+./platform_generic.go
+./readloop.go
+./readloop_generic.go
+./ringbuffer.go
+./sess.go
+./snmp.go
+./tx.go
+./tx_generic.go

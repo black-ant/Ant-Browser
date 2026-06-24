@@ -1,0 +1,7 @@
+./chacha.go
+./chacha_amd64.go
+./chacha_generic.go
+./chachaAVX2_amd64.s
+./chacha_amd64.s
+./const.s
+./macro.s

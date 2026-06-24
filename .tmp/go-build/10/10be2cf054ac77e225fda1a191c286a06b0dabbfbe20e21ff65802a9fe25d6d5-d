@@ -1,0 +1,9 @@
+./dao_prop_test.go
+./server_auth_test.go
+./server_params_test.go
+./server_profile_create_test.go
+./server_profile_manage_test.go
+./server_prop_test.go
+./server_proxy_test.go
+./server_selector_test.go
+./service_setcode_test.go

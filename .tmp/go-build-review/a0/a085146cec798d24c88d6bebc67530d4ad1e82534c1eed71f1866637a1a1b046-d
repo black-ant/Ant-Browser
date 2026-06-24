@@ -1,0 +1,15 @@
+./check.go
+./cipher.go
+./dialer.go
+./dialer_tls_go18.go
+./doc.go
+./errors.go
+./frame.go
+./hijack_go120.go
+./http.go
+./nonce.go
+./read.go
+./server.go
+./util.go
+./util_unsafe.go
+./write.go

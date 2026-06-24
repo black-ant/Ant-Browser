@@ -1,6 +1,9 @@
 /* 引入主题样式 - 必须在最前面 */
 @import './shared/theme/themes/index.css';
 
+/* 引入工作台风格增强 */
+@import './shared/theme/workstation.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

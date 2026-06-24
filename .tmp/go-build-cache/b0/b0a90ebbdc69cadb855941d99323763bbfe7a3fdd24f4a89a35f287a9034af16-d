@@ -1,0 +1,13 @@
+# test log
+getenv GOTMPDIR
+getenv GOTMPDIR
+getenv GOTMPDIR
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestLoadPreservesExplicitConfig3388062651\001\config.yaml
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestLoadBackfillsLegacyConfig66588549\001\config.yaml
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestLoadMigratesLegacyRootLogPath543778207\001\config.yaml
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestLoadBackfillsLegacyConfig66588549\001\config.yaml
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestLoadPreservesExplicitConfig3388062651\001\config.yaml
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestLoadMigratesLegacyRootLogPath543778207\001\config.yaml
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp

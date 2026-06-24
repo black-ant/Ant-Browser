@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, CheckCircle, ChevronRight, ChevronUp, Copy, Edit2, ExternalLink, FileText, Key, Play, Plus, RefreshCw, RotateCcw, Settings, Sliders, Square, Star, Trash2, XCircle, Gift, LayoutGrid, List } from 'lucide-react'
-import { Badge, Button, Card, FormItem, Input, Modal, StatCard, Table, Textarea, toast, useConfirm } from '../../../shared/components'
+import { CheckCircle, Edit2, ExternalLink, FileText, Plus, Sliders, Star, Trash2, XCircle, Gift } from 'lucide-react'
+import { Button, Card, FormItem, Input, Modal, Table, Textarea, toast, useConfirm } from '../../../shared/components'
 import { fetchDashboardStats, redeemCDKey, redeemGithubStar, reloadConfig } from '../../dashboard/api'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserCore, BrowserCoreInput, BrowserProfile, BrowserProxy, BrowserSettings, BrowserGroupWithCount } from '../types'
@@ -12,11 +12,12 @@ import { EventsOn, BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 import { PROJECT_GITHUB_URL } from '../../../config/links'
 import { resolveActionErrorMessage, resolveActionFeedback } from '../utils/actionErrors'
 import { runWithConcurrency } from '../utils/concurrency'
-import { BatchToolbar } from './browser-list/BatchToolbar'
-import { resolveProfileStatus, formatTime } from './browser-list/helpers'
-import { LaunchCodeCell } from './browser-list/LaunchCodeCell'
-import { KeywordInlineRow } from './browser-list/KeywordInlineRow'
+import { resolveProfileStatus } from './browser-list/helpers'
 import { ProfileCard } from './browser-list/ProfileCard'
+import { StatusOverview } from './browser-list/StatusOverview'
+import { EnhancedToolbar } from './browser-list/EnhancedToolbar'
+import { EnhancedBatchToolbar } from './browser-list/EnhancedBatchToolbar'
+import { createEnhancedColumns } from './browser-list/enhancedColumns'
 import {
   copyBrowserProfile,
   deleteBrowserCore,
@@ -67,9 +68,11 @@ export function BrowserListPage() {
     } catch { /* ignore */ }
     return EMPTY_FILTERS
   })
-  const [headerCollapsed, setHeaderCollapsed] = useState(() => {
-    return localStorage.getItem('browser:headerCollapsed') === 'true'
-  })
+
+  // 新增：搜索和筛选面板状态
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   // 持久化筛选状态
   useEffect(() => {
@@ -80,10 +83,6 @@ export function BrowserListPage() {
   useEffect(() => {
     localStorage.setItem('browser:viewMode', viewMode)
   }, [viewMode])
-
-  useEffect(() => {
-    localStorage.setItem('browser:headerCollapsed', String(headerCollapsed))
-  }, [headerCollapsed])
 
   // 代理不支持弹窗
   const [proxyErrorModal, setProxyErrorModal] = useState(false)
@@ -313,6 +312,22 @@ export function BrowserListPage() {
   }, [])
 
   const runningCount = useMemo(() => profiles.filter(p => p.running).length, [profiles])
+
+  // 状态统计
+  const statusStats = useMemo(() => {
+    const starting = Array.from(startingIds).length
+    const error = profiles.filter(p => p.lastError).length
+    const proxyError = profiles.filter(p => p.runtimeWarning && p.runtimeWarning.includes('代理')).length
+
+    return {
+      total: profiles.length,
+      running: runningCount,
+      starting,
+      error,
+      proxyError,
+    }
+  }, [profiles, runningCount, startingIds])
+
   const allTags = useMemo(() => {
     const set = new Set<string>()
     profiles.forEach(p => p.tags?.forEach(t => set.add(t)))
@@ -371,7 +386,21 @@ export function BrowserListPage() {
       }
       return 0
     }
-    return profiles.filter(p => {
+
+    let result = profiles
+
+    // 搜索过滤
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(p =>
+        p.profileName.toLowerCase().includes(query) ||
+        p.tags?.some(tag => tag.toLowerCase().includes(query)) ||
+        p.keywords?.some(kw => kw.toLowerCase().includes(query))
+      )
+    }
+
+    // 原有筛选逻辑
+    result = result.filter(p => {
       // 分组筛选
       if (filters.groupId === '__ungrouped__' && p.groupId) return false
       if (filters.groupId && filters.groupId !== '__ungrouped__' && p.groupId !== filters.groupId) return false
@@ -392,8 +421,19 @@ export function BrowserListPage() {
         if (!hit) return false
       }
       return true
-    }).sort((a, b) => naturalCompare(a.profileName, b.profileName))
-  }, [profiles, filters, defaultCore, cores])
+    })
+
+    return result.sort((a, b) => naturalCompare(a.profileName, b.profileName))
+  }, [profiles, searchQuery, filters, defaultCore, cores])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await loadProfiles()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const handleStart = async (profileId: string) => {
     const profile = profiles.find(p => p.profileId === profileId)
@@ -702,118 +742,27 @@ export function BrowserListPage() {
     await handleClaimStarGift()
   }
 
-  const columns: TableColumn<BrowserProfile>[] = [
-    {
-      key: 'selection',
-      title: (
-        <input
-          type="checkbox"
-          className="w-4 h-4 rounded cursor-pointer accent-[var(--color-accent)]"
-          checked={selectedIds.size > 0 && selectedIds.size === filteredProfiles.length}
-          ref={(input) => { if (input) input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProfiles.length }}
-          onChange={(e) => {
-            if (e.target.checked) handleSelectAll()
-            else handleDeselectAll()
-          }}
-        />
-      ),
-      width: 40,
-      render: (_, record) => (
-        <input
-          type="checkbox"
-          className="w-4 h-4 rounded cursor-pointer accent-[var(--color-accent)]"
-          checked={selectedIds.has(record.profileId)}
-          onChange={() => toggleSelect(record.profileId)}
-        />
-      ),
-    },
-    {
-      key: 'profileName',
-      title: '实例名称',
-      render: (value, record) => (
-        <div className="flex flex-col gap-1">
-          <Link className="text-[var(--color-accent)] text-sm font-medium hover:underline" to={`/browser/detail/${record.profileId}`}>
-            {value}
-          </Link>
-          {record.tags && record.tags.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {record.tags.map(tag => <Badge variant="default" key={tag}>{tag}</Badge>)}
-            </div>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'running',
-      title: '状态',
-      width: 100,
-      render: (_, record) => {
-        const status = getProfileStatus(record)
-        return <Badge variant={status.variant} dot>{status.label}</Badge>
-      },
-    },
-    {
-      key: 'coreId',
-      title: '核心',
-      render: (_, record) => {
-        return <span className="text-xs">{getProfileCoreLabel(record)}</span>
-      },
-    },
-    {
-      key: 'proxyId',
-      title: '代理',
-      render: (value) => {
-        const proxy = proxies.find(p => p.proxyId === value)
-        return <span className="text-xs">{proxy ? proxy.proxyName : value || '-'}</span>
-      },
-    },
-    {
-      key: 'launchCode',
-      title: '快捷打开码',
-      render: (value, record) => <LaunchCodeCell profileId={record.profileId} code={value || ''} onRefresh={loadProfiles} />,
-    },
-    {
-      key: 'keywords',
-      title: '关键字',
-      width: 200,
-      render: (value) => <KeywordInlineRow keywords={value || []} />,
-    },
-    {
-      key: 'updatedAt',
-      title: '上次更新',
-      render: formatTime,
-    },
-    {
-      key: 'actions',
-      title: '操作',
-      align: 'right',
-      render: (_, record) => {
-        const isStarting = isProfileStarting(record.profileId)
-        const isStopping = isProfileStopping(record.profileId)
-        const isBusy = isProfileBusy(record.profileId)
-
-        return (
-          <div className="flex justify-end gap-1">
-            {record.running ? (
-              <Button size="sm" variant="secondary" onClick={() => handleStop(record.profileId)} title="停止" loading={isStopping}>
-                {!isStopping && <Square className="w-3.5 h-3.5" />}
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => handleStart(record.profileId)} title="启动" loading={isStarting}>
-                {!isStarting && <Play className="w-3.5 h-3.5 fill-current" />}
-              </Button>
-            )}
-            <Button size="sm" variant="ghost" onClick={() => handleRestart(record.profileId)} title="重启" disabled={isBusy}><RotateCcw className="w-3.5 h-3.5" /></Button>
-            <Button size="sm" variant="ghost" onClick={() => openKwModal(record)} title="关键字" disabled={isBusy}><Key className="w-3.5 h-3.5" /></Button>
-            <Link to={`/browser/edit/${record.profileId}`}><Button size="sm" variant="ghost" title="配置" disabled={isBusy}><Settings className="w-3.5 h-3.5" /></Button></Link>
-            <Button size="sm" variant="ghost" onClick={() => openCopyModal(record)} title="克隆" disabled={isBusy}><Copy className="w-3.5 h-3.5" /></Button>
-            <Button size="sm" variant="ghost" onClick={() => handleDelete(record.profileId)} title="删除" disabled={isBusy}><Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
-          </div>
-        )
-      },
-    },
-  ]
-
+  // 增强的表格列配置
+  const enhancedColumns = useMemo(() => createEnhancedColumns({
+    proxies,
+    getProfileCoreLabel,
+    getProfileStatus,
+    isProfileStarting,
+    isProfileStopping,
+    isProfileBusy,
+    onStart: handleStart,
+    onStop: handleStop,
+    onRestart: handleRestart,
+    onKeywords: openKwModal,
+    onCopy: openCopyModal,
+    onDelete: handleDelete,
+    onRefresh: loadProfiles,
+    onToggleSelect: toggleSelect,
+    selectedIds,
+    onSelectAll: handleSelectAll,
+    onDeselectAll: handleDeselectAll,
+    totalCount: filteredProfiles.length,
+  }), [proxies, selectedIds, filteredProfiles.length, startingIds, stoppingIds])
 
   const coreColumns: TableColumn<BrowserCore>[] = [
     { key: 'coreName', title: '名称' },
@@ -840,54 +789,58 @@ export function BrowserListPage() {
   ]
 
   return (
-    <div className="overflow-auto p-5 space-y-5 animate-fade-in h-full">
+    <div className="flex flex-col h-screen bg-[var(--color-bg-base)]">
       {confirmDialog}
-      {/* 页头 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">实例列表</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">
-            当前配置总数 {profiles.length}
-            {filteredProfiles.length !== profiles.length && <span className="ml-1 text-[var(--color-accent)]">（已筛选 {filteredProfiles.length}）</span>}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setHeaderCollapsed(prev => !prev)}>{headerCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}{headerCollapsed ? '展开面板' : '收起面板'}</Button>
-          <Button variant="secondary" size="sm" onClick={() => { void loadProfiles() }}><RefreshCw className="w-4 h-4" />刷新</Button>
-          <Button variant="secondary" size="sm" onClick={handleOpenSettings}><Sliders className="w-4 h-4" />基础配置</Button>
-          <Button variant="secondary" size="sm" onClick={() => { setCdKey(''); setExpandModalOpen(true); loadQuota() }} className="text-[var(--color-primary)] border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10">
-            <Gift className="w-4 h-4" />扩容实例
-          </Button>
-          <div className="flex items-center bg-[var(--color-bg-secondary)] rounded-md border border-[var(--color-border-default)] p-0.5 ml-2">
-            <button
-              className={`p-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors ${viewMode === 'card' ? 'bg-[var(--color-bg-surface)] shadow-sm text-[var(--color-accent)]' : ''}`}
-              onClick={() => setViewMode('card')}
-              title="卡片视图"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              className={`p-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors ${viewMode === 'table' ? 'bg-[var(--color-bg-surface)] shadow-sm text-[var(--color-accent)]' : ''}`}
-              onClick={() => setViewMode('table')}
-              title="表格视图"
-            >
-              <List className="w-4 h-4" />
-            </button>
+
+      {/* 顶部标题栏 */}
+      <header className="flex-shrink-0 px-6 py-4 bg-[var(--color-bg-surface)] border-b border-[var(--color-border-default)]">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">实例管理</h1>
+            <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+              共 {profiles.length} 个实例
+              {filteredProfiles.length !== profiles.length && (
+                <span className="text-[var(--color-accent)]"> · 筛选后 {filteredProfiles.length} 个</span>
+              )}
+            </p>
           </div>
-          <span className="w-px h-4 bg-[var(--color-border-muted)] mx-1 self-center"></span>
-          <Link to="/browser/edit/new"><Button size="sm"><Play className="w-4 h-4" />新建配置</Button></Link>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={handleOpenSettings}>
+              <Sliders className="w-4 h-4" />
+              基础配置
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setCdKey(''); setExpandModalOpen(true); loadQuota() }}
+            >
+              <Gift className="w-4 h-4" />
+              扩容
+            </Button>
+          </div>
         </div>
+      </header>
+
+      {/* 状态概览 */}
+      <div className="flex-shrink-0 px-6 py-4 bg-[var(--color-bg-surface)] border-b border-[var(--color-border-default)]">
+        <StatusOverview {...statusStats} />
       </div>
 
-      {/* 可折叠的统计+筛选区 */}
-      {!headerCollapsed && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard title="配置总数" value={`${profiles.length}`} icon={<FileText className="w-5 h-5" />} />
-            <StatCard title="运行中实例" value={`${runningCount}`} icon={<Activity className="w-5 h-5" />} />
-            <StatCard title="停止实例" value={`${profiles.length - runningCount}`} icon={<Square className="w-5 h-5 text-gray-400" />} />
-          </div>
+      {/* 工具栏 */}
+      <EnhancedToolbar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onRefresh={handleRefresh}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        filterActive={filterPanelOpen}
+        onToggleFilter={() => setFilterPanelOpen(prev => !prev)}
+        refreshing={refreshing}
+      />
 
+      {/* 筛选面板（可折叠）*/}
+      {filterPanelOpen && (
+        <div className="flex-shrink-0 px-6 py-4 bg-[var(--color-bg-surface)] border-b border-[var(--color-border-default)] animate-fade-in">
           <InstanceFilterBar
             filters={filters}
             onChange={setFilters}
@@ -896,64 +849,83 @@ export function BrowserListPage() {
             allTags={allTags}
             groups={groups}
           />
-        </>
+        </div>
       )}
 
       {/* 批量操作工具栏 */}
-      <BatchToolbar
-        selectedCount={selectedIds.size}
-        totalCount={filteredProfiles.length}
-        onSelectAll={handleSelectAll}
-        onDeselectAll={handleDeselectAll}
-        onBatchStart={handleBatchStart}
-        onBatchStop={handleBatchStop}
-        onBatchDelete={handleBatchDelete}
-        batchLoading={batchLoading}
-      />
+      {selectedIds.size > 0 && (
+        <div className="flex-shrink-0 px-6 py-3 bg-[var(--color-bg-base)]">
+          <EnhancedBatchToolbar
+            selectedCount={selectedIds.size}
+            totalCount={filteredProfiles.length}
+            onSelectAll={handleSelectAll}
+            onDeselectAll={handleDeselectAll}
+            onBatchStart={handleBatchStart}
+            onBatchStop={handleBatchStop}
+            onBatchDelete={handleBatchDelete}
+            batchLoading={batchLoading}
+          />
+        </div>
+      )}
 
-      <Card padding="none">
-        <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
-          {/* Replace table with Flex column of Cards */}
+      {/* 主内容区 - 表格 */}
+      <main className="flex-1 overflow-hidden">
+        <div className="h-full overflow-auto px-6 py-4">
           {loading ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-3">
-              <div className="w-8 h-8 border-4 border-[var(--color-border-default)] border-t-[var(--color-accent)] rounded-full animate-spin"></div>
-              <p className="text-sm text-[var(--color-text-muted)]">加载中...</p>
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-[var(--color-bg-muted)] flex items-center justify-center">
+                  <div className="w-6 h-6 border-3 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+                </div>
+                <span className="text-sm font-medium text-[var(--color-text-secondary)]">加载中...</span>
+              </div>
             </div>
           ) : filteredProfiles.length === 0 ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center">
-                <FileText className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="text-center">
-                <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">
-                  {profiles.length === 0 ? '还没有浏览器实例' : '没有符合条件的实例'}
-                </h3>
-                <p className="text-sm text-[var(--color-text-muted)] mb-4">
-                  {profiles.length === 0
-                    ? '创建第一个浏览器实例，开始管理多账号环境'
-                    : '试试调整筛选条件或清空筛选'}
-                </p>
-                {profiles.length === 0 ? (
-                  <Link to="/browser/edit/new">
-                    <Button size="sm">
-                      <Plus className="w-4 h-4" />新建实例
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-4 max-w-md text-center">
+                <div className="w-16 h-16 rounded-2xl bg-[var(--color-bg-muted)] flex items-center justify-center">
+                  <FileText className="w-8 h-8 text-[var(--color-text-muted)]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">
+                    {profiles.length === 0 ? '还没有实例' : '未找到匹配的实例'}
+                  </h3>
+                  <p className="text-sm text-[var(--color-text-muted)] mb-4">
+                    {profiles.length === 0
+                      ? '创建第一个浏览器实例开始管理多账号环境'
+                      : '尝试调整搜索或筛选条件'}
+                  </p>
+                  {profiles.length === 0 ? (
+                    <Link to="/browser/create">
+                      <Button>
+                        <Plus className="w-4 h-4" />
+                        新建实例
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={() => { setSearchQuery(''); setFilters(EMPTY_FILTERS) }}
+                    >
+                      <XCircle className="w-4 h-4" />
+                      清空筛选
                     </Button>
-                  </Link>
-                ) : (
-                  <Button size="sm" variant="secondary" onClick={() => setFilters(EMPTY_FILTERS)}>
-                    <XCircle className="w-4 h-4" />清空筛选
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           ) : viewMode === 'table' ? (
-            <Table
-              columns={columns}
-              data={filteredProfiles}
-              rowKey="profileId"
-            />
+            <div className="bg-[var(--color-bg-surface)] rounded-xl border border-[var(--color-border-default)] overflow-hidden">
+              <Table
+                columns={enhancedColumns}
+                data={filteredProfiles}
+                rowKey="profileId"
+                stickyHeader
+                maxHeight="calc(100vh - 400px)"
+              />
+            </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[500px] p-4 items-start content-start">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {filteredProfiles.map((record) => {
                 const core = resolveProfileCore(record)
                 const proxy = proxies.find(p => p.proxyId === record.proxyId)
@@ -982,7 +954,7 @@ export function BrowserListPage() {
             </div>
           )}
         </div>
-      </Card>
+      </main>
 
       {/* 基础配置弹窗 */}
       <Modal open={settingsModalOpen} onClose={() => setSettingsModalOpen(false)} title="基础配置" width="700px"

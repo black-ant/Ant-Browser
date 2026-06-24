@@ -2,12 +2,11 @@ package backend
 
 import (
 	appconfig "ant-chrome/backend/internal/config"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"strings"
-	"time"
 )
 
 // LicenseStatus 授权状态
@@ -139,15 +138,19 @@ func (a *App) GenerateCDKeys(count int) ([]string, error) {
 		return nil, fmt.Errorf("生成数量无效 (1-1000)")
 	}
 
-	rand.Seed(time.Now().UnixNano())
 	var keys []string
 
 	for i := 0; i < count; i++ {
-		// A basic random 16-char string ABCDEFGH-IJKLMNOP...
+		// 使用 crypto/rand 生成随机16字符
 		charset := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 		b := make([]byte, 16)
+		if _, err := rand.Read(b); err != nil {
+			return nil, fmt.Errorf("生成随机数失败: %w", err)
+		}
+
+		// 将随机字节映射到字符集
 		for j := range b {
-			b[j] = charset[rand.Intn(len(charset))]
+			b[j] = charset[int(b[j])%len(charset)]
 		}
 
 		part1 := string(b[0:4])

@@ -1,0 +1,10 @@
+./asm.go
+./asm_amd64.go
+./error.go
+./generic.go
+./generic_const.go
+./lea.go
+./lea_asm.go
+./mode.go
+./asm_amd64_avx2.s
+./asm_amd64_sse2.s

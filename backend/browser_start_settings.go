@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	defaultBrowserStartReadyTimeout = 3 * time.Second
-	defaultBrowserStartStableWindow = 1200 * time.Millisecond
-	defaultBrowserStartMaxAttempts  = 5
+	defaultBrowserStartReadyTimeout  = 3 * time.Second
+	defaultBrowserStartStableWindow  = 1200 * time.Millisecond
+	defaultBrowserStartMaxAttempts   = 5
 	defaultBrowserStartMaxConcurrent = 3
 	minBrowserStartMaxConcurrent     = 1
 	maxBrowserStartMaxConcurrent     = 8

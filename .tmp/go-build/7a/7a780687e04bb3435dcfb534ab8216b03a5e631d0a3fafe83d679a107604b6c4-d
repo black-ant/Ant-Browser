@@ -1,0 +1,4 @@
+./cpuid.go
+./detect_x86.go
+./featureid_string.go
+./cpuid_amd64.s

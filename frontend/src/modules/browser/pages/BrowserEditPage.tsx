@@ -1,13 +1,29 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { FolderOpen, Layers } from 'lucide-react'
+import { FolderOpen, Layers, Package } from 'lucide-react'
 import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Textarea, toast } from '../../../shared/components'
 import type { BrowserCore, BrowserProfileInput, BrowserProxy, BrowserGroup } from '../types'
-import { createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openUserDataDir, updateBrowserProfile } from '../api'
+import {
+  createBrowserProfile,
+  fetchAllTags,
+  fetchBrowserCores,
+  fetchBrowserProfiles,
+  fetchBrowserProxies,
+  fetchBrowserSettings,
+  fetchExtensions,
+  fetchGroups,
+  openUserDataDir,
+  setExtensionProfiles,
+  updateBrowserProfile,
+} from '../api'
+import type { BrowserExtension } from '../api'
 import { FingerprintPanel } from '../components/FingerprintPanel'
+import { randomFingerprintSeed } from '../utils/fingerprintSerializer'
 import { TagInput } from '../components/TagInput'
 import { GroupSelector } from '../components/GroupSelector'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
+import { AccountSelector } from './browser-create-v2/AccountSelector'
+import { ConfigSummary } from './browser-edit/ConfigSummary'
 
 const fallbackLowLaunchArgs = ['--disable-sync', '--no-first-run']
 const BROWSER_LIST_ROUTE = '/browser/list'
@@ -20,6 +36,22 @@ function normalizeLaunchArgs(args: string[]): string[] {
 function resolveDefaultLaunchArgs(args: string[]): string[] {
   const normalized = normalizeLaunchArgs(args)
   return normalized.length > 0 ? normalized : fallbackLowLaunchArgs
+}
+
+function isLoadableExtension(extension: BrowserExtension): boolean {
+  return (
+    extension.enabled !== false &&
+    (extension.sourceType || 'local').toLowerCase() === 'local' &&
+    Boolean(extension.extensionPath?.trim())
+  )
+}
+
+function uniqueProfileIds(profileIds: string[]): string[] {
+  return Array.from(new Set(profileIds.map(id => id.trim()).filter(Boolean)))
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return typeof error === 'string' ? error : (error as Error)?.message || fallback
 }
 
 export function BrowserEditPage() {
@@ -37,10 +69,14 @@ export function BrowserEditPage() {
     tags: [],
     keywords: [],
     groupId: '',
+    accountIds: [],
   })
   const [cores, setCores] = useState<BrowserCore[]>([])
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
   const [groups, setGroups] = useState<BrowserGroup[]>([])
+  const [extensions, setExtensions] = useState<BrowserExtension[]>([])
+  const [selectedExtensionIds, setSelectedExtensionIds] = useState<string[]>([])
+  const [extensionsLoadError, setExtensionsLoadError] = useState('')
   const [launchArgsText, setLaunchArgsText] = useState('')
   const [allTags, setAllTags] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -51,21 +87,34 @@ export function BrowserEditPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [coreList, proxyList, tagList, groupList, settings] = await Promise.all([
+      setExtensionsLoadError('')
+      const [coreList, proxyList, tagList, groupList, settings, extensionList] = await Promise.all([
         fetchBrowserCores(),
         fetchBrowserProxies(),
         fetchAllTags(),
         fetchGroups(),
         fetchBrowserSettings(),
+        fetchExtensions().catch((error) => {
+          setExtensionsLoadError(getErrorMessage(error, '扩展列表加载失败'))
+          return [] as BrowserExtension[]
+        }),
       ])
       const resolvedDefaultLaunchArgs = resolveDefaultLaunchArgs(settings.defaultLaunchArgs || [])
       setCores(coreList)
       setProxies(proxyList)
       setAllTags(tagList)
       setGroups(groupList)
+      setExtensions(extensionList)
 
       if (isCreate) {
         setLaunchArgsText(resolvedDefaultLaunchArgs.join('\n'))
+        setSelectedExtensionIds([])
+        // 新建：预填后端默认指纹（含 WebRTC 防泄露策略）并生成唯一随机种子
+        const defaultFp = normalizeLaunchArgs(settings.defaultFingerprintArgs || [])
+        setFormData(prev => ({
+          ...prev,
+          fingerprintArgs: [...defaultFp, `--fingerprint=${randomFingerprintSeed()}`],
+        }))
         return
       }
       const list = await fetchBrowserProfiles()
@@ -75,6 +124,13 @@ export function BrowserEditPage() {
       const normalizedCoreId = !current.coreId || current.coreId.toLowerCase() === 'default'
         ? ''
         : current.coreId
+      setSelectedExtensionIds(extensionList
+        .filter(extension => (
+          isLoadableExtension(extension) &&
+          (extension.boundProfileIds || []).includes(current.profileId)
+        ))
+        .map(extension => extension.extensionId)
+      )
       setFormData({
         profileName: current.profileName,
         userDataDir: current.userDataDir,
@@ -86,6 +142,7 @@ export function BrowserEditPage() {
         tags: current.tags,
         keywords: current.keywords || [],
         groupId: current.groupId || '',
+        accountIds: current.accountIds || [],
       })
       setLaunchArgsText(currentLaunchArgs.join('\n'))
     }
@@ -97,24 +154,81 @@ export function BrowserEditPage() {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
+  const handleExtensionToggle = (extensionId: string) => {
+    setIsDirty(true)
+    setSelectedExtensionIds(prev => (
+      prev.includes(extensionId)
+        ? prev.filter(id => id !== extensionId)
+        : [...prev, extensionId]
+    ))
+  }
+
+  const persistExtensionBindings = async (profileId: string) => {
+    const selected = new Set(selectedExtensionIds)
+    const loadableExtensions = extensions.filter(isLoadableExtension)
+    const changes = loadableExtensions.flatMap(extension => {
+      const currentProfileIds = uniqueProfileIds(extension.boundProfileIds || [])
+      const isBound = currentProfileIds.includes(profileId)
+      const shouldBind = selected.has(extension.extensionId)
+      if (isBound === shouldBind) return []
+
+      const nextProfileIds = shouldBind
+        ? uniqueProfileIds([...currentProfileIds, profileId])
+        : currentProfileIds.filter(item => item !== profileId)
+
+      return [{ extensionId: extension.extensionId, nextProfileIds }]
+    })
+
+    if (changes.length === 0) return
+
+    await Promise.all(changes.map(change => (
+      setExtensionProfiles(change.extensionId, change.nextProfileIds)
+    )))
+
+    const nextByExtensionId = new Map(changes.map(change => [change.extensionId, change.nextProfileIds]))
+    setExtensions(prev => prev.map(extension => (
+      nextByExtensionId.has(extension.extensionId)
+        ? { ...extension, boundProfileIds: nextByExtensionId.get(extension.extensionId) || [] }
+        : extension
+    )))
+  }
+
   const handleSave = async () => {
     setSaving(true)
+    setSaveError('')
     const payload: BrowserProfileInput = {
       ...formData,
       launchArgs: normalizeLaunchArgs(launchArgsText.split('\n')),
     }
     try {
       if (isCreate) {
-        await createBrowserProfile(payload)
+        const profile = await createBrowserProfile(payload)
+        if (selectedExtensionIds.length > 0) {
+          if (!profile?.profileId) {
+            throw new Error('配置已创建，但未返回实例 ID，无法绑定扩展')
+          }
+          try {
+            await persistExtensionBindings(profile.profileId)
+          } catch (error) {
+            setSaveError(`配置已创建，但扩展绑定失败：${getErrorMessage(error, '更新绑定失败')}`)
+            return
+          }
+        }
         toast.success('配置已创建')
       } else if (id) {
         await updateBrowserProfile(id, payload)
+        try {
+          await persistExtensionBindings(id)
+        } catch (error) {
+          setSaveError(`配置已更新，但扩展绑定失败：${getErrorMessage(error, '更新绑定失败')}`)
+          return
+        }
         toast.success('配置已更新')
       }
       setIsDirty(false)
       navigate(BROWSER_LIST_ROUTE)
     } catch (error: any) {
-      setSaveError(typeof error === 'string' ? error : error?.message || '保存失败')
+      setSaveError(getErrorMessage(error, '保存失败'))
     } finally {
       setSaving(false)
     }
@@ -125,6 +239,10 @@ export function BrowserEditPage() {
   }
 
   const defaultCore = cores.find(c => c.isDefault)
+  const loadableExtensions = extensions.filter(isLoadableExtension)
+  const selectedLoadableExtensionCount = selectedExtensionIds.filter(extensionId => (
+    loadableExtensions.some(extension => extension.extensionId === extensionId)
+  )).length
 
   const handleOpenUserDataDir = async () => {
     if (!formData.userDataDir.trim()) {
@@ -263,6 +381,78 @@ export function BrowserEditPage() {
         onClose={() => setProxyPickerOpen(false)}
       />
 
+      <Card title="账号关联" subtitle="关联平台账号以同步 Cookie">
+        <FormItem label="关联的平台账号">
+          <AccountSelector
+            selectedIds={formData.accountIds || []}
+            onChange={accountIds => handleChange('accountIds', accountIds)}
+          />
+          <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+            💡 提示：关联账号后，可在实例启动时自动导入账号的 Cookie
+          </p>
+        </FormItem>
+      </Card>
+
+      <Card
+        title="启动扩展"
+        subtitle="绑定本地启用扩展"
+        actions={loadableExtensions.length > 0 && (
+          <span className="text-xs text-[var(--color-text-muted)]">
+            已选 {selectedLoadableExtensionCount} / {loadableExtensions.length}
+          </span>
+        )}
+      >
+        <div className="space-y-3">
+          {extensionsLoadError && (
+            <div className="rounded-lg border border-[var(--color-error)]/40 bg-[var(--color-error)]/10 px-3 py-2 text-sm text-[var(--color-error)]">
+              {extensionsLoadError}
+            </div>
+          )}
+
+          {loadableExtensions.length > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {loadableExtensions.map(extension => {
+                const checked = selectedExtensionIds.includes(extension.extensionId)
+                return (
+                  <label
+                    key={extension.extensionId}
+                    className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                      checked
+                        ? 'border-[var(--color-accent)] bg-[var(--color-accent-muted)]'
+                        : 'border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] hover:border-[var(--color-border-strong)]'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => handleExtensionToggle(extension.extensionId)}
+                      className="mt-1 h-4 w-4 accent-[var(--color-accent)]"
+                    />
+                    <Package className={`mt-0.5 h-4 w-4 flex-shrink-0 ${checked ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}`} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-[var(--color-text-primary)] truncate">
+                        {extension.extensionName || '未命名扩展'}
+                      </span>
+                      <span className="block text-xs text-[var(--color-text-muted)] truncate" title={extension.extensionPath}>
+                        {extension.version ? `v${extension.version} · ` : ''}{extension.extensionPath}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+              暂无可加载的本地启用扩展。请先在扩展管理中添加本地解压目录并启用。
+            </div>
+          )}
+
+          <p className="text-xs text-[var(--color-text-muted)]">
+            这里只显示"本地 + 已启用 + 有扩展路径"的扩展
+          </p>
+        </div>
+      </Card>
+
       <Card title="指纹配置" subtitle="配置浏览器指纹参数">
         <FingerprintPanel
           value={formData.fingerprintArgs}
@@ -282,6 +472,16 @@ export function BrowserEditPage() {
             <p className="text-xs text-[var(--color-text-muted)]">这里默认就是轻量参数模板；需要更复杂的参数，直接在此基础上修改。</p>
           )}
         </div>
+      </Card>
+
+      <Card title="配置摘要" subtitle="当前配置的关键信息与风险提示">
+        <ConfigSummary
+          formData={formData}
+          proxy={proxies.find(p => p.proxyId === formData.proxyId)}
+          extensions={extensions}
+          selectedExtensionIds={selectedExtensionIds}
+          accountCount={formData.accountIds?.length || 0}
+        />
       </Card>
 
       <ConfirmModal

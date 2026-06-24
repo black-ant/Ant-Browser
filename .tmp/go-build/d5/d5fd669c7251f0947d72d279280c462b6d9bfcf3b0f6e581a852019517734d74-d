@@ -1,0 +1,7 @@
+./lz4.go
+./options.go
+./options_gen.go
+./reader.go
+./state.go
+./state_gen.go
+./writer.go

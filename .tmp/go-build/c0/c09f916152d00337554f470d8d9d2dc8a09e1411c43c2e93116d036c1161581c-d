@@ -1,0 +1,563 @@
+# test log
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src\a.txt
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst\a.txt
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst\a.txt
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src\a.txt
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst\a.txt
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src\a.txt
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst\a.txt
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst\a.txt
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src
+stat C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\001\src\a.txt
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst\a.txt.tmp
+open C:\Users\Jun\AppData\Local\Temp\TestBackupSyncDirConflictAndOverwrite3924824432\002\dst\a.txt
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestSaveBrowserSettingsPreservesExistingStartTimingWhenOmitted2883370779\001
+open C:\Users\Jun\AppData\Local\Temp\TestSaveBrowserSettingsPreservesExistingStartTimingWhenOmitted2883370779\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestSaveBrowserSettingsAppliesExplicitStartTiming2972992608\001
+open C:\Users\Jun\AppData\Local\Temp\TestSaveBrowserSettingsAppliesExplicitStartTiming2972992608\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp
+getenv PATHEXT
+getenv NoDefaultCurrentDirectoryInExePath
+stat cmd.com
+stat cmd.exe
+stat cmd.bat
+stat cmd.cmd
+stat cmd.vbs
+stat cmd.vbe
+stat cmd.js
+stat cmd.jse
+stat cmd.wsf
+stat cmd.wsh
+stat cmd.msc
+stat cmd.py
+stat cmd.pyw
+stat cmd.cpl
+getenv path
+stat C:\Program Files\Go\bin\cmd.com
+stat C:\Program Files\Go\bin\cmd.exe
+stat C:\Program Files\Go\bin\cmd.bat
+stat C:\Program Files\Go\bin\cmd.cmd
+stat C:\Program Files\Go\bin\cmd.vbs
+stat C:\Program Files\Go\bin\cmd.vbe
+stat C:\Program Files\Go\bin\cmd.js
+stat C:\Program Files\Go\bin\cmd.jse
+stat C:\Program Files\Go\bin\cmd.wsf
+stat C:\Program Files\Go\bin\cmd.wsh
+stat C:\Program Files\Go\bin\cmd.msc
+stat C:\Program Files\Go\bin\cmd.py
+stat C:\Program Files\Go\bin\cmd.pyw
+stat C:\Program Files\Go\bin\cmd.cpl
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.com
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.exe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cmd
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbs
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.js
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.jse
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsf
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsh
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.msc
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.py
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.pyw
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cpl
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Windows\system32\cmd.com
+stat C:\Windows\system32\cmd.exe
+getenv PATHEXT
+open NUL
+open NUL
+open C:\Windows\system32\cmd.exe
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestReloadConfigLoadsFromDisk3364814862\001
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigLoadsFromDisk3364814862\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigLoadsFromDisk3364814862\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigLoadsFromDisk3364814862\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestReloadConfigKeepsLocalLicenseState2664406745\001
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigKeepsLocalLicenseState2664406745\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigKeepsLocalLicenseState2664406745\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigKeepsLocalLicenseState2664406745\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigKeepsLocalLicenseState2664406745\001\.ant-license.json
+stat C:\Users\Jun\AppData\Local\Temp\TestReloadConfigKeepsLocalLicenseState2664406745\001
+open C:\Users\Jun\AppData\Local\Temp\TestReloadConfigKeepsLocalLicenseState2664406745\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestLoadConfigRestoresLocalLicenseState921081372\001
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigRestoresLocalLicenseState921081372\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigRestoresLocalLicenseState921081372\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigRestoresLocalLicenseState921081372\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigRestoresLocalLicenseState921081372\001\.ant-license.json
+stat C:\Users\Jun\AppData\Local\Temp\TestLoadConfigRestoresLocalLicenseState921081372\001
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigRestoresLocalLicenseState921081372\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestLoadConfigSeedsLocalLicenseStateFromConfig1712678589\001
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigSeedsLocalLicenseStateFromConfig1712678589\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigSeedsLocalLicenseStateFromConfig1712678589\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigSeedsLocalLicenseStateFromConfig1712678589\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigSeedsLocalLicenseStateFromConfig1712678589\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp\TestLoadConfigSeedsLocalLicenseStateFromConfig1712678589\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp
+getenv GOTMPDIR
+stat C:\Users\Jun\AppData\Local\Temp\TestRedeemGithubStarPersistsLocalLicenseState3527182680\001
+open C:\Users\Jun\AppData\Local\Temp\TestRedeemGithubStarPersistsLocalLicenseState3527182680\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestRedeemGithubStarPersistsLocalLicenseState3527182680\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp\TestRedeemGithubStarPersistsLocalLicenseState3527182680\001\.ant-license.json
+stat C:\Users\Jun\AppData\Local\Temp\TestRedeemGithubStarPersistsLocalLicenseState3527182680\001
+open C:\Users\Jun\AppData\Local\Temp\TestRedeemGithubStarPersistsLocalLicenseState3527182680\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestRedeemGithubStarPersistsLocalLicenseState3527182680\001\.ant-license.json
+open C:\Users\Jun\AppData\Local\Temp
+getenv PATHEXT
+getenv PATHEXT
+getenv NoDefaultCurrentDirectoryInExePath
+getenv NoDefaultCurrentDirectoryInExePath
+stat cmd.com
+stat cmd.com
+getenv GOTMPDIR
+getenv PATHEXT
+stat cmd.exe
+stat cmd.exe
+getenv NoDefaultCurrentDirectoryInExePath
+stat cmd.com
+stat cmd.bat
+stat cmd.bat
+stat cmd.exe
+stat cmd.cmd
+stat cmd.cmd
+stat cmd.bat
+stat cmd.vbs
+stat cmd.vbs
+stat cmd.cmd
+getenv HTTP_PROXY
+getenv http_proxy
+getenv HTTPS_PROXY
+getenv https_proxy
+getenv NO_PROXY
+getenv no_proxy
+getenv REQUEST_METHOD
+stat cmd.vbe
+stat cmd.vbe
+stat cmd.vbs
+getenv PATHEXT
+stat cmd.js
+stat cmd.js
+getenv NoDefaultCurrentDirectoryInExePath
+stat cmd.com
+stat cmd.vbe
+stat cmd.jse
+stat cmd.jse
+stat cmd.js
+stat cmd.exe
+stat cmd.wsf
+stat cmd.wsf
+stat cmd.jse
+stat cmd.bat
+stat cmd.wsh
+stat cmd.wsh
+stat cmd.wsf
+stat cmd.cmd
+stat cmd.msc
+stat cmd.msc
+stat cmd.wsh
+stat cmd.vbs
+stat cmd.py
+stat cmd.msc
+stat cmd.vbe
+stat cmd.js
+stat cmd.pyw
+stat cmd.jse
+stat cmd.py
+stat cmd.cpl
+stat cmd.wsf
+open C:\Users\Jun\AppData\Local\Temp\TestWaitBrowserDebugPortStableDiscoversPortFromDevToolsFile3693010527\001\DevToolsActivePort
+stat cmd.pyw
+stat cmd.wsh
+getenv path
+stat C:\Program Files\Go\bin\cmd.com
+stat cmd.py
+stat cmd.msc
+stat cmd.cpl
+stat C:\Program Files\Go\bin\cmd.exe
+stat cmd.py
+getenv path
+stat C:\Program Files\Go\bin\cmd.bat
+stat cmd.pyw
+stat cmd.pyw
+stat C:\Program Files\Go\bin\cmd.com
+stat C:\Program Files\Go\bin\cmd.cmd
+stat cmd.cpl
+stat cmd.cpl
+stat C:\Program Files\Go\bin\cmd.vbs
+stat C:\Program Files\Go\bin\cmd.exe
+getenv path
+getenv path
+stat C:\Program Files\Go\bin\cmd.com
+stat C:\Program Files\Go\bin\cmd.vbe
+stat C:\Program Files\Go\bin\cmd.com
+stat C:\Program Files\Go\bin\cmd.bat
+open C:\Users\Jun\AppData\Local\Temp\TestWaitBrowserDebugPortStableDiscoversPortFromDevToolsFile3693010527\001\DevToolsActivePort
+stat C:\Program Files\Go\bin\cmd.exe
+stat C:\Program Files\Go\bin\cmd.js
+stat C:\Program Files\Go\bin\cmd.cmd
+stat C:\Program Files\Go\bin\cmd.vbs
+stat C:\Program Files\Go\bin\cmd.jse
+stat C:\Program Files\Go\bin\cmd.exe
+stat C:\Program Files\Go\bin\cmd.bat
+stat C:\Program Files\Go\bin\cmd.wsf
+stat C:\Program Files\Go\bin\cmd.vbe
+stat C:\Program Files\Go\bin\cmd.bat
+stat C:\Program Files\Go\bin\cmd.cmd
+stat C:\Program Files\Go\bin\cmd.js
+stat C:\Program Files\Go\bin\cmd.wsh
+stat C:\Program Files\Go\bin\cmd.cmd
+stat C:\Program Files\Go\bin\cmd.vbs
+stat C:\Program Files\Go\bin\cmd.jse
+stat C:\Program Files\Go\bin\cmd.msc
+stat C:\Program Files\Go\bin\cmd.vbs
+stat C:\Program Files\Go\bin\cmd.vbe
+stat C:\Program Files\Go\bin\cmd.wsf
+stat C:\Program Files\Go\bin\cmd.py
+stat C:\Program Files\Go\bin\cmd.vbe
+stat C:\Program Files\Go\bin\cmd.js
+stat C:\Program Files\Go\bin\cmd.wsh
+stat C:\Program Files\Go\bin\cmd.pyw
+stat C:\Program Files\Go\bin\cmd.js
+stat C:\Program Files\Go\bin\cmd.msc
+stat C:\Program Files\Go\bin\cmd.jse
+stat C:\Program Files\Go\bin\cmd.cpl
+stat C:\Program Files\Go\bin\cmd.jse
+stat C:\Program Files\Go\bin\cmd.py
+stat C:\Program Files\Go\bin\cmd.wsf
+stat C:\Program Files\Go\bin\cmd.wsf
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.com
+stat C:\Program Files\Go\bin\cmd.pyw
+stat C:\Program Files\Go\bin\cmd.wsh
+stat C:\Program Files\Go\bin\cmd.wsh
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.exe
+stat C:\Program Files\Go\bin\cmd.cpl
+stat C:\Program Files\Go\bin\cmd.msc
+stat C:\Program Files\Go\bin\cmd.msc
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.com
+stat C:\Program Files\Go\bin\cmd.py
+stat C:\Program Files\Go\bin\cmd.py
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cmd
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.exe
+stat C:\Program Files\Go\bin\cmd.pyw
+stat C:\Program Files\Go\bin\cmd.pyw
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbs
+stat C:\Program Files\Go\bin\cmd.cpl
+stat C:\Program Files\Go\bin\cmd.cpl
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cmd
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.com
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbs
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.com
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.exe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.js
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.exe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.js
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.jse
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cmd
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.jse
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsf
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbs
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsf
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cmd
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsh
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsh
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.js
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbs
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.msc
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.msc
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.jse
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.py
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.vbe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.py
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsf
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.pyw
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.js
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsh
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.pyw
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cpl
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.msc
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.jse
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cpl
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.py
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsf
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.pyw
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.wsh
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cpl
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.msc
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.py
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.pyw
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\cmd.cpl
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.com
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.exe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.bat
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cmd
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbs
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.vbe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.js
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.jse
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsf
+stat C:\Windows\system32\cmd.com
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.wsh
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.pyw
+stat C:\Windows\system32\cmd.exe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.msc
+stat C:\Windows\system32\cmd.com
+stat C:\Windows\system32\cmd.com
+getenv PATHEXT
+open NUL
+stat C:\Windows\system32\cmd.exe
+open NUL
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.py
+stat C:\Windows\system32\cmd.exe
+open C:\Windows\system32\cmd.exe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.pyw
+getenv PATHEXT
+open NUL
+stat C:\Program Files\Razer\ChromaBroadcast\bin\cmd.cpl
+stat C:\Windows\system32\cmd.com
+open NUL
+getenv PATHEXT
+open NUL
+open NUL
+open NUL
+stat C:\Windows\system32\cmd.exe
+open C:\Windows\system32\cmd.exe
+open C:\Windows\system32\cmd.exe
+getenv PATHEXT
+open NUL
+open NUL
+open C:\Windows\system32\cmd.exe
+getenv PATHEXT
+getenv NoDefaultCurrentDirectoryInExePath
+stat tasklist.com
+stat tasklist.exe
+stat tasklist.bat
+stat tasklist.cmd
+stat tasklist.vbs
+stat tasklist.vbe
+stat tasklist.js
+stat tasklist.jse
+stat tasklist.wsf
+stat tasklist.wsh
+stat tasklist.msc
+stat tasklist.py
+stat tasklist.pyw
+stat tasklist.cpl
+getenv path
+stat C:\Program Files\Go\bin\tasklist.com
+stat C:\Program Files\Go\bin\tasklist.exe
+stat C:\Program Files\Go\bin\tasklist.bat
+stat C:\Program Files\Go\bin\tasklist.cmd
+stat C:\Program Files\Go\bin\tasklist.vbs
+stat C:\Program Files\Go\bin\tasklist.vbe
+stat C:\Program Files\Go\bin\tasklist.js
+stat C:\Program Files\Go\bin\tasklist.jse
+stat C:\Program Files\Go\bin\tasklist.wsf
+stat C:\Program Files\Go\bin\tasklist.wsh
+stat C:\Program Files\Go\bin\tasklist.msc
+stat C:\Program Files\Go\bin\tasklist.py
+stat C:\Program Files\Go\bin\tasklist.pyw
+stat C:\Program Files\Go\bin\tasklist.cpl
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.com
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.exe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.bat
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.cmd
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.vbs
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.vbe
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.js
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.jse
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.wsf
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.wsh
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.msc
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.py
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.pyw
+stat C:\Users\Jun\.codex\tmp\arg0\codex-arg0xmEmB7\tasklist.cpl
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.com
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.exe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.bat
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.cmd
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.vbs
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.vbe
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.js
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.jse
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.wsf
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.wsh
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.msc
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.py
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.pyw
+stat C:\Program Files (x86)\Razer\ChromaBroadcast\bin\tasklist.cpl
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.com
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.exe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.bat
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.cmd
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.vbs
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.vbe
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.js
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.jse
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.wsf
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.wsh
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.msc
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.py
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.pyw
+stat C:\Program Files\Razer\ChromaBroadcast\bin\tasklist.cpl
+stat C:\Windows\system32\tasklist.com
+stat C:\Windows\system32\tasklist.exe
+getenv PATHEXT
+open NUL
+open C:\Windows\system32\tasklist.exe
+open C:\Users\Jun\AppData\Local\Temp

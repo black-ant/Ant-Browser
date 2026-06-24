@@ -52,7 +52,7 @@ func (m *mockStarter) StartInstance(profileId string) (*browser.Profile, error) 
 // buildTestHandler 构建一个可直接用于 httptest 的 handler（绕过 localhost 中间件）
 // 通过直接调用 server 内部 handler 的方式，使用 httptest.NewRecorder 测试路由逻辑
 func buildTestHandler(svc *launchcode.LaunchCodeService, starter launchcode.BrowserStarter) http.Handler {
-	srv := launchcode.NewLaunchServer(svc, starter, nil, 0)
+	srv := launchcode.NewLaunchServer(svc, starter, nil, nil, 0)
 	return launchcode.NewTestHandler(srv)
 }
 
@@ -99,6 +99,7 @@ func TestProperty6_ValidCodeResponseStructure(t *testing.T) {
 
 			handler := buildTestHandler(svc, starter)
 			req := httptest.NewRequest(http.MethodGet, "/api/launch/"+code, nil)
+			req.Header.Set("X-Launch-Request", "1")
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
 
@@ -159,6 +160,7 @@ func TestProperty7_InvalidCodeReturns404(t *testing.T) {
 
 			handler := buildTestHandler(svc, starter)
 			req := httptest.NewRequest(http.MethodGet, "/api/launch/"+code, nil)
+			req.Header.Set("X-Launch-Request", "1")
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
 
@@ -216,11 +218,13 @@ func TestProperty8_IdempotentLaunch(t *testing.T) {
 
 			// 第一次请求
 			req1 := httptest.NewRequest(http.MethodGet, "/api/launch/"+code, nil)
+			req1.Header.Set("X-Launch-Request", "1")
 			w1 := httptest.NewRecorder()
 			handler.ServeHTTP(w1, req1)
 
 			// 第二次请求
 			req2 := httptest.NewRequest(http.MethodGet, "/api/launch/"+code, nil)
+			req2.Header.Set("X-Launch-Request", "1")
 			w2 := httptest.NewRecorder()
 			handler.ServeHTTP(w2, req2)
 
@@ -258,6 +262,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	w := httptest.NewRecorder()
+	req.Header.Set("X-Launch-Request", "1")
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {

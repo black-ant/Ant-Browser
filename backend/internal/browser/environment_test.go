@@ -18,11 +18,11 @@ func (s *proxyDAOStub) List() ([]Proxy, error) {
 	return append([]Proxy{}, s.list...), nil
 }
 
-func (s *proxyDAOStub) ListByGroup(string) ([]Proxy, error) { return nil, nil }
-func (s *proxyDAOStub) ListGroups() ([]string, error)       { return nil, nil }
-func (s *proxyDAOStub) Upsert(Proxy) error                  { return nil }
-func (s *proxyDAOStub) Delete(string) error                 { return nil }
-func (s *proxyDAOStub) DeleteAll() error                    { return nil }
+func (s *proxyDAOStub) ListByGroup(string) ([]Proxy, error)        { return nil, nil }
+func (s *proxyDAOStub) ListGroups() ([]string, error)              { return nil, nil }
+func (s *proxyDAOStub) Upsert(Proxy) error                         { return nil }
+func (s *proxyDAOStub) Delete(string) error                        { return nil }
+func (s *proxyDAOStub) DeleteAll() error                           { return nil }
 func (s *proxyDAOStub) ReplaceAllProxies([]Proxy) error            { return nil }
 func (s *proxyDAOStub) ReplaceSourceProxies(string, []Proxy) error { return nil }
 func (s *proxyDAOStub) UpdateSpeedResult(string, bool, int64, string) error {

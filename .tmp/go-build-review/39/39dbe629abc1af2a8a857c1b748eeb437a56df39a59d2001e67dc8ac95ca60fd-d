@@ -1,0 +1,7 @@
+./aegis.go
+./aegis_amd64.go
+./aegis_asm.go
+./aegis_generic.go
+./aes_generic.go
+./stub_amd64.go
+./aegis_amd64.s

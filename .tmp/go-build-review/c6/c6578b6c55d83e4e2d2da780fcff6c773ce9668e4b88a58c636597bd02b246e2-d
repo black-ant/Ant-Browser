@@ -1,0 +1,7 @@
+./decode.go
+./decode_asm.go
+./encode.go
+./encode_asm.go
+./snappy.go
+./decode_amd64.s
+./encode_amd64.s

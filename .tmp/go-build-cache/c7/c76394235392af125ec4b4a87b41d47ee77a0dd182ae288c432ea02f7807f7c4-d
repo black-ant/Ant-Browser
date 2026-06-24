@@ -1,0 +1,11 @@
+./callback.go
+./global_id.go
+./hash.go
+./manipulation.go
+./must.go
+./range.go
+./ranges.go
+./slice.go
+./string_unsafe.go
+./strings.go
+./uuid.go

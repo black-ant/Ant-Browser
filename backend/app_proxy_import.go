@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,6 +59,9 @@ func (a *App) fetchClashSubscriptionPayload(rawURL string) (*url.URL, string, in
 	if scheme != "http" && scheme != "https" {
 		return nil, "", nil, fmt.Errorf("仅支持 http/https URL")
 	}
+	if err := validateClashSubscriptionURL(parsedURL); err != nil {
+		return nil, "", nil, err
+	}
 
 	req, err := http.NewRequest(http.MethodGet, parsedURL.String(), nil)
 	if err != nil {
@@ -66,9 +71,7 @@ func (a *App) fetchClashSubscriptionPayload(rawURL string) (*url.URL, string, in
 	req.Header.Set("Accept", "application/yaml,text/yaml,text/plain,*/*")
 	req.Header.Set("Cache-Control", "no-cache")
 
-	client := &http.Client{
-		Timeout: clashSubscriptionTimeout,
-	}
+	client := newClashSubscriptionHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("拉取订阅失败: %w", err)
@@ -92,6 +95,91 @@ func (a *App) fetchClashSubscriptionPayload(rawURL string) (*url.URL, string, in
 		return nil, "", nil, err
 	}
 	return parsedURL, content, payload, nil
+}
+
+func newClashSubscriptionHTTPClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy:                 nil,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("订阅主机未解析到可用地址")
+			}
+			for _, item := range ips {
+				if isBlockedSubscriptionIP(item.IP) {
+					return nil, fmt.Errorf("订阅 URL 指向受限地址: %s", item.IP.String())
+				}
+			}
+
+			var lastErr error
+			for _, item := range ips {
+				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(item.IP.String(), port))
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
+			}
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, fmt.Errorf("订阅主机连接失败")
+		},
+	}
+
+	return &http.Client{
+		Timeout:   clashSubscriptionTimeout,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("订阅 URL 重定向次数过多")
+			}
+			return validateClashSubscriptionURL(req.URL)
+		},
+	}
+}
+
+func validateClashSubscriptionURL(parsedURL *url.URL) error {
+	if parsedURL == nil || parsedURL.Host == "" {
+		return fmt.Errorf("URL 格式无效")
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsedURL.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("仅支持 http/https URL")
+	}
+	host := strings.TrimSpace(parsedURL.Hostname())
+	if host == "" {
+		return fmt.Errorf("URL 主机不能为空")
+	}
+	if ip := net.ParseIP(host); ip != nil && isBlockedSubscriptionIP(ip) {
+		return fmt.Errorf("订阅 URL 指向受限地址: %s", ip.String())
+	}
+	return nil
+}
+
+func isBlockedSubscriptionIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsUnspecified() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsInterfaceLocalMulticast() ||
+		ip.IsMulticast()
 }
 
 func normalizeClashSubscriptionContent(body []byte) (string, interface{}, error) {

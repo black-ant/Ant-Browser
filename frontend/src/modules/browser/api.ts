@@ -927,6 +927,32 @@ export async function deleteAccount(accountId: string): Promise<boolean> {
   return false
 }
 
+// 从账号中解绑指定实例
+export async function unlinkAccountProfile(accountId: string, profileId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountUnlinkProfile) {
+    await bindings.BrowserAccountUnlinkProfile(accountId, profileId)
+  }
+}
+
+// 批量关联账号到多个实例
+export async function batchLinkAccountProfiles(accountIds: string[], profileIds: string[]): Promise<Record<string, string>> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountBatchLinkProfiles) {
+    return await bindings.BrowserAccountBatchLinkProfiles(accountIds, profileIds)
+  }
+  return {}
+}
+
+// 批量解绑账号与多个实例的关联
+export async function batchUnlinkAccountProfiles(accountIds: string[], profileIds: string[]): Promise<Record<string, string>> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserAccountBatchUnlinkProfiles) {
+    return await bindings.BrowserAccountBatchUnlinkProfiles(accountIds, profileIds)
+  }
+  return {}
+}
+
 // 设置账号关联的实例集合（一对多）
 export async function setAccountProfiles(accountId: string, profileIds: string[]): Promise<void> {
   await callBinding<void>('BrowserAccountSetProfiles', [accountId, profileIds], undefined as any)
@@ -1052,6 +1078,23 @@ export async function setExtensionProfiles(extensionId: string, profileIds: stri
 // CDP API
 // ============================================================================
 
+export interface CDPRequestTiming {
+  requestTime: number       // 请求开始时间（秒）
+  proxyStart: number        // 代理协商开始（毫秒）
+  proxyEnd: number          // 代理协商结束（毫秒）
+  dnsStart: number          // DNS 查询开始（毫秒）
+  dnsEnd: number            // DNS 查询结束（毫秒）
+  connectStart: number      // TCP 连接开始（毫秒）
+  connectEnd: number        // TCP 连接结束（毫秒）
+  sslStart: number          // SSL 握手开始（毫秒）
+  sslEnd: number            // SSL 握手结束（毫秒）
+  sendStart: number         // 发送请求开始（毫秒）
+  sendEnd: number           // 发送请求结束（毫秒）
+  pushStart: number         // HTTP/2 Server Push 开始（毫秒）
+  pushEnd: number           // HTTP/2 Server Push 结束（毫秒）
+  receiveHeadersEnd: number // 接收响应头结束（毫秒）
+}
+
 export interface CDPNetworkRequest {
   requestId: string
   url: string
@@ -1069,6 +1112,18 @@ export interface CDPNetworkRequest {
   mimeType: string
   startTime: number
   endTime: number
+  timing?: CDPRequestTiming  // 详细的 timing 信息
+  truncated?: boolean        // 响应体是否被截断
+  parsedData?: {             // 解析后的结构化数据
+    raw: string
+    type: string
+    structured: any
+    preview: string
+    size: number
+    encoding?: string
+    error?: string
+    metadata?: Record<string, any>
+  }
 }
 
 export interface CDPConsoleLog {
@@ -1077,6 +1132,63 @@ export interface CDPConsoleLog {
   message: string
   timestamp: number
   stackTrace?: string
+}
+
+export interface CDPWebSocketMessage {
+  id: string
+  requestId: string
+  url: string
+  direction: 'send' | 'receive'
+  timestamp: number
+  opcode: number // 1=text, 2=binary
+  data: string
+  payloadSize: number
+  masked: boolean
+  connectionId: string
+}
+
+export interface CDPCookie {
+  name: string
+  value: string
+  domain: string
+  path: string
+  expires: number // Unix timestamp
+  size: number
+  httpOnly: boolean
+  secure: boolean
+  session: boolean
+  sameSite: string // Strict, Lax, None
+}
+
+export interface CDPInterceptRule {
+  id: string
+  name: string
+  enabled: boolean
+  urlPattern: string       // URL 匹配模式（支持通配符 *）
+  method: string           // HTTP 方法（空表示全部）
+  actions: CDPInterceptActions
+  modifyRequest?: CDPRequestModification
+  modifyResponse?: CDPResponseModification
+}
+
+export interface CDPInterceptActions {
+  block: boolean           // 阻止请求
+  modifyRequest: boolean   // 修改请求
+  modifyResponse: boolean  // 修改响应
+  delay: number            // 延迟（毫秒）
+}
+
+export interface CDPRequestModification {
+  url: string              // 修改 URL
+  method: string           // 修改方法
+  headers: Record<string, string> // 修改请求头
+  body: string             // 修改请求体
+}
+
+export interface CDPResponseModification {
+  statusCode: number       // 修改状态码
+  headers: Record<string, string> // 修改响应头
+  body: string             // 修改响应体
 }
 
 export async function CDPSessionCreate(profileId: string, targetType: string): Promise<string> {
@@ -1117,10 +1229,37 @@ export async function CDPClearNetworkRequests(sessionId: string): Promise<void> 
   }
 }
 
+// CDPReloadPage 通过 CDP 重新加载页面，完整抓取一次页面加载的网络请求
+export async function CDPReloadPage(sessionId: string): Promise<void> {
+  await callBinding<void>('CDPReloadPage', [sessionId], undefined as any)
+}
+
+// CDPEnableConsoleCapture 惰性启用 Runtime 域以捕获页面 console 日志。
+// 仅在切换到「控制台」时调用，避免 Runtime.enable 这一最易被检测站点探测的 CDP
+// 痕迹长期暴露（用 callBinding 兼容尚未重新生成的 wails 绑定）。
+export async function CDPEnableConsoleCapture(sessionId: string): Promise<void> {
+  await callBinding<void>('CDPEnableConsoleCapture', [sessionId], undefined as any)
+}
+
 export async function CDPClearConsoleLogs(sessionId: string): Promise<void> {
   const bindings: any = await getBindings()
   if (bindings?.CDPClearConsoleLogs) {
     await bindings.CDPClearConsoleLogs(sessionId)
+  }
+}
+
+export async function CDPGetWebSocketMessages(sessionId: string): Promise<CDPWebSocketMessage[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPGetWebSocketMessages) {
+    return (await bindings.CDPGetWebSocketMessages(sessionId)) || []
+  }
+  return []
+}
+
+export async function CDPClearWebSocketMessages(sessionId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPClearWebSocketMessages) {
+    await bindings.CDPClearWebSocketMessages(sessionId)
   }
 }
 
@@ -1159,4 +1298,80 @@ export async function CDPGetStatistics(sessionId: string): Promise<any> {
 // CDPGetStorage 获取 localStorage / sessionStorage（用 callBinding 兼容未重生成的绑定）
 export async function CDPGetStorage(sessionId: string, storageType: 'localStorage' | 'sessionStorage'): Promise<Record<string, string>> {
   return callBinding<Record<string, string>>('CDPGetStorage', [sessionId, storageType], {})
+}
+
+export async function CDPGetCookies(sessionId: string): Promise<CDPCookie[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPGetCookies) {
+    return (await bindings.CDPGetCookies(sessionId)) || []
+  }
+  return []
+}
+
+export async function CDPSetCookie(sessionId: string, cookie: CDPCookie): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPSetCookie) {
+    await bindings.CDPSetCookie(sessionId, cookie)
+  }
+}
+
+export async function CDPDeleteCookie(sessionId: string, name: string, domain: string, path: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPDeleteCookie) {
+    await bindings.CDPDeleteCookie(sessionId, name, domain, path)
+  }
+}
+
+export async function CDPClearAllCookies(sessionId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPClearAllCookies) {
+    await bindings.CDPClearAllCookies(sessionId)
+  }
+}
+
+// ============================================================================
+// 请求拦截 API
+// ============================================================================
+
+export async function CDPEnableIntercept(sessionId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPEnableIntercept) {
+    await bindings.CDPEnableIntercept(sessionId)
+  }
+}
+
+export async function CDPDisableIntercept(sessionId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPDisableIntercept) {
+    await bindings.CDPDisableIntercept(sessionId)
+  }
+}
+
+export async function CDPAddInterceptRule(sessionId: string, rule: CDPInterceptRule): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPAddInterceptRule) {
+    await bindings.CDPAddInterceptRule(sessionId, rule)
+  }
+}
+
+export async function CDPRemoveInterceptRule(sessionId: string, ruleId: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPRemoveInterceptRule) {
+    await bindings.CDPRemoveInterceptRule(sessionId, ruleId)
+  }
+}
+
+export async function CDPGetInterceptRules(sessionId: string): Promise<CDPInterceptRule[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPGetInterceptRules) {
+    return await bindings.CDPGetInterceptRules(sessionId)
+  }
+  return []
+}
+
+export async function CDPUpdateInterceptRule(sessionId: string, rule: CDPInterceptRule): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.CDPUpdateInterceptRule) {
+    await bindings.CDPUpdateInterceptRule(sessionId, rule)
+  }
 }

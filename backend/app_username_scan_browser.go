@@ -61,8 +61,10 @@ func (a *App) validateUsernameScanStart(request usernamescan.StartRequest) error
 
 func (a *App) scanUsernameInBrowser(ctx context.Context, request usernamescan.StartRequest, name string) usernamescan.Result {
 	options := normalizeUsernameBrowserOptions(request.Browser)
-	debugPort, err := a.getDebugPort(options.ProfileID)
-	if err != nil {
+	profileID := options.ProfileID
+
+	// 验证实例运行中（pipe 或端口）
+	if _, err := a.profileCDP(profileID); err != nil {
 		return usernameScanErrorResult(name, err)
 	}
 
@@ -71,16 +73,16 @@ func (a *App) scanUsernameInBrowser(ctx context.Context, request usernamescan.St
 	}
 
 	if options.URL != "" {
-		if err := usernameScanNavigate(ctx, debugPort, options.URL, options.TimeoutMs); err != nil {
+		if err := usernameScanNavigate(ctx, a, profileID, options.URL, options.TimeoutMs); err != nil {
 			return usernameScanErrorResult(name, err)
 		}
 	}
 
-	if err := usernameScanWaitForInput(ctx, debugPort, options.InputSelector, options.TimeoutMs); err != nil {
+	if err := usernameScanWaitForInput(ctx, a, profileID, options.InputSelector, options.TimeoutMs); err != nil {
 		return usernameScanErrorResult(name, err)
 	}
 
-	pageText, err := usernameScanFillSubmitAndRead(ctx, debugPort, options, name)
+	pageText, err := usernameScanFillSubmitAndRead(ctx, a, profileID, options, name)
 	if err != nil {
 		return usernameScanErrorResult(name, err)
 	}
@@ -108,17 +110,21 @@ func normalizeUsernameBrowserOptions(options usernamescan.BrowserScanOptions) us
 	return options
 }
 
-func usernameScanNavigate(ctx context.Context, debugPort int, targetURL string, timeoutMs int) error {
-	_, _ = usernameScanPageCall(ctx, debugPort, "Page.enable", nil, 3*time.Second)
-	if _, err := usernameScanPageCall(ctx, debugPort, "Page.navigate", map[string]any{
-		"url": targetURL,
-	}, 5*time.Second); err != nil {
+func usernameScanNavigate(ctx context.Context, a *App, profileID string, targetURL string, timeoutMs int) error {
+	pc, err := a.profileCDP(profileID)
+	if err != nil {
 		return err
 	}
-	return usernameScanWaitForPageReady(ctx, debugPort, timeoutMs)
+	_, _ = pc.callPage("Page.enable", nil)
+	if _, err := pc.callPage("Page.navigate", map[string]any{
+		"url": targetURL,
+	}); err != nil {
+		return err
+	}
+	return usernameScanWaitForPageReady(ctx, a, profileID, timeoutMs)
 }
 
-func usernameScanWaitForPageReady(ctx context.Context, debugPort int, timeoutMs int) error {
+func usernameScanWaitForPageReady(ctx context.Context, a *App, profileID string, timeoutMs int) error {
 	expression := fmt.Sprintf(`(async () => {
   const deadline = Date.now() + %d;
   while (Date.now() < deadline) {
@@ -130,7 +136,7 @@ func usernameScanWaitForPageReady(ctx context.Context, debugPort int, timeoutMs 
   return { ok: false, message: "page did not become ready" };
 })()`, timeoutMs)
 
-	value, err := usernameScanEvaluate(ctx, debugPort, expression, time.Duration(timeoutMs+2000)*time.Millisecond)
+	value, err := usernameScanEvaluateViaProfile(ctx, a, profileID, expression, time.Duration(timeoutMs+2000)*time.Millisecond)
 	if err != nil {
 		return err
 	}
@@ -140,7 +146,7 @@ func usernameScanWaitForPageReady(ctx context.Context, debugPort int, timeoutMs 
 	return nil
 }
 
-func usernameScanWaitForInput(ctx context.Context, debugPort int, inputSelector string, timeoutMs int) error {
+func usernameScanWaitForInput(ctx context.Context, a *App, profileID string, inputSelector string, timeoutMs int) error {
 	expression := fmt.Sprintf(`(async () => {
   const selector = %s;
   const deadline = Date.now() + %d;
@@ -153,7 +159,7 @@ func usernameScanWaitForInput(ctx context.Context, debugPort int, inputSelector 
   return { ok: false, message: "input selector not found: " + selector };
 })()`, jsString(inputSelector), timeoutMs)
 
-	value, err := usernameScanEvaluate(ctx, debugPort, expression, time.Duration(timeoutMs+2000)*time.Millisecond)
+	value, err := usernameScanEvaluateViaProfile(ctx, a, profileID, expression, time.Duration(timeoutMs+2000)*time.Millisecond)
 	if err != nil {
 		return err
 	}
@@ -163,7 +169,7 @@ func usernameScanWaitForInput(ctx context.Context, debugPort int, inputSelector 
 	return nil
 }
 
-func usernameScanFillSubmitAndRead(ctx context.Context, debugPort int, options usernamescan.BrowserScanOptions, name string) (string, error) {
+func usernameScanFillSubmitAndRead(ctx context.Context, a *App, profileID string, options usernamescan.BrowserScanOptions, name string) (string, error) {
 	expression := fmt.Sprintf(`(async () => {
   const inputSelector = %s;
   const submitSelector = %s;
@@ -217,7 +223,7 @@ func usernameScanFillSubmitAndRead(ctx context.Context, debugPort int, options u
 		options.WaitAfterSubmitMs,
 	)
 
-	value, err := usernameScanEvaluate(ctx, debugPort, expression, time.Duration(options.TimeoutMs+options.WaitAfterSubmitMs+2000)*time.Millisecond)
+	value, err := usernameScanEvaluateViaProfile(ctx, a, profileID, expression, time.Duration(options.TimeoutMs+options.WaitAfterSubmitMs+2000)*time.Millisecond)
 	if err != nil {
 		return "", err
 	}
@@ -403,4 +409,34 @@ func minDuration(a time.Duration, b time.Duration) time.Duration {
 		return a
 	}
 	return b
+}
+
+// usernameScanEvaluateViaProfile 通过 profileCDP 执行页面 JS 表达式（支持 pipe/端口）。
+func usernameScanEvaluateViaProfile(ctx context.Context, a *App, profileID string, expression string, timeout time.Duration) (map[string]any, error) {
+	pc, err := a.profileCDP(profileID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := pc.callPageTimeout("Runtime.evaluate", map[string]any{
+		"expression":    expression,
+		"awaitPromise":  true,
+		"returnByValue": true,
+		"userGesture":   true,
+	}, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if details, ok := result["exceptionDetails"]; ok {
+		return nil, fmt.Errorf("page script exception: %v", details)
+	}
+
+	remoteObject, ok := result["result"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("Runtime.evaluate returned an invalid result")
+	}
+	value, ok := remoteObject["value"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("Runtime.evaluate returned no object value")
+	}
+	return value, nil
 }

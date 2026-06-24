@@ -1,0 +1,10 @@
+./bind_std.go
+./bind_windows.go
+./conn.go
+./controlfns.go
+./controlfns_windows.go
+./errors_default.go
+./features_default.go
+./gso_default.go
+./mark_default.go
+./sticky_default.go

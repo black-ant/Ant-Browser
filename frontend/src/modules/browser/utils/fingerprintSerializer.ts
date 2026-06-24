@@ -31,11 +31,14 @@ export interface FingerprintConfig {
   hardwareConcurrency?: string  // --fingerprint-hardware-concurrency=
   deviceMemory?: string         // --fingerprint-device-memory=
 
-  // 渲染指纹
-  canvasNoise?: boolean         // --fingerprint-canvas-noise=
-  webglVendor?: string          // --fingerprint-webgl-vendor=
-  webglRenderer?: string        // --fingerprint-webgl-renderer=
-  audioNoise?: boolean          // --fingerprint-audio-noise=
+  // 渲染指纹（Chrome 144+ 使用新方案）
+  canvasNoise?: boolean         // --fingerprint-canvas-noise=（已废弃）
+  webglVendor?: string          // --fingerprint-webgl-vendor=（已废弃，Chrome 144+ 不支持）
+  webglRenderer?: string        // --fingerprint-webgl-renderer=（已废弃，Chrome 144+ 不支持）
+  audioNoise?: boolean          // --fingerprint-audio-noise=（已废弃）
+
+  // Chrome 144+ 新参数：选择性禁用指纹混淆
+  disableSpoofing?: string[]    // --disable-spoofing=font,audio,canvas,clientrects,gpu
 
   // 字体
   fonts?: string                // --fingerprint-fonts=
@@ -75,6 +78,7 @@ export const KEY_MAP: Record<string, keyof FingerprintConfig> = {
   '--fingerprint-do-not-track': 'doNotTrack',
   '--fingerprint-media-devices': 'mediaDevices',
   '--fingerprint-touch-points': 'touchPoints',
+  '--disable-spoofing': 'disableSpoofing',
 }
 
 // FingerprintConfig → string[]
@@ -97,10 +101,16 @@ export function serialize(config: FingerprintConfig): string[] {
   if (config.hardwareConcurrency) args.push(`--fingerprint-hardware-concurrency=${config.hardwareConcurrency}`)
   if (config.deviceMemory) args.push(`--fingerprint-device-memory=${config.deviceMemory}`)
 
+  // 废弃参数（Chrome 144+ 不支持，但保留用于向后兼容）
   if (config.canvasNoise !== undefined) args.push(`--fingerprint-canvas-noise=${config.canvasNoise}`)
   if (config.webglVendor) args.push(`--fingerprint-webgl-vendor=${config.webglVendor}`)
   if (config.webglRenderer) args.push(`--fingerprint-webgl-renderer=${config.webglRenderer}`)
   if (config.audioNoise !== undefined) args.push(`--fingerprint-audio-noise=${config.audioNoise}`)
+
+  // Chrome 144+ 新参数：选择性禁用指纹混淆
+  if (config.disableSpoofing && config.disableSpoofing.length > 0) {
+    args.push(`--disable-spoofing=${config.disableSpoofing.join(',')}`)
+  }
 
   if (config.fonts) args.push(`--fingerprint-fonts=${config.fonts}`)
 
@@ -140,6 +150,9 @@ export function deserialize(args: string[]): FingerprintConfig {
         config.resolution = 'custom'
         config.customResolution = val
       }
+    } else if (field === 'disableSpoofing') {
+      // 解析逗号分隔的值：--disable-spoofing=font,audio,canvas,clientrects,gpu
+      config.disableSpoofing = val ? val.split(',').map(s => s.trim()).filter(Boolean) : []
     } else {
       (config as Record<string, unknown>)[field] = val
     }
@@ -176,20 +189,17 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '24',
       hardwareConcurrency: '8',
       deviceMemory: '8',
-      canvasNoise: true,
-      audioNoise: true,
-      webglVendor: 'Intel',
-      webglRenderer: 'Intel(R) UHD Graphics 630',
       fonts: 'Arial,Microsoft YaHei,SimSun,SimHei,Helvetica,Times New Roman',
       webrtcPolicy: 'disable_non_proxied_udp',
       doNotTrack: false,
       touchPoints: '0',
+      // 使用自动混淆（不设置 webglVendor/webglRenderer/canvasNoise/audioNoise）
     },
   },
   {
     id: 'win-chrome-gaming',
     name: 'Windows / Chrome / 游戏主机',
-    description: '模拟高配游戏 PC，NVIDIA 显卡，2560x1440',
+    description: '模拟高配游戏 PC，2560x1440',
     config: {
       brand: 'Chrome',
       platform: 'windows',
@@ -199,10 +209,6 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '24',
       hardwareConcurrency: '16',
       deviceMemory: '16',
-      canvasNoise: true,
-      audioNoise: true,
-      webglVendor: 'NVIDIA',
-      webglRenderer: 'NVIDIA GeForce RTX 3080',
       fonts: 'Arial,Helvetica,Times New Roman,Courier New,Verdana',
       webrtcPolicy: 'disable_non_proxied_udp',
       doNotTrack: false,
@@ -212,7 +218,7 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
   {
     id: 'mac-chrome-designer',
     name: 'macOS / Chrome / 设计师',
-    description: '模拟 Mac 设计师用户，Apple GPU，Retina 分辨率',
+    description: '模拟 Mac 设计师用户，Retina 分辨率',
     config: {
       brand: 'Chrome',
       platform: 'mac',
@@ -222,10 +228,6 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '30',
       hardwareConcurrency: '10',
       deviceMemory: '16',
-      canvasNoise: true,
-      audioNoise: true,
-      webglVendor: 'Apple',
-      webglRenderer: 'Apple M2',
       fonts: 'Arial,Helvetica,PingFang SC,Hiragino Sans GB,STHeiti,Times New Roman',
       webrtcPolicy: 'disable_non_proxied_udp',
       doNotTrack: true,
@@ -245,10 +247,6 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '24',
       hardwareConcurrency: '4',
       deviceMemory: '4',
-      canvasNoise: true,
-      audioNoise: false,
-      webglVendor: 'Intel',
-      webglRenderer: 'Intel(R) HD Graphics 520',
       fonts: 'Arial,Microsoft YaHei,Calibri,Segoe UI,Times New Roman',
       webrtcPolicy: 'default_public_interface_only',
       doNotTrack: false,
@@ -258,7 +256,7 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
   {
     id: 'win-chrome-us-user',
     name: 'Windows / Chrome / 美国用户',
-    description: '模拟美国普通用户，英文环境，AMD 显卡',
+    description: '模拟美国普通用户，英文环境',
     config: {
       brand: 'Chrome',
       platform: 'windows',
@@ -268,10 +266,6 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '24',
       hardwareConcurrency: '8',
       deviceMemory: '8',
-      canvasNoise: true,
-      audioNoise: true,
-      webglVendor: 'AMD',
-      webglRenderer: 'AMD Radeon RX 6600',
       fonts: 'Arial,Helvetica,Times New Roman,Courier New,Georgia',
       webrtcPolicy: 'disable_non_proxied_udp',
       doNotTrack: false,
@@ -291,10 +285,6 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '24',
       hardwareConcurrency: '8',
       deviceMemory: '8',
-      canvasNoise: true,
-      audioNoise: true,
-      webglVendor: 'Apple',
-      webglRenderer: 'Apple M1',
       fonts: 'Arial,Helvetica,Hiragino Kaku Gothic ProN,Yu Gothic,Times New Roman',
       webrtcPolicy: 'disable_non_proxied_udp',
       doNotTrack: true,
@@ -314,10 +304,6 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '24',
       hardwareConcurrency: '8',
       deviceMemory: '8',
-      canvasNoise: true,
-      audioNoise: true,
-      webglVendor: 'Intel',
-      webglRenderer: 'Intel(R) UHD Graphics 630',
       fonts: 'Arial,Helvetica,Times New Roman,Courier New,Verdana',
       webrtcPolicy: 'disable_non_proxied_udp',
       doNotTrack: false,
@@ -337,10 +323,6 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
       colorDepth: '24',
       hardwareConcurrency: '8',
       deviceMemory: '8',
-      canvasNoise: true,
-      audioNoise: true,
-      webglVendor: 'Apple',
-      webglRenderer: 'Apple M1',
       fonts: 'Arial,Helvetica,Times New Roman,Courier New,Georgia',
       webrtcPolicy: 'disable_non_proxied_udp',
       doNotTrack: false,

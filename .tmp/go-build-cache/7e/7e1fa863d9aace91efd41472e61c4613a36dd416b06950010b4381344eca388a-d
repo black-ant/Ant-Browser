@@ -1,0 +1,25 @@
+# test log
+getenv GOTMPDIR
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_DefaultConfigKeepsCoreEntries2157070284\001\config.yaml
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_DefaultConfigKeepsCoreEntries2157070284\001\proxies.yaml
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_DefaultConfigKeepsCoreEntries2157070284\001\data
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_DefaultConfigKeepsCoreEntries2157070284\001\chrome
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp
+getenv GOTMPDIR
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\config.yaml
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\proxies.yaml
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\data
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\profiles
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\chrome
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\external-core-a
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\db\main.db
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\db\main.db-wal
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\db\main.db-shm
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildScope_CustomPathsIncludeNonOverlappingEntries1932351219\001\runtime\logs
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp
+getenv GOTMPDIR
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildManifest_StripsSourcePath3818913801\001\config.yaml
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildManifest_StripsSourcePath3818913801\001\proxies.yaml
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildManifest_StripsSourcePath3818913801\001\data
+stat C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp\TestBuildManifest_StripsSourcePath3818913801\001\chrome
+open C:\Users\Jun\Documents\VSCode\Ant-Browser\.tmp

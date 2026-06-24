@@ -1,0 +1,4 @@
+./decode.go
+./doc.go
+./encode.go
+./well_known_types.go

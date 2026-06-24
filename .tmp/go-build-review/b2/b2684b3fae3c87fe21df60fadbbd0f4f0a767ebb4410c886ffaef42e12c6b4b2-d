@@ -1,0 +1,3 @@
+./generator.go
+./scanner.go
+./types.go

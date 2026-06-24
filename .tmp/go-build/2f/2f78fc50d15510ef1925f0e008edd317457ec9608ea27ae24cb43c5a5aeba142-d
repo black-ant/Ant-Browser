@@ -1,0 +1,5 @@
+./auth.go
+./config.go
+./fingerprint.go
+./fix_windows.go
+./keypair.go

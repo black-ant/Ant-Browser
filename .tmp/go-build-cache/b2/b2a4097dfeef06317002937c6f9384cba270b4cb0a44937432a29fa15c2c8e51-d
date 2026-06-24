@@ -1,0 +1,5 @@
+./capi_windows_amd64.go
+./defs.go
+./hooks.go
+./mutex.go
+./sqlite_windows_amd64.go

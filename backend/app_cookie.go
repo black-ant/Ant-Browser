@@ -55,6 +55,11 @@ type cdpResponse struct {
 
 // cdpCall 向指定 debugPort 发送单次 CDP 命令并返回 result 字段
 func cdpCall(debugPort int, method string, params map[string]any) (map[string]any, error) {
+	return cdpCallTimeout(debugPort, method, params, 5*time.Second)
+}
+
+// cdpCallTimeout 向指定 debugPort 发送单次 CDP 命令并返回 result 字段，支持自定义超时
+func cdpCallTimeout(debugPort int, method string, params map[string]any, timeout time.Duration) (map[string]any, error) {
 	// 1. 获取 WebSocket 调试地址
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json", debugPort))
 	if err != nil {
@@ -88,7 +93,7 @@ func cdpCall(debugPort int, method string, params map[string]any) (map[string]an
 		return nil, fmt.Errorf("WebSocket 连接失败: %w", err)
 	}
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(timeout))
 
 	// 3. 发送 CDP 命令
 	msg := cdpMessage{Id: 1, Method: method, Params: params}
@@ -169,12 +174,12 @@ func (a *App) getDebugPort(profileId string) (int, error) {
 
 // BrowserGetCookies 通过 CDP 获取实例所有 Cookie
 func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
-	debugPort, err := a.getDebugPort(profileId)
+	pc, err := a.profileCDP(profileId)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := cdpCall(debugPort, "Network.getAllCookies", nil)
+	result, err := pc.callPage("Network.getAllCookies", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +200,7 @@ func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
 
 // BrowserSetCookies 通过 CDP 将一组 Cookie 写入运行中的实例（回写/恢复）
 func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
-	debugPort, err := a.getDebugPort(profileId)
+	pc, err := a.profileCDP(profileId)
 	if err != nil {
 		return err
 	}
@@ -232,17 +237,17 @@ func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
 		arr = append(arr, m)
 	}
 
-	_, err = cdpCall(debugPort, "Network.setCookies", map[string]any{"cookies": arr})
+	_, err = pc.callPage("Network.setCookies", map[string]any{"cookies": arr})
 	return err
 }
 
 // BrowserClearCookies 通过 CDP 清除实例所有 Cookie
 func (a *App) BrowserClearCookies(profileId string) error {
-	debugPort, err := a.getDebugPort(profileId)
+	pc, err := a.profileCDP(profileId)
 	if err != nil {
 		return err
 	}
-	_, err = cdpCall(debugPort, "Network.clearBrowserCookies", nil)
+	_, err = pc.callPage("Network.clearBrowserCookies", nil)
 	return err
 }
 

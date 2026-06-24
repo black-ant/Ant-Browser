@@ -361,7 +361,7 @@ export function AccountManagementPage() {
 
       {filteredAccounts.length === 0 ? (
         <Card padding="lg" className="flex flex-col items-center justify-center text-center min-h-[400px]">
-          <div className="w-16 h-16 mb-4 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center">
+          <div className="w-16 h-16 mb-4 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
             <CheckSquare className="w-8 h-8 text-blue-600" />
           </div>
           <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">暂无平台账号</h3>
@@ -393,7 +393,7 @@ export function AccountManagementPage() {
                       <input type="checkbox" checked={isSelected} onChange={() => handleToggleSelect(account.accountId)} className="w-4 h-4" />
                     </div>
                     <div className="flex-1 flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center flex-shrink-0 text-xl">
+                      <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 text-xl">
                         {platformIcon(account.platform)}
                       </div>
                       <div className="flex-1 min-w-0">

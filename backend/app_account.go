@@ -13,19 +13,19 @@ import (
 
 // BrowserAccount 浏览器账号
 type BrowserAccount struct {
-	AccountID         string   `json:"accountId"`
-	AccountName       string   `json:"accountName"`
-	Platform          string   `json:"platform"`
-	Username          string   `json:"username"`
-	Email             string   `json:"email"`
-	Password          string   `json:"password"`           // 明文（仅用于传输，不存储）
-	RelatedProfileIDs []string `json:"relatedProfileIds"` // 关联的实例ID
-	Notes             string   `json:"notes"`
-	Cookies           string   `json:"cookies"`   // 明文Cookie（仅用于传输）
-	CreatedAt         string   `json:"createdAt"` // ISO8601格式
-	UpdatedAt         string   `json:"updatedAt"`
-	CookieCount       int      `json:"cookieCount"`        // 已存 Cookie 条数（非敏感，用于提醒）
-	CookieEarliestExpiry int64 `json:"cookieEarliestExpiry"` // 最早过期 unix 秒；0=无/全 Session
+	AccountID            string   `json:"accountId"`
+	AccountName          string   `json:"accountName"`
+	Platform             string   `json:"platform"`
+	Username             string   `json:"username"`
+	Email                string   `json:"email"`
+	Password             string   `json:"password"`          // 明文（仅用于传输，不存储）
+	RelatedProfileIDs    []string `json:"relatedProfileIds"` // 关联的实例ID
+	Notes                string   `json:"notes"`
+	Cookies              string   `json:"cookies"`   // 明文Cookie（仅用于传输）
+	CreatedAt            string   `json:"createdAt"` // ISO8601格式
+	UpdatedAt            string   `json:"updatedAt"`
+	CookieCount          int      `json:"cookieCount"`          // 已存 Cookie 条数（非敏感，用于提醒）
+	CookieEarliestExpiry int64    `json:"cookieEarliestExpiry"` // 最早过期 unix 秒；0=无/全 Session
 }
 
 // BrowserAccountInput 账号输入（用于创建和更新）
@@ -285,6 +285,284 @@ func (a *App) BrowserAccountDelete(accountID string) error {
 	}
 
 	logger.New("Account").Info("[Account] 账号已删除", logger.F("account_id", accountID))
+	return nil
+}
+
+// BrowserAccountUnlinkProfile 从账号中解绑指定实例
+func (a *App) BrowserAccountUnlinkProfile(accountID string, profileID string) error {
+	if accountID == "" || profileID == "" {
+		return fmt.Errorf("账号ID和实例ID不能为空")
+	}
+
+	// 读取当前账号的关联列表
+	var relatedIDsJSON string
+	err := a.db.GetConn().QueryRow(`SELECT related_profile_ids FROM browser_accounts WHERE account_id = ?`, accountID).Scan(&relatedIDsJSON)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("账号不存在: %s", accountID)
+	}
+	if err != nil {
+		return fmt.Errorf("查询账号失败: %w", err)
+	}
+
+	// 解析关联列表
+	var relatedIDs []string
+	if relatedIDsJSON != "" && relatedIDsJSON != "[]" && relatedIDsJSON != "null" {
+		if err := json.Unmarshal([]byte(relatedIDsJSON), &relatedIDs); err != nil {
+			return fmt.Errorf("解析关联列表失败: %w", err)
+		}
+	}
+
+	// 从列表中移除指定实例
+	updated := make([]string, 0, len(relatedIDs))
+	found := false
+	for _, id := range relatedIDs {
+		if id == profileID {
+			found = true
+			continue
+		}
+		updated = append(updated, id)
+	}
+
+	if !found {
+		return fmt.Errorf("该账号未关联该实例")
+	}
+
+	// 更新数据库
+	updatedJSON, err := json.Marshal(updated)
+	if err != nil {
+		return fmt.Errorf("序列化关联列表失败: %w", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = a.db.GetConn().Exec(`
+		UPDATE browser_accounts
+		SET related_profile_ids = ?, updated_at = ?
+		WHERE account_id = ?
+	`, string(updatedJSON), now, accountID)
+
+	if err != nil {
+		return fmt.Errorf("更新账号失败: %w", err)
+	}
+
+	logger.New("Account").Info("[Account] 账号已解绑实例",
+		logger.F("account_id", accountID),
+		logger.F("profile_id", profileID))
+
+	return nil
+}
+
+// BrowserAccountBatchLinkProfiles 批量关联账号到多个实例
+func (a *App) BrowserAccountBatchLinkProfiles(accountIDs []string, profileIDs []string) map[string]string {
+	results := make(map[string]string)
+	log := logger.New("Account")
+
+	for _, accountID := range accountIDs {
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" {
+			continue
+		}
+
+		// 读取当前关联列表
+		var relatedIDsJSON string
+		err := a.db.GetConn().QueryRow(`SELECT related_profile_ids FROM browser_accounts WHERE account_id = ?`, accountID).Scan(&relatedIDsJSON)
+		if err == sql.ErrNoRows {
+			results[accountID] = "账号不存在"
+			continue
+		}
+		if err != nil {
+			results[accountID] = fmt.Sprintf("查询失败: %v", err)
+			continue
+		}
+
+		// 解析现有关联
+		var relatedIDs []string
+		if relatedIDsJSON != "" && relatedIDsJSON != "[]" && relatedIDsJSON != "null" {
+			if err := json.Unmarshal([]byte(relatedIDsJSON), &relatedIDs); err != nil {
+				results[accountID] = fmt.Sprintf("解析失败: %v", err)
+				continue
+			}
+		}
+
+		// 合并新的实例ID（去重）
+		existing := make(map[string]bool)
+		for _, id := range relatedIDs {
+			existing[id] = true
+		}
+		for _, id := range profileIDs {
+			id = strings.TrimSpace(id)
+			if id != "" && !existing[id] {
+				relatedIDs = append(relatedIDs, id)
+				existing[id] = true
+			}
+		}
+
+		// 更新数据库
+		updatedJSON, err := json.Marshal(relatedIDs)
+		if err != nil {
+			results[accountID] = fmt.Sprintf("序列化失败: %v", err)
+			continue
+		}
+
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, err = a.db.GetConn().Exec(`
+			UPDATE browser_accounts
+			SET related_profile_ids = ?, updated_at = ?
+			WHERE account_id = ?
+		`, string(updatedJSON), now, accountID)
+
+		if err != nil {
+			results[accountID] = fmt.Sprintf("更新失败: %v", err)
+			continue
+		}
+
+		results[accountID] = "成功"
+		log.Info("[Account] 账号批量关联实例",
+			logger.F("account_id", accountID),
+			logger.F("profile_count", len(profileIDs)))
+	}
+
+	return results
+}
+
+// BrowserAccountBatchUnlinkProfiles 批量解绑账号与多个实例的关联
+func (a *App) BrowserAccountBatchUnlinkProfiles(accountIDs []string, profileIDs []string) map[string]string {
+	results := make(map[string]string)
+	log := logger.New("Account")
+
+	unlinkMap := make(map[string]bool)
+	for _, id := range profileIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			unlinkMap[id] = true
+		}
+	}
+
+	for _, accountID := range accountIDs {
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" {
+			continue
+		}
+
+		// 读取当前关联列表
+		var relatedIDsJSON string
+		err := a.db.GetConn().QueryRow(`SELECT related_profile_ids FROM browser_accounts WHERE account_id = ?`, accountID).Scan(&relatedIDsJSON)
+		if err == sql.ErrNoRows {
+			results[accountID] = "账号不存在"
+			continue
+		}
+		if err != nil {
+			results[accountID] = fmt.Sprintf("查询失败: %v", err)
+			continue
+		}
+
+		// 解析现有关联
+		var relatedIDs []string
+		if relatedIDsJSON != "" && relatedIDsJSON != "[]" && relatedIDsJSON != "null" {
+			if err := json.Unmarshal([]byte(relatedIDsJSON), &relatedIDs); err != nil {
+				results[accountID] = fmt.Sprintf("解析失败: %v", err)
+				continue
+			}
+		}
+
+		// 过滤掉要解绑的实例
+		updated := make([]string, 0, len(relatedIDs))
+		for _, id := range relatedIDs {
+			if !unlinkMap[id] {
+				updated = append(updated, id)
+			}
+		}
+
+		// 更新数据库
+		updatedJSON, err := json.Marshal(updated)
+		if err != nil {
+			results[accountID] = fmt.Sprintf("序列化失败: %v", err)
+			continue
+		}
+
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, err = a.db.GetConn().Exec(`
+			UPDATE browser_accounts
+			SET related_profile_ids = ?, updated_at = ?
+			WHERE account_id = ?
+		`, string(updatedJSON), now, accountID)
+
+		if err != nil {
+			results[accountID] = fmt.Sprintf("更新失败: %v", err)
+			continue
+		}
+
+		results[accountID] = "成功"
+		log.Info("[Account] 账号批量解绑实例",
+			logger.F("account_id", accountID),
+			logger.F("unlink_count", len(profileIDs)))
+	}
+
+	return results
+}
+
+// ============================================================================
+// Profile 和 Account 关联
+// ============================================================================
+
+// linkAccountsToProfile 将指定账号ID列表关联到实例（双向关联：账号.relatedProfileIds 中添加 profileId）
+func (a *App) linkAccountsToProfile(profileID string, accountIDs []string) error {
+	if profileID == "" || len(accountIDs) == 0 {
+		return nil
+	}
+
+	log := logger.New("Account")
+	for _, accountID := range accountIDs {
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" {
+			continue
+		}
+
+		// 读取当前账号的关联列表
+		var relatedIDsJSON string
+		err := a.db.GetConn().QueryRow(`SELECT related_profile_ids FROM browser_accounts WHERE account_id = ?`, accountID).Scan(&relatedIDsJSON)
+		if err == sql.ErrNoRows {
+			log.Warn("关联账号不存在，跳过", logger.F("account_id", accountID), logger.F("profile_id", profileID))
+			continue
+		}
+		if err != nil {
+			log.Error("查询账号关联失败", logger.F("account_id", accountID), logger.F("error", err))
+			continue
+		}
+
+		// 反序列化
+		var related []string
+		if err := json.Unmarshal([]byte(relatedIDsJSON), &related); err != nil {
+			related = []string{}
+		}
+
+		// 检查是否已关联
+		alreadyLinked := false
+		for _, id := range related {
+			if id == profileID {
+				alreadyLinked = true
+				break
+			}
+		}
+
+		if !alreadyLinked {
+			related = append(related, profileID)
+			updatedJSON, err := json.Marshal(related)
+			if err != nil {
+				log.Error("序列化关联列表失败", logger.F("account_id", accountID), logger.F("error", err))
+				continue
+			}
+
+			now := time.Now().UTC().Format(time.RFC3339)
+			_, err = a.db.GetConn().Exec(`UPDATE browser_accounts SET related_profile_ids = ?, updated_at = ? WHERE account_id = ?`, string(updatedJSON), now, accountID)
+			if err != nil {
+				log.Error("更新账号关联失败", logger.F("account_id", accountID), logger.F("error", err))
+				continue
+			}
+
+			log.Info("账号已关联到实例", logger.F("account_id", accountID), logger.F("profile_id", profileID))
+		}
+	}
+
 	return nil
 }
 

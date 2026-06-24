@@ -420,6 +420,55 @@ func TestSanitizeManagedLaunchArgsKeepsUnmanagedFlags(t *testing.T) {
 	}
 }
 
+func TestSanitizeManagedLaunchArgsRemovesAutomationSignals(t *testing.T) {
+	t.Parallel()
+
+	got, removed := sanitizeManagedLaunchArgs([]string{
+		"--lang=en-US",
+		"--enable-automation",
+		"--disable-blink-features=AutomationControlled",
+		"--disable-blink-features", "AutomationControlled",
+		"--disable-blink-features=AutomationControlled,BlockCredentialedSubresources",
+		"--disable-blink-features", "AutomationControlled,AllowPopupsDuringPageUnload",
+		"--disable-blink-features=BlockCredentialedSubresources",
+	})
+
+	wantArgs := []string{
+		"--lang=en-US",
+		"--disable-blink-features=BlockCredentialedSubresources",
+		"--disable-blink-features=AllowPopupsDuringPageUnload",
+		"--disable-blink-features=BlockCredentialedSubresources",
+	}
+	if !reflect.DeepEqual(got, wantArgs) {
+		t.Fatalf("sanitizeManagedLaunchArgs automation args mismatch: got=%v want=%v", got, wantArgs)
+	}
+
+	wantRemoved := []string{"--enable-automation", "--disable-blink-features"}
+	if !reflect.DeepEqual(removed, wantRemoved) {
+		t.Fatalf("sanitizeManagedLaunchArgs automation removed mismatch: got=%v want=%v", removed, wantRemoved)
+	}
+}
+
+func TestExtractSearchEngineLaunchArgRemovesInternalFlag(t *testing.T) {
+	t.Parallel()
+
+	got, engine := extractSearchEngineLaunchArg([]string{
+		"--lang=en-US",
+		"--ant-search-engine=bing",
+		"--disable-sync",
+		"--ant-search-engine=invalid",
+		"https://example.com",
+	})
+
+	want := []string{"--lang=en-US", "--disable-sync", "https://example.com"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("extractSearchEngineLaunchArg args mismatch: got=%v want=%v", got, want)
+	}
+	if engine != "bing" {
+		t.Fatalf("extractSearchEngineLaunchArg engine mismatch: got=%q want=%q", engine, "bing")
+	}
+}
+
 func mustListenLoopback(t *testing.T) net.Listener {
 	t.Helper()
 

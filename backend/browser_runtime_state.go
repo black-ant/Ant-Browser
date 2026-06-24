@@ -201,7 +201,7 @@ func (a *App) waitForBrowserDebugReady(profileId string, debugPort int, timeout 
 	}
 }
 
-func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeout time.Duration) {
+func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeout time.Duration, overrides ...browserRuntimeOverrides) {
 	snapshot, changed := a.waitForBrowserDebugReady(profileId, debugPort, timeout)
 	if snapshot == nil || !changed {
 		return
@@ -211,6 +211,15 @@ func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeou
 		logger.F("profile_id", profileId),
 		logger.F("debug_port", debugPort),
 	)
+	if len(overrides) > 0 {
+		if err := a.applyAndWatchBrowserRuntimeOverrides(profileId, debugPort, overrides[0]); err != nil {
+			logger.New("Browser").Warn("运行时指纹覆盖应用失败",
+				logger.F("profile_id", profileId),
+				logger.F("geolocation_source", overrides[0].geolocationSource()),
+				logger.F("timezone_source", overrides[0].timezoneSource()),
+				logger.F("error", err.Error()))
+		}
+	}
 	a.emitBrowserInstanceUpdated(snapshot)
 }
 

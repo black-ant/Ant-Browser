@@ -1,0 +1,5 @@
+./polyval.go
+./polyval_amd64.go
+./stub_amd64.go
+./zctmul.go
+./polyval_amd64.s

@@ -34,6 +34,14 @@ export function BookmarkSave(arg1) {
   return window['go']['main']['App']['BookmarkSave'](arg1);
 }
 
+export function BrowserAccountBatchLinkProfiles(arg1, arg2) {
+  return window['go']['main']['App']['BrowserAccountBatchLinkProfiles'](arg1, arg2);
+}
+
+export function BrowserAccountBatchUnlinkProfiles(arg1, arg2) {
+  return window['go']['main']['App']['BrowserAccountBatchUnlinkProfiles'](arg1, arg2);
+}
+
 export function BrowserAccountCreate(arg1) {
   return window['go']['main']['App']['BrowserAccountCreate'](arg1);
 }
@@ -68,6 +76,10 @@ export function BrowserAccountSaveCookiesFromProfile(arg1, arg2) {
 
 export function BrowserAccountSetProfiles(arg1, arg2) {
   return window['go']['main']['App']['BrowserAccountSetProfiles'](arg1, arg2);
+}
+
+export function BrowserAccountUnlinkProfile(arg1, arg2) {
+  return window['go']['main']['App']['BrowserAccountUnlinkProfile'](arg1, arg2);
 }
 
 export function BrowserAccountUpdate(arg1, arg2) {
@@ -326,8 +338,16 @@ export function BrowserSnapshotRestore(arg1, arg2) {
   return window['go']['main']['App']['BrowserSnapshotRestore'](arg1, arg2);
 }
 
+export function CDPAddInterceptRule(arg1, arg2) {
+  return window['go']['main']['App']['CDPAddInterceptRule'](arg1, arg2);
+}
+
 export function CDPCaptureScreenshot(arg1) {
   return window['go']['main']['App']['CDPCaptureScreenshot'](arg1);
+}
+
+export function CDPClearAllCookies(arg1) {
+  return window['go']['main']['App']['CDPClearAllCookies'](arg1);
 }
 
 export function CDPClearConsoleLogs(arg1) {
@@ -336,6 +356,26 @@ export function CDPClearConsoleLogs(arg1) {
 
 export function CDPClearNetworkRequests(arg1) {
   return window['go']['main']['App']['CDPClearNetworkRequests'](arg1);
+}
+
+export function CDPClearWebSocketMessages(arg1) {
+  return window['go']['main']['App']['CDPClearWebSocketMessages'](arg1);
+}
+
+export function CDPDeleteCookie(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CDPDeleteCookie'](arg1, arg2, arg3, arg4);
+}
+
+export function CDPDisableIntercept(arg1) {
+  return window['go']['main']['App']['CDPDisableIntercept'](arg1);
+}
+
+export function CDPEnableConsoleCapture(arg1) {
+  return window['go']['main']['App']['CDPEnableConsoleCapture'](arg1);
+}
+
+export function CDPEnableIntercept(arg1) {
+  return window['go']['main']['App']['CDPEnableIntercept'](arg1);
 }
 
 export function CDPExecuteJavaScript(arg1, arg2) {
@@ -350,6 +390,14 @@ export function CDPGetConsoleLogs(arg1) {
   return window['go']['main']['App']['CDPGetConsoleLogs'](arg1);
 }
 
+export function CDPGetCookies(arg1) {
+  return window['go']['main']['App']['CDPGetCookies'](arg1);
+}
+
+export function CDPGetInterceptRules(arg1) {
+  return window['go']['main']['App']['CDPGetInterceptRules'](arg1);
+}
+
 export function CDPGetNetworkRequests(arg1) {
   return window['go']['main']['App']['CDPGetNetworkRequests'](arg1);
 }
@@ -362,8 +410,20 @@ export function CDPGetStorage(arg1, arg2) {
   return window['go']['main']['App']['CDPGetStorage'](arg1, arg2);
 }
 
+export function CDPGetWebSocketMessages(arg1) {
+  return window['go']['main']['App']['CDPGetWebSocketMessages'](arg1);
+}
+
 export function CDPListSessions() {
   return window['go']['main']['App']['CDPListSessions']();
+}
+
+export function CDPReloadPage(arg1) {
+  return window['go']['main']['App']['CDPReloadPage'](arg1);
+}
+
+export function CDPRemoveInterceptRule(arg1, arg2) {
+  return window['go']['main']['App']['CDPRemoveInterceptRule'](arg1, arg2);
 }
 
 export function CDPSessionClose(arg1) {
@@ -374,6 +434,14 @@ export function CDPSessionCreate(arg1, arg2) {
   return window['go']['main']['App']['CDPSessionCreate'](arg1, arg2);
 }
 
+export function CDPSetCookie(arg1, arg2) {
+  return window['go']['main']['App']['CDPSetCookie'](arg1, arg2);
+}
+
+export function CDPUpdateInterceptRule(arg1, arg2) {
+  return window['go']['main']['App']['CDPUpdateInterceptRule'](arg1, arg2);
+}
+
 export function ClearAppLogs() {
   return window['go']['main']['App']['ClearAppLogs']();
 }
@@ -382,8 +450,16 @@ export function CreateGroup(arg1) {
   return window['go']['main']['App']['CreateGroup'](arg1);
 }
 
+export function CreateProfile(arg1) {
+  return window['go']['main']['App']['CreateProfile'](arg1);
+}
+
 export function DeleteGroup(arg1) {
   return window['go']['main']['App']['DeleteGroup'](arg1);
+}
+
+export function DeleteProfile(arg1) {
+  return window['go']['main']['App']['DeleteProfile'](arg1);
 }
 
 export function FetchRemoteAuthorProfile(arg1, arg2) {
@@ -502,6 +578,10 @@ export function StartInstanceWithParams(arg1, arg2) {
   return window['go']['main']['App']['StartInstanceWithParams'](arg1, arg2);
 }
 
+export function StopInstance(arg1) {
+  return window['go']['main']['App']['StopInstance'](arg1);
+}
+
 export function TestProxyConnectivity(arg1, arg2) {
   return window['go']['main']['App']['TestProxyConnectivity'](arg1, arg2);
 }
@@ -516,6 +596,10 @@ export function TriggerGC() {
 
 export function UpdateGroup(arg1, arg2) {
   return window['go']['main']['App']['UpdateGroup'](arg1, arg2);
+}
+
+export function UpdateProfile(arg1, arg2) {
+  return window['go']['main']['App']['UpdateProfile'](arg1, arg2);
 }
 
 export function UsernameScanGenerate(arg1) {

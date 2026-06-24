@@ -26,7 +26,7 @@ function StatCard({ title, value, icon, color, to }: StatCardProps) {
       <div className="text-3xl font-bold text-[var(--color-text-primary)] tracking-tight">{value}</div>
     </>
   )
-  const className = "rounded-2xl border border-[var(--color-border-default)] bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-subtle)] p-6 shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-all duration-300 hover:-translate-y-1 group"
+  const className = "rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] p-6 shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-all duration-300 hover:-translate-y-1 group"
   return to ? <Link to={to} className={`${className} cursor-pointer block`}>{content}</Link> : <div className={className}>{content}</div>
 }
 
@@ -170,10 +170,10 @@ export function DashboardPage() {
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="实例总数" value={v(stats.totalInstances)} icon={<Monitor className="w-5 h-5 text-blue-600" />} color="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20" to="/browser/list" />
-        <StatCard title="运行中" value={v(stats.runningInstances)} icon={<Play className="w-5 h-5 text-green-600" />} color="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20" to="/browser/list" />
-        <StatCard title="代理节点（可用/总）" value={loading ? '-' : `${stats.proxyAvailable}/${stats.proxyCount}`} icon={<Globe className="w-5 h-5 text-purple-600" />} color="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20" to="/browser/proxy-pool" />
-        <StatCard title="内核版本" value={v(stats.coreCount)} icon={<Cpu className="w-5 h-5 text-orange-600" />} color="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/20" to="/browser/cores" />
+        <StatCard title="实例总数" value={v(stats.totalInstances)} icon={<Monitor className="w-5 h-5 text-blue-600" />} color="bg-blue-50 dark:bg-blue-900/20" to="/browser/list" />
+        <StatCard title="运行中" value={v(stats.runningInstances)} icon={<Play className="w-5 h-5 text-green-600" />} color="bg-green-50 dark:bg-green-900/20" to="/browser/list" />
+        <StatCard title="代理节点（可用/总）" value={loading ? '-' : `${stats.proxyAvailable}/${stats.proxyCount}`} icon={<Globe className="w-5 h-5 text-purple-600" />} color="bg-purple-50 dark:bg-purple-900/20" to="/browser/proxy-pool" />
+        <StatCard title="内核版本" value={v(stats.coreCount)} icon={<Cpu className="w-5 h-5 text-orange-600" />} color="bg-orange-50 dark:bg-orange-900/20" to="/browser/cores" />
       </div>
 
       {/* 资源监控（真实采样 + 历史图表） */}
@@ -279,8 +279,8 @@ export function DashboardPage() {
           <div className="grid grid-cols-2 gap-3">
             {QUICK_ACTIONS.map(action => (
               <button key={action.label} onClick={action.onClick}
-                className="group flex items-center gap-3 p-5 rounded-2xl border border-[var(--color-border-default)] bg-gradient-to-br from-[var(--color-bg-subtle)] to-[var(--color-bg-surface)] hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-md)] transition-all duration-300 hover:-translate-y-1 text-left">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--color-accent-muted)] to-[var(--color-bg-muted)] flex items-center justify-center text-[var(--color-text-secondary)] group-hover:from-[var(--color-accent)] group-hover:to-[var(--color-accent-hover)] group-hover:text-[var(--color-text-inverse)] group-hover:scale-110 transition-all duration-300 shadow-md shrink-0">
+                className="group flex items-center gap-3 p-5 rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-md)] transition-all duration-300 hover:-translate-y-1 text-left">
+                <div className="w-12 h-12 rounded-xl bg-[var(--color-bg-muted)] flex items-center justify-center text-[var(--color-text-secondary)] group-hover:bg-[var(--color-accent)] group-hover:text-[var(--color-text-inverse)] group-hover:scale-110 transition-all duration-300 shadow-md shrink-0">
                   {action.icon}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -319,7 +319,7 @@ export function DashboardPage() {
               <span>当前容量限制：</span>
               <span className={`font-medium ${stats.totalInstances >= stats.maxProfileLimit ? 'text-red-500' : 'text-[var(--color-success)]'}`}>{loading ? '-' : `${stats.totalInstances} / ${stats.maxProfileLimit}`}</span>
             </p>
-            <div className="mt-4 rounded-xl border border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-blue-600/5 p-4 shadow-glow-blue">
+            <div className="mt-4 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 shadow-glow-blue">
               <div className="flex items-center justify-between gap-4">
                 <p className="text-sm font-medium text-[var(--color-text-primary)]">点亮 GitHub Star 后，可再获赠 50 个永久额度</p>
                 <button type="button" className="shrink-0 rounded-xl p-2.5 text-blue-600 dark:text-blue-400 transition-all duration-300 hover:bg-blue-500/20 hover:scale-110 disabled:opacity-50 shadow-sm" onClick={handleOpenGithubStarGift} disabled={redeeming} title="打开 GitHub 并领取赠送" aria-label="打开 GitHub 并领取赠送">

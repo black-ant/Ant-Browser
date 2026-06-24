@@ -1,0 +1,5 @@
+./archtype.go
+./entid.go
+./hwtypes.go
+./iana.go
+./statuscodes.go

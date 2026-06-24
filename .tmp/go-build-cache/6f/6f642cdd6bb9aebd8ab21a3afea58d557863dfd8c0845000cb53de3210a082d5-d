@@ -1,0 +1,17 @@
+./bareitem.go
+./binary.go
+./boolean.go
+./decimal.go
+./decode.go
+./dictionary.go
+./encode.go
+./innerlist.go
+./integer.go
+./item.go
+./key.go
+./list.go
+./member.go
+./params.go
+./string.go
+./token.go
+./utils.go

@@ -1,0 +1,10 @@
+./auth_aes128_md5.go
+./auth_aes128_sha1.go
+./auth_chain_a.go
+./auth_chain_b.go
+./auth_sha1_v4.go
+./base.go
+./origin.go
+./packet.go
+./protocol.go
+./stream.go

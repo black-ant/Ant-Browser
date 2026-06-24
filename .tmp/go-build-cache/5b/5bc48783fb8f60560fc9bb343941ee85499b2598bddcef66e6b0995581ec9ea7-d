@@ -1,0 +1,3 @@
+./os.go
+./os_windows.go
+./version_windows.go

@@ -1,0 +1,13 @@
+# test log
+getenv GOTMPDIR
+getenv GOTMPDIR
+getenv GOTMPDIR
+open C:\Users\Jun\AppData\Local\Temp\TestLoadPreservesExplicitConfig178205982\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadBackfillsLegacyConfig2651896047\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadMigratesLegacyRootLogPath980208712\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadBackfillsLegacyConfig2651896047\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadPreservesExplicitConfig178205982\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp\TestLoadMigratesLegacyRootLogPath980208712\001\config.yaml
+open C:\Users\Jun\AppData\Local\Temp
+open C:\Users\Jun\AppData\Local\Temp
+open C:\Users\Jun\AppData\Local\Temp

@@ -1,0 +1,8 @@
+./cmfa_stub.go
+./goflags.go
+./low_memory_stub.go
+./no_fake_tcp_stub.go
+./tags.go
+./version.go
+./version_windows.go
+./with_gvisor_stub.go

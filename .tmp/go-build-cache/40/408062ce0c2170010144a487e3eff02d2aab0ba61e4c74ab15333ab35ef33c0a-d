@@ -1,0 +1,6 @@
+./app.go
+./app_debug_not.go
+./app_default_windows.go
+./app_devtools_not.go
+./app_obfuscated_not.go
+./app_preflight_windows.go

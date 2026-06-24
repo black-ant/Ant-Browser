@@ -1,0 +1,7 @@
+./doc.go
+./edwards25519.go
+./extra.go
+./scalar.go
+./scalar_fiat.go
+./scalarmult.go
+./tables.go

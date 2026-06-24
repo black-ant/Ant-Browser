@@ -11,7 +11,7 @@ import (
 
 func TestLaunchServerStartWithAutoPort(t *testing.T) {
 	svc := launchcode.NewLaunchCodeService(launchcode.NewMemoryLaunchCodeDAO())
-	srv := launchcode.NewLaunchServer(svc, nil, nil, 0)
+	srv := launchcode.NewLaunchServer(svc, nil, nil, nil, 0)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
@@ -45,7 +45,7 @@ func TestLaunchServerReturnsErrorWhenPreferredPortIsBusy(t *testing.T) {
 
 	busyPort := occupied.Addr().(*net.TCPAddr).Port
 	svc := launchcode.NewLaunchCodeService(launchcode.NewMemoryLaunchCodeDAO())
-	srv := launchcode.NewLaunchServer(svc, nil, nil, busyPort)
+	srv := launchcode.NewLaunchServer(svc, nil, nil, nil, busyPort)
 
 	if err := srv.Start(); err == nil {
 		defer func() {

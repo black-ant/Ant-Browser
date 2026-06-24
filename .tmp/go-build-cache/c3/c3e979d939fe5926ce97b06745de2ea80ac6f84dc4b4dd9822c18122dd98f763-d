@@ -1,0 +1,5 @@
+./aligned.go
+./convert_go120.go
+./memclr_asm.go
+./memset.go
+./ptr.go

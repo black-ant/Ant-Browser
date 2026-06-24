@@ -1,0 +1,7 @@
+./aead.go
+./aez.go
+./aez_amd64.go
+./round_bitsliced32.go
+./round_bitsliced64.go
+./round_vartime.go
+./aez_amd64.s

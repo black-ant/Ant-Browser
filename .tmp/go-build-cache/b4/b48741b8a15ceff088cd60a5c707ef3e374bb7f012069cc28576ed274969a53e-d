@@ -1,0 +1,4 @@
+./cpu.go
+./cpu_x86.go
+./cpu.s
+./cpu_x86.s

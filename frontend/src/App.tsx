@@ -30,6 +30,7 @@ const ChartsPage = lazyNamed(() => import('./modules/charts/ChartsPage'), 'Chart
 const BrowserListPage = lazyNamed(() => import('./modules/browser/pages/BrowserListPage'), 'BrowserListPage')
 const BrowserDetailPage = lazyNamed(() => import('./modules/browser/pages/BrowserDetailPage'), 'BrowserDetailPage')
 const BrowserEditPage = lazyNamed(() => import('./modules/browser/pages/BrowserEditPage'), 'BrowserEditPage')
+const BrowserCreatePageV2 = lazyNamed(() => import('./modules/browser/pages/BrowserCreatePageV2'), 'BrowserCreatePageV2')
 const BrowserCopyPage = lazyNamed(() => import('./modules/browser/pages/BrowserCopyPage'), 'BrowserCopyPage')
 const BrowserLogsPage = lazyNamed(() => import('./modules/browser/pages/BrowserLogsPage'), 'BrowserLogsPage')
 const ProxyPoolPage = lazyNamed(() => import('./modules/browser/pages/ProxyPoolPage'), 'ProxyPoolPage')
@@ -290,6 +291,7 @@ function App() {
               <Route path="/browser/list" element={<BrowserListPage />} />
               <Route path="/browser/detail/:id" element={<BrowserDetailPage />} />
               <Route path="/browser/edit/:id" element={<BrowserEditPage />} />
+              <Route path="/browser/create" element={<BrowserCreatePageV2 />} />
               <Route path="/browser/copy/:id" element={<BrowserCopyPage />} />
               <Route path="/browser/monitor" element={<Navigate to="/browser/list" replace />} />
               <Route path="/browser/logs" element={<BrowserLogsPage />} />

@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildHandlerRejectsNonLocalRequestBeforeAPIAuth(t *testing.T) {
-	srv := NewLaunchServer(NewLaunchCodeService(NewMemoryLaunchCodeDAO()), nil, nil, 0)
+	srv := NewLaunchServer(NewLaunchCodeService(NewMemoryLaunchCodeDAO()), nil, nil, nil, 0)
 	srv.SetAPIAuthConfig(APIAuthConfig{
 		Enabled: true,
 		APIKey:  "secret-key",

@@ -1,0 +1,8 @@
+./doc.go
+./hashes.go
+./hashes_noasm.go
+./keccakf_amd64.go
+./sha3.go
+./shake.go
+./shake_noasm.go
+./keccakf_amd64.s

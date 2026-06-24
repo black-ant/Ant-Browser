@@ -1,0 +1,4 @@
+./base.pb.go
+./clientcfg.pb.go
+./misc.pb.go
+./servercfg.pb.go

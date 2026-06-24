@@ -87,11 +87,14 @@ func TestDefaultFingerprintArgsForOS(t *testing.T) {
 
 	for goos, want := range tests {
 		got := defaultFingerprintArgsForOS(goos)
-		if len(got) != 2 {
+		if len(got) != 3 {
 			t.Fatalf("%s: unexpected args length: got=%v", goos, got)
 		}
 		if got[1] != want {
 			t.Fatalf("%s: platform arg mismatch: got=%q want=%q", goos, got[1], want)
+		}
+		if got[2] != "--webrtc-ip-handling-policy=disable_non_proxied_udp" {
+			t.Fatalf("%s: 缺少默认 WebRTC 防泄露策略: got=%v", goos, got)
 		}
 	}
 }

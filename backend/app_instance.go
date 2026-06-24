@@ -81,7 +81,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		}
 	}
 
-	// 防止同一实例并发重复启动
+	// 原子检查并认领：防止同一实例并发重复启动（TOCTOU修复）
 	if a.browserMgr.StartingProfiles[profileId] {
 		snapshot := copyBrowserProfileSnapshot(profile)
 		a.browserMgr.Mutex.Unlock()

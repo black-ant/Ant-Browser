@@ -11,17 +11,17 @@ import (
 
 // BrowserExtension 浏览器扩展
 type BrowserExtension struct {
-	ExtensionID      string   `json:"extensionId"`
-	ExtensionName    string   `json:"extensionName"`
-	ExtensionPath    string   `json:"extensionPath"`
-	Version          string   `json:"version"`
-	Enabled          bool     `json:"enabled"`
-	BoundProfileIDs  []string `json:"boundProfileIds"` // 绑定的实例ID
-	SourceType       string   `json:"sourceType"`      // local/crx/url/store
-	SourceURL        string   `json:"sourceUrl"`
-	Description      string   `json:"description"`
-	CreatedAt        string   `json:"createdAt"`
-	UpdatedAt        string   `json:"updatedAt"`
+	ExtensionID     string   `json:"extensionId"`
+	ExtensionName   string   `json:"extensionName"`
+	ExtensionPath   string   `json:"extensionPath"`
+	Version         string   `json:"version"`
+	Enabled         bool     `json:"enabled"`
+	BoundProfileIDs []string `json:"boundProfileIds"` // 绑定的实例ID
+	SourceType      string   `json:"sourceType"`      // local/crx/url/store
+	SourceURL       string   `json:"sourceUrl"`
+	Description     string   `json:"description"`
+	CreatedAt       string   `json:"createdAt"`
+	UpdatedAt       string   `json:"updatedAt"`
 }
 
 // BrowserExtensionInput 扩展输入

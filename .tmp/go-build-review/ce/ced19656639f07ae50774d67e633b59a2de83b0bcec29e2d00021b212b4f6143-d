@@ -1,0 +1,15 @@
+./addr.go
+./bind.go
+./bufconn.go
+./bufconn_unsafe.go
+./cached.go
+./context.go
+./earlyconn.go
+./io.go
+./listener.go
+./packet.go
+./refconn.go
+./relay.go
+./sing.go
+./tcpip.go
+./websocket.go

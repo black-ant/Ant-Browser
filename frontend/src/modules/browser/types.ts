@@ -22,6 +22,7 @@ export interface BrowserProfile {
   tags: string[]
   keywords: string[]
   groupId?: string
+  accountIds?: string[]
   running: boolean
   status?: BrowserProfileStatus
   debugPort: number
@@ -47,6 +48,8 @@ export interface BrowserProfileInput {
   tags: string[]
   keywords: string[]
   groupId?: string
+  launchCode?: string
+  accountIds?: string[]
 }
 
 export interface BrowserTab {
