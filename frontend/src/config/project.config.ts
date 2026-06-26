@@ -31,7 +31,7 @@ export const navigationConfig: NavSection[] = [
       { name: '今日执行台', path: '/', icon: 'LayoutDashboard' },
       { name: '店铺授权', path: '/shops', icon: 'Store' },
       { name: '店铺工作台', path: '/workbench', icon: 'Monitor' },
-      { name: '运营任务', path: '/operations', icon: 'ListChecks' },
+      { name: '专员任务台', path: '/operations', icon: 'ListChecks' },
     ],
   },
   {
