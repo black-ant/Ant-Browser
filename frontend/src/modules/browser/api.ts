@@ -1,4 +1,4 @@
-import type { BrowserProfile, BrowserProfileInput, BrowserTab, BrowserSettings, BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserProxy, BrowserCoreExtended, CookieInfo, SnapshotInfo, BrowserBookmark, BrowserGroup, BrowserGroupInput, BrowserGroupWithCount, ProxyIPHealthResult, ProxySource, ProxySourceOverride } from './types'
+import type { BrowserProfile, BrowserProfileInput, BrowserTab, BrowserSettings, BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserProxy, BrowserCoreExtended, CookieInfo, SnapshotInfo, BrowserBookmark, BrowserGroup, BrowserGroupInput, BrowserGroupWithCount, BrowserTemplate, BrowserTemplateInput, ProxyIPHealthResult, ProxySource, ProxySourceOverride, IPDetectResult, IPDetectSource } from './types'
 
 const getBindings = async () => {
   try {
@@ -533,6 +533,45 @@ export async function browserProxyBatchCheckIPHealth(proxyIds: string[], concurr
   }))
 }
 
+// 可用的出口 IP 检测源列表（供下拉框）
+export async function listIPDetectSources(): Promise<IPDetectSource[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyListIPDetectSources) {
+    return (await bindings.BrowserProxyListIPDetectSources()) || []
+  }
+  return [
+    { key: 'ip-api', label: 'IP-API (ip-api.com)' },
+    { key: 'ipinfo', label: 'IPinfo (ipinfo.io)' },
+    { key: 'ipwho', label: 'ipwho.is' },
+    { key: 'ipsb', label: 'IP.SB (api.ip.sb)' },
+    { key: 'ipapico', label: 'ipapi.co' },
+  ]
+}
+
+// 通过一段临时代理配置（未保存到代理池）使用指定检测源测试出口 IP
+export async function detectIPByConfig(source: string, proxyConfig: string): Promise<IPDetectResult> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyDetectIPByConfig) {
+    return await bindings.BrowserProxyDetectIPByConfig(source, proxyConfig)
+  }
+  await new Promise(r => setTimeout(r, 600))
+  return {
+    source,
+    ok: true,
+    error: '',
+    ip: '127.0.0.1',
+    country: 'Mock',
+    countryCode: 'MO',
+    region: 'Mock',
+    city: 'Mock',
+    isp: 'Mock ISP',
+    org: 'Mock Org',
+    latencyMs: 123,
+    updatedAt: new Date().toISOString(),
+    rawData: {},
+  }
+}
+
 export async function openUserDataDir(userDataDir: string): Promise<boolean> {
   const bindings: any = await getBindings()
   if (bindings?.OpenUserDataDir) {
@@ -856,6 +895,36 @@ export async function moveInstancesToGroup(profileIds: string[], groupId: string
 }
 
 // ============================================================================
+// Template API
+// ============================================================================
+
+export async function fetchTemplates(): Promise<BrowserTemplate[]> {
+  return callBinding<BrowserTemplate[]>('ListTemplates', [], [])
+}
+
+export async function createTemplate(input: BrowserTemplateInput): Promise<BrowserTemplate | null> {
+  return callBinding<BrowserTemplate | null>('CreateTemplate', [input], null)
+}
+
+export async function updateTemplate(templateId: string, input: BrowserTemplateInput): Promise<BrowserTemplate | null> {
+  return callBinding<BrowserTemplate | null>('UpdateTemplate', [templateId, input], null)
+}
+
+export async function deleteTemplate(templateId: string): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.DeleteTemplate) {
+    await bindings.DeleteTemplate(templateId)
+    return true
+  }
+  const goApp = (window as any).go?.main?.App
+  if (goApp?.DeleteTemplate) {
+    await goApp.DeleteTemplate(templateId)
+    return true
+  }
+  return false
+}
+
+// ============================================================================
 // Account API
 // ============================================================================
 
@@ -866,6 +935,7 @@ export interface BrowserAccount {
   username: string
   email: string
   password: string
+  twoFA: string
   relatedProfileIds: string[]
   notes: string
   cookies: string
@@ -881,6 +951,7 @@ export interface BrowserAccountInput {
   username: string
   email: string
   password: string
+  twoFA: string
   relatedProfileIds: string[]
   notes: string
   cookies: string
@@ -927,7 +998,7 @@ export async function deleteAccount(accountId: string): Promise<boolean> {
   return false
 }
 
-// 从账号中解绑指定实例
+// 从账号中解绑指定窗口
 export async function unlinkAccountProfile(accountId: string, profileId: string): Promise<void> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserAccountUnlinkProfile) {
@@ -935,7 +1006,7 @@ export async function unlinkAccountProfile(accountId: string, profileId: string)
   }
 }
 
-// 批量关联账号到多个实例
+// 批量关联账号到多个窗口
 export async function batchLinkAccountProfiles(accountIds: string[], profileIds: string[]): Promise<Record<string, string>> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserAccountBatchLinkProfiles) {
@@ -944,7 +1015,7 @@ export async function batchLinkAccountProfiles(accountIds: string[], profileIds:
   return {}
 }
 
-// 批量解绑账号与多个实例的关联
+// 批量解绑账号与多个窗口的关联
 export async function batchUnlinkAccountProfiles(accountIds: string[], profileIds: string[]): Promise<Record<string, string>> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserAccountBatchUnlinkProfiles) {
@@ -953,17 +1024,17 @@ export async function batchUnlinkAccountProfiles(accountIds: string[], profileId
   return {}
 }
 
-// 设置账号关联的实例集合（一对多）
+// 设置账号关联的窗口集合（一对多）
 export async function setAccountProfiles(accountId: string, profileIds: string[]): Promise<void> {
   await callBinding<void>('BrowserAccountSetProfiles', [accountId, profileIds], undefined as any)
 }
 
-// 从运行中实例读取 Cookie 并保存到账号；返回保存条数
+// 从运行中窗口读取 Cookie 并保存到账号；返回保存条数
 export async function saveAccountCookiesFromProfile(accountId: string, profileId: string): Promise<number> {
   return callBinding<number>('BrowserAccountSaveCookiesFromProfile', [accountId, profileId], 0)
 }
 
-// 把账号已存 Cookie 回写到运行中实例；返回回写条数
+// 把账号已存 Cookie 回写到运行中窗口；返回回写条数
 export async function restoreAccountCookiesToProfile(accountId: string, profileId: string, clearFirst: boolean): Promise<number> {
   return callBinding<number>('BrowserAccountRestoreCookiesToProfile', [accountId, profileId, clearFirst], 0)
 }
@@ -1069,7 +1140,7 @@ export async function validateExtensionPath(path: string): Promise<ExtensionVali
   return callBinding<ExtensionValidateResult>('BrowserExtensionValidatePath', [path], { valid: false, message: '后端不可用', name: '', version: '' })
 }
 
-// 设置扩展绑定的实例集合
+// 设置扩展绑定的窗口集合
 export async function setExtensionProfiles(extensionId: string, profileIds: string[]): Promise<void> {
   await callBinding<void>('BrowserExtensionSetProfiles', [extensionId, profileIds], undefined as any)
 }

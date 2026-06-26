@@ -48,6 +48,7 @@ export function AccountManagementPage() {
     username: '',
     email: '',
     password: '',
+    twoFA: '',
     platform: 'other',
     platformUrl: '',
     platformIcon: '🌐',
@@ -76,7 +77,7 @@ export function AccountManagementPage() {
     try {
       setProfiles(await fetchBrowserProfiles())
     } catch (error: any) {
-      console.error('加载浏览器实例失败:', error)
+      console.error('加载浏览器窗口失败:', error)
     }
   }
 
@@ -91,6 +92,7 @@ export function AccountManagementPage() {
         platform: account.platform || 'other',
         platformUrl: '',
         platformIcon: platformIcon(account.platform),
+        twoFA: account.twoFA || '',
         relatedProfileIds: account.relatedProfileIds || [],
         notes: account.notes,
       })
@@ -99,6 +101,7 @@ export function AccountManagementPage() {
       setFormData({
         accountName: '', username: '', email: '', password: '',
         platform: 'other', platformUrl: '', platformIcon: '🌐',
+        twoFA: '',
         relatedProfileIds: [], notes: '',
       })
     }
@@ -123,6 +126,7 @@ export function AccountManagementPage() {
         username: formData.username,
         email: formData.email,
         password: formData.password,
+        twoFA: formData.twoFA,
         relatedProfileIds: formData.relatedProfileIds,
         notes: formData.notes,
         cookies: '', // Cookie 在 Cookie 编辑器/同步中单独处理
@@ -132,6 +136,8 @@ export function AccountManagementPage() {
         // 为避免清空已存 Cookie，这里关联用专用接口，其余字段用 update 但带回原 cookies。
         const full = await fetchAccount(editingAccount.accountId)
         input.cookies = full?.cookies || ''
+        // 2FA 与密码一样不在列表返回；若用户未在表单改动则沿用原值
+        if (!input.twoFA) input.twoFA = full?.twoFA || ''
         const updated = await updateAccount(editingAccount.accountId, input)
         if (updated) {
           setAccounts(accounts.map(a => a.accountId === editingAccount.accountId ? updated : a))
@@ -193,7 +199,7 @@ export function AccountManagementPage() {
     else setSelectedAccounts(filteredAccounts.map(a => a.accountId))
   }
 
-  // 返回该账号第一个运行中且就绪的关联实例
+  // 返回该账号第一个运行中且就绪的关联窗口
   const runningRelatedProfile = (account: Account): BrowserProfile | null => {
     for (const id of account.relatedProfileIds || []) {
       const p = profiles.find(pp => pp.profileId === id)
@@ -220,12 +226,14 @@ export function AccountManagementPage() {
     try {
       const account = accounts.find(a => a.accountId === currentAccountId)
       if (!account) return
+      const full = await fetchAccount(currentAccountId)
       const input: BrowserAccountInput = {
         accountName: account.accountName,
         platform: account.platform,
         username: account.username,
         email: account.email,
-        password: (await fetchAccount(currentAccountId))?.password || '',
+        password: full?.password || '',
+        twoFA: full?.twoFA || '',
         relatedProfileIds: account.relatedProfileIds || [],
         notes: account.notes,
         cookies: cookieText,
@@ -241,13 +249,13 @@ export function AccountManagementPage() {
     }
   }
 
-  // 从运行中实例读取 Cookie 并保存（JSON，供回写/过期解析）
+  // 从运行中窗口读取 Cookie 并保存（JSON，供回写/过期解析）
   const handleExtractCookies = async () => {
     const account = accounts.find(a => a.accountId === currentAccountId)
     if (!account) return
     const profile = runningRelatedProfile(account)
     if (!profile) {
-      toast.error('请先关联一个运行中的实例')
+      toast.error('请先关联一个运行中的窗口')
       return
     }
     try {
@@ -255,13 +263,13 @@ export function AccountManagementPage() {
       const full = await fetchAccount(currentAccountId)
       if (full) setEditingCookies(full.cookies)
       await loadAccounts()
-      toast.success(`已从实例读取并保存 ${count} 条 Cookie`)
+      toast.success(`已从窗口读取并保存 ${count} 条 Cookie`)
     } catch (error: any) {
       toast.error(error?.message || '提取 Cookie 失败')
     }
   }
 
-  // 回写 Cookie 到运行中实例
+  // 回写 Cookie 到运行中窗口
   const handleRestoreCookies = async (account: Account) => {
     if (!account.cookieCount) {
       toast.error('该账号未保存 Cookie')
@@ -269,7 +277,7 @@ export function AccountManagementPage() {
     }
     const profile = runningRelatedProfile(account)
     if (!profile) {
-      toast.error('请先启动一个已关联的实例')
+      toast.error('请先启动一个已关联的窗口')
       return
     }
     try {
@@ -332,7 +340,7 @@ export function AccountManagementPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">平台账号</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">管理平台账号、关联实例并同步 Cookie</p>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">管理平台账号、关联窗口并同步 Cookie</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => importInputRef.current?.click()}>
@@ -365,66 +373,66 @@ export function AccountManagementPage() {
             <CheckSquare className="w-8 h-8 text-blue-600" />
           </div>
           <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">暂无平台账号</h3>
-          <p className="text-sm text-[var(--color-text-muted)] mb-4 max-w-xs">添加平台账号以管理并与实例绑定、同步 Cookie</p>
+          <p className="text-sm text-[var(--color-text-muted)] mb-4 max-w-xs">添加平台账号以管理并与窗口绑定、同步 Cookie</p>
           <Button size="sm" onClick={() => handleOpenModal()}><Plus className="w-4 h-4" />添加账号</Button>
         </Card>
       ) : (
-        <Card padding="md">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 pb-3 border-b border-[var(--color-border-default)] text-sm font-medium text-[var(--color-text-muted)]">
+        <Card padding="none">
+          <div>
+            <div className="flex items-center gap-3 px-3 py-2 border-b border-[var(--color-border-default)] text-xs font-medium text-[var(--color-text-muted)]">
               <div className="w-8">
                 <input type="checkbox" checked={selectedAccounts.length === filteredAccounts.length && filteredAccounts.length > 0} onChange={handleSelectAll} className="w-4 h-4" />
               </div>
               <div className="flex-1">账号信息</div>
               <div className="w-28">Cookie</div>
-              <div className="w-40">已关联实例</div>
+              <div className="w-40">已关联窗口</div>
               <div className="w-28 text-right">操作</div>
             </div>
 
-            <div className="space-y-2">
+            <div className="divide-y divide-[var(--color-border-muted)]">
               {filteredAccounts.map(account => {
                 const related = (account.relatedProfileIds || [])
                   .map(id => profiles.find(p => p.profileId === id))
                   .filter((p): p is BrowserProfile => !!p)
                 const isSelected = selectedAccounts.includes(account.accountId)
                 return (
-                  <div key={account.accountId} className="flex items-center gap-3 p-3 rounded-lg hover:bg-[var(--color-bg-muted)] transition-colors border border-transparent hover:border-[var(--color-border-default)]">
+                  <div key={account.accountId} className="flex items-center gap-3 px-3 py-1.5 hover:bg-[var(--color-bg-muted)] transition-colors">
                     <div className="w-8">
                       <input type="checkbox" checked={isSelected} onChange={() => handleToggleSelect(account.accountId)} className="w-4 h-4" />
                     </div>
-                    <div className="flex-1 flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 text-xl">
+                    <div className="flex-1 flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 text-base">
                         {platformIcon(account.platform)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[var(--color-text-primary)] truncate">{account.accountName}</div>
-                        <div className="text-sm text-[var(--color-text-secondary)] truncate">{account.email || account.username || account.platform}</div>
+                        <div className="text-sm font-medium leading-5 text-[var(--color-text-primary)] truncate">{account.accountName}</div>
+                        <div className="text-xs leading-4 text-[var(--color-text-secondary)] truncate">{account.email || account.username || account.platform}</div>
                       </div>
                     </div>
                     <div className="w-28"><CookieExpiryBadge account={account} /></div>
-                    <div className="w-40 flex flex-wrap gap-1">
+                    <div className="w-40 flex flex-nowrap items-center gap-1 overflow-hidden">
                       {related.length === 0 ? (
-                        <span className="text-sm text-[var(--color-text-muted)]">未关联</span>
+                        <span className="text-xs text-[var(--color-text-muted)]">未关联</span>
                       ) : (
                         <>
                           {related.slice(0, 2).map(p => (
-                            <Badge key={p.profileId} variant={p.running ? 'success' : 'default'}>{p.profileName}</Badge>
+                            <Badge key={p.profileId} size="sm" variant={p.running ? 'success' : 'default'} className="max-w-[6.5rem] truncate">{p.profileName}</Badge>
                           ))}
-                          {related.length > 2 && <Badge variant="default">+{related.length - 2}</Badge>}
+                          {related.length > 2 && <Badge size="sm" variant="default">+{related.length - 2}</Badge>}
                         </>
                       )}
                     </div>
                     <div className="w-28 flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => handleRestoreCookies(account)} title="回写 Cookie 到运行中的关联实例">
+                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleRestoreCookies(account)} title="回写 Cookie 到运行中的关联窗口">
                         <ArrowDownToLine className="w-3.5 h-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenCookieModal(account)} title="管理 Cookie">
+                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleOpenCookieModal(account)} title="管理 Cookie">
                         <Cookie className="w-3.5 h-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenModal(account)} title="编辑">
+                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleOpenModal(account)} title="编辑">
                         <Edit2 className="w-3.5 h-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(account.accountId)} title="删除">
+                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleDelete(account.accountId)} title="删除">
                         <Trash2 className="w-3.5 h-3.5 text-red-500" />
                       </Button>
                     </div>
@@ -463,9 +471,12 @@ export function AccountManagementPage() {
           <FormItem label="密码">
             <Input type="password" value={formData.password} onChange={e => setFormData(prev => ({ ...prev, password: e.target.value }))} placeholder="登录密码" />
           </FormItem>
-          <FormItem label="关联实例（可多选）">
+          <FormItem label="2FA">
+            <Input value={formData.twoFA} onChange={e => setFormData(prev => ({ ...prev, twoFA: e.target.value }))} placeholder="2FA / TOTP 密钥" />
+          </FormItem>
+          <FormItem label="关联窗口（可多选）">
             {profiles.length === 0 ? (
-              <span className="text-sm text-[var(--color-text-muted)]">暂无实例</span>
+              <span className="text-sm text-[var(--color-text-muted)]">暂无窗口</span>
             ) : (
               <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--color-border-default)] divide-y divide-[var(--color-border-default)]">
                 {profiles.map(p => (

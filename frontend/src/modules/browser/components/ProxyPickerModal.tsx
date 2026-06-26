@@ -535,10 +535,10 @@ export function ProxyPickerModal({ open, currentProxyId, onSelect, onClose, onPr
   if (!open) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" />
       <div
-        className="relative bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-xl shadow-2xl w-[720px] max-h-[580px] flex flex-col"
+        className="relative h-full bg-[var(--color-bg-elevated)] border-l border-[var(--color-border)] shadow-2xl w-[760px] max-w-[92vw] flex flex-col animate-slide-in-right"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">

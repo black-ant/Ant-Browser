@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import yaml from 'js-yaml'
-import { Button, FormItem, Input, Modal, Select, Table, Textarea, toast } from '../../../shared/components'
+import { Button, FormItem, Input, Modal, Select, SideDrawer, Table, Textarea, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
-import type { BrowserProxy } from '../types'
-import { fetchClashImportFromURL, saveBrowserProxies } from '../api'
+import type { BrowserProxy, IPDetectResult, IPDetectSource } from '../types'
+import { detectIPByConfig, fetchClashImportFromURL, listIPDetectSources, saveBrowserProxies } from '../api'
 
 interface ProxyImportModalProps {
   open: boolean
@@ -569,10 +569,30 @@ export function ProxyImportModal({
   const [previewList, setPreviewList] = useState<ProxyDisplayInfo[]>([])
   const [importing, setImporting] = useState(false)
   const [fetchingImportUrl, setFetchingImportUrl] = useState(false)
+  const [directSmartText, setDirectSmartText] = useState('')
+  const [directRefreshUrl, setDirectRefreshUrl] = useState('')
+  const [ipDetectSources, setIpDetectSources] = useState<IPDetectSource[]>([])
+  const [ipDetectSource, setIpDetectSource] = useState('')
+  const [ipDetecting, setIpDetecting] = useState(false)
+  const [ipDetectResult, setIpDetectResult] = useState<IPDetectResult | null>(null)
 
   useEffect(() => {
     if (open) return
     setPreviewModalOpen(false)
+  }, [open])
+
+  // 加载可用的出口 IP 检测源（用于 HTTP/SOCKS5 模式的 IP 检测下拉框）
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    listIPDetectSources()
+      .then(list => {
+        if (cancelled || list.length === 0) return
+        setIpDetectSources(list)
+        setIpDetectSource(prev => prev || list[0].key)
+      })
+      .catch(() => { /* 忽略：下拉为空时按钮禁用 */ })
+    return () => { cancelled = true }
   }, [open])
 
   const resetImportState = () => {
@@ -586,6 +606,102 @@ export function ProxyImportModal({
     setDirectImportForm({ ...INITIAL_DIRECT_IMPORT_FORM })
     setChainImportForm({ ...INITIAL_CHAIN_IMPORT_FORM })
     setPreviewList([])
+    setDirectSmartText('')
+    setDirectRefreshUrl('')
+    setIpDetectResult(null)
+  }
+
+  // 智能识别：解析常见代理串，支持以下形态（刷新 URL 与备注为选填）：
+  //   host:port:用户名:密码[刷新URL]{备注}
+  //   用户名:密码@host:port[刷新URL]{备注}
+  //   protocol://用户名:密码@host:port
+  const handleDirectSmartParse = (text: string) => {
+    setDirectSmartText(text)
+    const raw = text.trim()
+    if (!raw) return
+
+    const patch: Partial<DirectImportForm> = {}
+
+    // 备注 {note}
+    const noteMatch = raw.match(/\{([^}]*)\}/)
+    const noteStripped = noteMatch ? raw.replace(noteMatch[0], '').trim() : raw
+
+    // 刷新 URL [url]
+    const urlMatch = noteStripped.match(/\[([^\]]*)\]/)
+    if (urlMatch && urlMatch[1].trim()) {
+      setDirectRefreshUrl(urlMatch[1].trim())
+    }
+    let core = urlMatch ? noteStripped.replace(urlMatch[0], '').trim() : noteStripped
+
+    // 协议头 protocol://
+    const protoMatch = core.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//)
+    if (protoMatch) {
+      const proto = protoMatch[1].toLowerCase()
+      if (proto === 'http' || proto === 'https' || proto === 'socks5') {
+        patch.protocol = proto
+      } else if (proto === 'socks' || proto === 'socket') {
+        patch.protocol = 'socks5'
+      }
+      core = core.slice(protoMatch[0].length).trim()
+    }
+
+    let host = ''
+    let port = ''
+    let username = ''
+    let password = ''
+
+    if (core.includes('@')) {
+      // 用户名:密码@host:port
+      const [auth, hostPart] = core.split('@', 2)
+      const authSegs = auth.split(':')
+      username = (authSegs[0] || '').trim()
+      password = (authSegs[1] || '').trim()
+      const hostSegs = hostPart.split(':')
+      host = (hostSegs[0] || '').trim()
+      port = (hostSegs[1] || '').trim()
+    } else {
+      // host:port:用户名:密码
+      const segs = core.split(':')
+      host = (segs[0] || '').trim()
+      port = (segs[1] || '').trim()
+      username = (segs[2] || '').trim()
+      password = (segs[3] || '').trim()
+    }
+
+    if (host) patch.server = host
+    if (port) patch.port = port
+    if (username) patch.username = username
+    if (password) patch.password = password
+
+    if (Object.keys(patch).length > 0) {
+      setDirectImportForm(prev => ({ ...prev, ...patch }))
+    }
+  }
+
+  // 通过当前 HTTP/SOCKS5 表单构造一段临时代理配置，并用所选检测源测试出口 IP
+  const handleDetectIP = async () => {
+    let candidate: ImportCandidate
+    try {
+      candidate = buildDirectImportCandidate(directImportForm)
+    } catch (error: any) {
+      toast.error(error?.message || '请先填写有效的代理地址与端口')
+      return
+    }
+    setIpDetecting(true)
+    setIpDetectResult(null)
+    try {
+      const result = await detectIPByConfig(ipDetectSource, candidate.proxyConfig)
+      setIpDetectResult(result)
+      if (result.ok) {
+        toast.success(`检测成功：${result.ip}${result.country ? ` · ${result.country}` : ''}`)
+      } else {
+        toast.error(result.error || '检测失败')
+      }
+    } catch (error: any) {
+      toast.error(error?.message || '检测失败')
+    } finally {
+      setIpDetecting(false)
+    }
   }
 
   const handleImportModeChange = (nextMode: ProxyImportMode) => {
@@ -745,7 +861,7 @@ export function ProxyImportModal({
 
   return (
     <>
-      <Modal
+      <SideDrawer
         open={open}
         onClose={onClose}
         title="导入代理配置"
@@ -826,7 +942,17 @@ export function ProxyImportModal({
             </>
           )}
           {importMode === 'direct' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-4">
+              <FormItem label="智能识别（支持动态 / 静态代理 IP）">
+                <Textarea
+                  value={directSmartText}
+                  onChange={e => handleDirectSmartParse(e.target.value)}
+                  rows={3}
+                  placeholder={`示例（刷新 URL 与备注为选填）：\n192.168.0.1:8000:用户名:密码[刷新URL]{备注}\n用户名:密码@192.168.0.1:8000[刷新URL]{备注}`}
+                />
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">粘贴常见格式的代理串，自动拆分到下方协议 / 地址 / 端口 / 账号 / 密码字段</p>
+              </FormItem>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormItem label="代理协议" required>
                 <Select
                   options={[...DIRECT_PROXY_PROTOCOL_OPTIONS]}
@@ -872,6 +998,47 @@ export function ProxyImportModal({
                   onChange={e => setDirectImportForm(prev => ({ ...prev, password: e.target.value }))}
                   placeholder="留空则不使用密码"
                 />
+              </FormItem>
+              </div>
+
+              <FormItem label="刷新 URL（可选）">
+                <Input
+                  value={directRefreshUrl}
+                  onChange={e => setDirectRefreshUrl(e.target.value)}
+                  placeholder="动态代理的刷新链接，留空表示静态代理"
+                />
+              </FormItem>
+
+              <FormItem label="IP 检测">
+                <div className="flex gap-2">
+                  <Select
+                    className="flex-1"
+                    value={ipDetectSource}
+                    onChange={e => setIpDetectSource(e.target.value)}
+                    options={ipDetectSources.map(s => ({ value: s.key, label: s.label }))}
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={handleDetectIP}
+                    loading={ipDetecting}
+                    disabled={!ipDetectSource || !directImportForm.server.trim() || !directImportForm.port.trim()}
+                  >
+                    测试代理 IP
+                  </Button>
+                </div>
+                {ipDetectResult && (
+                  ipDetectResult.ok ? (
+                    <p className="text-xs text-[var(--color-success)] mt-1.5 break-all">
+                      出口 IP：{ipDetectResult.ip}
+                      {ipDetectResult.country ? ` · ${ipDetectResult.country}` : ''}
+                      {ipDetectResult.city ? ` / ${ipDetectResult.city}` : ''}
+                      {ipDetectResult.org ? ` · ${ipDetectResult.org}` : ''}
+                      {ipDetectResult.latencyMs > 0 ? ` · ${ipDetectResult.latencyMs}ms` : ''}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[var(--color-error)] mt-1.5 break-all">检测失败：{ipDetectResult.error}</p>
+                  )
+                )}
               </FormItem>
             </div>
           )}
@@ -1009,7 +1176,7 @@ export function ProxyImportModal({
             </FormItem>
           )}
         </div>
-      </Modal>
+      </SideDrawer>
 
       <Modal
         open={previewModalOpen}

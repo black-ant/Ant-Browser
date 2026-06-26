@@ -66,13 +66,13 @@ type App struct {
 	stopServicesOnce     sync.Once
 	finalizeOnce         sync.Once
 
-	// pipeConns 保存 --remote-debugging-pipe 模式下每个实例的共享 CDP 连接
+	// pipeConns 保存 --remote-debugging-pipe 模式下每个窗口的共享 CDP 连接
 	// （key=profileId）。端口模式下不使用。懒初始化，受 pipeConnsMu 保护。
 	pipeConnsMu sync.Mutex
 	pipeConns   map[string]*cdp.PipeConn
 }
 
-// NewApp 创建新的应用实例
+// NewApp 创建新的应用窗口
 func NewApp(appRoot string, appVersion ...string) *App {
 	version := ""
 	if len(appVersion) > 0 {
@@ -197,6 +197,7 @@ func (a *App) startup(ctx context.Context) {
 	a.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(conn)
 	a.browserMgr.BookmarkDAO = browser.NewSQLiteBookmarkDAO(conn)
 	a.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(conn)
+	a.browserMgr.TemplateDAO = browser.NewSQLiteTemplateDAO(conn)
 
 	// 一次性迁移：若 SQLite 表为空则从旧文件导入
 	a.migrateToSQLite()
@@ -336,7 +337,7 @@ func (a *App) shutdown(ctx context.Context) {
 		log.Info("应用正在关闭...")
 		a.stopRuntimeServices()
 	} else {
-		log.Info("应用正在关闭（保留当前已打开的浏览器实例）...")
+		log.Info("应用正在关闭（保留当前已打开的浏览器窗口）...")
 	}
 	a.finalizeShutdown()
 }
@@ -354,7 +355,7 @@ func (a *App) ForceQuit() {
 	}
 }
 
-// QuitAppOnly 仅退出应用本身，保留当前已打开的浏览器实例。
+// QuitAppOnly 仅退出应用本身，保留当前已打开的浏览器窗口。
 func (a *App) QuitAppOnly() {
 	a.setQuitMode(quitModeAppOnly)
 	if a.ctx != nil {
@@ -510,7 +511,7 @@ func (a *App) ClearAppLogs() {
 	logger.GetMemoryWriter().Clear()
 }
 
-// GetRunningInstances 获取运行中实例的详细信息
+// GetRunningInstances 获取运行中窗口的详细信息
 func (a *App) GetRunningInstances() []BrowserProfile {
 	all := a.browserMgr.List()
 	result := make([]BrowserProfile, 0)
@@ -540,10 +541,10 @@ type BrowserCoreExtendedInfo = browser.CoreExtendedInfo
 // 浏览器配置 API
 // ============================================================================
 
-// BrowserProfileList 获取所有实例列表
+// BrowserProfileList 获取所有窗口列表
 func (a *App) BrowserProfileList() []BrowserProfile { return a.browserMgr.List() }
 
-// BrowserProfileListByTag 按标签筛选实例列表
+// BrowserProfileListByTag 按标签筛选窗口列表
 func (a *App) BrowserProfileListByTag(tag string) []BrowserProfile {
 	return a.browserMgr.ListByTag(tag)
 }
@@ -553,7 +554,7 @@ func (a *App) BrowserGetAllTags() []string {
 	return a.browserMgr.GetAllTags()
 }
 
-// BrowserProfileSetKeywords 设置实例关键字
+// BrowserProfileSetKeywords 设置窗口关键字
 func (a *App) BrowserProfileSetKeywords(profileId string, keywords []string) (*BrowserProfile, error) {
 	return a.browserMgr.SetKeywords(profileId, keywords)
 }
@@ -568,7 +569,7 @@ func (a *App) BrowserProfileUpdate(profileId string, input BrowserProfileInput) 
 
 func (a *App) BrowserProfileDelete(profileId string) error { return a.browserMgr.Delete(profileId) }
 
-// BrowserProfileCopy 复制实例配置（除指纹参数外全部复制）
+// BrowserProfileCopy 复制窗口配置（除指纹参数外全部复制）
 func (a *App) BrowserProfileCopy(profileId string, newName string) (*BrowserProfile, error) {
 	return a.browserMgr.Copy(profileId, newName)
 }
@@ -896,6 +897,17 @@ func (a *App) BrowserProxyCheckIPHealth(proxyId string) ProxyIPHealthResult {
 		runtime.EventsEmit(a.ctx, "proxy:iphealth:result", result)
 	}
 	return result
+}
+
+// BrowserProxyListIPDetectSources 返回可用的出口 IP 检测源（供前端下拉选择）
+func (a *App) BrowserProxyListIPDetectSources() []proxy.IPDetectSource {
+	return proxy.ListIPDetectSources()
+}
+
+// BrowserProxyDetectIPByConfig 通过一段临时代理配置（未保存到代理池）按指定检测源查询出口 IP
+func (a *App) BrowserProxyDetectIPByConfig(source string, proxyConfig string) proxy.IPDetectResult {
+	proxies := a.getLatestProxies()
+	return proxy.DetectIPByConfig(source, proxyConfig, proxies, a.xrayMgr, a.singboxMgr)
 }
 
 // BrowserProxyBatchCheckIPHealth 批量并发检测代理出口 IP 健康信息
@@ -1358,7 +1370,7 @@ func (a *App) migrateToSQLite() {
 		}
 	}
 
-	// 迁移实例配置（如果为空则自动创建一个默认实例）
+	// 迁移窗口配置（如果为空则自动创建一个默认窗口）
 	if profiles, err := a.browserMgr.ProfileDAO.List(); err == nil && len(profiles) == 0 {
 		if len(a.config.Browser.Profiles) > 0 {
 			for _, pc := range a.config.Browser.Profiles {
@@ -1385,15 +1397,15 @@ func (a *App) migrateToSQLite() {
 					UpdatedAt:          pc.UpdatedAt,
 				}
 				if err := a.browserMgr.ProfileDAO.Upsert(p); err != nil {
-					log.Error("实例迁移失败", logger.F("profile_id", pc.ProfileId), logger.F("error", err))
+					log.Error("窗口迁移失败", logger.F("profile_id", pc.ProfileId), logger.F("error", err))
 				}
 			}
-			log.Info("实例数据已迁移", logger.F("count", len(a.config.Browser.Profiles)))
+			log.Info("窗口数据已迁移", logger.F("count", len(a.config.Browser.Profiles)))
 		} else {
-			log.Info("实例表为空，自动创建默认实例")
+			log.Info("窗口表为空，自动创建默认窗口")
 			defaultProfile := &browser.Profile{
 				ProfileId:       generateUUID(),
-				ProfileName:     "默认实例",
+				ProfileName:     "默认窗口",
 				UserDataDir:     "default",
 				CoreId:          "",
 				FingerprintArgs: a.config.Browser.DefaultFingerprintArgs,
@@ -1404,7 +1416,7 @@ func (a *App) migrateToSQLite() {
 				UpdatedAt:       time.Now().Format(time.RFC3339),
 			}
 			if err := a.browserMgr.ProfileDAO.Upsert(defaultProfile); err != nil {
-				log.Error("自动创建默认实例失败", logger.F("error", err))
+				log.Error("自动创建默认窗口失败", logger.F("error", err))
 			}
 		}
 	}

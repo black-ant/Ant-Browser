@@ -19,7 +19,8 @@ type BrowserAccount struct {
 	Username             string   `json:"username"`
 	Email                string   `json:"email"`
 	Password             string   `json:"password"`          // 明文（仅用于传输，不存储）
-	RelatedProfileIDs    []string `json:"relatedProfileIds"` // 关联的实例ID
+	TwoFA                string   `json:"twoFA"`             // 2FA/TOTP 密钥明文（仅用于传输，加密存储）
+	RelatedProfileIDs    []string `json:"relatedProfileIds"` // 关联的窗口ID
 	Notes                string   `json:"notes"`
 	Cookies              string   `json:"cookies"`   // 明文Cookie（仅用于传输）
 	CreatedAt            string   `json:"createdAt"` // ISO8601格式
@@ -35,6 +36,7 @@ type BrowserAccountInput struct {
 	Username          string   `json:"username"`
 	Email             string   `json:"email"`
 	Password          string   `json:"password"`
+	TwoFA             string   `json:"twoFA"`
 	RelatedProfileIDs []string `json:"relatedProfileIds"`
 	Notes             string   `json:"notes"`
 	Cookies           string   `json:"cookies"`
@@ -60,10 +62,15 @@ func (a *App) BrowserAccountCreate(input BrowserAccountInput) (*BrowserAccount, 
 		return nil, fmt.Errorf("加密Cookies失败: %w", err)
 	}
 
-	// 序列化关联实例ID
+	totpEnc, err := crypto.Encrypt(input.TwoFA)
+	if err != nil {
+		return nil, fmt.Errorf("加密2FA失败: %w", err)
+	}
+
+	// 序列化关联窗口ID
 	relatedIDsJSON, err := json.Marshal(input.RelatedProfileIDs)
 	if err != nil {
-		return nil, fmt.Errorf("序列化关联实例ID失败: %w", err)
+		return nil, fmt.Errorf("序列化关联窗口ID失败: %w", err)
 	}
 
 	// 插入数据库
@@ -72,10 +79,10 @@ func (a *App) BrowserAccountCreate(input BrowserAccountInput) (*BrowserAccount, 
 		INSERT INTO browser_accounts (
 			account_id, account_name, platform, username, email,
 			password_enc, related_profile_ids, notes, cookies_enc,
-			created_at, updated_at, cookie_count, cookie_earliest_expiry
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			created_at, updated_at, cookie_count, cookie_earliest_expiry, totp_secret_enc
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, accountID, input.AccountName, input.Platform, input.Username, input.Email,
-		passwordEnc, string(relatedIDsJSON), input.Notes, cookiesEnc, now, now, cookieCount, cookieEarliest)
+		passwordEnc, string(relatedIDsJSON), input.Notes, cookiesEnc, now, now, cookieCount, cookieEarliest, totpEnc)
 
 	if err != nil {
 		return nil, fmt.Errorf("插入账号失败: %w", err)
@@ -140,7 +147,7 @@ func (a *App) BrowserAccountList() ([]BrowserAccount, error) {
 		account.Password = ""
 		account.Cookies = ""
 
-		// 反序列化关联实例ID
+		// 反序列化关联窗口ID
 		var related []string
 		if err := json.Unmarshal([]byte(relatedIDsJSON), &related); err != nil {
 			related = []string{}
@@ -181,18 +188,18 @@ func (a *App) BrowserAccountList() ([]BrowserAccount, error) {
 // BrowserAccountGet 获取单个账号详情（包含敏感信息）
 func (a *App) BrowserAccountGet(accountID string) (*BrowserAccount, error) {
 	var account BrowserAccount
-	var passwordEnc, cookiesEnc, relatedIDsJSON string
+	var passwordEnc, cookiesEnc, relatedIDsJSON, totpEnc string
 
 	err := a.db.GetConn().QueryRow(`
 		SELECT account_id, account_name, platform, username, email,
 		       password_enc, related_profile_ids, notes, cookies_enc,
-		       created_at, updated_at
+		       created_at, updated_at, totp_secret_enc
 		FROM browser_accounts
 		WHERE account_id = ?
 	`, accountID).Scan(
 		&account.AccountID, &account.AccountName, &account.Platform,
 		&account.Username, &account.Email, &passwordEnc, &relatedIDsJSON,
-		&account.Notes, &cookiesEnc, &account.CreatedAt, &account.UpdatedAt,
+		&account.Notes, &cookiesEnc, &account.CreatedAt, &account.UpdatedAt, &totpEnc,
 	)
 
 	if err == sql.ErrNoRows {
@@ -213,7 +220,12 @@ func (a *App) BrowserAccountGet(accountID string) (*BrowserAccount, error) {
 		return nil, fmt.Errorf("解密Cookies失败: %w", err)
 	}
 
-	// 反序列化关联实例ID
+	account.TwoFA, err = crypto.Decrypt(totpEnc)
+	if err != nil {
+		return nil, fmt.Errorf("解密2FA失败: %w", err)
+	}
+
+	// 反序列化关联窗口ID
 	if err := json.Unmarshal([]byte(relatedIDsJSON), &account.RelatedProfileIDs); err != nil {
 		account.RelatedProfileIDs = []string{}
 	}
@@ -246,10 +258,15 @@ func (a *App) BrowserAccountUpdate(accountID string, input BrowserAccountInput) 
 		return nil, fmt.Errorf("加密Cookies失败: %w", err)
 	}
 
-	// 序列化关联实例ID
+	totpEnc, err := crypto.Encrypt(input.TwoFA)
+	if err != nil {
+		return nil, fmt.Errorf("加密2FA失败: %w", err)
+	}
+
+	// 序列化关联窗口ID
 	relatedIDsJSON, err := json.Marshal(input.RelatedProfileIDs)
 	if err != nil {
-		return nil, fmt.Errorf("序列化关联实例ID失败: %w", err)
+		return nil, fmt.Errorf("序列化关联窗口ID失败: %w", err)
 	}
 
 	// 更新数据库
@@ -258,10 +275,10 @@ func (a *App) BrowserAccountUpdate(accountID string, input BrowserAccountInput) 
 		UPDATE browser_accounts
 		SET account_name = ?, platform = ?, username = ?, email = ?,
 		    password_enc = ?, related_profile_ids = ?, notes = ?,
-		    cookies_enc = ?, updated_at = ?, cookie_count = ?, cookie_earliest_expiry = ?
+		    cookies_enc = ?, updated_at = ?, cookie_count = ?, cookie_earliest_expiry = ?, totp_secret_enc = ?
 		WHERE account_id = ?
 	`, input.AccountName, input.Platform, input.Username, input.Email,
-		passwordEnc, string(relatedIDsJSON), input.Notes, cookiesEnc, now, cookieCount, cookieEarliest, accountID)
+		passwordEnc, string(relatedIDsJSON), input.Notes, cookiesEnc, now, cookieCount, cookieEarliest, totpEnc, accountID)
 
 	if err != nil {
 		return nil, fmt.Errorf("更新账号失败: %w", err)
@@ -288,10 +305,10 @@ func (a *App) BrowserAccountDelete(accountID string) error {
 	return nil
 }
 
-// BrowserAccountUnlinkProfile 从账号中解绑指定实例
+// BrowserAccountUnlinkProfile 从账号中解绑指定窗口
 func (a *App) BrowserAccountUnlinkProfile(accountID string, profileID string) error {
 	if accountID == "" || profileID == "" {
-		return fmt.Errorf("账号ID和实例ID不能为空")
+		return fmt.Errorf("账号ID和窗口ID不能为空")
 	}
 
 	// 读取当前账号的关联列表
@@ -312,7 +329,7 @@ func (a *App) BrowserAccountUnlinkProfile(accountID string, profileID string) er
 		}
 	}
 
-	// 从列表中移除指定实例
+	// 从列表中移除指定窗口
 	updated := make([]string, 0, len(relatedIDs))
 	found := false
 	for _, id := range relatedIDs {
@@ -324,7 +341,7 @@ func (a *App) BrowserAccountUnlinkProfile(accountID string, profileID string) er
 	}
 
 	if !found {
-		return fmt.Errorf("该账号未关联该实例")
+		return fmt.Errorf("该账号未关联该窗口")
 	}
 
 	// 更新数据库
@@ -344,14 +361,14 @@ func (a *App) BrowserAccountUnlinkProfile(accountID string, profileID string) er
 		return fmt.Errorf("更新账号失败: %w", err)
 	}
 
-	logger.New("Account").Info("[Account] 账号已解绑实例",
+	logger.New("Account").Info("[Account] 账号已解绑窗口",
 		logger.F("account_id", accountID),
 		logger.F("profile_id", profileID))
 
 	return nil
 }
 
-// BrowserAccountBatchLinkProfiles 批量关联账号到多个实例
+// BrowserAccountBatchLinkProfiles 批量关联账号到多个窗口
 func (a *App) BrowserAccountBatchLinkProfiles(accountIDs []string, profileIDs []string) map[string]string {
 	results := make(map[string]string)
 	log := logger.New("Account")
@@ -383,7 +400,7 @@ func (a *App) BrowserAccountBatchLinkProfiles(accountIDs []string, profileIDs []
 			}
 		}
 
-		// 合并新的实例ID（去重）
+		// 合并新的窗口ID（去重）
 		existing := make(map[string]bool)
 		for _, id := range relatedIDs {
 			existing[id] = true
@@ -416,7 +433,7 @@ func (a *App) BrowserAccountBatchLinkProfiles(accountIDs []string, profileIDs []
 		}
 
 		results[accountID] = "成功"
-		log.Info("[Account] 账号批量关联实例",
+		log.Info("[Account] 账号批量关联窗口",
 			logger.F("account_id", accountID),
 			logger.F("profile_count", len(profileIDs)))
 	}
@@ -424,7 +441,7 @@ func (a *App) BrowserAccountBatchLinkProfiles(accountIDs []string, profileIDs []
 	return results
 }
 
-// BrowserAccountBatchUnlinkProfiles 批量解绑账号与多个实例的关联
+// BrowserAccountBatchUnlinkProfiles 批量解绑账号与多个窗口的关联
 func (a *App) BrowserAccountBatchUnlinkProfiles(accountIDs []string, profileIDs []string) map[string]string {
 	results := make(map[string]string)
 	log := logger.New("Account")
@@ -464,7 +481,7 @@ func (a *App) BrowserAccountBatchUnlinkProfiles(accountIDs []string, profileIDs 
 			}
 		}
 
-		// 过滤掉要解绑的实例
+		// 过滤掉要解绑的窗口
 		updated := make([]string, 0, len(relatedIDs))
 		for _, id := range relatedIDs {
 			if !unlinkMap[id] {
@@ -492,7 +509,7 @@ func (a *App) BrowserAccountBatchUnlinkProfiles(accountIDs []string, profileIDs 
 		}
 
 		results[accountID] = "成功"
-		log.Info("[Account] 账号批量解绑实例",
+		log.Info("[Account] 账号批量解绑窗口",
 			logger.F("account_id", accountID),
 			logger.F("unlink_count", len(profileIDs)))
 	}
@@ -504,7 +521,7 @@ func (a *App) BrowserAccountBatchUnlinkProfiles(accountIDs []string, profileIDs 
 // Profile 和 Account 关联
 // ============================================================================
 
-// linkAccountsToProfile 将指定账号ID列表关联到实例（双向关联：账号.relatedProfileIds 中添加 profileId）
+// linkAccountsToProfile 将指定账号ID列表关联到窗口（双向关联：账号.relatedProfileIds 中添加 profileId）
 func (a *App) linkAccountsToProfile(profileID string, accountIDs []string) error {
 	if profileID == "" || len(accountIDs) == 0 {
 		return nil
@@ -559,7 +576,7 @@ func (a *App) linkAccountsToProfile(profileID string, accountIDs []string) error
 				continue
 			}
 
-			log.Info("账号已关联到实例", logger.F("account_id", accountID), logger.F("profile_id", profileID))
+			log.Info("账号已关联到窗口", logger.F("account_id", accountID), logger.F("profile_id", profileID))
 		}
 	}
 
@@ -609,7 +626,7 @@ func cookieExpiryOf(c map[string]any) int64 {
 	return 0
 }
 
-// BrowserAccountSaveCookiesFromProfile 从运行中实例读取 Cookie 并加密保存到账号
+// BrowserAccountSaveCookiesFromProfile 从运行中窗口读取 Cookie 并加密保存到账号
 func (a *App) BrowserAccountSaveCookiesFromProfile(accountID string, profileID string) (int, error) {
 	cookies, err := a.BrowserGetCookies(profileID)
 	if err != nil {
@@ -634,12 +651,12 @@ func (a *App) BrowserAccountSaveCookiesFromProfile(accountID string, profileID s
 	if n, _ := res.RowsAffected(); n == 0 {
 		return 0, fmt.Errorf("账号不存在: %s", accountID)
 	}
-	logger.New("Account").Info("[Account] 从实例读取并保存 Cookie",
+	logger.New("Account").Info("[Account] 从窗口读取并保存 Cookie",
 		logger.F("account_id", accountID), logger.F("profile_id", profileID), logger.F("count", count))
 	return count, nil
 }
 
-// BrowserAccountRestoreCookiesToProfile 把账号已存 Cookie 解密后回写到运行中实例
+// BrowserAccountRestoreCookiesToProfile 把账号已存 Cookie 解密后回写到运行中窗口
 func (a *App) BrowserAccountRestoreCookiesToProfile(accountID string, profileID string, clearFirst bool) (int, error) {
 	acc, err := a.BrowserAccountGet(accountID)
 	if err != nil {
@@ -659,12 +676,12 @@ func (a *App) BrowserAccountRestoreCookiesToProfile(accountID string, profileID 
 	if err := a.BrowserSetCookies(profileID, cookies); err != nil {
 		return 0, err
 	}
-	logger.New("Account").Info("[Account] 回写 Cookie 到实例",
+	logger.New("Account").Info("[Account] 回写 Cookie 到窗口",
 		logger.F("account_id", accountID), logger.F("profile_id", profileID), logger.F("count", len(cookies)))
 	return len(cookies), nil
 }
 
-// BrowserAccountSetProfiles 设置账号关联的实例集合（过滤无效/重复 id）
+// BrowserAccountSetProfiles 设置账号关联的窗口集合（过滤无效/重复 id）
 func (a *App) BrowserAccountSetProfiles(accountID string, profileIDs []string) error {
 	valid := map[string]bool{}
 	a.browserMgr.Mutex.Lock()
@@ -706,6 +723,7 @@ type accountExport struct {
 	RelatedProfileIDs []string `json:"relatedProfileIds"`
 	Password          string   `json:"password,omitempty"`
 	Cookies           string   `json:"cookies,omitempty"`
+	TwoFA             string   `json:"twoFA,omitempty"`
 }
 
 // BrowserAccountExport 导出账号 JSON；includeSecrets=false 时不含密码/Cookie（仅含敏感时才解密）
@@ -735,6 +753,7 @@ func (a *App) BrowserAccountExport(accountIDs []string, includeSecrets bool) (st
 			if full, err := a.BrowserAccountGet(acc.AccountID); err == nil {
 				e.Password = full.Password
 				e.Cookies = full.Cookies
+				e.TwoFA = full.TwoFA
 			}
 		}
 		out = append(out, e)
@@ -770,6 +789,7 @@ func (a *App) BrowserAccountImport(payload string) (int, error) {
 			Username:          it.Username,
 			Email:             it.Email,
 			Password:          it.Password,
+			TwoFA:             it.TwoFA,
 			RelatedProfileIDs: it.RelatedProfileIDs,
 			Notes:             it.Notes,
 			Cookies:           it.Cookies,

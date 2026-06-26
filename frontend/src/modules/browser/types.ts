@@ -22,6 +22,7 @@ export interface BrowserProfile {
   tags: string[]
   keywords: string[]
   groupId?: string
+  profileConfig?: string
   accountIds?: string[]
   running: boolean
   status?: BrowserProfileStatus
@@ -48,8 +49,109 @@ export interface BrowserProfileInput {
   tags: string[]
   keywords: string[]
   groupId?: string
+  profileConfig?: string
   launchCode?: string
   accountIds?: string[]
+}
+
+export interface CreateWindowFormState {
+  profileName: string
+  userDataDir: string
+  coreId: string
+  fingerprintArgs: string[]
+  proxyId: string
+  proxyConfig: string
+  launchArgs: string[]
+  tags: string[]
+  keywords: string[]
+  groupId?: string
+  launchCode?: string
+  accountIds?: string[]
+  system?: string
+  systemVersion?: string
+  browserCore?: string
+  browserVersion?: string
+  userAgent?: string
+  cookies?: string
+  urls?: string
+  language?: string
+  uiLanguage?: string
+  timezone?: string
+  geolocationDisplay?: string
+  geolocation?: string
+  audio?: boolean
+  image?: boolean
+  video?: boolean
+  windowWidth?: string
+  windowHeight?: string
+  windowPosition?: string
+  searchEngine?: string
+  resolution?: string
+  screenResolution?: string
+  fontFingerprint?: string
+  webrtc?: string
+  webgl?: string
+  webglInfo?: string
+  webglVendor?: string
+  webglRenderer?: string
+  webgpu?: string
+  canvas?: string
+  audioContext?: string
+  speechVoices?: string
+  doNotTrack?: string
+  clientRects?: string
+  mediaDevices?: string
+  deviceName?: string
+  deviceNameValue?: string
+  macAddress?: string
+  macAddressValue?: string
+  hardwareConcurrency?: string
+  deviceMemory?: string
+  sslFingerprint?: string
+  portScanProtection?: string
+  portScanAllowList?: string
+  hardwareAcceleration?: string
+  sandbox?: string
+  customBookmarks?: boolean
+  syncBookmarks?: boolean
+  syncHistory?: boolean
+  syncTabs?: boolean
+  syncCookies?: boolean
+  syncPasswords?: boolean
+  syncExtensions?: boolean
+  syncIndexedDB?: boolean
+  syncLocalStorage?: boolean
+  syncSessionStorage?: boolean
+  clearCacheBeforeStart?: boolean
+  clearCookiesBeforeStart?: boolean
+  clearLocalStorageBeforeStart?: boolean
+  randomFingerprintOnStart?: boolean
+  passwordPrompt?: boolean
+  keepNetworkOn?: boolean
+  stopOnIpChange?: boolean
+  stopOnIpRegionChange?: boolean
+  openWorkbench?: string
+  ipChangeReminder?: string
+  googleLogin?: string
+  websiteAccessBlacklist?: string
+  websiteAccessWhitelist?: string
+  networkDetection?: boolean
+  ipChangeAlert?: boolean
+  autoCloseOnIpChange?: boolean
+  notes?: string
+}
+
+export interface CreateWindowProfileConfig {
+  version: 1
+  formState: CreateWindowFormState
+  selectedExtensionIds?: string[]
+  postCreateActions?: {
+    importCookies?: string
+    applyDefaultBookmarks?: boolean
+    clearCacheBeforeStart?: boolean
+    clearCookiesBeforeStart?: boolean
+    clearLocalStorageBeforeStart?: boolean
+  }
 }
 
 export interface BrowserTab {
@@ -146,6 +248,29 @@ export interface ProxyIPHealthResult {
   updatedAt: string
 }
 
+// 多源出口 IP 检测结果（添加代理时通过代理链路实测）
+export interface IPDetectResult {
+  source: string
+  ok: boolean
+  error: string
+  ip: string
+  country: string
+  countryCode: string
+  region: string
+  city: string
+  isp: string
+  org: string
+  latencyMs: number
+  updatedAt: string
+  rawData: Record<string, any>
+}
+
+// IP 检测源元数据（供下拉展示）
+export interface IPDetectSource {
+  key: string
+  label: string
+}
+
 export interface BrowserCoreExtended {
   coreId: string
   chromeVersion: string
@@ -195,4 +320,18 @@ export interface BrowserGroupInput {
 
 export interface BrowserGroupWithCount extends BrowserGroup {
   instanceCount: number
+}
+
+// 窗口创建模板：保存创建页的完整结构化配置（profileConfig JSON），供复用
+export interface BrowserTemplate {
+  templateId: string
+  templateName: string
+  profileConfig: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BrowserTemplateInput {
+  templateName: string
+  profileConfig: string
 }

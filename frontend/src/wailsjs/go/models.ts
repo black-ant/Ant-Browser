@@ -27,6 +27,7 @@ export namespace backend {
 	    username: string;
 	    email: string;
 	    password: string;
+	    twoFA: string;
 	    relatedProfileIds: string[];
 	    notes: string;
 	    cookies: string;
@@ -47,6 +48,7 @@ export namespace backend {
 	        this.username = source["username"];
 	        this.email = source["email"];
 	        this.password = source["password"];
+	        this.twoFA = source["twoFA"];
 	        this.relatedProfileIds = source["relatedProfileIds"];
 	        this.notes = source["notes"];
 	        this.cookies = source["cookies"];
@@ -62,6 +64,7 @@ export namespace backend {
 	    username: string;
 	    email: string;
 	    password: string;
+	    twoFA: string;
 	    relatedProfileIds: string[];
 	    notes: string;
 	    cookies: string;
@@ -77,6 +80,7 @@ export namespace backend {
 	        this.username = source["username"];
 	        this.email = source["email"];
 	        this.password = source["password"];
+	        this.twoFA = source["twoFA"];
 	        this.relatedProfileIds = source["relatedProfileIds"];
 	        this.notes = source["notes"];
 	        this.cookies = source["cookies"];
@@ -143,6 +147,7 @@ export namespace backend {
 	export class CookieInfo {
 	    name: string;
 	    value: string;
+	    url?: string;
 	    domain: string;
 	    path: string;
 	    expires: number;
@@ -158,6 +163,7 @@ export namespace backend {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.value = source["value"];
+	        this.url = source["url"];
 	        this.domain = source["domain"];
 	        this.path = source["path"];
 	        this.expires = source["expires"];
@@ -618,6 +624,7 @@ export namespace browser {
 	    proxyBindName: string;
 	    proxyBindUpdatedAt: string;
 	    launchArgs: string[];
+	    profileConfig: string;
 	    tags: string[];
 	    keywords: string[];
 	    groupId: string;
@@ -652,6 +659,7 @@ export namespace browser {
 	        this.proxyBindName = source["proxyBindName"];
 	        this.proxyBindUpdatedAt = source["proxyBindUpdatedAt"];
 	        this.launchArgs = source["launchArgs"];
+	        this.profileConfig = source["profileConfig"];
 	        this.tags = source["tags"];
 	        this.keywords = source["keywords"];
 	        this.groupId = source["groupId"];
@@ -677,6 +685,7 @@ export namespace browser {
 	    proxyId: string;
 	    proxyConfig: string;
 	    launchArgs: string[];
+	    profileConfig: string;
 	    tags: string[];
 	    keywords: string[];
 	    groupId: string;
@@ -696,6 +705,7 @@ export namespace browser {
 	        this.proxyId = source["proxyId"];
 	        this.proxyConfig = source["proxyConfig"];
 	        this.launchArgs = source["launchArgs"];
+	        this.profileConfig = source["profileConfig"];
 	        this.tags = source["tags"];
 	        this.keywords = source["keywords"];
 	        this.groupId = source["groupId"];
@@ -793,6 +803,40 @@ export namespace browser {
 	        this.title = source["title"];
 	        this.url = source["url"];
 	        this.active = source["active"];
+	    }
+	}
+	export class Template {
+	    templateId: string;
+	    templateName: string;
+	    profileConfig: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Template(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.templateId = source["templateId"];
+	        this.templateName = source["templateName"];
+	        this.profileConfig = source["profileConfig"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class TemplateInput {
+	    templateName: string;
+	    profileConfig: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TemplateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.templateName = source["templateName"];
+	        this.profileConfig = source["profileConfig"];
 	    }
 	}
 
@@ -1245,6 +1289,61 @@ export namespace logger {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	
+	    }
+	}
+
+}
+
+export namespace proxy {
+	
+	export class IPDetectResult {
+	    source: string;
+	    ok: boolean;
+	    error: string;
+	    ip: string;
+	    country: string;
+	    countryCode: string;
+	    region: string;
+	    city: string;
+	    isp: string;
+	    org: string;
+	    latencyMs: number;
+	    updatedAt: string;
+	    rawData: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new IPDetectResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.ok = source["ok"];
+	        this.error = source["error"];
+	        this.ip = source["ip"];
+	        this.country = source["country"];
+	        this.countryCode = source["countryCode"];
+	        this.region = source["region"];
+	        this.city = source["city"];
+	        this.isp = source["isp"];
+	        this.org = source["org"];
+	        this.latencyMs = source["latencyMs"];
+	        this.updatedAt = source["updatedAt"];
+	        this.rawData = source["rawData"];
+	    }
+	}
+	export class IPDetectSource {
+	    key: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new IPDetectSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.label = source["label"];
 	    }
 	}
 

@@ -82,7 +82,7 @@ var migrations = []migration{
 	},
 	{
 		version: 2,
-		desc:    "添加实例分组支持",
+		desc:    "添加窗口分组支持",
 		stmts: []string{
 			`CREATE TABLE IF NOT EXISTS browser_groups (
 				group_id   TEXT PRIMARY KEY,
@@ -127,7 +127,7 @@ var migrations = []migration{
 	},
 	{
 		version: 6,
-		desc:    "实例表添加代理绑定快照字段",
+		desc:    "窗口表添加代理绑定快照字段",
 		stmts: []string{
 			`ALTER TABLE browser_profiles ADD COLUMN proxy_bind_source_id TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE browser_profiles ADD COLUMN proxy_bind_source_url TEXT NOT NULL DEFAULT ''`,
@@ -210,6 +210,34 @@ var migrations = []migration{
 		stmts: []string{
 			`ALTER TABLE browser_accounts ADD COLUMN cookie_count INTEGER NOT NULL DEFAULT 0`,
 			`ALTER TABLE browser_accounts ADD COLUMN cookie_earliest_expiry INTEGER NOT NULL DEFAULT 0`,
+		},
+	},
+	{
+		version: 11,
+		desc:    "窗口表添加结构化创建页配置",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN profile_config TEXT NOT NULL DEFAULT '{}'`,
+		},
+	},
+	{
+		version: 12,
+		desc:    "添加窗口模板表",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_templates (
+				template_id   TEXT PRIMARY KEY,
+				template_name TEXT NOT NULL,
+				profile_config TEXT NOT NULL DEFAULT '{}',
+				created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_templates_created_at ON browser_templates(created_at)`,
+		},
+	},
+	{
+		version: 13,
+		desc:    "账号表添加 2FA(TOTP) 密钥列（加密存储）",
+		stmts: []string{
+			`ALTER TABLE browser_accounts ADD COLUMN totp_secret_enc TEXT NOT NULL DEFAULT ''`,
 		},
 	},
 	// ── 新版本在此追加，格式：
