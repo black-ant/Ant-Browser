@@ -16,6 +16,16 @@ import (
 	"testing"
 )
 
+func desktopAuthTestConfig(t *testing.T, serverOrigin string) *config.Config {
+	t.Helper()
+	return &config.Config{
+		Workspace: config.WorkspaceConfig{
+			RuntimeDir:   t.TempDir(),
+			ServerOrigin: serverOrigin,
+		},
+	}
+}
+
 func TestFetchDesktopAuthProfileUsesAuthMePayload(t *testing.T) {
 	root := t.TempDir()
 	app := NewApp(root)
@@ -50,11 +60,7 @@ func TestFetchDesktopAuthProfileUsesAuthMePayload(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app.config = &config.Config{
-		Workspace: config.WorkspaceConfig{
-			ServerOrigin: server.URL,
-		},
-	}
+	app.config = desktopAuthTestConfig(t, server.URL)
 
 	profile, err := app.FetchDesktopAuthProfile(" desktop-token ")
 	if err != nil {
@@ -109,11 +115,7 @@ func TestLoginDesktopUserUsesWorkspaceServerOrigin(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app.config = &config.Config{
-		Workspace: config.WorkspaceConfig{
-			ServerOrigin: server.URL,
-		},
-	}
+	app.config = desktopAuthTestConfig(t, server.URL)
 
 	accessToken, err := app.LoginDesktopUser(" desktop-admin ", " desktop-password ")
 	if err != nil {
@@ -141,11 +143,7 @@ func TestLoginDesktopUserReturnsWorkspaceUnavailableErrorWhenServerCannotBeReach
 	serverOrigin := "http://" + listener.Addr().String()
 	_ = listener.Close()
 
-	app.config = &config.Config{
-		Workspace: config.WorkspaceConfig{
-			ServerOrigin: serverOrigin,
-		},
-	}
+	app.config = desktopAuthTestConfig(t, serverOrigin)
 
 	_, err = app.LoginDesktopUser("supervisor", "Admin@123")
 	if err == nil {
@@ -207,11 +205,7 @@ func TestStartDesktopSharedLoginBindUsesDesktopEndpointAndAuthorization(t *testi
 	}))
 	defer server.Close()
 
-	app.config = &config.Config{
-		Workspace: config.WorkspaceConfig{
-			ServerOrigin: server.URL,
-		},
-	}
+	app.config = desktopAuthTestConfig(t, server.URL)
 
 	result, err := app.StartDesktopSharedLoginBind(" desktop-token ", " shop-1 ")
 	if err != nil {
@@ -282,11 +276,7 @@ func TestStartDesktopSharedLoginValidateUsesDesktopEndpointAndAuthorization(t *t
 	}))
 	defer server.Close()
 
-	app.config = &config.Config{
-		Workspace: config.WorkspaceConfig{
-			ServerOrigin: server.URL,
-		},
-	}
+	app.config = desktopAuthTestConfig(t, server.URL)
 
 	result, err := app.StartDesktopSharedLoginValidate(" desktop-token ", " shop-2 ")
 	if err != nil {
@@ -343,11 +333,7 @@ func TestFetchDesktopSharedLoginBindSessionUsesDesktopEndpointAndAuthorization(t
 	}))
 	defer server.Close()
 
-	app.config = &config.Config{
-		Workspace: config.WorkspaceConfig{
-			ServerOrigin: server.URL,
-		},
-	}
+	app.config = desktopAuthTestConfig(t, server.URL)
 
 	session, err := app.FetchDesktopSharedLoginBindSession(" desktop-token ", " bind-session-9 ")
 	if err != nil {

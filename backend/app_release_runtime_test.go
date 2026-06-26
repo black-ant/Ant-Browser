@@ -270,6 +270,7 @@ func TestGetDesktopEnvironmentStatusClassifiesWorkspaceHostFailureFromRuntimeCon
 	}
 
 	app := newRuntimeStatusTestApp(t, root)
+	app.config.Workspace.RuntimeDir = runtimeDir
 	app.config.Workspace.ServerOrigin = ""
 
 	result, err := app.GetDesktopEnvironmentStatus()
@@ -615,6 +616,7 @@ func TestCheckDesktopReleaseUpdateUsesRuntimeConfigManifestSource(t *testing.T) 
 	}
 
 	app := newRuntimeStatusTestApp(t, root)
+	app.config.Workspace.RuntimeDir = runtimeDir
 	state, err := app.CheckDesktopReleaseUpdate()
 	if err != nil {
 		t.Fatalf("CheckDesktopReleaseUpdate returned error: %v", err)
@@ -874,6 +876,7 @@ func newRuntimeStatusTestApp(t *testing.T, root string) *App {
 	app.ctx = context.Background()
 	app.config = &config.Config{
 		Workspace: config.WorkspaceConfig{
+			RuntimeDir:   t.TempDir(),
 			ServerOrigin: workspaceHost.URL,
 		},
 	}
