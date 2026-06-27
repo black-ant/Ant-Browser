@@ -131,7 +131,7 @@ export function ExtensionManagementPage() {
     try {
       await reloadProfiles()
     } catch (error: any) {
-      console.error('加载浏览器实例失败:', error)
+      console.error('加载浏览器窗口失败:', error)
     }
   }
 
@@ -303,11 +303,11 @@ export function ExtensionManagementPage() {
     },
     {
       key: 'boundProfileIds',
-      title: '已绑定实例',
+      title: '已绑定窗口',
       width: '120px',
       render: (value) => {
         const count = (value as string[]).length
-        return count > 0 ? <Badge>{count} 个实例</Badge> : <span className="text-sm text-[var(--color-text-muted)]">未绑定</span>
+        return count > 0 ? <Badge>{count} 个窗口</Badge> : <span className="text-sm text-[var(--color-text-muted)]">未绑定</span>
       },
     },
     {
@@ -317,7 +317,7 @@ export function ExtensionManagementPage() {
       width: '140px',
       render: (_, record) => (
         <div className="flex justify-end gap-1">
-          <Button size="sm" variant="ghost" onClick={() => handleOpenBindModal(record.extensionId)} title="绑定实例"><LinkIcon className="w-3.5 h-3.5" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => handleOpenBindModal(record.extensionId)} title="绑定窗口"><LinkIcon className="w-3.5 h-3.5" /></Button>
           <Button size="sm" variant="ghost" onClick={() => handleOpenModal(record)} title="编辑"><Edit2 className="w-3.5 h-3.5" /></Button>
           <Button size="sm" variant="ghost" onClick={() => handleDelete(record.extensionId)} title="删除"><Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
         </div>
@@ -331,7 +331,7 @@ export function ExtensionManagementPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">扩展管理</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">本地扩展绑定到实例后，启动浏览器会自动通过 --load-extension 加载</p>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">本地扩展绑定到窗口后，启动浏览器会自动通过 --load-extension 加载</p>
         </div>
         <div className="flex gap-2">
           {activeTab === 'installed' && (
@@ -369,7 +369,7 @@ export function ExtensionManagementPage() {
                   </div>
                   <div className="text-center">
                     <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">{searchQuery ? '未找到扩展' : '还没有扩展'}</h3>
-                    <p className="text-sm text-[var(--color-text-muted)] mb-4">{searchQuery ? '尝试其他搜索关键词' : '添加解压后的本地扩展目录并绑定到实例'}</p>
+                    <p className="text-sm text-[var(--color-text-muted)] mb-4">{searchQuery ? '尝试其他搜索关键词' : '添加解压后的本地扩展目录并绑定到窗口'}</p>
                     {!searchQuery && <Button size="sm" onClick={() => handleOpenModal()}><Plus className="w-4 h-4" />添加扩展</Button>}
                   </div>
                 </div>
@@ -461,10 +461,10 @@ export function ExtensionManagementPage() {
         </div>
       </Modal>
 
-      {/* 绑定实例弹窗 */}
-      <Modal open={bindModalOpen} onClose={() => setBindModalOpen(false)} title="绑定浏览器实例" width="600px">
+      {/* 绑定窗口弹窗 */}
+      <Modal open={bindModalOpen} onClose={() => setBindModalOpen(false)} title="绑定浏览器窗口" width="600px">
         <div className="space-y-4 py-4">
-          <p className="text-sm text-[var(--color-text-secondary)]">选择要绑定此扩展的浏览器实例；绑定后，下次启动这些实例时会自动加载该扩展。</p>
+          <p className="text-sm text-[var(--color-text-secondary)]">选择要绑定此扩展的浏览器窗口；绑定后，下次启动这些窗口时会自动加载该扩展。</p>
           <div className="space-y-2 max-h-[400px] overflow-auto">
             {profiles.map(profile => {
               const ext = extensions.find(e => e.extensionId === bindingExtensionId)

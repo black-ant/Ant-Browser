@@ -96,7 +96,7 @@ export function BrowserDetailPage() {
   if (!profile) {
     return (
       <div className="flex items-center justify-center h-64 text-sm text-[var(--color-text-muted)]">
-        暂无实例信息
+        暂无窗口信息
       </div>
     )
   }
@@ -116,10 +116,10 @@ export function BrowserDetailPage() {
       if (startedProfile?.running && !startedProfile.debugReady && startedProfile.runtimeWarning) {
         toast.warning(startedProfile.runtimeWarning)
       } else {
-        toast.success('实例已启动')
+        toast.success('窗口已启动')
       }
     } catch (error: any) {
-      const feedback = resolveActionFeedback(error, '实例启动失败')
+      const feedback = resolveActionFeedback(error, '窗口启动失败')
       if (feedback.tone === 'warning') {
         toast.warning(feedback.message)
       } else {
@@ -138,9 +138,9 @@ export function BrowserDetailPage() {
       if (stoppedProfile) {
         setProfile(stoppedProfile)
       }
-      toast.success('实例已停止')
+      toast.success('窗口已停止')
     } catch (error: any) {
-      toast.error(resolveActionErrorMessage(error, '实例停止失败'))
+      toast.error(resolveActionErrorMessage(error, '窗口停止失败'))
     } finally {
       await loadProfile()
       setPendingAction(null)
@@ -154,9 +154,9 @@ export function BrowserDetailPage() {
       if (restartedProfile) {
         setProfile(restartedProfile)
       }
-      toast.success('实例已重启')
+      toast.success('窗口已重启')
     } catch (error: any) {
-      const feedback = resolveActionFeedback(error, '实例重启失败')
+      const feedback = resolveActionFeedback(error, '窗口重启失败')
       if (feedback.tone === 'warning') {
         toast.warning(feedback.message)
       } else {
@@ -191,7 +191,7 @@ export function BrowserDetailPage() {
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">实例详情</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">窗口详情</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-1">{profile.profileName}</p>
         </div>
         <div className="flex gap-2">
@@ -226,7 +226,7 @@ export function BrowserDetailPage() {
       {activeTab === 'overview' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card title="运行信息" subtitle="实例运行状态与端口信息">
+            <Card title="运行信息" subtitle="窗口运行状态与端口信息">
               <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
                 <div className="flex justify-between">
                   <span>状态</span>
@@ -315,7 +315,7 @@ export function BrowserDetailPage() {
             </Card>
           </div>
 
-          <Card title="快捷操作" subtitle="快速控制实例">
+          <Card title="快捷操作" subtitle="快速控制窗口">
             <div className="flex flex-wrap items-center gap-2">
               {profile.running ? (
                 <Button size="sm" variant="secondary" onClick={handleStop} loading={isStopping} disabled={isBusy && !isStopping}>
@@ -344,14 +344,14 @@ export function BrowserDetailPage() {
           )}
 
           {profile.runtimeWarning && (
-            <Card title="运行提示" subtitle="当前实例处于部分可用状态">
+            <Card title="运行提示" subtitle="当前窗口处于部分可用状态">
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 whitespace-pre-line">
                 {profile.runtimeWarning}
               </div>
             </Card>
           )}
 
-          <Card title="打开地址" subtitle="向实例发送打开 URL 指令">
+          <Card title="打开地址" subtitle="向窗口发送打开 URL 指令">
             <div className="flex flex-col md:flex-row gap-3">
               <Input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder="请输入目标地址" />
               <Button onClick={handleOpenUrl}>
@@ -361,7 +361,7 @@ export function BrowserDetailPage() {
             </div>
           </Card>
 
-          <Card title="标签页列表" subtitle="当前实例标签页信息">
+          <Card title="标签页列表" subtitle="当前窗口标签页信息">
             <Table columns={tabsColumns} data={tabs} rowKey="tabId" />
           </Card>
 

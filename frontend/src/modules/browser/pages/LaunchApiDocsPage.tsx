@@ -14,11 +14,11 @@ const DOC_OVERVIEW = `# 自动化接口文档（重构版）
 
 ## 文档目标
 
-本页聚焦 **外部脚本 / 调度器通过 HTTP 创建并唤起实例** 的场景，重点回答 5 个问题：
+本页聚焦 **外部脚本 / 调度器通过 HTTP 创建并唤起窗口** 的场景，重点回答 5 个问题：
 
-1. 如何通过 HTTP 创建实例配置，并写入代理 / 标签 / 关键字 / 分组等信息
-2. 如何通过 Code 或关键字直接唤起实例
-3. 如何通过 \`profileId / profileName / keyword / tags / groupId\` 选择实例
+1. 如何通过 HTTP 创建窗口配置，并写入代理 / 标签 / 关键字 / 分组等信息
+2. 如何通过 Code 或关键字直接唤起窗口
+3. 如何通过 \`profileId / profileName / keyword / tags / groupId\` 选择窗口
 4. 如何带参数启动，并拿到固定 \`cdpUrl\` 接入 CDP
 5. 如何通过日志排查选择器命中和启动失败问题
 
@@ -39,7 +39,7 @@ const DOC_OVERVIEW = `# 自动化接口文档（重构版）
 
 ## 当前支持能力
 
-- 支持通过 \`/api/profiles\` 进行实例配置的创建、查询、更新、删除，并写入代理 / 标签 / 关键字 / 分组 / 启动参数等信息
+- 支持通过 \`/api/profiles\` 进行窗口配置的创建、查询、更新、删除，并写入代理 / 标签 / 关键字 / 分组 / 启动参数等信息
 - 兼容旧版：\`GET /api/launch/{code}\`
 - 推荐主入口：\`POST /api/launch\`
 - \`POST /api/launch\` 中的 \`code\` 字段支持“LaunchCode 优先，关键字兜底”
@@ -58,16 +58,16 @@ const DOC_OVERVIEW = `# 自动化接口文档（重构版）
 - Ant Browser 应用已启动
 - Launch 服务监听本机（地址见本页顶部）
 - 如启用了 API 认证，请准备好请求头 \`X-Ant-Api-Key: <your-api-key>\`
-- 如果你要用 \`key / keyword / tags\` 选择实例，需要先在实例配置里维护这些字段
+- 如果你要用 \`key / keyword / tags\` 选择窗口，需要先在窗口配置里维护这些字段
 - 如果你要用 \`groupId\`，请保证脚本拿到的是分组 ID，不是分组展示名
 
 ## 自动化链路
 
 \`\`\`
 任意语言客户端 / 调度器
-  -> POST /api/profiles（可选：先创建实例配置）
+  -> POST /api/profiles（可选：先创建窗口配置）
   -> POST /api/launch
-  -> 选择器解析实例
+  -> 选择器解析窗口
   -> 启动浏览器
   -> 返回 cdpUrl / debugReady
   -> Playwright / Selenium / 自研 CDP 客户端接管
@@ -78,20 +78,20 @@ const DOC_QUICKSTART = `# 快速接入（3 分钟）
 
 建议先用 \`curl\` 把协议跑通，再换成你自己的语言封装；请求路径、Header、JSON 结构保持不变。
 
-## 第一步：准备实例标识
+## 第一步：准备窗口标识
 
 推荐至少准备一种稳定标识：
 
 - \`launchCode\`：最稳，适合生产脚本（🔒 v1.2.0+ 长度为 12 位）
 - \`profileId\`：适合系统内部编排
-- \`key / keywords / tags\`：适合”按业务语义找实例”的场景
+- \`key / keywords / tags\`：适合”按业务语义找窗口”的场景
 
 > 🔒 **安全提示**（v1.2.0+）：Launch Code 长度已从 6 位增加到 12 位，旧的 6 位 Code 将失效，需重新生成。
 
 如果你准备使用关键字或标签：
 
-1. 打开实例编辑页
-2. 给目标实例填好 \`keywords\`
+1. 打开窗口编辑页
+2. 给目标窗口填好 \`keywords\`
 3. 视情况补上 \`tags\`、\`groupId\`
 
 如果你的外部脚本手里只有”账号 / 业务关键字”：
@@ -99,7 +99,7 @@ const DOC_QUICKSTART = `# 快速接入（3 分钟）
 - 推荐直接走 \`POST /api/launch\`
 - 可以把账号或关键字直接放进 \`code\`
 - 后端会先按真实 LaunchCode 查；查不到再按关键字匹配，并在多命中时默认取第一个
-- 如果需要把所有命中实例都启动，显式传 \`matchMode=all\`
+- 如果需要把所有命中窗口都启动，显式传 \`matchMode=all\`
 
 ## 如果启用 API 认证
 
@@ -113,7 +113,7 @@ curl -H "X-Ant-Api-Key: <your-api-key>" http://127.0.0.1:19876/api/health
 
 推荐按你的编排方式选择下面三种触发模式：
 
-1. 仅创建配置：\`POST /api/profiles\`，只写实例资料，不启动浏览器
+1. 仅创建配置：\`POST /api/profiles\`，只写窗口资料，不启动浏览器
 2. 创建并立即启动：\`POST /api/profiles\` + \`autoLaunch=true\`
 3. 先创建后再启动：先 \`POST /api/profiles\`，再 \`POST /api/launch\`
 
@@ -179,7 +179,7 @@ curl -X POST http://127.0.0.1:19876/api/launch \\
 \`\`\`
 `
 
-const DOC_SELECTOR = `# 目标实例选择器
+const DOC_SELECTOR = `# 目标窗口选择器
 
 ## 设计目标
 
@@ -233,13 +233,13 @@ const DOC_SELECTOR = `# 目标实例选择器
 | 字段 | 类型 | 匹配方式 | 说明 |
 |------|------|----------|------|
 | \`code\` | string | 精确匹配 / 关键字兜底 | 会自动 trim 并转成大写；先按 LaunchCode 查；仅在 POST 请求里，查不到时再按关键字匹配 |
-| \`profileId\` | string | 精确匹配 | 实例唯一 ID |
-| \`profileName\` | string | 精确匹配 | 名称忽略大小写，适合名称唯一的实例 |
-| \`key\` | string | 先精确后模糊 | 先在实例 \`keywords[]\` 中做精确相等；若没有精确命中，再按 contains 模糊匹配 |
-| \`keyword\` | string | 模糊匹配 | 在实例 \`keywords[]\` 中做 contains；日志里会归一化到 \`keywords[]\` |
+| \`profileId\` | string | 精确匹配 | 窗口唯一 ID |
+| \`profileName\` | string | 精确匹配 | 名称忽略大小写，适合名称唯一的窗口 |
+| \`key\` | string | 先精确后模糊 | 先在窗口 \`keywords[]\` 中做精确相等；若没有精确命中，再按 contains 模糊匹配 |
+| \`keyword\` | string | 模糊匹配 | 在窗口 \`keywords[]\` 中做 contains；日志里会归一化到 \`keywords[]\` |
 | \`keywords\` | string[] | 多词 AND | 每个查询词都必须命中某个关键字 |
 | \`tag\` | string | 精确匹配 | 标签完全相等，忽略大小写；日志里会归一化到 \`tags[]\` |
-| \`tags\` | string[] | 多标签 AND | 实例必须包含全部标签 |
+| \`tags\` | string[] | 多标签 AND | 窗口必须包含全部标签 |
 | \`groupId\` | string | 精确匹配 | 只匹配指定分组 ID |
 | \`matchMode\` | string | 行为控制 | \`unique\` / \`first\` / \`all\`；\`code / key / keyword / keywords\` 默认 \`first\`，其他默认 \`unique\` |
 
@@ -257,18 +257,18 @@ const DOC_SELECTOR = `# 目标实例选择器
 | 值 | 含义 |
 |----|------|
 | \`unique\` | 显式要求唯一。命中 0 个返回 404，命中多个返回 409 |
-| \`first\` | 当命中多个实例时，按后端稳定顺序取第一个；\`key / keyword / keywords\` 默认就是这个行为 |
-| \`all\` | 当命中多个实例时，按后端稳定顺序依次启动全部实例，并返回 \`items[]\` |
+| \`first\` | 当命中多个窗口时，按后端稳定顺序取第一个；\`key / keyword / keywords\` 默认就是这个行为 |
+| \`all\` | 当命中多个窗口时，按后端稳定顺序依次启动全部窗口，并返回 \`items[]\` |
 
 ## 什么时候该用哪个字段
 
 - 稳定生产脚本：优先 \`code\`
 - 系统内部编排：优先 \`profileId\`
 - 名称严格唯一：可用 \`profileName\`
-- 一类实例共享规则：用 \`keyword + tags + groupId\`
+- 一类窗口共享规则：用 \`keyword + tags + groupId\`
 - 外部脚本只有账号 / 关键字：可直接把值传到 \`POST.code\`
-- 容许“取第一个命中实例”：加 \`matchMode=first\`
-- 需要“把所有命中实例都启动”：加 \`matchMode=all\`
+- 容许“取第一个命中窗口”：加 \`matchMode=first\`
+- 需要“把所有命中窗口都启动”：加 \`matchMode=all\`
 `
 
 const DOC_API_INDEX = `# 接口总览
@@ -276,11 +276,11 @@ const DOC_API_INDEX = `# 接口总览
 | 能力 | 方法 | 路径 | 用途 |
 |------|------|------|------|
 | 健康检查 | GET | \`/api/health\` | 检查 Launch 服务是否可用 |
-| 实例配置管理 | GET / POST | \`/api/profiles\` | 查询实例列表，或创建包含代理/标签/关键字/分组的实例配置 |
-| 单实例配置管理 | GET / PUT / DELETE | \`/api/profiles/{profileId}\` | 查询、更新、删除指定实例配置 |
+| 窗口配置管理 | GET / POST | \`/api/profiles\` | 查询窗口列表，或创建包含代理/标签/关键字/分组的窗口配置 |
+| 单窗口配置管理 | GET / PUT / DELETE | \`/api/profiles/{profileId}\` | 查询、更新、删除指定窗口配置 |
 | 按 Code 启动 | GET | \`/api/launch/{code}\` | 兼容旧版、最快捷的唤起方式 |
 | 选择器启动 | POST | \`/api/launch\` | 支持 code / profileId / 名称 / 关键字 / 标签 / 分组 |
-| CDP 统一入口 | GET / WS | \`/json/version\`、\`/json/list\`、\`/devtools/...\` | 将非 \`/api\` 请求代理到当前活动实例 |
+| CDP 统一入口 | GET / WS | \`/json/version\`、\`/json/list\`、\`/devtools/...\` | 将非 \`/api\` 请求代理到当前活动窗口 |
 | 调用记录 | GET | \`/api/launch/logs?limit=50\` | 查看最近接口调用与错误 |
 
 说明：
@@ -310,7 +310,7 @@ curl http://127.0.0.1:19876/api/health
 \`\`\`
 `
 
-const DOC_API_PROFILES = `# 接口：实例配置管理
+const DOC_API_PROFILES = `# 接口：窗口配置管理
 
 \`\`\`
 GET    /api/profiles
@@ -322,11 +322,11 @@ DELETE /api/profiles/{profileId}
 
 ## 说明
 
-- 用于外部脚本完整管理实例配置：先查、再创建、后续更新，最后按需删除
-- \`profile\` 内是持久化配置，会保存到实例资料里
+- 用于外部脚本完整管理窗口配置：先查、再创建、后续更新，最后按需删除
+- \`profile\` 内是持久化配置，会保存到窗口资料里
 - \`start\` 内是本次自动启动的临时参数；只有 \`autoLaunch=true\` 时才会使用
 - 如果传 \`launchCode\`，会尝试设置为自定义启动码；重复时返回 \`409\`
-- \`DELETE /api/profiles/{profileId}\` 会拒绝删除运行中的实例，避免留下未托管进程
+- \`DELETE /api/profiles/{profileId}\` 会拒绝删除运行中的窗口，避免留下未托管进程
 
 ## 触发创建的 3 种方式
 
@@ -354,16 +354,16 @@ DELETE /api/profiles/{profileId}
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| \`profile\` | object | 是 | 实例配置对象 |
-| \`profile.profileName\` | string | 是 | 实例名称 |
+| \`profile\` | object | 是 | 窗口配置对象 |
+| \`profile.profileName\` | string | 是 | 窗口名称 |
 | \`profile.userDataDir\` | string | 否 | 用户数据目录；为空时自动生成 |
 | \`profile.coreId\` | string | 否 | 指定浏览器内核 |
 | \`profile.fingerprintArgs\` | string[] | 否 | 持久化指纹参数 |
 | \`profile.proxyId\` | string | 否 | 代理池中的代理 ID；传它时会自动回填 \`proxyConfig\` |
 | \`profile.proxyConfig\` | string | 否 | 直接写死的代理配置，如 \`http://user:pass@host:port\` |
-| \`profile.launchArgs\` | string[] | 否 | 实例默认启动参数，会持久化 |
-| \`profile.tags\` | string[] | 否 | 实例标签 |
-| \`profile.keywords\` | string[] | 否 | 实例关键字，供 \`/api/launch\` 检索 |
+| \`profile.launchArgs\` | string[] | 否 | 窗口默认启动参数，会持久化 |
+| \`profile.tags\` | string[] | 否 | 窗口标签 |
+| \`profile.keywords\` | string[] | 否 | 窗口关键字，供 \`/api/launch\` 检索 |
 | \`profile.groupId\` | string | 否 | 所属分组 ID |
 | \`launchCode\` | string | 否 | 自定义启动码，4-32 位，字符集 \`A-Z 0-9 _ -\` |
 | \`autoLaunch\` | boolean | 否 | 创建后是否立即启动 |
@@ -371,7 +371,7 @@ DELETE /api/profiles/{profileId}
 | \`start.startUrls\` | string[] | 否 | 本次自动启动打开的 URL |
 | \`start.skipDefaultStartUrls\` | boolean | 否 | 本次自动启动时是否跳过系统默认起始页 |
 
-## 示例 1：创建一个绑定代理池节点的实例
+## 示例 1：创建一个绑定代理池节点的窗口
 
 \`\`\`bash
 curl -X POST http://127.0.0.1:19876/api/profiles \\
@@ -461,7 +461,7 @@ curl -X POST http://127.0.0.1:19876/api/profiles \\
 ## 示例 3：先创建，再按返回的 launchCode 单独触发启动
 
 \`\`\`bash
-# 第一步：创建实例配置
+# 第一步：创建窗口配置
 curl -X POST http://127.0.0.1:19876/api/profiles \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -512,13 +512,13 @@ curl http://127.0.0.1:19876/api/profiles
 }
 \`\`\`
 
-## 单实例查询
+## 单窗口查询
 
 \`\`\`bash
 curl http://127.0.0.1:19876/api/profiles/550e8400-e29b-41d4-a716-446655440000
 \`\`\`
 
-## 更新实例配置
+## 更新窗口配置
 
 \`\`\`bash
 curl -X PUT http://127.0.0.1:19876/api/profiles/550e8400-e29b-41d4-a716-446655440000 \\
@@ -547,7 +547,7 @@ curl -X PUT http://127.0.0.1:19876/api/profiles/550e8400-e29b-41d4-a716-44665544
 - \`PUT\` 采用“整份配置更新”语义，建议先 \`GET /api/profiles/{profileId}\` 再修改后回写
 - 如果 \`launchCode\` 冲突，后端会回滚本次更新，避免配置部分落库
 
-## 删除实例配置
+## 删除窗口配置
 
 \`\`\`bash
 curl -X DELETE http://127.0.0.1:19876/api/profiles/550e8400-e29b-41d4-a716-446655440000
@@ -577,7 +577,7 @@ GET /api/launch/{code}
 - 适合“我已经知道唯一 Code”的场景
 - 只支持 \`code\`，不支持复杂选择器
 - 不支持关键字兜底；如果你想传账号 / 关键字，请改用 \`POST /api/launch\`
-- 实例已运行时返回当前运行信息（幂等）
+- 窗口已运行时返回当前运行信息（幂等）
 
 ## 请求示例
 
@@ -654,10 +654,10 @@ curl -X POST http://127.0.0.1:19876/api/launch \\
 说明：
 
 - 先按真实 LaunchCode 查
-- 查不到就把 \`buyer-001\` 当关键字去匹配实例
-- 如果命中多个实例，默认取第一个
+- 查不到就把 \`buyer-001\` 当关键字去匹配窗口
+- 如果命中多个窗口，默认取第一个
 
-## 示例 1C：\`code\` 传关键字，并把所有命中实例都启动
+## 示例 1C：\`code\` 传关键字，并把所有命中窗口都启动
 
 \`\`\`bash
 curl -X POST http://127.0.0.1:19876/api/launch \\
@@ -694,7 +694,7 @@ curl -X POST http://127.0.0.1:19876/api/launch \\
   }'
 \`\`\`
 
-## 示例 4：按关键字 + 标签 + 分组定位实例
+## 示例 4：按关键字 + 标签 + 分组定位窗口
 
 \`\`\`bash
 curl -X POST http://127.0.0.1:19876/api/launch \\
@@ -751,7 +751,7 @@ curl -X POST http://127.0.0.1:19876/api/launch \\
   }'
 \`\`\`
 
-## 成功响应：单实例
+## 成功响应：单窗口
 
 \`\`\`json
 {
@@ -768,7 +768,7 @@ curl -X POST http://127.0.0.1:19876/api/launch \\
 }
 \`\`\`
 
-## 成功响应：多实例（\`matchMode=all\`）
+## 成功响应：多窗口（\`matchMode=all\`）
 
 \`\`\`json
 {
@@ -806,8 +806,8 @@ curl -X POST http://127.0.0.1:19876/api/launch \\
 
 补充说明：
 
-- \`activeProfileId\` 是当前统一 CDP 入口实际指向的实例
-- \`matchMode=all\` 时，会按后端稳定顺序依次启动；最后一个成功启动的实例会成为活动实例
+- \`activeProfileId\` 是当前统一 CDP 入口实际指向的窗口
+- \`matchMode=all\` 时，会按后端稳定顺序依次启动；最后一个成功启动的窗口会成为活动窗口
 `
 
 const DOC_API_CDP = `# 接口：CDP 统一入口
@@ -821,11 +821,11 @@ WS  /devtools/...
 
 ## 说明
 
-- LaunchServer 会把所有非 \`/api\` 请求代理到当前活动实例的内部调试端口
-- 当前活动实例等于最近一次成功启动的实例
-- 如果使用 \`matchMode=all\`，则最后一个启动成功的实例会成为当前活动实例
-- 如果启动响应里 \`debugReady=false\`，说明当前实例暂时还不会成为活动实例，直到后台附着完成
-- 如果当前没有活动实例，请求会返回 \`503\` 和 \`no active browser debug target\`
+- LaunchServer 会把所有非 \`/api\` 请求代理到当前活动窗口的内部调试端口
+- 当前活动窗口等于最近一次成功启动的窗口
+- 如果使用 \`matchMode=all\`，则最后一个启动成功的窗口会成为当前活动窗口
+- 如果启动响应里 \`debugReady=false\`，说明当前窗口暂时还不会成为活动窗口，直到后台附着完成
+- 如果当前没有活动窗口，请求会返回 \`503\` 和 \`no active browser debug target\`
 
 ## 请求示例
 
@@ -900,7 +900,7 @@ curl http://127.0.0.1:19876/api/launch/logs?limit=20
 
 const DOC_SCENARIOS = `# 场景示例
 
-## 场景 1：生产环境固定实例
+## 场景 1：生产环境固定窗口
 
 用 \`code\` 或 \`profileId\`。
 
@@ -927,10 +927,10 @@ const DOC_SCENARIOS = `# 场景示例
 
 - 这是给外部脚本最省事的写法
 - 后端会先按真实 Code 查，再按关键字兜底
-- 如果一类实例会命中多个，默认取第一个
+- 如果一类窗口会命中多个，默认取第一个
 - 如果你就是要全起，显式加 \`matchMode=all\`
 
-## 场景 2：一个业务线下有多组实例
+## 场景 2：一个业务线下有多组窗口
 
 用 \`keyword + tags + groupId\`。
 
@@ -947,7 +947,7 @@ const DOC_SCENARIOS = `# 场景示例
 }
 \`\`\`
 
-## 场景 3：批量模板实例，需要把命中的实例全部启动
+## 场景 3：批量模板窗口，需要把命中的窗口全部启动
 
 用 \`keyword + matchMode=all\`。
 
@@ -989,12 +989,12 @@ const DOC_ERRORS = `# 错误码与重试策略
 | 400 | 请求体非法 / 含未知字段 / selector 缺失 / matchMode 非法 / launchCode 格式错误 | 修复参数后重试 |
 | 401 | 已启用 API 认证，但缺少或写错 API Key | 补上正确的 \`X-Ant-Api-Key\` 请求头后重试 |
 | 403 | 非 localhost 访问 | 改为本机请求 |
-| 404 | GET 的 Code 不存在 / POST 的 code 关键字兜底后仍未命中 / selector 没命中实例 | 检查 code、keywords、tags、groupId |
+| 404 | GET 的 Code 不存在 / POST 的 code 关键字兜底后仍未命中 / selector 没命中窗口 | 检查 code、keywords、tags、groupId |
 | 405 | 方法错误 | 使用正确 HTTP 方法 |
-| 409 | selector 命中多个实例 / 创建或更新时 launchCode 冲突 / 达到实例上限 / 删除运行中实例 | 收窄条件、换一个 launchCode，或先停掉实例后重试 |
+| 409 | selector 命中多个窗口 / 创建或更新时 launchCode 冲突 / 达到窗口上限 / 删除运行中窗口 | 收窄条件、换一个 launchCode，或先停掉窗口后重试 |
 | 429 | 🔒 速率限制：Launch Code 解析超过 10 次/秒 | 降低请求频率，实现客户端速率控制 |
 | 500 | 启动失败 | 查 \`/api/launch/logs\` + 应用日志 |
-| 503 | 访问 CDP 统一入口时还没有活动实例，或启动响应仍处于 \`debugReady=false\` | 先确认启动接口成功，再等待 \`debugReady=true\` 后访问 \`cdpUrl\` |
+| 503 | 访问 CDP 统一入口时还没有活动窗口，或启动响应仍处于 \`debugReady=false\` | 先确认启动接口成功，再等待 \`debugReady=true\` 后访问 \`cdpUrl\` |
 
 ## 🔒 安全增强（v1.2.0）
 
@@ -1019,7 +1019,7 @@ const DOC_ERRORS = `# 错误码与重试策略
 - 对 \`500\` 可短暂重试（指数退避）
 - 对 \`400/404/409\` 不建议盲目重试
 - 🔒 对 \`429\` 必须实现退避策略，建议等待 1-2 秒后重试
-- 对复杂 selector，先在低风险环境验证日志是否命中正确实例
+- 对复杂 selector，先在低风险环境验证日志是否命中正确窗口
 - 使用 HTTP 状态码而非错误消息文本判断错误类型
 `
 
@@ -1164,7 +1164,7 @@ const DOC_PRACTICES = `# 最佳实践
 ## 2) 关键字维护规范
 
 - \`keywords\` 里尽量放稳定业务词，不要放容易漂移的描述
-- 同一类实例的关键字保持风格统一
+- 同一类窗口的关键字保持风格统一
 - 如果脚本要靠关键字精确命中，至少再加一个 \`tag\` 或 \`groupId\`
 
 ## 3) 标签与分组策略
@@ -1175,7 +1175,7 @@ const DOC_PRACTICES = `# 最佳实践
 
 ## 4) 启动参数策略
 
-- 把通用参数放在实例默认配置
+- 把通用参数放在窗口默认配置
 - 把任务临时参数放在 \`launchArgs\`
 - 只在当前任务需要时才传 \`startUrls\`
 
@@ -1203,24 +1203,24 @@ const DOC_TROUBLESHOOT = `# 常见问题
 ## Q2：返回 \`launch code not found\`
 
 - Code 拼写错误
-- 目标实例没有这个 Code
+- 目标窗口没有这个 Code
 - 你把自定义 Code 改过，但脚本没同步
 - 这通常是 \`GET /api/launch/{code}\` 或“你明确想按真实 Code 启动”的报错
 - 如果你传的是账号 / 关键字，请改用 \`POST /api/launch\`
 
 ## Q3：返回 \`profile selector matched no instance\`
 
-- 关键字没有配置到实例的 \`keywords\`
+- 关键字没有配置到窗口的 \`keywords\`
 - \`tags\` 或 \`groupId\` 条件写错
 - 组合条件过严，导致 0 命中
-- 或者你在 \`POST\` 里把 \`code\` 当关键字传了，但该关键字没有命中任何实例
+- 或者你在 \`POST\` 里把 \`code\` 当关键字传了，但该关键字没有命中任何窗口
 
 ## Q4：返回 \`selector matched multiple profiles\`
 
 - 说明关键字过宽或标签过少
 - 优先补 \`groupId\` / 更多 \`tags\`
 - 如果业务允许，显式加 \`matchMode=first\`
-- 如果你要把这些命中实例全部启动，改用 \`matchMode=all\`
+- 如果你要把这些命中窗口全部启动，改用 \`matchMode=all\`
 
 ## Q5：返回 \`unauthorized: invalid api key\`
 
@@ -1237,14 +1237,14 @@ const DOC_TROUBLESHOOT = `# 常见问题
 
 - 先看 \`/api/launch/logs\` 里的 \`error\`
 - 再检查内核路径、代理配置、启动参数是否合法
-- 如果是复杂 selector，先确认命中的实例就是你预期那一个
+- 如果是复杂 selector，先确认命中的窗口就是你预期那一个
 
 ## Q8：访问 \`cdpUrl\` 返回 \`no active browser debug target\`
 
-- 说明当前还没有活动实例
+- 说明当前还没有活动窗口
 - 先调用一次 \`GET /api/launch/{code}\` 或 \`POST /api/launch\`
-- 如果启动响应里 \`debugReady=false\`，说明实例正在后台附着，稍后再访问 \`cdpUrl\`
-- 如果刚启动完实例仍然出现这个问题，再检查启动接口是否真的返回了 \`200\`
+- 如果启动响应里 \`debugReady=false\`，说明窗口正在后台附着，稍后再访问 \`cdpUrl\`
+- 如果刚启动完窗口仍然出现这个问题，再检查启动接口是否真的返回了 \`200\`
 
 ## Q9：🔒 返回 \`429 rate limit exceeded\`（v1.2.0+）
 
@@ -1315,7 +1315,7 @@ const DOC_TREE: DocNode[] = [
     label: '核心接口',
     children: [
       { id: 'api-health', label: '健康检查', content: DOC_API_HEALTH },
-      { id: 'api-profiles', label: '实例管理', content: DOC_API_PROFILES },
+      { id: 'api-profiles', label: '窗口管理', content: DOC_API_PROFILES },
       { id: 'api-launch-get', label: '按 Code 启动', content: DOC_API_LAUNCH_GET },
       { id: 'api-launch-post', label: '参数化启动', content: DOC_API_LAUNCH_POST },
       { id: 'api-cdp', label: 'CDP 统一入口', content: DOC_API_CDP },

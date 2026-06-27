@@ -166,6 +166,27 @@ func DetectIPByConfig(
 		return result
 	}
 
+	runIPDetectRequest(client, svc, &result)
+	return result
+}
+
+// DetectLocalIP 不经过任何代理，直接查询本机出口公网 IP 信息。
+// 用于创建页“本机网络环境”展示真实出口 IP。
+func DetectLocalIP(source string) IPDetectResult {
+	svc := resolveIPDetectService(source)
+	result := IPDetectResult{
+		Source:    svc.key,
+		RawData:   map[string]interface{}{},
+		UpdatedAt: time.Now().Format(time.RFC3339),
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	runIPDetectRequest(client, svc, &result)
+	return result
+}
+
+// runIPDetectRequest 用给定 HTTP 客户端请求检测源并把结果写入 result。
+func runIPDetectRequest(client *http.Client, svc ipDetectService, result *IPDetectResult) {
 	req, _ := http.NewRequest(http.MethodGet, svc.endpoint, nil)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "AntChrome/1.0")
@@ -174,7 +195,7 @@ func DetectIPByConfig(
 	resp, err := client.Do(req)
 	if err != nil {
 		result.Error = fmt.Sprintf("请求检测源失败: %v", err)
-		return result
+		return
 	}
 	defer resp.Body.Close()
 	result.LatencyMs = time.Since(start).Milliseconds()
@@ -182,34 +203,33 @@ func DetectIPByConfig(
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		result.Error = fmt.Sprintf("读取检测源响应失败: %v", err)
-		return result
+		return
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		result.Error = fmt.Sprintf("检测源 HTTP %d: %s", resp.StatusCode, bodySnippet(body, 180))
-		return result
+		return
 	}
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Error = fmt.Sprintf("检测源 JSON 解析失败: %v", err)
-		return result
+		return
 	}
 
 	// ip-api 失败时 status=fail
 	if status := mapString(data, "status"); strings.EqualFold(status, "fail") {
 		result.Error = firstNonEmpty(mapString(data, "message"), "检测源返回失败")
 		result.RawData = data
-		return result
+		return
 	}
 
-	svc.parse(data, &result)
+	svc.parse(data, result)
 	result.RawData = data
 	if strings.TrimSpace(result.IP) == "" {
 		result.Error = "未能解析出口 IP"
-		return result
+		return
 	}
 	result.Ok = true
-	return result
 }
 
 // mapString 从 map 中取字符串字段，缺失或非字符串时返回空串。

@@ -7,7 +7,7 @@
 前端 ──WebSocket──> CDP (Browser)
   ❌ 前端直接管理WebSocket连接
   ❌ 刷新页面数据丢失
-  ❌ 多实例抓包冲突
+  ❌ 多窗口抓包冲突
   ❌ 断线重连逻辑复杂
   ❌ 无法持久化缓存
 ```
@@ -33,7 +33,7 @@
 // CDPSession CDP调试会话
 type CDPSession struct {
     SessionID    string                 // 会话ID
-    ProfileID    string                 // 实例ID
+    ProfileID    string                 // 窗口ID
     DebugPort    int                    // CDP端口
     TargetID     string                 // 目标ID (browser/page)
     
@@ -533,8 +533,8 @@ export async function CDPExportHAR(sessionId: string): Promise<string> {
 - ✅ 后端缓存所有数据
 - ✅ 前端刷新后通过sessionId重新获取
 
-### **2. 多实例互不干扰**
-- ✅ 每个实例独立的sessionId
+### **2. 多窗口互不干扰**
+- ✅ 每个窗口独立的sessionId
 - ✅ 会话隔离的数据缓存
 
 ### **3. 断线自动重连**
@@ -568,7 +568,7 @@ export async function CDPExportHAR(sessionId: string): Promise<string> {
 4. ✅ 更新UI逻辑
 
 ### **Phase 4: 测试验证** (1小时)
-1. ✅ 多实例测试
+1. ✅ 多窗口测试
 2. ✅ 断线重连测试
 3. ✅ 数据持久化测试
 4. ✅ HAR导出验证

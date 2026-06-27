@@ -519,7 +519,7 @@ func (a *App) backupClearBusinessTables() error {
 	}
 	defer tx.Rollback()
 
-	tables := []string{"launch_codes", "browser_profiles", "browser_proxies", "browser_cores", "browser_bookmarks", "browser_groups"}
+	tables := []string{"launch_codes", "browser_profiles", "browser_proxies", "browser_cores", "browser_bookmarks", "browser_groups", "browser_templates"}
 	for _, table := range tables {
 		if _, err := tx.Exec("DELETE FROM " + table); err != nil && !backupIsNoSuchTableError(err) {
 			return fmt.Errorf("清空数据表失败(%s): %w", table, err)
@@ -948,11 +948,32 @@ func (a *App) backupMergeDatabaseFromSource(srcDBPath string, resetFirst bool, s
 	}
 	defer tx.Exec(`DETACH DATABASE src`)
 
+	profileConfigInsertAll := "'{}'"
+	profileConfigInsertSafe := "'{}'"
+	if exists, err := backupSrcColumnExists(tx, "browser_profiles", "profile_config"); err != nil {
+		return err
+	} else if exists {
+		profileConfigInsertAll = "COALESCE(profile_config,'{}')"
+		profileConfigInsertSafe = "COALESCE(s.profile_config,'{}')"
+	}
+
 	mergeTables := []struct {
 		name       string
 		insertAll  string
 		insertSafe string
 	}{
+		{
+			name: "browser_templates",
+			insertAll: `INSERT INTO browser_templates (template_id, template_name, profile_config, created_at, updated_at)
+SELECT template_id, template_name, COALESCE(profile_config,'{}'), created_at, updated_at FROM src.browser_templates`,
+			insertSafe: `INSERT INTO browser_templates (template_id, template_name, profile_config, created_at, updated_at)
+SELECT s.template_id, s.template_name, COALESCE(s.profile_config,'{}'), s.created_at, s.updated_at
+FROM src.browser_templates s
+WHERE NOT EXISTS (
+  SELECT 1 FROM browser_templates t
+  WHERE t.template_id = s.template_id OR lower(t.template_name) = lower(s.template_name)
+)`,
+		},
 		{
 			name: "browser_groups",
 			insertAll: `INSERT INTO browser_groups (group_id, group_name, parent_id, sort_order, created_at, updated_at)
@@ -992,16 +1013,16 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_profiles",
-			insertAll: `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at)
-SELECT profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, COALESCE(group_id,''), created_at, updated_at
-FROM src.browser_profiles`,
-			insertSafe: `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at)
-SELECT s.profile_id, s.profile_name, s.user_data_dir, s.core_id, s.fingerprint_args, s.proxy_id, s.proxy_config, s.launch_args, s.tags, s.keywords, COALESCE(s.group_id,''), s.created_at, s.updated_at
+			insertAll: fmt.Sprintf(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, profile_config, tags, keywords, group_id, created_at, updated_at)
+SELECT profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, %s, tags, keywords, COALESCE(group_id,''), created_at, updated_at
+FROM src.browser_profiles`, profileConfigInsertAll),
+			insertSafe: fmt.Sprintf(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, profile_config, tags, keywords, group_id, created_at, updated_at)
+SELECT s.profile_id, s.profile_name, s.user_data_dir, s.core_id, s.fingerprint_args, s.proxy_id, s.proxy_config, s.launch_args, %s, s.tags, s.keywords, COALESCE(s.group_id,''), s.created_at, s.updated_at
 FROM src.browser_profiles s
 WHERE NOT EXISTS (
   SELECT 1 FROM browser_profiles t
   WHERE t.profile_id = s.profile_id OR lower(t.user_data_dir) = lower(s.user_data_dir)
-)`,
+)`, profileConfigInsertSafe),
 		},
 		{
 			name: "browser_bookmarks",
@@ -1605,6 +1626,46 @@ func backupSrcTableExists(tx *sql.Tx, table string) (bool, error) {
 		return false, err
 	}
 	return cnt > 0, nil
+}
+
+func backupSrcColumnExists(tx *sql.Tx, table string, column string) (bool, error) {
+	if !backupSafeSQLiteIdent(table) {
+		return false, fmt.Errorf("invalid sqlite table name: %s", table)
+	}
+	rows, err := tx.Query(fmt.Sprintf("PRAGMA src.table_info(%s)", table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var typeName string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typeName, &notNull, &defaultValue, &pk); err != nil {
+			return false, err
+		}
+		if strings.EqualFold(name, column) {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func backupSafeSQLiteIdent(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, ch := range value {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func backupCountRows(tx *sql.Tx, tableName string) (int, error) {

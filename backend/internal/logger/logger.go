@@ -102,7 +102,7 @@ type Logger struct {
 	fileWriteFailed bool
 }
 
-// 全局日志实例
+// 全局日志窗口
 var (
 	globalLogger *Logger
 	globalMu     sync.RWMutex

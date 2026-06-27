@@ -1,4 +1,4 @@
-﻿; Ant Browser NSIS Installer Script
+; Ant Browser NSIS Installer Script
 ; Usage: makensis /DVERSION=1.1.0 /DSTAGINGDIR=C:\path\to\staging installer.nsi
 
 Unicode True
@@ -209,7 +209,7 @@ Section "Uninstall"
   RMDir /REBOOTOK "$SMPROGRAMS\${PRODUCT_NAME}"
   Delete /REBOOTOK "$DESKTOP\${PRODUCT_NAME}.lnk"
   DeleteRegKey HKLM "${UNINSTALL_KEY}"
-  MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 "是否彻底清理所有用户数据？$\r$\n$\r$\n选择“是”将删除 data 目录（含数据库/实例数据）以及安装目录残留文件。$\r$\n此操作不可恢复。" IDYES un_remove_all_data IDNO un_keep_user_data
+  MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 "是否彻底清理所有用户数据？$\r$\n$\r$\n选择“是”将删除 data 目录（含数据库/窗口数据）以及安装目录残留文件。$\r$\n此操作不可恢复。" IDYES un_remove_all_data IDNO un_keep_user_data
 
 un_remove_all_data:
   RMDir /r /REBOOTOK "$INSTDIR\data"

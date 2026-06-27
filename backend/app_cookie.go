@@ -19,6 +19,7 @@ import (
 type CookieInfo struct {
 	Name     string  `json:"name"`
 	Value    string  `json:"value"`
+	URL      string  `json:"url,omitempty"`
 	Domain   string  `json:"domain"`
 	Path     string  `json:"path"`
 	Expires  float64 `json:"expires"`
@@ -155,7 +156,7 @@ func cdpBrowserCall(debugPort int, method string, params map[string]any) error {
 	return nil
 }
 
-// getDebugPort 获取运行中实例的调试端口
+// getDebugPort 获取运行中窗口的调试端口
 func (a *App) getDebugPort(profileId string) (int, error) {
 	a.browserMgr.Mutex.Lock()
 	defer a.browserMgr.Mutex.Unlock()
@@ -164,15 +165,15 @@ func (a *App) getDebugPort(profileId string) (int, error) {
 		return 0, fmt.Errorf("profile not found")
 	}
 	if !profile.Running {
-		return 0, fmt.Errorf("实例未运行")
+		return 0, fmt.Errorf("窗口未运行")
 	}
 	if profile.DebugPort == 0 || !profile.DebugReady {
-		return 0, fmt.Errorf("实例调试接口尚未就绪，请稍后重试")
+		return 0, fmt.Errorf("窗口调试接口尚未就绪，请稍后重试")
 	}
 	return profile.DebugPort, nil
 }
 
-// BrowserGetCookies 通过 CDP 获取实例所有 Cookie
+// BrowserGetCookies 通过 CDP 获取窗口所有 Cookie
 func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
 	pc, err := a.profileCDP(profileId)
 	if err != nil {
@@ -198,7 +199,7 @@ func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
 	return cookies, nil
 }
 
-// BrowserSetCookies 通过 CDP 将一组 Cookie 写入运行中的实例（回写/恢复）
+// BrowserSetCookies 通过 CDP 将一组 Cookie 写入运行中的窗口（回写/恢复）
 func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
 	pc, err := a.profileCDP(profileId)
 	if err != nil {
@@ -219,6 +220,9 @@ func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
 			"path":     c.Path,
 			"secure":   c.Secure,
 			"httpOnly": c.HttpOnly,
+		}
+		if strings.TrimSpace(c.URL) != "" {
+			m["url"] = c.URL
 		}
 		if strings.TrimSpace(c.Domain) != "" {
 			m["domain"] = c.Domain
@@ -241,7 +245,7 @@ func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
 	return err
 }
 
-// BrowserClearCookies 通过 CDP 清除实例所有 Cookie
+// BrowserClearCookies 通过 CDP 清除窗口所有 Cookie
 func (a *App) BrowserClearCookies(profileId string) error {
 	pc, err := a.profileCDP(profileId)
 	if err != nil {

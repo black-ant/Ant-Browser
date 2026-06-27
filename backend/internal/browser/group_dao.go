@@ -134,7 +134,7 @@ func (d *SQLiteGroupDAO) Update(groupId string, input GroupInput) (*Group, error
 	return existing, nil
 }
 
-// Delete 删除分组（级联处理：子分组和实例移动到父分组）
+// Delete 删除分组（级联处理：子分组和窗口移动到父分组）
 func (d *SQLiteGroupDAO) Delete(groupId string) error {
 	group, err := d.GetById(groupId)
 	if err != nil {
@@ -144,10 +144,10 @@ func (d *SQLiteGroupDAO) Delete(groupId string) error {
 	if err := d.MoveChildren(groupId, group.ParentId); err != nil {
 		return err
 	}
-	// 将该分组下的实例移动到父分组
+	// 将该分组下的窗口移动到父分组
 	_, err = d.db.Exec(`UPDATE browser_profiles SET group_id = ? WHERE group_id = ?`, group.ParentId, groupId)
 	if err != nil {
-		return fmt.Errorf("移动实例失败: %w", err)
+		return fmt.Errorf("移动窗口失败: %w", err)
 	}
 	// 删除分组
 	_, err = d.db.Exec(`DELETE FROM browser_groups WHERE group_id = ?`, groupId)

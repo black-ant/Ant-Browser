@@ -459,7 +459,7 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
               <p>✅ <strong>自动混淆（推荐）</strong>：内核基于指纹种子自动生成一致的 Canvas/Audio/WebGL 指纹，所有指纹特征相互匹配，不会被检测为异常。</p>
             )}
             {webglStrategy === 'real' && (
-              <p>✅ <strong>使用真实硬件</strong>：禁用 GPU 指纹混淆，使用本机真实 GPU 信息。适合单机多账号场景，但所有实例将共享相同的 GPU 指纹。</p>
+              <p>✅ <strong>使用真实硬件</strong>：禁用 GPU 指纹混淆，使用本机真实 GPU 信息。适合单机多账号场景，但所有窗口将共享相同的 GPU 指纹。</p>
             )}
             {webglStrategy === 'custom' && (
               <p>⚠️ <strong>自定义（已废弃）</strong>：Chrome 144+ 已移除自定义 GPU 参数支持。如果使用此选项，设置的 vendor/renderer 会被内核忽略，可能导致指纹不一致被检测为异常。</p>

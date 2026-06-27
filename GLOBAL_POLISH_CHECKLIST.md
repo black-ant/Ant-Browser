@@ -22,7 +22,7 @@
 
 #### Empty 状态
 **已完成的页面**：
-- ✓ BrowserListPage - "暂无浏览器实例"
+- ✓ BrowserListPage - "暂无浏览器窗口"
 - ✓ DashboardPage_v2 - "暂无活动记录"/"暂无错误"
 - ✓ AccountManagementPage_v2 - "暂无平台账号"
 - ✓ DevTools NetworkPanel - "暂无请求"
@@ -72,7 +72,7 @@ catch (error: any) {
 
 #### 文字溢出检查
 **关键页面**：
-- BrowserListPage - 实例名称、代理配置、指纹参数
+- BrowserListPage - 窗口名称、代理配置、指纹参数
 - ProxyPoolPage - 代理配置、IP地址、错误信息
 - AccountManagementPage - 邮箱、Cookie 详情
 - DevTools - URL、Headers、响应内容
@@ -94,7 +94,7 @@ catch (error: any) {
 ```
 
 **检查点**：
-- [ ] 实例名称：truncate + title
+- [ ] 窗口名称：truncate + title
 - [ ] 代理配置：truncate + title
 - [ ] URL：truncate + title
 - [ ] 错误信息：break-words（不截断）
@@ -167,7 +167,7 @@ catch (error: any) {
 
 #### 已实现的确认
 **删除操作**：
-- ✓ BrowserListPage - 删除实例（单个/批量）
+- ✓ BrowserListPage - 删除窗口（单个/批量）
 - ✓ AccountManagementPage_v2 - 删除账号
 - ✓ ProxyPoolPage - 删除代理
 - ✓ BrowserEditPage - 清空启动参数
@@ -177,10 +177,10 @@ catch (error: any) {
 - ✓ AccountManagementPage - 清空所有账号
 
 **检查点**：
-- [x] 删除实例有确认
+- [x] 删除窗口有确认
 - [x] 批量删除有确认
 - [x] 清空 Cookie 有确认（危险标记）
-- [ ] 停止所有实例有确认
+- [ ] 停止所有窗口有确认
 - [ ] 清空所有代理有确认
 - [ ] 重置配置有确认
 
@@ -198,7 +198,7 @@ await confirm({
 // 带详情的确认
 await confirm({
   title: '批量删除',
-  content: `将删除 ${count} 个实例，此操作无法撤销。`,
+  content: `将删除 ${count} 个窗口，此操作无法撤销。`,
   confirmText: '删除',
   danger: true,
 })
@@ -251,7 +251,7 @@ await confirm({
 
 #### 当前文案模式
 **成功**：
-- "实例已启动"
+- "窗口已启动"
 - "代理已保存"
 - "Cookie 已保存"
 
@@ -273,7 +273,7 @@ toast.error('启动失败')
 toast.error('网络错误')
 
 // ❌ 不好的文案
-toast.success('实例已经成功启动了')
+toast.success('窗口已经成功启动了')
 toast.error('Error: fetch failed at line 123')
 toast.error('操作失败，请重试') // 太模糊
 ```

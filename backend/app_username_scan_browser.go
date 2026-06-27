@@ -63,7 +63,7 @@ func (a *App) scanUsernameInBrowser(ctx context.Context, request usernamescan.St
 	options := normalizeUsernameBrowserOptions(request.Browser)
 	profileID := options.ProfileID
 
-	// 验证实例运行中（pipe 或端口）
+	// 验证窗口运行中（pipe 或端口）
 	if _, err := a.profileCDP(profileID); err != nil {
 		return usernameScanErrorResult(name, err)
 	}

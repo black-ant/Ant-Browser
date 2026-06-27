@@ -5,8 +5,8 @@ database:
 app:
     name: Ant Browser
     window:
-        width: 1750
-        height: 1000
+        width: 1440
+        height: 900
         min_width: 1200
         min_height: 700
     max_profile_limit: 100
@@ -45,15 +45,37 @@ browser:
     default_launch_args:
         - --disable-sync
         - --no-first-run
-    default_start_urls: []
     default_proxy: ""
+    front_proxy_enabled: true
+    front_proxy_auto: true
     start_ready_timeout_ms: 3000
     start_stable_window_ms: 1200
+    start_max_concurrent: 3
     cores:
         - core_id: core-fingerprint-chromium-144
           core_name: Chrome fingerprint-chromium-144
           core_path: chrome\fingerprint-chromium-144
           is_default: true
+    proxies:
+        - proxy_id: __direct__
+          proxy_name: 直连（不走代理）
+          proxy_config: direct://
+        - proxy_id: __local__
+          proxy_name: 本地代理
+          proxy_config: http://127.0.0.1:7890
+          sort_order: 1
+        - proxy_id: proxy-1782500478805-nxl420
+          proxy_name: SOCKS5-us.proxy001.com:7878
+          proxy_config: http://occmcl601376_custom_zone_US:pwd740836@us.proxy001.com:7878
+          sort_order: 2
+        - proxy_id: proxy-1782502142054-e2a320
+          proxy_name: HTTP-us.proxy001.com:7878
+          proxy_config: http://occmcl601376_custom_zone_US:pwd740836@us.proxy001.com:7878
+          sort_order: 3
+        - proxy_id: proxy-1782502726953-2ef6u8
+          proxy_name: SOCKS5-us-eu.zooproxy.com:5000
+          proxy_config: socks5://bmxfhcgvnk7431-region-US-sid-tB7fYmym-t-5:ucmmivaz@us-eu.zooproxy.com:5000
+          sort_order: 4
 launch_server:
     port: 19876
     auth:

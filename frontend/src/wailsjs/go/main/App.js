@@ -262,6 +262,14 @@ export function BrowserProxyCheckIPHealth(arg1) {
   return window['go']['main']['App']['BrowserProxyCheckIPHealth'](arg1);
 }
 
+export function BrowserProxyDetectIPByConfig(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProxyDetectIPByConfig'](arg1, arg2);
+}
+
+export function BrowserProxyDetectLocalIP(arg1) {
+  return window['go']['main']['App']['BrowserProxyDetectLocalIP'](arg1);
+}
+
 export function BrowserProxyFetchClashByURL(arg1) {
   return window['go']['main']['App']['BrowserProxyFetchClashByURL'](arg1);
 }
@@ -276,6 +284,14 @@ export function BrowserProxyListByGroup(arg1) {
 
 export function BrowserProxyListGroups() {
   return window['go']['main']['App']['BrowserProxyListGroups']();
+}
+
+export function BrowserProxyListIPDetectSources() {
+  return window['go']['main']['App']['BrowserProxyListIPDetectSources']();
+}
+
+export function BrowserProxyProbeProtocol(arg1) {
+  return window['go']['main']['App']['BrowserProxyProbeProtocol'](arg1);
 }
 
 export function BrowserProxySourceDelete(arg1, arg2) {
@@ -350,6 +366,10 @@ export function CDPClearAllCookies(arg1) {
   return window['go']['main']['App']['CDPClearAllCookies'](arg1);
 }
 
+export function CDPClearAllCookiesAuth(arg1, arg2) {
+  return window['go']['main']['App']['CDPClearAllCookiesAuth'](arg1, arg2);
+}
+
 export function CDPClearConsoleLogs(arg1) {
   return window['go']['main']['App']['CDPClearConsoleLogs'](arg1);
 }
@@ -382,6 +402,10 @@ export function CDPExecuteJavaScript(arg1, arg2) {
   return window['go']['main']['App']['CDPExecuteJavaScript'](arg1, arg2);
 }
 
+export function CDPExecuteJavaScriptAuth(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CDPExecuteJavaScriptAuth'](arg1, arg2, arg3);
+}
+
 export function CDPExportHAR(arg1) {
   return window['go']['main']['App']['CDPExportHAR'](arg1);
 }
@@ -390,8 +414,16 @@ export function CDPGetConsoleLogs(arg1) {
   return window['go']['main']['App']['CDPGetConsoleLogs'](arg1);
 }
 
+export function CDPGetConsoleLogsAuth(arg1, arg2) {
+  return window['go']['main']['App']['CDPGetConsoleLogsAuth'](arg1, arg2);
+}
+
 export function CDPGetCookies(arg1) {
   return window['go']['main']['App']['CDPGetCookies'](arg1);
+}
+
+export function CDPGetCookiesAuth(arg1, arg2) {
+  return window['go']['main']['App']['CDPGetCookiesAuth'](arg1, arg2);
 }
 
 export function CDPGetInterceptRules(arg1) {
@@ -400,6 +432,10 @@ export function CDPGetInterceptRules(arg1) {
 
 export function CDPGetNetworkRequests(arg1) {
   return window['go']['main']['App']['CDPGetNetworkRequests'](arg1);
+}
+
+export function CDPGetNetworkRequestsAuth(arg1, arg2) {
+  return window['go']['main']['App']['CDPGetNetworkRequestsAuth'](arg1, arg2);
 }
 
 export function CDPGetStatistics(arg1) {
@@ -438,6 +474,10 @@ export function CDPSetCookie(arg1, arg2) {
   return window['go']['main']['App']['CDPSetCookie'](arg1, arg2);
 }
 
+export function CDPSetCookieAuth(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CDPSetCookieAuth'](arg1, arg2, arg3);
+}
+
 export function CDPUpdateInterceptRule(arg1, arg2) {
   return window['go']['main']['App']['CDPUpdateInterceptRule'](arg1, arg2);
 }
@@ -454,12 +494,20 @@ export function CreateProfile(arg1) {
   return window['go']['main']['App']['CreateProfile'](arg1);
 }
 
+export function CreateTemplate(arg1) {
+  return window['go']['main']['App']['CreateTemplate'](arg1);
+}
+
 export function DeleteGroup(arg1) {
   return window['go']['main']['App']['DeleteGroup'](arg1);
 }
 
 export function DeleteProfile(arg1) {
   return window['go']['main']['App']['DeleteProfile'](arg1);
+}
+
+export function DeleteTemplate(arg1) {
+  return window['go']['main']['App']['DeleteTemplate'](arg1);
 }
 
 export function FetchRemoteAuthorProfile(arg1, arg2) {
@@ -530,6 +578,10 @@ export function ListGroups() {
   return window['go']['main']['App']['ListGroups']();
 }
 
+export function ListTemplates() {
+  return window['go']['main']['App']['ListTemplates']();
+}
+
 export function MoveInstancesToGroup(arg1, arg2) {
   return window['go']['main']['App']['MoveInstancesToGroup'](arg1, arg2);
 }
@@ -566,6 +618,10 @@ export function SaveBrowserSettings(arg1) {
   return window['go']['main']['App']['SaveBrowserSettings'](arg1);
 }
 
+export function ScanLocalProxy() {
+  return window['go']['main']['App']['ScanLocalProxy']();
+}
+
 export function SetLogLevel(arg1) {
   return window['go']['main']['App']['SetLogLevel'](arg1);
 }
@@ -600,6 +656,10 @@ export function UpdateGroup(arg1, arg2) {
 
 export function UpdateProfile(arg1, arg2) {
   return window['go']['main']['App']['UpdateProfile'](arg1, arg2);
+}
+
+export function UpdateTemplate(arg1, arg2) {
+  return window['go']['main']['App']['UpdateTemplate'](arg1, arg2);
 }
 
 export function UsernameScanGenerate(arg1) {

@@ -18,15 +18,15 @@ interface StatCardProps {
 
 function StatCard({ title, value, icon, color, to }: StatCardProps) {
   const content = (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-medium text-[var(--color-text-muted)]">{title}</span>
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${color} shadow-lg group-hover:scale-110 transition-transform duration-300`}>{icon}</div>
+    <div className="flex min-w-0 items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium text-[var(--color-text-muted)]">{title}</span>
       </div>
-      <div className="text-3xl font-bold text-[var(--color-text-primary)] tracking-tight">{value}</div>
-    </>
+      <div className="shrink-0 text-2xl font-bold leading-none tracking-tight text-[var(--color-text-primary)]">{value}</div>
+      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${color} shadow-sm group-hover:scale-105 transition-transform duration-300`}>{icon}</div>
+    </div>
   )
-  const className = "rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] p-6 shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-all duration-300 hover:-translate-y-1 group"
+  const className = "rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] px-4 py-3 shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-all duration-300 hover:-translate-y-0.5 group"
   return to ? <Link to={to} className={`${className} cursor-pointer block`}>{content}</Link> : <div className={className}>{content}</div>
 }
 
@@ -155,22 +155,22 @@ export function DashboardPage() {
   }))
 
   const QUICK_ACTIONS = [
-    { label: '批量启动', desc: '前往实例列表批量启动', icon: <Play className="w-5 h-5" />, onClick: () => navigate('/browser/list') },
+    { label: '批量启动', desc: '前往窗口列表批量启动', icon: <Play className="w-5 h-5" />, onClick: () => navigate('/browser/list') },
     { label: '代理测速', desc: '测试代理可用性与延迟', icon: <Shield className="w-5 h-5" />, onClick: () => navigate('/browser/proxy-pool') },
     { label: '打开日志', desc: '查看运行日志排障', icon: <FileText className="w-5 h-5" />, onClick: () => navigate('/browser/logs') },
-    { label: '创建实例', desc: '新建指纹浏览器实例', icon: <Plus className="w-5 h-5" />, onClick: () => navigate('/browser/list') },
+    { label: '创建窗口', desc: '新建指纹浏览器窗口', icon: <Plus className="w-5 h-5" />, onClick: () => navigate('/browser/list') },
   ]
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-3 animate-fade-in">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">控制台</h1>
-        <p className="text-sm text-[var(--color-text-muted)] mt-1">浏览器指纹管理平台概览（实时数据）</p>
+        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">控制台</h1>
+        <p className="text-xs text-[var(--color-text-muted)] mt-0.5">浏览器指纹管理平台概览（实时数据）</p>
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="实例总数" value={v(stats.totalInstances)} icon={<Monitor className="w-5 h-5 text-blue-600" />} color="bg-blue-50 dark:bg-blue-900/20" to="/browser/list" />
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <StatCard title="窗口总数" value={v(stats.totalInstances)} icon={<Monitor className="w-5 h-5 text-blue-600" />} color="bg-blue-50 dark:bg-blue-900/20" to="/browser/list" />
         <StatCard title="运行中" value={v(stats.runningInstances)} icon={<Play className="w-5 h-5 text-green-600" />} color="bg-green-50 dark:bg-green-900/20" to="/browser/list" />
         <StatCard title="代理节点（可用/总）" value={loading ? '-' : `${stats.proxyAvailable}/${stats.proxyCount}`} icon={<Globe className="w-5 h-5 text-purple-600" />} color="bg-purple-50 dark:bg-purple-900/20" to="/browser/proxy-pool" />
         <StatCard title="内核版本" value={v(stats.coreCount)} icon={<Cpu className="w-5 h-5 text-orange-600" />} color="bg-orange-50 dark:bg-orange-900/20" to="/browser/cores" />
@@ -178,32 +178,32 @@ export function DashboardPage() {
 
       {/* 资源监控（真实采样 + 历史图表） */}
       <Card title="资源监控（实时）">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           {/* 当前读数 */}
-          <div className="space-y-4">
+          <div className="space-y-2.5">
             <div>
-              <div className="flex justify-between items-center mb-1.5">
+              <div className="mb-1 flex items-center justify-between">
                 <span className="text-sm text-[var(--color-text-muted)]">CPU 使用率</span>
                 <span className="text-sm font-medium text-[var(--color-text-primary)]">{live.cpuPercent.toFixed(1)}%</span>
               </div>
-              <div className="w-full h-2 bg-[var(--color-bg-muted)] rounded-full overflow-hidden">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
                 <div className={`h-full rounded-full transition-all duration-500 ${live.cpuPercent > 80 ? 'bg-red-500' : live.cpuPercent > 60 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${Math.min(live.cpuPercent, 100)}%` }} />
               </div>
             </div>
             <div>
-              <div className="flex justify-between items-center mb-1.5">
+              <div className="mb-1 flex items-center justify-between">
                 <span className="text-sm text-[var(--color-text-muted)]">系统内存</span>
                 <span className="text-sm font-medium text-[var(--color-text-primary)]">{live.memUsedMB} / {live.memTotalMB} MB</span>
               </div>
-              <div className="w-full h-2 bg-[var(--color-bg-muted)] rounded-full overflow-hidden">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
                 <div className={`h-full rounded-full transition-all duration-500 ${memPct > 80 ? 'bg-red-500' : memPct > 60 ? 'bg-yellow-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(memPct, 100)}%` }} />
               </div>
             </div>
-            <div className="flex justify-between items-center pt-2 border-t border-[var(--color-border-muted)]">
-              <span className="text-sm text-[var(--color-text-muted)]">运行中实例</span>
+            <div className="flex items-center justify-between border-t border-[var(--color-border-muted)] pt-2">
+              <span className="text-sm text-[var(--color-text-muted)]">运行中窗口</span>
               <span className="text-sm font-medium text-[var(--color-text-primary)]">{live.runningInstances} / {stats.maxProfileLimit}</span>
             </div>
-            <div className="flex justify-between items-center">
+            <div className="flex items-center justify-between">
               <span className="text-sm text-[var(--color-text-muted)]">应用内存占用</span>
               <span className="text-sm font-medium text-[var(--color-text-primary)]">{live.appMemMB} MB</span>
             </div>
@@ -212,9 +212,9 @@ export function DashboardPage() {
           {/* 历史图表 */}
           <div className="lg:col-span-2">
             {chartData.length < 2 ? (
-              <div className="h-[200px] flex items-center justify-center text-sm text-[var(--color-text-muted)]">正在采集历史数据…（约 5 秒一个采样点）</div>
+              <div className="flex h-[120px] items-center justify-center text-sm text-[var(--color-text-muted)]">正在采集历史数据…（约 5 秒一个采样点）</div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer width="100%" height={120}>
                 <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} /><stop offset="95%" stopColor="#22c55e" stopOpacity={0} /></linearGradient>
@@ -234,17 +234,17 @@ export function DashboardPage() {
       </Card>
 
       {/* 最近活动 + 最近错误 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card title="最近活动">
-          <div className="space-y-2 max-h-72 overflow-y-auto">
+          <div className="max-h-40 space-y-1.5 overflow-y-auto">
             {activity.length === 0 ? (
-              <div className="text-center py-8 text-sm text-[var(--color-text-muted)]">暂无活动记录</div>
+              <div className="py-5 text-center text-sm text-[var(--color-text-muted)]">暂无活动记录</div>
             ) : activity.map((log, i) => (
-              <div key={`${log.timestamp}-${i}`} className="flex items-start gap-3 p-3 rounded-lg bg-[var(--color-bg-subtle)] hover:bg-[var(--color-bg-muted)] transition-colors">
+              <div key={`${log.timestamp}-${i}`} className="flex items-start gap-2 rounded-lg bg-[var(--color-bg-subtle)] p-2 transition-colors hover:bg-[var(--color-bg-muted)]">
                 <div className="mt-0.5">{ACTIVITY_ICON[log.type] || <Activity className="w-3.5 h-3.5 text-gray-500" />}</div>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm ${log.level === 'error' ? 'text-red-600' : 'text-[var(--color-text-primary)]'}`}>{log.message}</p>
-                  {log.profileName && <p className="text-xs text-[var(--color-text-muted)] mt-0.5">实例: {log.profileName}</p>}
+                  {log.profileName && <p className="text-xs text-[var(--color-text-muted)] mt-0.5">窗口: {log.profileName}</p>}
                 </div>
                 <span className="text-xs text-[var(--color-text-muted)] whitespace-nowrap">{timeAgo(log.timestamp)}</span>
               </div>
@@ -253,18 +253,18 @@ export function DashboardPage() {
         </Card>
 
         <Card title="最近错误">
-          <div className="space-y-2 max-h-72 overflow-y-auto">
+          <div className="max-h-40 space-y-1.5 overflow-y-auto">
             {errors.length === 0 ? (
-              <div className="text-center py-8 text-sm text-[var(--color-text-muted)] flex flex-col items-center gap-2">
-                <CheckCircle className="w-6 h-6 text-green-500" />
+              <div className="flex flex-col items-center gap-2 py-5 text-center text-sm text-[var(--color-text-muted)]">
+                <CheckCircle className="h-5 w-5 text-green-500" />
                 <span>暂无错误，一切正常</span>
               </div>
             ) : errors.map((log, i) => (
-              <div key={`${log.timestamp}-${i}`} className="flex items-start gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/15 border border-red-200/60 dark:border-red-800/40">
+              <div key={`${log.timestamp}-${i}`} className="flex items-start gap-2 rounded-lg border border-red-200/60 bg-red-50 p-2 dark:border-red-800/40 dark:bg-red-900/15">
                 <AlertCircle className="w-3.5 h-3.5 text-red-600 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-red-700 dark:text-red-400 break-words">{log.message}</p>
-                  {log.profileName && <p className="text-xs text-[var(--color-text-muted)] mt-0.5">实例: {log.profileName}</p>}
+                  {log.profileName && <p className="text-xs text-[var(--color-text-muted)] mt-0.5">窗口: {log.profileName}</p>}
                 </div>
                 <span className="text-xs text-[var(--color-text-muted)] whitespace-nowrap">{timeAgo(log.timestamp)}</span>
               </div>
@@ -274,13 +274,13 @@ export function DashboardPage() {
       </div>
 
       {/* 快捷入口 + 系统信息 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card title="快捷入口">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             {QUICK_ACTIONS.map(action => (
               <button key={action.label} onClick={action.onClick}
-                className="group flex items-center gap-3 p-5 rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-md)] transition-all duration-300 hover:-translate-y-1 text-left">
-                <div className="w-12 h-12 rounded-xl bg-[var(--color-bg-muted)] flex items-center justify-center text-[var(--color-text-secondary)] group-hover:bg-[var(--color-accent)] group-hover:text-[var(--color-text-inverse)] group-hover:scale-110 transition-all duration-300 shadow-md shrink-0">
+                className="group flex items-center gap-2.5 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] p-2.5 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-md)]">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-muted)] text-[var(--color-text-secondary)] shadow-sm transition-all duration-300 group-hover:scale-105 group-hover:bg-[var(--color-accent)] group-hover:text-[var(--color-text-inverse)]">
                   {action.icon}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -299,36 +299,37 @@ export function DashboardPage() {
               { label: '运行环境', value: 'Wails v2 + React' },
               { label: '数据存储', value: 'SQLite + YAML' },
               { label: '应用内存', value: `${live.appMemMB} MB` },
-              { label: '实例运行', value: loading ? '-' : `${stats.runningInstances} / ${stats.totalInstances}` },
+              { label: '窗口运行', value: loading ? '-' : `${stats.runningInstances} / ${stats.totalInstances}` },
             ].map(item => (
-              <div key={item.label} className="flex justify-between items-center py-3 border-b border-[var(--color-border-muted)] last:border-0">
+              <div key={item.label} className="flex items-center justify-between border-b border-[var(--color-border-muted)] py-1.5 last:border-0">
                 <span className="text-sm text-[var(--color-text-muted)]">{item.label}</span>
                 <span className="text-sm font-medium text-[var(--color-text-primary)]">{item.value}</span>
               </div>
             ))}
           </div>
-
-          <div className="mt-6 pt-6 border-t border-[var(--color-border-muted)]">
-            <h3 className="text-sm font-medium text-[var(--color-text-primary)] mb-3">扩容系统</h3>
-            <div className="flex gap-2">
-              <input type="text" placeholder="输入兑换码 (如 ANT-...)" value={cdKey} onChange={e => setCdKey(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleRedeem()}
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-input)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary)] placeholder-[var(--color-text-muted)]" />
-              <Button onClick={handleRedeem} loading={redeeming} disabled={!cdKey.trim()}>兑换</Button>
-            </div>
-            <p className="mt-2 text-xs text-[var(--color-text-muted)] flex items-center justify-between">
-              <span>当前容量限制：</span>
-              <span className={`font-medium ${stats.totalInstances >= stats.maxProfileLimit ? 'text-red-500' : 'text-[var(--color-success)]'}`}>{loading ? '-' : `${stats.totalInstances} / ${stats.maxProfileLimit}`}</span>
-            </p>
-            <div className="mt-4 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 shadow-glow-blue">
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-sm font-medium text-[var(--color-text-primary)]">点亮 GitHub Star 后，可再获赠 50 个永久额度</p>
-                <button type="button" className="shrink-0 rounded-xl p-2.5 text-blue-600 dark:text-blue-400 transition-all duration-300 hover:bg-blue-500/20 hover:scale-110 disabled:opacity-50 shadow-sm" onClick={handleOpenGithubStarGift} disabled={redeeming} title="打开 GitHub 并领取赠送" aria-label="打开 GitHub 并领取赠送">
-                  <ExternalLink className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </div>
         </Card>
+      </div>
+
+      {/* 扩容系统（底部条） */}
+      <div className="flex flex-col gap-2.5 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] px-4 py-3 shadow-[var(--shadow-sm)] lg:flex-row lg:items-center lg:gap-4">
+        <span className="shrink-0 text-sm font-medium text-[var(--color-text-primary)]">扩容系统</span>
+        {/* 兑换码 */}
+        <div className="flex flex-1 items-center gap-2 lg:max-w-md">
+          <input type="text" placeholder="输入兑换码 (如 ANT-...)" value={cdKey} onChange={e => setCdKey(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleRedeem()}
+            className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-input)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary)] placeholder-[var(--color-text-muted)]" />
+          <Button onClick={handleRedeem} loading={redeeming} disabled={!cdKey.trim()}>兑换</Button>
+        </div>
+        <span className="shrink-0 whitespace-nowrap text-xs text-[var(--color-text-muted)]">
+          当前容量：
+          <span className={`font-medium ${stats.totalInstances >= stats.maxProfileLimit ? 'text-red-500' : 'text-[var(--color-success)]'}`}>{loading ? '-' : `${stats.totalInstances} / ${stats.maxProfileLimit}`}</span>
+        </span>
+        {/* GitHub Star 赠送 */}
+        <button type="button" onClick={handleOpenGithubStarGift} disabled={redeeming}
+          className="group flex flex-1 items-center justify-between gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-left shadow-glow-blue transition-all duration-300 hover:bg-blue-500/20 disabled:opacity-50 lg:flex-none"
+          title="打开 GitHub 并领取赠送" aria-label="打开 GitHub 并领取赠送">
+          <p className="text-sm font-medium text-[var(--color-text-primary)]">点亮 GitHub Star 后，可再获赠 50 个永久额度</p>
+          <ExternalLink className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400 transition-transform duration-300 group-hover:scale-110" />
+        </button>
       </div>
     </div>
   )

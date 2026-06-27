@@ -29,6 +29,9 @@ export function CoreManagementPage() {
     defaultFingerprintArgs: [],
     defaultLaunchArgs: [],
     defaultProxy: '',
+    frontProxyEnabled: false,
+    frontProxyAuto: false,
+    frontProxyAddr: '',
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
   })
@@ -164,7 +167,7 @@ export function CoreManagementPage() {
     },
     {
       key: 'instanceCount',
-      title: '使用实例',
+      title: '使用窗口',
       width: '90px',
       render: (val) => <Badge variant="default">{val}</Badge>,
     },
@@ -369,6 +372,10 @@ export function CoreManagementPage() {
         defaultProxy: settingsForm.defaultProxy.trim(),
         defaultFingerprintArgs: settingsForm.defaultFingerprintArgs.split('\n').map(s => s.trim()).filter(Boolean),
         defaultLaunchArgs: settingsForm.defaultLaunchArgs.split('\n').map(s => s.trim()).filter(Boolean),
+        // 前置代理在「基础配置」里管理，这里保存其它设置时原样保留，避免清空用户配置
+        frontProxyEnabled: settings.frontProxyEnabled,
+        frontProxyAuto: settings.frontProxyAuto,
+        frontProxyAddr: settings.frontProxyAddr,
         startReadyTimeoutMs: Math.max(1000, Number(settingsForm.startReadyTimeoutMs) || 3000),
         startStableWindowMs: Math.max(0, Number(settingsForm.startStableWindowMs) || 1200),
       }

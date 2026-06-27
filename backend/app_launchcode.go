@@ -30,7 +30,7 @@ func (a *App) createBrowserProfileFromInput(input browser.ProfileInput) (*browse
 
 	if err := a.applyRequestedProfileLaunchCode(profile, input.LaunchCode); err != nil {
 		if deleteErr := a.browserMgr.Delete(profile.ProfileId); deleteErr != nil {
-			logger.New("Browser").Warn("创建实例后回滚失败",
+			logger.New("Browser").Warn("创建窗口后回滚失败",
 				logger.F("profile_id", profile.ProfileId),
 				logger.F("error", deleteErr.Error()),
 			)
@@ -38,10 +38,10 @@ func (a *App) createBrowserProfileFromInput(input browser.ProfileInput) (*browse
 		return nil, err
 	}
 
-	// 关联账号到实例
+	// 关联账号到窗口
 	if len(input.AccountIds) > 0 {
 		if err := a.linkAccountsToProfile(profile.ProfileId, input.AccountIds); err != nil {
-			logger.New("Browser").Warn("创建实例后关联账号失败",
+			logger.New("Browser").Warn("创建窗口后关联账号失败",
 				logger.F("profile_id", profile.ProfileId),
 				logger.F("error", err.Error()),
 			)
@@ -75,7 +75,7 @@ func (a *App) updateBrowserProfileFromInput(profileId string, input browser.Prof
 	if err := a.applyRequestedProfileLaunchCode(profile, input.LaunchCode); err != nil {
 		if previous != nil {
 			if _, rollbackErr := a.browserMgr.Update(profileId, browserProfileToInput(previous)); rollbackErr != nil {
-				logger.New("Browser").Warn("更新实例后回滚失败",
+				logger.New("Browser").Warn("更新窗口后回滚失败",
 					logger.F("profile_id", profileId),
 					logger.F("error", rollbackErr.Error()),
 				)
@@ -84,10 +84,10 @@ func (a *App) updateBrowserProfileFromInput(profileId string, input browser.Prof
 		return nil, err
 	}
 
-	// 关联账号到实例
+	// 关联账号到窗口
 	if len(input.AccountIds) > 0 {
 		if err := a.linkAccountsToProfile(profile.ProfileId, input.AccountIds); err != nil {
-			logger.New("Browser").Warn("更新实例后关联账号失败",
+			logger.New("Browser").Warn("更新窗口后关联账号失败",
 				logger.F("profile_id", profile.ProfileId),
 				logger.F("error", err.Error()),
 			)
@@ -129,6 +129,7 @@ func browserProfileToInput(profile *browser.Profile) browser.ProfileInput {
 		ProxyId:         strings.TrimSpace(profile.ProxyId),
 		ProxyConfig:     strings.TrimSpace(profile.ProxyConfig),
 		LaunchArgs:      append([]string{}, profile.LaunchArgs...),
+		ProfileConfig:   strings.TrimSpace(profile.ProfileConfig),
 		Tags:            append([]string{}, profile.Tags...),
 		Keywords:        append([]string{}, profile.Keywords...),
 		GroupId:         strings.TrimSpace(profile.GroupId),
@@ -137,7 +138,7 @@ func browserProfileToInput(profile *browser.Profile) browser.ProfileInput {
 	}
 }
 
-// BrowserProfileGetCode 获取实例的 LaunchCode（Wails 绑定）
+// BrowserProfileGetCode 获取窗口的 LaunchCode（Wails 绑定）
 func (a *App) BrowserProfileGetCode(profileId string) (string, error) {
 	if a.launchCodeSvc == nil {
 		return "", nil
@@ -145,7 +146,7 @@ func (a *App) BrowserProfileGetCode(profileId string) (string, error) {
 	return a.launchCodeSvc.EnsureCode(profileId)
 }
 
-// BrowserProfileRegenerateCode 重新生成实例的 LaunchCode（Wails 绑定）
+// BrowserProfileRegenerateCode 重新生成窗口的 LaunchCode（Wails 绑定）
 func (a *App) BrowserProfileRegenerateCode(profileId string) (string, error) {
 	if a.launchCodeSvc == nil {
 		return "", nil
@@ -153,7 +154,7 @@ func (a *App) BrowserProfileRegenerateCode(profileId string) (string, error) {
 	return a.launchCodeSvc.RegenerateCode(profileId)
 }
 
-// BrowserProfileSetCode 自定义设置实例 LaunchCode（Wails 绑定）
+// BrowserProfileSetCode 自定义设置窗口 LaunchCode（Wails 绑定）
 func (a *App) BrowserProfileSetCode(profileId string, code string) (string, error) {
 	if a.launchCodeSvc == nil {
 		return "", nil
@@ -161,7 +162,7 @@ func (a *App) BrowserProfileSetCode(profileId string, code string) (string, erro
 	return a.launchCodeSvc.SetCode(profileId, code)
 }
 
-// BrowserInstanceStartByCode 通过 LaunchCode 启动实例（Wails 绑定）
+// BrowserInstanceStartByCode 通过 LaunchCode 启动窗口（Wails 绑定）
 func (a *App) BrowserInstanceStartByCode(code string) (*browser.Profile, error) {
 	if a.launchCodeSvc == nil {
 		return nil, fmt.Errorf("launch code service not initialized")

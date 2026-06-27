@@ -100,7 +100,7 @@ export function GroupTreeNav({ groups, selectedGroupId, onSelectGroup, onRefresh
   const { confirm, dialog: confirmDialog } = useConfirm()
 
   const handleDelete = async (groupId: string) => {
-    if (!(await confirm({ content: '确定删除此分组？子分组和实例将移动到父分组。', danger: true }))) return
+    if (!(await confirm({ content: '确定删除此分组？子分组和窗口将移动到父分组。', danger: true }))) return
     await deleteGroup(groupId)
     if (selectedGroupId === groupId) {
       onSelectGroup(null)

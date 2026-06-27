@@ -52,7 +52,7 @@ func extractProxyConsistencyControlArgs(args []string) ([]string, proxyConsisten
 //   - 时区 / 语言依赖代理地理信息，只有解析出可用 geo 时才注入。
 //   - WebRTC 策略与代理与否无关，缺失即补默认防泄露值，保护历史 profile。
 //
-// existingArgs 为该实例当前已拼好的全部启动参数（含用户指纹/启动参数）。
+// existingArgs 为该窗口当前已拼好的全部启动参数（含用户指纹/启动参数）。
 func buildProxyConsistencyArgs(existingArgs []string, healthJSON string, controls ...proxyConsistencyControls) []string {
 	control := proxyConsistencyControls{}
 	if len(controls) > 0 {
@@ -222,35 +222,108 @@ func (a *App) ensureManualProxyGeoForLaunch(proxyConfig string) string {
 	return ""
 }
 
-// proxyGeoRefreshInflight 去重并发的后台地理缓存刷新（同一代理同一时刻只查一次）。
+// proxyGeoRefreshInflight 去重并发的后台代理出口地理查询。键空间按用途加前缀区分：
+// 裸 proxyId（启动前同步暖缓存）、"manual:<hash>"（手动代理配置）、"reapply:<profileId>"
+// （首启后自愈式重应用，每个窗口一次）。同一键同一时刻只查一次。
 var proxyGeoRefreshInflight sync.Map
 
-// refreshProxyGeoCacheAsync 在后台经代理链路查询出口 IP 健康信息并持久化，
-// 使下次启动即可按代理地区注入时区/语言。非阻塞、失败静默（仅记日志）。
-func (a *App) refreshProxyGeoCacheAsync(proxyId string) {
+// scheduleProxyGeoRuntimeReapply 处理「首启时尚无代理出口 geo」的盲区：窗口已经起来，
+// 但启动那一刻没拿到 geo（新窗口/新代理无缓存，且同步拉取超时或被并发去重命中），
+// 导致时区/地理定位回落到宿主机——检测站即爆「时区不同」。这里在后台经代理补查一次出口
+// IP geo，成功后：
+//  1. 持久化缓存（供下次启动直接注入，等价于旧的 refreshProxyGeoCacheAsync）；
+//  2. 立即把时区（必要时连同地理定位）重新应用到当前运行中的窗口——无需重启。
+//
+// 仅应在「首启未注入 geo」时调度。geoAppliedAtLaunch 表示启动时是否已应用过地理定位
+// （显式设置或已注入代理 geo），为 true 时本次不再重复应用地理定位，避免与启动期已起的
+// 地理定位监听重复。非阻塞、失败静默（仅记日志）。
+func (a *App) scheduleProxyGeoRuntimeReapply(profileId string, debugPort int, proxyId, proxyConfig string, fromPool bool, controls proxyConsistencyControls, geoAppliedAtLaunch bool) {
+	profileId = strings.TrimSpace(profileId)
 	proxyId = strings.TrimSpace(proxyId)
-	if proxyId == "" {
+	proxyConfig = strings.TrimSpace(proxyConfig)
+	if profileId == "" {
 		return
 	}
-	if _, loaded := proxyGeoRefreshInflight.LoadOrStore(proxyId, struct{}{}); loaded {
+	// 每个窗口一次自愈，使用独立去重键，不与按 proxyId 的缓存暖键冲突。
+	inflightKey := "reapply:" + profileId
+	if _, loaded := proxyGeoRefreshInflight.LoadOrStore(inflightKey, struct{}{}); loaded {
 		return
 	}
 
 	go func() {
-		defer proxyGeoRefreshInflight.Delete(proxyId)
+		defer proxyGeoRefreshInflight.Delete(inflightKey)
 
+		log := logger.New("Browser")
 		proxies := a.getLatestProxies()
-		data, err := proxy.FetchIPPureInfo(proxyId, proxies, a.xrayMgr, a.singboxMgr)
-		result := buildProxyIPHealthResult(proxyId, data, err)
-		if !result.Ok {
-			logger.New("Browser").Debug("后台代理地理缓存刷新失败",
-				logger.F("proxy_id", proxyId), logger.F("error", result.Error))
+
+		var result ProxyIPHealthResult
+		switch {
+		case proxyId != "":
+			data, err := proxy.FetchIPPureInfo(proxyId, proxies, a.xrayMgr, a.singboxMgr)
+			result = buildProxyIPHealthResult(proxyId, data, err)
+		case !fromPool && proxyConfig != "":
+			data, err := proxy.FetchIPPureInfoByConfig(proxyConfig, proxies, a.xrayMgr, a.singboxMgr)
+			result = buildProxyIPHealthResult("", data, err)
+		default:
 			return
 		}
-		a.persistProxyIPHealthResult(result)
-		logger.New("Browser").Info("已缓存代理出口地理信息",
-			logger.F("proxy_id", proxyId),
+		if !result.Ok {
+			log.Debug("首启后代理地理补查失败",
+				logger.F("profile_id", profileId),
+				logger.F("proxy_id", proxyId),
+				logger.F("error", result.Error))
+			return
+		}
+
+		// 暖缓存：供下次启动直接注入（等价旧 refreshProxyGeoCacheAsync）。
+		if proxyId != "" {
+			a.persistProxyIPHealthResult(result)
+		}
+
+		payload, err := json.Marshal(result)
+		if err != nil {
+			return
+		}
+		healthJSON := string(payload)
+
+		// 窗口可能在补查期间被关闭 / 换了端口：仅当仍在原端口存活时才应用，避免误伤复用端口的新窗口。
+		if !a.profileDebugPortActive(profileId, debugPort) {
+			log.Debug("首启后代理地理补查完成，但窗口已不在原调试端口，跳过重应用",
+				logger.F("profile_id", profileId),
+				logger.F("debug_port", debugPort))
+			return
+		}
+
+		overrides := browserRuntimeOverrides{}
+		if geo, ok := browser.DeriveProxyGeo(healthJSON); ok {
+			if geo.Timezone != "" && !controls.SkipTimezone {
+				overrides.Timezone = profileTimezoneOverride{TimezoneID: geo.Timezone, Source: "proxy"}
+			}
+		}
+		// 启动时未应用地理定位才补——否则会与启动期已起的地理定位监听重复。
+		if !geoAppliedAtLaunch {
+			if geo, ok := proxyGeolocationOverride(healthJSON); ok {
+				overrides.Geolocation = geo
+			}
+		}
+		if !overrides.Timezone.shouldApply() && !overrides.Geolocation.shouldApply() {
+			return
+		}
+
+		if err := a.applyAndWatchBrowserRuntimeOverrides(profileId, debugPort, overrides); err != nil {
+			log.Warn("首启后补充应用代理时区/地理定位失败",
+				logger.F("profile_id", profileId),
+				logger.F("debug_port", debugPort),
+				logger.F("timezone", overrides.Timezone.TimezoneID),
+				logger.F("error", err.Error()))
+			return
+		}
+		log.Info("首启后补充应用代理时区/地理定位",
+			logger.F("profile_id", profileId),
+			logger.F("debug_port", debugPort),
+			logger.F("timezone", overrides.Timezone.TimezoneID),
 			logger.F("country", result.Country),
-			logger.F("region", result.Region))
+			logger.F("region", result.Region),
+			logger.F("geolocation_applied", overrides.Geolocation.shouldApply()))
 	}()
 }

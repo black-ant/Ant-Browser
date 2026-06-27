@@ -8,6 +8,7 @@ import type { BrowserCore, BrowserCoreInput, BrowserProfile, BrowserProxy, Brows
 import { InstanceFilterBar, EMPTY_FILTERS } from '../components/InstanceFilterBar'
 import type { InstanceFilters } from '../components/InstanceFilterBar'
 import { KeywordsModal } from '../components/KeywordsModal'
+import { FrontProxySettings } from '../components/FrontProxySettings'
 import { EventsOn, BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 import { PROJECT_GITHUB_URL } from '../../../config/links'
 import { resolveActionErrorMessage, resolveActionFeedback } from '../utils/actionErrors'
@@ -121,6 +122,9 @@ export function BrowserListPage() {
     defaultFingerprintArgs: [],
     defaultLaunchArgs: [],
     defaultProxy: '',
+    frontProxyEnabled: false,
+    frontProxyAuto: false,
+    frontProxyAddr: '',
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
   })
@@ -267,7 +271,7 @@ export function BrowserListPage() {
     fetchBrowserProxies().then(setProxies)
     fetchBrowserCores().then(setCores)
 
-    // 监听浏览器实例生命周期事件，按事件载荷增量更新单个实例状态（不再全量拉取）
+    // 监听浏览器窗口生命周期事件，按事件载荷增量更新单个窗口状态（不再全量拉取）
     const offStarted = EventsOn('browser:instance:started', (payload: any) => {
       const profileId = typeof payload === 'string' ? payload : payload?.profileId
       if (!profileId) return
@@ -454,11 +458,11 @@ export function BrowserListPage() {
       if (startedProfile?.running && !startedProfile.debugReady && startedProfile.runtimeWarning) {
         toast.warning(startedProfile.runtimeWarning)
       } else {
-        toast.success(`实例已启动${startedProfile?.profileName ? `：${startedProfile.profileName}` : ''}`)
+        toast.success(`窗口已启动${startedProfile?.profileName ? `：${startedProfile.profileName}` : ''}`)
       }
       await loadProfiles({ silent: true, syncRuntimeState: true })
     } catch (error: any) {
-      const feedback = resolveActionFeedback(error, '实例启动失败')
+      const feedback = resolveActionFeedback(error, '窗口启动失败')
       if (feedback.tone === 'warning') {
         toast.warning(feedback.message)
       } else {
@@ -475,10 +479,10 @@ export function BrowserListPage() {
     try {
       const stoppedProfile = await stopBrowserInstance(profileId)
       mergeProfileState(stoppedProfile)
-      toast.success('实例已停止')
+      toast.success('窗口已停止')
       await loadProfiles({ silent: true, syncRuntimeState: true })
     } catch (error: any) {
-      toast.error(resolveActionErrorMessage(error, '实例停止失败'))
+      toast.error(resolveActionErrorMessage(error, '窗口停止失败'))
       await loadProfiles({ silent: true, syncRuntimeState: true })
     } finally {
       updatePendingIds(setStoppingIds, profileId, false)
@@ -490,10 +494,10 @@ export function BrowserListPage() {
     try {
       const restartedProfile = await restartBrowserInstance(profileId)
       mergeProfileState(restartedProfile)
-      toast.success(`实例已重启${restartedProfile?.profileName ? `：${restartedProfile.profileName}` : ''}`)
+      toast.success(`窗口已重启${restartedProfile?.profileName ? `：${restartedProfile.profileName}` : ''}`)
       await loadProfiles({ silent: true, syncRuntimeState: true })
     } catch (error: any) {
-      const feedback = resolveActionFeedback(error, '实例重启失败')
+      const feedback = resolveActionFeedback(error, '窗口重启失败')
       if (feedback.tone === 'warning') {
         toast.warning(feedback.message)
       } else {
@@ -537,7 +541,7 @@ export function BrowserListPage() {
     })
     if (ids.length === 0) return
     setBatchLoading(true)
-    // 立即将所有待启动实例标记为启动中（含尚在前端队列等待的），状态变化清晰
+    // 立即将所有待启动窗口标记为启动中（含尚在前端队列等待的），状态变化清晰
     ids.forEach(id => updatePendingIds(setStartingIds, id, true))
     let success = 0, pending = 0, failed = 0
     const pendingMessages: string[] = []
@@ -549,7 +553,7 @@ export function BrowserListPage() {
         mergeProfileState(startedProfile)
         success++
       } catch (error: any) {
-        const feedback = resolveActionFeedback(error, '实例启动失败')
+        const feedback = resolveActionFeedback(error, '窗口启动失败')
         if (feedback.pendingAttach) {
           pending++
           pendingMessages.push(`${profile?.profileName ?? id}：${feedback.message}`)
@@ -568,13 +572,13 @@ export function BrowserListPage() {
     toast.success(`批量启动完成：${summary.join('，')}`)
     if (pendingMessages.length > 0) {
       const preview = pendingMessages.slice(0, 3)
-      const more = pendingMessages.length > preview.length ? `\n另有 ${pendingMessages.length - preview.length} 个实例已打开窗口，仍在后台接管。` : ''
-      toast.warning(`以下实例已打开窗口，仍在后台接管：\n${preview.join('\n')}${more}`)
+      const more = pendingMessages.length > preview.length ? `\n另有 ${pendingMessages.length - preview.length} 个窗口已打开窗口，仍在后台接管。` : ''
+      toast.warning(`以下窗口已打开窗口，仍在后台接管：\n${preview.join('\n')}${more}`)
     }
     if (failureMessages.length > 0) {
       const preview = failureMessages.slice(0, 3)
-      const more = failureMessages.length > preview.length ? `\n另有 ${failureMessages.length - preview.length} 个实例启动失败，请逐个检查。` : ''
-      toast.error(`以下实例启动失败：\n${preview.join('\n')}${more}`)
+      const more = failureMessages.length > preview.length ? `\n另有 ${failureMessages.length - preview.length} 个窗口启动失败，请逐个检查。` : ''
+      toast.error(`以下窗口启动失败：\n${preview.join('\n')}${more}`)
     }
     loadProfiles()
   }
@@ -607,14 +611,14 @@ export function BrowserListPage() {
   const handleBatchDelete = async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    if (!(await confirm({ content: `确定删除选中的 ${ids.length} 个实例？`, danger: true }))) return
+    if (!(await confirm({ content: `确定删除选中的 ${ids.length} 个窗口？`, danger: true }))) return
     setBatchLoading(true)
     for (const id of ids) {
       await deleteBrowserProfile(id)
     }
     setBatchLoading(false)
     setSelectedIds(new Set())
-    toast.success(`已删除 ${ids.length} 个实例`)
+    toast.success(`已删除 ${ids.length} 个窗口`)
     loadProfiles()
   }
 
@@ -623,7 +627,7 @@ export function BrowserListPage() {
     setCopying(true)
     try {
       await copyBrowserProfile(profileId, copyName)
-      toast.success('实例已复制')
+      toast.success('窗口已复制')
       closeCopyModal()
       loadProfiles()
     } catch (error: any) {
@@ -796,9 +800,9 @@ export function BrowserListPage() {
       <header className="flex-shrink-0 px-6 py-4 bg-[var(--color-bg-surface)] border-b border-[var(--color-border-default)]">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">实例管理</h1>
+            <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">窗口管理</h1>
             <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-              共 {profiles.length} 个实例
+              共 {profiles.length} 个窗口
               {filteredProfiles.length !== profiles.length && (
                 <span className="text-[var(--color-accent)]"> · 筛选后 {filteredProfiles.length} 个</span>
               )}
@@ -888,18 +892,18 @@ export function BrowserListPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">
-                    {profiles.length === 0 ? '还没有实例' : '未找到匹配的实例'}
+                    {profiles.length === 0 ? '还没有窗口' : '未找到匹配的窗口'}
                   </h3>
                   <p className="text-sm text-[var(--color-text-muted)] mb-4">
                     {profiles.length === 0
-                      ? '创建第一个浏览器实例开始管理多账号环境'
+                      ? '创建第一个浏览器窗口开始管理多账号环境'
                       : '尝试调整搜索或筛选条件'}
                   </p>
                   {profiles.length === 0 ? (
                     <Link to="/browser/create">
                       <Button>
                         <Plus className="w-4 h-4" />
-                        新建实例
+                        新建窗口
                       </Button>
                     </Link>
                   ) : (
@@ -922,10 +926,11 @@ export function BrowserListPage() {
                 rowKey="profileId"
                 stickyHeader
                 maxHeight="calc(100vh - 400px)"
+                className="[&_table]:min-w-[1320px] [&_th]:whitespace-nowrap [&_th]:px-3 [&_th]:py-2.5 [&_th]:tracking-normal [&_td]:whitespace-nowrap [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-middle [&_td]:text-xs"
               />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               {filteredProfiles.map((record) => {
                 const core = resolveProfileCore(record)
                 const proxy = proxies.find(p => p.proxyId === record.proxyId)
@@ -986,6 +991,12 @@ export function BrowserListPage() {
           <FormItem label="默认代理">
             <Input value={settings.defaultProxy} onChange={e => setSettings(prev => ({ ...prev, defaultProxy: e.target.value }))} placeholder="http://127.0.0.1:7890" />
           </FormItem>
+          <FrontProxySettings
+            enabled={settings.frontProxyEnabled}
+            auto={settings.frontProxyAuto}
+            addr={settings.frontProxyAddr}
+            onChange={patch => setSettings(prev => ({ ...prev, ...patch }))}
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormItem label="启动就绪超时（毫秒）" hint="默认 3000，慢机器可调到 5000-10000">
               <Input
@@ -1079,7 +1090,7 @@ export function BrowserListPage() {
       <Modal
         open={expandModalOpen}
         onClose={() => setExpandModalOpen(false)}
-        title="实例扩容系统"
+        title="窗口扩容系统"
         width="480px"
         footer={
           <>
@@ -1091,7 +1102,7 @@ export function BrowserListPage() {
           <div className="bg-[var(--color-bg-secondary)] p-4 rounded-lg flex items-center justify-between border border-[var(--color-border-default)]">
             <div>
               <p className="text-sm font-medium text-[var(--color-text-primary)]">当前使用情况</p>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">每个配置都需要消耗 1 个实例额度</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">每个配置都需要消耗 1 个窗口额度</p>
             </div>
             <div className="text-right">
               <span className={`text-2xl font-semibold ${profiles.length >= maxProfileLimit ? 'text-red-500' : 'text-[var(--color-success)]'}`}>
@@ -1135,11 +1146,11 @@ export function BrowserListPage() {
         </div>
       </Modal>
 
-      {/* 复制实例弹窗 */}
+      {/* 复制窗口弹窗 */}
       <Modal
         open={copyModal.open}
         onClose={closeCopyModal}
-        title="复制实例"
+        title="复制窗口"
         width="420px"
         footer={
           <>
@@ -1150,13 +1161,13 @@ export function BrowserListPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-[var(--color-text-muted)]">
-            复制实例将保留原有的代理、内核、启动参数、标签等配置，但会生成新的指纹种子。
+            复制窗口将保留原有的代理、内核、启动参数、标签等配置，但会生成新的指纹种子。
           </p>
-          <FormItem label="新实例名称" required>
+          <FormItem label="新窗口名称" required>
             <Input
               value={copyName}
               onChange={e => setCopyName(e.target.value)}
-              placeholder="请输入新实例名称"
+              placeholder="请输入新窗口名称"
               autoFocus
             />
           </FormItem>

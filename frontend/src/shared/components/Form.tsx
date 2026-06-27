@@ -12,18 +12,18 @@ interface FormItemProps {
 
 export function FormItem({ label, required, hint, error, children, className }: FormItemProps) {
   return (
-    <div className={clsx('space-y-2', className)}>
+    <div className={clsx('space-y-1', className)}>
       {label && (
-        <label className="block text-sm font-medium text-[var(--color-text-secondary)]">
+        <label className="block text-xs font-medium text-[var(--color-text-secondary)]">
           {label}
           {required && <span className="text-[var(--color-error)] ml-0.5">*</span>}
-          {hint && <span className="text-xs font-normal text-[var(--color-text-muted)] ml-1.5">({hint})</span>}
+          {hint && <span className="text-[10px] font-normal text-[var(--color-text-muted)] ml-1.5">({hint})</span>}
         </label>
       )}
       {children}
       {error && (
-        <p className="text-xs text-[var(--color-error)] flex items-center gap-1">
-          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+        <p className="text-[10px] text-[var(--color-error)] flex items-center gap-1">
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
           {error}
@@ -41,7 +41,7 @@ export function Input({ error, className, ...props }: InputProps) {
   return (
     <input
       className={clsx(
-        'block h-10 px-4 text-sm',
+        'block h-8 px-3 text-sm',
         'bg-[var(--color-bg-input)] text-[var(--color-text-primary)]',
         'border-2 border-[var(--color-border-default)] rounded-lg',
         'placeholder:text-[var(--color-text-muted)]',
@@ -66,7 +66,7 @@ export function Select({ error, options, className, ...props }: SelectProps) {
   return (
     <select
       className={clsx(
-        'block h-10 px-4 text-sm',
+        'block h-8 px-3 text-sm',
         'bg-[var(--color-bg-input)] text-[var(--color-text-primary)]',
         'border-2 border-[var(--color-border-default)] rounded-lg',
         'focus:outline-none focus:border-[var(--color-accent)] focus:ring-4 focus:ring-[var(--color-accent)]/10',
@@ -96,7 +96,7 @@ export function Textarea({ error, className, ...props }: TextareaProps) {
   return (
     <textarea
       className={clsx(
-        'block w-full px-4 py-3 text-sm',
+        'block w-full px-3 py-2 text-sm',
         'bg-[var(--color-bg-input)] text-[var(--color-text-primary)]',
         'border-2 border-[var(--color-border-default)] rounded-lg',
         'placeholder:text-[var(--color-text-muted)]',

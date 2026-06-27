@@ -5,8 +5,8 @@ database:
 app:
   name: Ant Browser
   window:
-    width: 1750
-    height: 1000
+    width: 1440
+    height: 900
     min_width: 1200
     min_height: 700
   max_profile_limit: 20

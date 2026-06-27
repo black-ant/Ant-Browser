@@ -32,7 +32,7 @@ func (a *App) cdpUsePipe() bool {
 	// }
 }
 
-// registerPipeConn 记录某实例的共享 pipe 连接。
+// registerPipeConn 记录某窗口的共享 pipe 连接。
 func (a *App) registerPipeConn(profileID string, conn *cdp.PipeConn) {
 	if conn == nil {
 		return
@@ -49,7 +49,7 @@ func (a *App) registerPipeConn(profileID string, conn *cdp.PipeConn) {
 	a.pipeConnsMu.Unlock()
 }
 
-// cdpPipeConnFor 返回实例的共享 pipe 连接；端口模式或无连接时返回 nil。
+// cdpPipeConnFor 返回窗口的共享 pipe 连接；端口模式或无连接时返回 nil。
 func (a *App) cdpPipeConnFor(profileID string) *cdp.PipeConn {
 	a.pipeConnsMu.Lock()
 	defer a.pipeConnsMu.Unlock()
@@ -59,7 +59,7 @@ func (a *App) cdpPipeConnFor(profileID string) *cdp.PipeConn {
 	return a.pipeConns[profileID]
 }
 
-// closePipeConn 关闭并移除某实例的 pipe 连接（实例停止时调用）。
+// closePipeConn 关闭并移除某窗口的 pipe 连接（窗口停止时调用）。
 func (a *App) closePipeConn(profileID string) {
 	a.pipeConnsMu.Lock()
 	conn := a.pipeConns[profileID]
@@ -72,14 +72,14 @@ func (a *App) closePipeConn(profileID string) {
 	}
 }
 
-// profileCDP 表示与某实例浏览器通信的 CDP 通道，自动适配 pipe 或调试端口，
+// profileCDP 表示与某窗口浏览器通信的 CDP 通道，自动适配 pipe 或调试端口，
 // 供 Cookie / 用户名扫描等"单命令"型消费者统一调用。
 type profileCDP struct {
 	pipe      *cdp.PipeConn // 非 nil = pipe 模式
 	debugPort int           // pipe 为 nil 时使用
 }
 
-// profileCDP 解析某实例可用的 CDP 通道。优先 pipe，否则回退调试端口。
+// profileCDP 解析某窗口可用的 CDP 通道。优先 pipe，否则回退调试端口。
 func (a *App) profileCDP(profileID string) (*profileCDP, error) {
 	if conn := a.cdpPipeConnFor(profileID); conn != nil {
 		return &profileCDP{pipe: conn}, nil

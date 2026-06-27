@@ -32,7 +32,7 @@ func TestListProfilesAPIIncludesLaunchCodes(t *testing.T) {
 		Keywords:    []string{"buyer-a"},
 	})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	second, err := mgr.Create(browser.ProfileInput{
 		ProfileName: "buyer-b",
@@ -40,7 +40,7 @@ func TestListProfilesAPIIncludesLaunchCodes(t *testing.T) {
 		Keywords:    []string{"buyer-b"},
 	})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	if _, err := svc.SetCode(first.ProfileId, "BUYER_A"); err != nil {
 		t.Fatalf("设置 launchCode 失败: %v", err)
@@ -74,10 +74,10 @@ func TestListProfilesAPIIncludesLaunchCodes(t *testing.T) {
 		seen[item.ProfileId] = item
 	}
 	if _, ok := seen[first.ProfileId]; !ok {
-		t.Fatalf("列表缺少第一个实例: %+v", resp.Items)
+		t.Fatalf("列表缺少第一个窗口: %+v", resp.Items)
 	}
 	if _, ok := seen[second.ProfileId]; !ok {
-		t.Fatalf("列表缺少第二个实例: %+v", resp.Items)
+		t.Fatalf("列表缺少第二个窗口: %+v", resp.Items)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestGetProfileAPIReturnsProfileByID(t *testing.T) {
 		GroupId:     "group-get",
 	})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	if _, err := svc.SetCode(profile.ProfileId, "BUYER_GET"); err != nil {
 		t.Fatalf("设置 launchCode 失败: %v", err)
@@ -145,7 +145,7 @@ func TestUpdateProfileAPIUpdatesFieldsAndAutoLaunches(t *testing.T) {
 		Keywords:    []string{"buyer-old"},
 	})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	if _, err := svc.SetCode(profile.ProfileId, "BUYER_OLD"); err != nil {
 		t.Fatalf("设置 launchCode 失败: %v", err)
@@ -187,7 +187,7 @@ func TestUpdateProfileAPIUpdatesFieldsAndAutoLaunches(t *testing.T) {
 
 	updated, status, errMsg := handlerProfileSnapshot(t, mgr, svc, profile.ProfileId)
 	if errMsg != "" || status != http.StatusOK {
-		t.Fatalf("读取更新后实例失败: status=%d err=%s", status, errMsg)
+		t.Fatalf("读取更新后窗口失败: status=%d err=%s", status, errMsg)
 	}
 	if updated.ProfileName != "buyer-new" || updated.ProxyId != "proxy-us" || updated.ProxyConfig != "socks5://127.0.0.1:1080" {
 		t.Fatalf("更新未生效: %+v", updated)
@@ -208,14 +208,14 @@ func TestUpdateProfileAPIRollsBackOnDuplicateLaunchCode(t *testing.T) {
 		ProxyConfig: "http://127.0.0.1:8080",
 	})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	second, err := mgr.Create(browser.ProfileInput{
 		ProfileName: "buyer-second",
 		ProxyConfig: "http://127.0.0.1:9090",
 	})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	if _, err := svc.SetCode(first.ProfileId, "BUYER_FIRST"); err != nil {
 		t.Fatalf("设置 launchCode 失败: %v", err)
@@ -244,7 +244,7 @@ func TestUpdateProfileAPIRollsBackOnDuplicateLaunchCode(t *testing.T) {
 
 	current, status, errMsg := handlerProfileSnapshot(t, mgr, svc, first.ProfileId)
 	if errMsg != "" || status != http.StatusOK {
-		t.Fatalf("读取回滚后实例失败: status=%d err=%s", status, errMsg)
+		t.Fatalf("读取回滚后窗口失败: status=%d err=%s", status, errMsg)
 	}
 	if current.ProfileName != "buyer-first" || current.ProxyConfig != "http://127.0.0.1:8080" || current.LaunchCode != "BUYER_FIRST" {
 		t.Fatalf("launchCode 冲突后应回滚更新: %+v", current)
@@ -259,7 +259,7 @@ func TestDeleteProfileAPIRemovesProfileAndLaunchCode(t *testing.T) {
 
 	profile, err := mgr.Create(browser.ProfileInput{ProfileName: "buyer-delete"})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	if _, err := svc.SetCode(profile.ProfileId, "BUYER_DELETE"); err != nil {
 		t.Fatalf("设置 launchCode 失败: %v", err)
@@ -273,7 +273,7 @@ func TestDeleteProfileAPIRemovesProfileAndLaunchCode(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if _, ok := mgr.Profiles[profile.ProfileId]; ok {
-		t.Fatalf("实例删除后仍存在于内存: %s", profile.ProfileId)
+		t.Fatalf("窗口删除后仍存在于内存: %s", profile.ProfileId)
 	}
 	if _, err := svc.Resolve("BUYER_DELETE"); err == nil {
 		t.Fatal("删除后 launchCode 仍可解析")
@@ -288,7 +288,7 @@ func TestDeleteProfileAPIRejectsRunningProfile(t *testing.T) {
 
 	profile, err := mgr.Create(browser.ProfileInput{ProfileName: "buyer-running"})
 	if err != nil {
-		t.Fatalf("创建测试实例失败: %v", err)
+		t.Fatalf("创建测试窗口失败: %v", err)
 	}
 	mgr.Profiles[profile.ProfileId].Running = true
 
@@ -300,7 +300,7 @@ func TestDeleteProfileAPIRejectsRunningProfile(t *testing.T) {
 		t.Fatalf("期望 409，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if _, ok := mgr.Profiles[profile.ProfileId]; !ok {
-		t.Fatalf("运行中实例不应被删除: %s", profile.ProfileId)
+		t.Fatalf("运行中窗口不应被删除: %s", profile.ProfileId)
 	}
 }
 

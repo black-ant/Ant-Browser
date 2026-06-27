@@ -135,19 +135,19 @@ Content-Length: 13
 
 ### Browser Instance API
 
-#### 启动实例错误
+#### 启动窗口错误
 
 **修改前**:
 ```json
 {
-  "error": "实例启动失败：未找到实例配置（ID=profile_123）。请刷新列表后重试。"
+  "error": "窗口启动失败：未找到窗口配置（ID=profile_123）。请刷新列表后重试。"
 }
 ```
 
 **修改后**:
 ```json
 {
-  "error": "实例启动失败：未找到实例配置。请刷新列表后重试。"
+  "error": "窗口启动失败：未找到窗口配置。请刷新列表后重试。"
 }
 ```
 
@@ -314,7 +314,7 @@ const matches = error.message.match(/Profile(\d+)\[id=([^,]+)/g);
 ```javascript
 // 使用通用错误处理
 if (response.status === 409) {
-  showError('选择器匹配到多个实例，请使用更具体的条件');
+  showError('选择器匹配到多个窗口，请使用更具体的条件');
   // 引导用户使用 matchMode=first 或添加更多筛选条件
 }
 ```

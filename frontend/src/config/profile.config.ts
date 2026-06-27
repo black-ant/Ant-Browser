@@ -104,7 +104,7 @@ export const profilePageConfig: ProfilePageLocalConfig = {
     introBadge: projectConfig.name,
     introText: '是一个面向多账号隔离、代理绑定和本地环境管理的桌面浏览器工具。',
     techStack: ['Wails', 'React', 'TypeScript'],
-    description: '项目当前聚焦浏览器实例隔离、代理池配置、浏览器内核管理、标签检索和快捷启动等核心能力，适合跨境电商、社媒运营、本地测试以及需要统一管理浏览器环境的团队场景。',
+    description: '项目当前聚焦浏览器窗口隔离、代理池配置、浏览器内核管理、标签检索和快捷启动等核心能力，适合跨境电商、社媒运营、本地测试以及需要统一管理浏览器环境的团队场景。',
     actions: [
       {
         label: '查看源码',

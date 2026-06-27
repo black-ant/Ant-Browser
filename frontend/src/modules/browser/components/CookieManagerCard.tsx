@@ -104,16 +104,16 @@ export function CookieManagerCard({ profileId, profileName, running, ready }: Pr
   ]
 
   const subtitle = !running
-    ? '实例未运行，无法管理 Cookie'
+    ? '窗口未运行，无法管理 Cookie'
     : !ready
-      ? '实例运行中，等待调试接口就绪后可管理 Cookie'
+      ? '窗口运行中，等待调试接口就绪后可管理 Cookie'
       : `共 ${cookies.length} 条${filterDomain ? `，已过滤 ${filteredCookies.length} 条` : ''}`
 
   return (
     <Card title="Cookie 管理" subtitle={subtitle}>
       {!running ? (
         <p className="text-sm text-[var(--color-text-muted)] py-4 text-center">
-          请先启动实例以查看 Cookie
+          请先启动窗口以查看 Cookie
         </p>
       ) : !ready ? (
         <p className="text-sm text-[var(--color-text-muted)] py-4 text-center">
@@ -147,7 +147,7 @@ export function CookieManagerCard({ profileId, profileName, running, ready }: Pr
           {showConfirm && (
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-4 flex items-center justify-between gap-4">
               <span className="text-sm text-[var(--color-text-secondary)]">
-                确认清除该实例的所有 Cookie？此操作不可撤销。
+                确认清除该窗口的所有 Cookie？此操作不可撤销。
               </span>
               <div className="flex gap-2 flex-shrink-0">
                 <Button size="sm" variant="ghost" onClick={() => setShowConfirm(false)}>取消</Button>

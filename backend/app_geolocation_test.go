@@ -68,6 +68,25 @@ func TestExtractProfileGeolocationArgsTreatsModeAsExplicit(t *testing.T) {
 	}
 }
 
+func TestExtractProfileGeolocationArgsPermissionOnlyKeepsProxyPosition(t *testing.T) {
+	t.Parallel()
+
+	filtered, geo, warnings := extractProfileGeolocationArgs([]string{
+		"--ant-geolocation-permission=allow",
+		"--disable-sync",
+	})
+
+	if !reflect.DeepEqual(filtered, []string{"--disable-sync"}) {
+		t.Fatalf("filtered args mismatch: got=%v", filtered)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings, got=%v", warnings)
+	}
+	if geo.Explicit || geo.HasPosition || geo.Permission != "allow" || !geo.shouldApply() {
+		t.Fatalf("permission-only override should not suppress proxy position: %+v", geo)
+	}
+}
+
 func TestProxyConsistencyControlsSkipTimezone(t *testing.T) {
 	t.Parallel()
 

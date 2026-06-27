@@ -128,7 +128,7 @@ type AutomationTabKey = 'guide' | 'profiles' | 'launch' | 'logs'
 
 const AUTOMATION_TABS: { key: AutomationTabKey; label: string; description: string }[] = [
   { key: 'guide', label: '接入说明', description: '先理解整体调用方式和推荐流程。' },
-  { key: 'profiles', label: '配置管理', description: '集中查看实例创建、配置落库和返回结构。' },
+  { key: 'profiles', label: '配置管理', description: '集中查看窗口创建、配置落库和返回结构。' },
   { key: 'launch', label: '启动调用', description: '集中查看参数化唤起和启动响应。' },
   { key: 'logs', label: '日志排障', description: '集中查看日志查询和后续排障入口。' },
 ]
@@ -174,7 +174,7 @@ export function AutomationPage() {
             </div>
             <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">外部脚本配置与唤起接口</h1>
             <p className="text-sm text-[var(--color-text-secondary)] mt-2">
-              已支持通过本地 <code>HTTP + JSON</code> 协议管理实例配置并唤起实例，并通过同一个固定端口暴露 CDP 入口。只要能发 HTTP 请求，和调用语言无关；Playwright、Selenium、自研调度器都只是接入方。
+              已支持通过本地 <code>HTTP + JSON</code> 协议管理窗口配置并唤起窗口，并通过同一个固定端口暴露 CDP 入口。只要能发 HTTP 请求，和调用语言无关；Playwright、Selenium、自研调度器都只是接入方。
             </p>
             <p className="text-xs text-[var(--color-text-muted)] mt-2">
               当前 Launch 地址：<code>{launchBaseUrl}</code>
@@ -260,13 +260,13 @@ export function AutomationPage() {
       {activeTab === 'profiles' && (
         <div className="space-y-5">
           <Card
-            title="仅创建实例配置"
+            title="仅创建窗口配置"
             subtitle="POST /api/profiles"
             actions={<CopyCodeButton text={sampleCreateRequest} />}
           >
             <CodeBlock text={sampleCreateRequest} />
             <div className="mt-3 text-sm text-[var(--color-text-secondary)] space-y-1">
-              <p><code>profile</code>: 持久化的实例配置，支持实例名、代理、标签、关键字、分组、默认启动参数等字段。</p>
+              <p><code>profile</code>: 持久化的窗口配置，支持窗口名、代理、标签、关键字、分组、默认启动参数等字段。</p>
               <p><code>launchCode</code>: 可选的自定义启动码；如果不传，系统会自动生成。</p>
               <p><code>autoLaunch</code> + <code>start</code>: 可选，表示创建后立即启动，并附带一次性启动参数。</p>
               <p>同一资源还支持 <code>GET /api/profiles</code>、<code>GET/PUT/DELETE /api/profiles/{'{profileId}'}</code>，用于后续查询、更新、删除。</p>
@@ -288,8 +288,8 @@ export function AutomationPage() {
           >
             <CodeBlock text={sampleCreateAndLaunchRequest} />
             <div className="mt-3 text-sm text-[var(--color-text-secondary)] space-y-1">
-              <p><code>autoLaunch=true</code>: 当前请求在创建完成后会直接启动实例。</p>
-              <p><code>start</code>: 只作用于本次启动，不会写回实例持久化配置。</p>
+              <p><code>autoLaunch=true</code>: 当前请求在创建完成后会直接启动窗口。</p>
+              <p><code>start</code>: 只作用于本次启动，不会写回窗口持久化配置。</p>
               <p>如果创建已经成功但自动启动失败，响应里仍会标出 <code>created=true</code>，便于脚本分支处理。</p>
             </div>
           </Card>
@@ -326,7 +326,7 @@ export function AutomationPage() {
           >
             <CodeBlock text={sampleRequest} />
             <div className="mt-3 text-sm text-[var(--color-text-secondary)] space-y-1">
-              <p><code>code</code> / <code>key</code>: 二选一即可；<code>code</code> 按 LaunchCode 精确匹配，<code>key</code> 按实例关键字优先精确、未命中时再模糊匹配。</p>
+              <p><code>code</code> / <code>key</code>: 二选一即可；<code>code</code> 按 LaunchCode 精确匹配，<code>key</code> 按窗口关键字优先精确、未命中时再模糊匹配。</p>
               <p><code>matchMode</code>: 多命中时的行为控制，支持 <code>unique</code> / <code>first</code> / <code>all</code>；传 <code>key</code> 时默认 <code>first</code>。</p>
               <p><code>launchArgs</code>: 仅本次启动附加的 Chrome 启动参数。</p>
               <p><code>startUrls</code>: 启动后打开的页面列表。</p>
@@ -357,10 +357,10 @@ export function AutomationPage() {
             </p>
           </Card>
 
-          <Card title="排障提示" subtitle="先看最近调用，再看实例是否已经完成后台接管">
+          <Card title="排障提示" subtitle="先看最近调用，再看窗口是否已经完成后台接管">
             <div className="text-sm text-[var(--color-text-secondary)] space-y-2">
               <p>如果返回里已经有 <code>pid</code>，但 <code>debugReady=false</code>，说明窗口已拉起，只是 CDP 还在后台附着。</p>
-              <p>如果接口直接返回错误，优先查看最近日志和实例最近错误，再决定是否重试。</p>
+              <p>如果接口直接返回错误，优先查看最近日志和窗口最近错误，再决定是否重试。</p>
               <p>排查自动化脚本时，建议把请求参数、响应体和调用日志一起保存，方便复现。</p>
             </div>
           </Card>

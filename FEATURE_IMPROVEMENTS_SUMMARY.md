@@ -405,7 +405,7 @@ vmess://server:443?uuid=xxx  # 重复
 ### WebGL 修复验证
 
 - [ ] 新建 profile，选择"自动混淆"策略
-- [ ] 启动实例，访问 browserscan.net
+- [ ] 启动窗口，访问 browserscan.net
 - [ ] 确认 WebGL 检测为绿色无异常
 - [ ] 确认不被识别为指纹浏览器
 

@@ -30,7 +30,7 @@ type SingBoxBridge struct {
 	Running    bool
 	Stopping   bool
 	LastError  string
-	RefCount   int       // 当前引用计数（有多少实例正使用此桥接）
+	RefCount   int       // 当前引用计数（有多少窗口正使用此桥接）
 	LastUsedAt time.Time // 上次被使用的时间（用于空闲回收）
 }
 

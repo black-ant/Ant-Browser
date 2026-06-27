@@ -9,22 +9,22 @@ import (
 
 // CDPSessionCreate 创建CDP会话
 func (a *App) CDPSessionCreate(profileID string, targetType string) (string, error) {
-	// 获取实例的调试端口
+	// 获取窗口的调试端口
 	a.browserMgr.InitData()
 	a.browserMgr.Mutex.Lock()
 	profile, exists := a.browserMgr.Profiles[profileID]
 	a.browserMgr.Mutex.Unlock()
 
 	if !exists {
-		return "", fmt.Errorf("实例不存在")
+		return "", fmt.Errorf("窗口不存在")
 	}
 
 	if !profile.Running {
-		return "", fmt.Errorf("实例未运行")
+		return "", fmt.Errorf("窗口未运行")
 	}
 
 	if profile.DebugPort == 0 {
-		return "", fmt.Errorf("实例调试端口未开启")
+		return "", fmt.Errorf("窗口调试端口未开启")
 	}
 
 	// 创建CDP会话
@@ -207,7 +207,7 @@ func (a *App) CDPGetStorage(sessionID string, storageType string) (map[string]st
 }
 
 // CDPReloadPage 通过 CDP 重新加载当前页面（用于完整抓取一次页面加载的网络请求，
-// 避免在实例里手动 F5）。
+// 避免在窗口里手动 F5）。
 func (a *App) CDPReloadPage(sessionID string) error {
 	session, err := a.cdpManager.GetSession(sessionID)
 	if err != nil {

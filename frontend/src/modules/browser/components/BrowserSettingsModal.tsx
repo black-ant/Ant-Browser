@@ -3,6 +3,7 @@ import { CheckCircle, Edit2, Plus, Star, Trash2, XCircle } from 'lucide-react'
 import { Button, Card, FormItem, Input, Modal, Table, Textarea, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserCore, BrowserCoreInput, BrowserSettings } from '../types'
+import { FrontProxySettings } from './FrontProxySettings'
 import {
   deleteBrowserCore,
   saveBrowserCore,
@@ -132,6 +133,13 @@ export function BrowserSettingsModal({ open, onClose, settings: initSettings, co
           <FormItem label="默认代理">
             <Input value={settings.defaultProxy} onChange={e => setSettings(p => ({ ...p, defaultProxy: e.target.value }))} placeholder="http://127.0.0.1:7890" />
           </FormItem>
+
+          <FrontProxySettings
+            enabled={settings.frontProxyEnabled}
+            auto={settings.frontProxyAuto}
+            addr={settings.frontProxyAddr}
+            onChange={patch => setSettings(p => ({ ...p, ...patch }))}
+          />
         </div>
       </Modal>
 

@@ -172,9 +172,13 @@ func TestLegacyMigrationRoundTrip(t *testing.T) {
 	}
 	defer SetKey(LegacyKey) // 还原，避免影响其他测试
 
-	// 新密钥解不出旧密文
-	if _, err := Decrypt(legacyEnc); err == nil {
-		t.Fatalf("新密钥不应能解出旧密文")
+	// 旧密文应被识别为需要迁移
+	if !NeedsMigration(legacyEnc) {
+		t.Fatalf("v1 旧密文应被识别为需要迁移")
+	}
+	// Decrypt 依据 v1 前缀自动回落 LegacyKey 透明解出（迁移逻辑据此重写为 v2）
+	if got, err := Decrypt(legacyEnc); err != nil || got != plain {
+		t.Fatalf("Decrypt 应能透明解出 v1 旧密文: got=%q err=%v", got, err)
 	}
 	// 用 LegacyKey 解出后用新密钥重写
 	recovered, err := DecryptWith(legacyEnc, LegacyKey)

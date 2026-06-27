@@ -32,7 +32,7 @@ func RewardForUsedKey(key string) int {
 	return StandardCDKeyProfileBonus
 }
 
-// MinimumProfileLimitForUsedKeys 根据兑换记录计算最低应得实例额度。
+// MinimumProfileLimitForUsedKeys 根据兑换记录计算最低应得窗口额度。
 func MinimumProfileLimitForUsedKeys(keys []string) int {
 	limit := DefaultMaxProfileLimit
 	seen := make(map[string]struct{}, len(keys))
@@ -117,7 +117,7 @@ type BrowserConfig struct {
 	UserDataRoot           string   `yaml:"user_data_root"`
 	DefaultFingerprintArgs []string `yaml:"default_fingerprint_args"`
 	DefaultLaunchArgs      []string `yaml:"default_launch_args"`
-	// DefaultStartURLs 实例启动且未指定网址时打开的默认起始页。默认空（落到浏览器
+	// DefaultStartURLs 窗口启动且未指定网址时打开的默认起始页。默认空（落到浏览器
 	// 新标签页），避免每次启动都自动外联第三方 IP 检测站点而暴露行为特征。
 	DefaultStartURLs []string `yaml:"default_start_urls,omitempty"`
 	// CDPTransport 选择 CDP 与浏览器的通信方式："port"(默认，调试端口，全平台稳定) /
@@ -125,6 +125,13 @@ type BrowserConfig struct {
 	// 留空等同 "port"。Windows 始终回退端口（os/exec 无法映射 fd 3/4）。
 	CDPTransport        string                 `yaml:"cdp_transport,omitempty"`
 	DefaultProxy        string                 `yaml:"default_proxy"`
+	// 全局前置代理：把带账号密码、走 xray 桥接的代理流量先经过一层本地前置代理，
+	// 用于绕过「目标代理网关按来源 IP 准入」这类限制（如供应商拒绝中国大陆 IP）。
+	FrontProxyEnabled bool   `yaml:"front_proxy_enabled,omitempty" json:"frontProxyEnabled,omitempty"`
+	// FrontProxyAuto 为真时，每次桥接实时扫描本地常见端口取活着的代理，忽略 FrontProxyAddr。
+	FrontProxyAuto bool   `yaml:"front_proxy_auto,omitempty" json:"frontProxyAuto,omitempty"`
+	// FrontProxyAddr 固定前置代理地址，如 socks5://127.0.0.1:7891 或 http://127.0.0.1:7890。
+	FrontProxyAddr      string                 `yaml:"front_proxy_addr,omitempty" json:"frontProxyAddr,omitempty"`
 	StartReadyTimeoutMs int                    `yaml:"start_ready_timeout_ms,omitempty"`
 	StartStableWindowMs int                    `yaml:"start_stable_window_ms,omitempty"`
 	StartMaxConcurrent  int                    `yaml:"start_max_concurrent,omitempty"` // 批量启动并发上限（默认 3，钳制 1-8）
@@ -195,6 +202,7 @@ type BrowserProfileConfig struct {
 	ProxyBindName      string   `yaml:"proxy_bind_name,omitempty" json:"proxyBindName,omitempty"`
 	ProxyBindUpdatedAt string   `yaml:"proxy_bind_updated_at,omitempty" json:"proxyBindUpdatedAt,omitempty"`
 	LaunchArgs         []string `yaml:"launch_args" json:"launchArgs"`
+	ProfileConfig      string   `yaml:"profile_config,omitempty" json:"profileConfig,omitempty"`
 	Tags               []string `yaml:"tags" json:"tags"`
 	Keywords           []string `yaml:"keywords,omitempty" json:"keywords,omitempty"`
 	CreatedAt          string   `yaml:"created_at" json:"createdAt"`
@@ -404,8 +412,8 @@ func DefaultConfig() *Config {
 		App: AppConfig{
 			Name: "Ant Browser",
 			Window: WindowConfig{
-				Width:     1750,
-				Height:    1000,
+				Width:     1440,
+				Height:    900,
 				MinWidth:  1200,
 				MinHeight: 700,
 			},

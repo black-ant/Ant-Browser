@@ -14,7 +14,7 @@ const (
 	launchMatchModeAll    = "all"
 )
 
-// LaunchSelector 定义实例选择条件。
+// LaunchSelector 定义窗口选择条件。
 // 推荐在 POST /api/launch 中通过 selector 传入，兼容旧版 top-level code 用法。
 type LaunchSelector struct {
 	Code        string   `json:"code,omitempty"`

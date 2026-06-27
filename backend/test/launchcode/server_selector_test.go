@@ -62,7 +62,7 @@ func TestLaunchWithKeywordSelector(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profile.ProfileId {
-		t.Fatalf("命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+		t.Fatalf("命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
 	}
 
 	var resp struct {
@@ -105,7 +105,7 @@ func TestLaunchWithTopLevelKeywordSelector(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profile.ProfileId {
-		t.Fatalf("命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+		t.Fatalf("命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestLaunchWithTopLevelKeyAliasSelector(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profile.ProfileId {
-		t.Fatalf("命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+		t.Fatalf("命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
 	}
 }
 
@@ -169,7 +169,7 @@ func TestLaunchWithTopLevelKeyPrefersExactKeywordMatch(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profileExact.ProfileId {
-		t.Fatalf("key 应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+		t.Fatalf("key 应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
 	}
 }
 
@@ -205,7 +205,7 @@ func TestLaunchWithNestedSelectorKeyPrefersExactKeywordMatch(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profileExact.ProfileId {
-		t.Fatalf("selector.key 应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+		t.Fatalf("selector.key 应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
 	}
 }
 
@@ -233,7 +233,7 @@ func TestLaunchWithTopLevelCodeFallbackToKeyword(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profile.ProfileId {
-		t.Fatalf("code 关键字兜底命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+		t.Fatalf("code 关键字兜底命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
 	}
 }
 
@@ -269,7 +269,7 @@ func TestLaunchWithTopLevelCodeFallbackPrefersExactKeywordMatch(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profileExact.ProfileId {
-		t.Fatalf("code 关键字兜底应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+		t.Fatalf("code 关键字兜底应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
 	}
 }
 
@@ -305,7 +305,7 @@ func TestLaunchWithAmbiguousKeywordSelectorReturnsFirstByDefault(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profileA.ProfileId {
-		t.Fatalf("关键字多命中时应默认取排序后的第一个实例: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
+		t.Fatalf("关键字多命中时应默认取排序后的第一个窗口: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
 	}
 }
 
@@ -341,7 +341,7 @@ func TestLaunchWithTopLevelCodeFallbackReturnsFirstByDefault(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profileA.ProfileId {
-		t.Fatalf("code 关键字兜底多命中时应默认取排序后的第一个实例: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
+		t.Fatalf("code 关键字兜底多命中时应默认取排序后的第一个窗口: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
 	}
 }
 
@@ -377,7 +377,7 @@ func TestLaunchWithAmbiguousKeywordSelectorAndExplicitUniqueReturnsConflict(t *t
 		t.Fatalf("期望 409，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != "" {
-		t.Fatalf("歧义场景不应启动实例: %s", starter.lastProfile)
+		t.Fatalf("歧义场景不应启动窗口: %s", starter.lastProfile)
 	}
 	if !strings.Contains(w.Body.String(), "matchMode=first") {
 		t.Fatalf("错误信息未提示 matchMode=first: %s", w.Body.String())
@@ -408,7 +408,7 @@ func TestGetLaunchByCodeDoesNotFallbackToKeyword(t *testing.T) {
 		t.Fatalf("GET /api/launch/{code} 应保持纯 code 语义，期望 404，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != "" {
-		t.Fatalf("GET /api/launch/{code} 不应按关键字兜底启动实例: %s", starter.lastProfile)
+		t.Fatalf("GET /api/launch/{code} 不应按关键字兜底启动窗口: %s", starter.lastProfile)
 	}
 }
 
@@ -444,7 +444,7 @@ func TestLaunchWithMatchModeFirst(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profileA.ProfileId {
-		t.Fatalf("matchMode=first 应命中排序后的第一个实例: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
+		t.Fatalf("matchMode=first 应命中排序后的第一个窗口: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
 	}
 }
 
@@ -480,7 +480,7 @@ func TestLaunchWithMatchModeAllStartsAllMatchedProfiles(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if len(starter.started) != 2 {
-		t.Fatalf("matchMode=all 应启动 2 个实例: %+v", starter.started)
+		t.Fatalf("matchMode=all 应启动 2 个窗口: %+v", starter.started)
 	}
 	if starter.started[0] != profileA.ProfileId || starter.started[1] != profileB.ProfileId {
 		t.Fatalf("matchMode=all 应按稳定排序依次启动: got=%+v", starter.started)
@@ -544,6 +544,6 @@ func TestLaunchWithTopLevelCodeFallbackAndExplicitUniqueReturnsConflict(t *testi
 		t.Fatalf("期望 409，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if len(starter.started) != 0 {
-		t.Fatalf("显式 unique 不应启动任何实例: %+v", starter.started)
+		t.Fatalf("显式 unique 不应启动任何窗口: %+v", starter.started)
 	}
 }

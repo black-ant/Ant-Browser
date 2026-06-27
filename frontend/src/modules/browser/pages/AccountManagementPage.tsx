@@ -386,7 +386,7 @@ export function AccountManagementPage() {
               <div className="flex-1">账号信息</div>
               <div className="w-28">Cookie</div>
               <div className="w-40">已关联窗口</div>
-              <div className="w-28 text-right">操作</div>
+              <div className="w-32 text-right">操作</div>
             </div>
 
             <div className="divide-y divide-[var(--color-border-muted)]">
@@ -422,19 +422,23 @@ export function AccountManagementPage() {
                         </>
                       )}
                     </div>
-                    <div className="w-28 flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleRestoreCookies(account)} title="回写 Cookie 到运行中的关联窗口">
-                        <ArrowDownToLine className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleOpenCookieModal(account)} title="管理 Cookie">
-                        <Cookie className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleOpenModal(account)} title="编辑">
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 rounded-lg p-0" onClick={() => handleDelete(account.accountId)} title="删除">
-                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                      </Button>
+                    <div className="w-32 flex justify-end gap-1.5">
+                      <button type="button" onClick={() => handleRestoreCookies(account)} title="回写 Cookie 到运行中的关联窗口"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]">
+                        <ArrowDownToLine className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={() => handleOpenCookieModal(account)} title="管理 Cookie"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]">
+                        <Cookie className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={() => handleOpenModal(account)} title="编辑"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/30 dark:hover:text-blue-400">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={() => handleDelete(account.accountId)} title="删除"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 )

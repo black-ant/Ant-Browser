@@ -16,7 +16,7 @@ type BrowserExtension struct {
 	ExtensionPath   string   `json:"extensionPath"`
 	Version         string   `json:"version"`
 	Enabled         bool     `json:"enabled"`
-	BoundProfileIDs []string `json:"boundProfileIds"` // 绑定的实例ID
+	BoundProfileIDs []string `json:"boundProfileIds"` // 绑定的窗口ID
 	SourceType      string   `json:"sourceType"`      // local/crx/url/store
 	SourceURL       string   `json:"sourceUrl"`
 	Description     string   `json:"description"`
@@ -54,10 +54,10 @@ func (a *App) BrowserExtensionCreate(input BrowserExtensionInput) (*BrowserExten
 	extensionID := fmt.Sprintf("ext-%s", generateUUID()[:8])
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// 序列化绑定实例ID
+	// 序列化绑定窗口ID
 	boundIDsJSON, err := json.Marshal(input.BoundProfileIDs)
 	if err != nil {
-		return nil, fmt.Errorf("序列化绑定实例ID失败: %w", err)
+		return nil, fmt.Errorf("序列化绑定窗口ID失败: %w", err)
 	}
 
 	enabled := 0
@@ -127,7 +127,7 @@ func (a *App) BrowserExtensionList() ([]BrowserExtension, error) {
 
 		ext.Enabled = enabled == 1
 
-		// 反序列化绑定实例ID
+		// 反序列化绑定窗口ID
 		if err := json.Unmarshal([]byte(boundIDsJSON), &ext.BoundProfileIDs); err != nil {
 			ext.BoundProfileIDs = []string{}
 		}
@@ -170,7 +170,7 @@ func (a *App) BrowserExtensionGet(extensionID string) (*BrowserExtension, error)
 
 	ext.Enabled = enabled == 1
 
-	// 反序列化绑定实例ID
+	// 反序列化绑定窗口ID
 	if err := json.Unmarshal([]byte(boundIDsJSON), &ext.BoundProfileIDs); err != nil {
 		ext.BoundProfileIDs = []string{}
 	}
@@ -199,10 +199,10 @@ func (a *App) BrowserExtensionUpdate(extensionID string, input BrowserExtensionI
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// 序列化绑定实例ID
+	// 序列化绑定窗口ID
 	boundIDsJSON, err := json.Marshal(input.BoundProfileIDs)
 	if err != nil {
-		return nil, fmt.Errorf("序列化绑定实例ID失败: %w", err)
+		return nil, fmt.Errorf("序列化绑定窗口ID失败: %w", err)
 	}
 
 	enabled := 0

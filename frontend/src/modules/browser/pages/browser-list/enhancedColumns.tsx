@@ -28,6 +28,9 @@ interface ColumnConfig {
 }
 
 export function createEnhancedColumns(config: ColumnConfig): TableColumn<BrowserProfile>[] {
+  const actionButtonClass = '!h-8 !w-8 !p-0 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10'
+  const actionIconClass = 'h-4 w-4'
+
   return [
     // 复选框列
     {
@@ -57,15 +60,17 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
         />
       ),
     },
-    // 实例名称 + 标签
+    // 窗口名称 + 标签
     {
       key: 'profileName',
-      title: '实例名称',
+      title: '窗口名称',
+      width: 120,
       render: (value, record) => (
-        <div className="flex flex-col gap-1.5 py-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <Link
-            className="text-sm font-medium text-[var(--color-accent)] hover:underline truncate max-w-xs"
+            className="block max-w-[110px] truncate text-sm font-medium text-[var(--color-accent)] hover:underline"
             to={`/browser/detail/${record.profileId}`}
+            title={value}
           >
             {value}
           </Link>
@@ -99,7 +104,7 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
     {
       key: 'status',
       title: '状态',
-      width: 120,
+      width: 96,
       render: (_, record) => {
         const status = config.getProfileStatus(record)
         const isStarting = config.isProfileStarting(record.profileId)
@@ -119,19 +124,19 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
     {
       key: 'proxyStatus',
       title: '代理',
-      width: 140,
+      width: 150,
       render: (_, record) => {
         const proxy = config.proxies.find(p => p.proxyId === record.proxyId)
         const hasProxyError = record.runtimeWarning && record.runtimeWarning.includes('代理')
 
         return (
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1">
             {proxy ? (
-              <span className="text-xs text-[var(--color-text-secondary)] truncate max-w-[120px]">
+              <span className="block max-w-[130px] truncate text-xs text-[var(--color-text-secondary)]" title={proxy.proxyName}>
                 {proxy.proxyName}
               </span>
             ) : (
-              <span className="text-xs text-[var(--color-text-muted)]">
+              <span className="block max-w-[130px] truncate text-xs text-[var(--color-text-muted)]" title={record.proxyId || '无代理'}>
                 {record.proxyId || '无代理'}
               </span>
             )}
@@ -149,9 +154,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
     {
       key: 'coreId',
       title: '内核',
-      width: 100,
+      width: 220,
       render: (_, record) => (
-        <span className="text-xs text-[var(--color-text-secondary)]">
+        <span className="block max-w-[210px] truncate text-xs text-[var(--color-text-secondary)]" title={config.getProfileCoreLabel(record)}>
           {config.getProfileCoreLabel(record)}
         </span>
       ),
@@ -160,13 +165,13 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
     {
       key: 'runtime',
       title: '运行时提示',
-      width: 180,
+      width: 130,
       render: (_, record) => {
         if (record.lastError) {
           return (
-            <div className="flex items-start gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5 text-[var(--color-error)] mt-0.5 flex-shrink-0" />
-              <span className="text-xs text-[var(--color-error)] line-clamp-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-error)]" />
+              <span className="block max-w-[104px] truncate text-xs text-[var(--color-error)]" title={record.lastError}>
                 {record.lastError}
               </span>
             </div>
@@ -174,9 +179,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
         }
         if (record.runtimeWarning) {
           return (
-            <div className="flex items-start gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5 text-[var(--color-warning)] mt-0.5 flex-shrink-0" />
-              <span className="text-xs text-[var(--color-warning)] line-clamp-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-warning)]" />
+              <span className="block max-w-[104px] truncate text-xs text-[var(--color-warning)]" title={record.runtimeWarning}>
                 {record.runtimeWarning}
               </span>
             </div>
@@ -196,7 +201,7 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
     {
       key: 'launchCode',
       title: '快捷码',
-      width: 120,
+      width: 160,
       render: (value, record) => (
         <LaunchCodeCell
           profileId={record.profileId}
@@ -209,22 +214,26 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
     {
       key: 'updatedAt',
       title: '最近更新',
-      width: 100,
-      render: formatTime,
+      width: 150,
+      render: (value) => (
+        <span className="block max-w-[132px] truncate text-xs text-[var(--color-text-secondary)]" title={formatTime(value)}>
+          {formatTime(value)}
+        </span>
+      ),
     },
     // 操作列 - 紧凑图标按钮
     {
       key: 'actions',
       title: '操作',
       align: 'right',
-      width: 200,
+      width: 240,
       render: (_, record) => {
         const isStarting = config.isProfileStarting(record.profileId)
         const isStopping = config.isProfileStopping(record.profileId)
         const isBusy = config.isProfileBusy(record.profileId)
 
         return (
-          <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
             {/* 启动/停止 */}
             {record.running ? (
               <Button
@@ -233,9 +242,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
                 onClick={() => config.onStop(record.profileId)}
                 title="停止"
                 loading={isStopping}
-                className="w-8 h-8 p-0"
+                className={actionButtonClass}
               >
-                {!isStopping && <Square className="w-3.5 h-3.5" />}
+                {!isStopping && <Square className={actionIconClass} />}
               </Button>
             ) : (
               <Button
@@ -244,9 +253,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
                 onClick={() => config.onStart(record.profileId)}
                 title="启动"
                 loading={isStarting}
-                className="w-8 h-8 p-0 text-[var(--color-success)] hover:bg-[var(--color-success)]/10"
+                className={`${actionButtonClass} text-[var(--color-success)] hover:text-[var(--color-success)] hover:bg-[var(--color-success)]/10`}
               >
-                {!isStarting && <Play className="w-3.5 h-3.5 fill-current" />}
+                {!isStarting && <Play className={`${actionIconClass} fill-current`} />}
               </Button>
             )}
             {/* 重启 */}
@@ -256,9 +265,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
               onClick={() => config.onRestart(record.profileId)}
               title="重启"
               disabled={isBusy}
-              className="w-8 h-8 p-0"
+              className={actionButtonClass}
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className={actionIconClass} />
             </Button>
             {/* 关键字 */}
             <Button
@@ -267,9 +276,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
               onClick={() => config.onKeywords(record)}
               title="关键字"
               disabled={isBusy}
-              className="w-8 h-8 p-0"
+              className={actionButtonClass}
             >
-              <Key className="w-3.5 h-3.5" />
+              <Key className={actionIconClass} />
             </Button>
             {/* 配置 */}
             <Link to={`/browser/edit/${record.profileId}`}>
@@ -278,9 +287,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
                 variant="ghost"
                 title="配置"
                 disabled={isBusy}
-                className="w-8 h-8 p-0"
+                className={actionButtonClass}
               >
-                <Settings className="w-3.5 h-3.5" />
+                <Settings className={actionIconClass} />
               </Button>
             </Link>
             {/* 克隆 */}
@@ -290,9 +299,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
               onClick={() => config.onCopy(record)}
               title="克隆"
               disabled={isBusy}
-              className="w-8 h-8 p-0"
+              className={actionButtonClass}
             >
-              <Copy className="w-3.5 h-3.5" />
+              <Copy className={actionIconClass} />
             </Button>
             {/* 删除 */}
             <Button
@@ -301,9 +310,9 @@ export function createEnhancedColumns(config: ColumnConfig): TableColumn<Browser
               onClick={() => config.onDelete(record.profileId)}
               title="删除"
               disabled={isBusy}
-              className="w-8 h-8 p-0 text-[var(--color-error)] hover:bg-[var(--color-error)]/10"
+              className={`${actionButtonClass} text-[var(--color-error)] hover:text-[var(--color-error)] hover:bg-[var(--color-error)]/10`}
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className={actionIconClass} />
             </Button>
           </div>
         )

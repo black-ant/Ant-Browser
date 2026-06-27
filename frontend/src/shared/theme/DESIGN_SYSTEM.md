@@ -99,7 +99,7 @@
 ```tsx
 <Button variant="primary" size="md">
   <Play className="w-4 h-4" />
-  启动实例
+  启动窗口
 </Button>
 ```
 
@@ -201,11 +201,11 @@
 - 错误信息具体明确
 
 ```tsx
-<FormItem label="实例名称" error={errors.name}>
+<FormItem label="窗口名称" error={errors.name}>
   <Input
     value={name}
     onChange={setName}
-    placeholder="请输入实例名称"
+    placeholder="请输入窗口名称"
   />
 </FormItem>
 ```
@@ -231,7 +231,7 @@
 - 避免频繁弹出
 
 ```tsx
-toast.success('实例启动成功')
+toast.success('窗口启动成功')
 toast.error('启动失败：端口被占用')
 ```
 
@@ -268,9 +268,9 @@ toast.error('启动失败：端口被占用')
 
 ```tsx
 <EmptyList
-  title="暂无实例"
-  description="点击右上角按钮创建第一个实例"
-  action={<Button>创建实例</Button>}
+  title="暂无窗口"
+  description="点击右上角按钮创建第一个窗口"
+  action={<Button>创建窗口</Button>}
 />
 ```
 

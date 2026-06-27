@@ -17,14 +17,14 @@ import (
 )
 
 // ============================================================================
-// 浏览器实例管理 API
+// 浏览器窗口管理 API
 // ============================================================================
 
 func (a *App) BrowserInstanceStart(profileId string) (*BrowserProfile, error) {
 	return a.browserInstanceStartInternal(profileId, nil, nil, false, false)
 }
 
-// BrowserInstanceStartWithParams 通过额外参数启动实例（仅本次启动生效，不落库）
+// BrowserInstanceStartWithParams 通过额外参数启动窗口（仅本次启动生效，不落库）
 func (a *App) BrowserInstanceStartWithParams(profileId string, extraLaunchArgs []string, startURLs []string, skipDefaultStartURLs bool) (*BrowserProfile, error) {
 	return a.browserInstanceStartInternal(profileId, extraLaunchArgs, startURLs, skipDefaultStartURLs, true)
 }
@@ -43,13 +43,13 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 	profile, exists := a.browserMgr.Profiles[profileId]
 	if !exists {
 		a.browserMgr.Mutex.Unlock()
-		err := fmt.Errorf("实例启动失败：未找到实例配置。请刷新列表后重试。")
-		log.Error("实例不存在", logger.F("profile_id", profileId), logger.F("reason", err.Error()))
+		err := fmt.Errorf("窗口启动失败：未找到窗口配置。请刷新列表后重试。")
+		log.Error("窗口不存在", logger.F("profile_id", profileId), logger.F("reason", err.Error()))
 		return nil, err
 	}
 	if profile.Running {
 		if !isBrowserProfileLive(profile, a.browserMgr.BrowserProcesses[profileId]) {
-			log.Info("检测到实例运行状态已失效，准备重新启动",
+			log.Info("检测到窗口运行状态已失效，准备重新启动",
 				logger.F("profile_id", profileId),
 				logger.F("pid", profile.Pid),
 				logger.F("debug_port", profile.DebugPort),
@@ -58,11 +58,11 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		} else {
 			if preferVisibleWindow {
 				if err := a.openBrowserWindowForRunningProfile(profile, normalizedExtraLaunchArgs, normalizedStartURLs); err != nil {
-					startErr := fmt.Errorf("实例已在运行，但窗口唤起失败：%w", err)
+					startErr := fmt.Errorf("窗口已在运行，但窗口唤起失败：%w", err)
 					profile.LastError = startErr.Error()
 					snapshot := copyBrowserProfileSnapshot(profile)
 					a.browserMgr.Mutex.Unlock()
-					log.Error("运行中实例窗口唤起失败",
+					log.Error("运行中窗口窗口唤起失败",
 						logger.F("profile_id", profileId),
 						logger.F("debug_port", snapshot.DebugPort),
 						logger.F("error", err.Error()),
@@ -81,12 +81,12 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		}
 	}
 
-	// 原子检查并认领：防止同一实例并发重复启动（TOCTOU修复）
+	// 原子检查并认领：防止同一窗口并发重复启动（TOCTOU修复）
 	if a.browserMgr.StartingProfiles[profileId] {
 		snapshot := copyBrowserProfileSnapshot(profile)
 		a.browserMgr.Mutex.Unlock()
-		err := fmt.Errorf("实例正在启动中，请稍候。")
-		log.Warn("重复启动被拒绝（实例正在启动中）", logger.F("profile_id", profileId))
+		err := fmt.Errorf("窗口正在启动中，请稍候。")
+		log.Warn("重复启动被拒绝（窗口正在启动中）", logger.F("profile_id", profileId))
 		return snapshot, err
 	}
 
@@ -140,7 +140,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 
 	// ===== Phase 2：慢操作（不持大锁，受启动队列限流）=====
 	if err := a.startupQueue.Acquire(profileId); err != nil {
-		startErr := fmt.Errorf("实例启动失败：%v", err)
+		startErr := fmt.Errorf("窗口启动失败：%v", err)
 		log.Error("启动队列等待失败", logger.F("profile_id", profileId), logger.F("error", err.Error()))
 		return commitFailure(startErr), startErr
 	}
@@ -148,7 +148,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 
 	// 启动前检查：内核路径、用户数据目录权限、磁盘空间
 	if pre := a.browserMgr.ValidateStartupPreconditions(&snap); !pre.OK {
-		startErr := fmt.Errorf("实例启动失败：%s检查未通过 - %s", pre.Stage, pre.Message)
+		startErr := fmt.Errorf("窗口启动失败：%s检查未通过 - %s", pre.Stage, pre.Message)
 		log.Error("启动前检查未通过", logger.F("profile_id", profileId), logger.F("stage", pre.Stage), logger.F("reason", pre.Message))
 		return commitFailure(startErr), startErr
 	}
@@ -173,20 +173,39 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 
 	chromeBinaryPath, err := a.browserMgr.ResolveChromeBinary(&snap)
 	if err != nil {
-		startErr := fmt.Errorf("实例启动失败：%w", err)
+		startErr := fmt.Errorf("窗口启动失败：%w", err)
 		log.Error("内核路径解析失败", logger.F("profile_id", profileId), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
 		return commitFailure(startErr), startErr
 	}
 
 	userDataDir := a.browserMgr.ResolveUserDataDir(&snap)
 	if err := os.MkdirAll(userDataDir, 0755); err != nil {
-		startErr := fmt.Errorf("实例启动失败：无法创建用户数据目录。请检查目录权限或路径配置。")
+		startErr := fmt.Errorf("窗口启动失败：无法创建用户数据目录。请检查目录权限或路径配置。")
 		log.Error("创建用户数据目录失败", logger.F("profile_id", profileId), logger.F("user_data_dir", userDataDir), logger.F("error", err))
 		log.Error("用户数据目录创建失败", logger.F("profile_id", profileId), logger.F("dir", userDataDir), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
 		return commitFailure(startErr), startErr
 	}
 	// 每次启动时合并默认书签（已存在的 URL 不重复添加）
-	if err := browser.EnsureDefaultBookmarks(userDataDir, a.BookmarkList()); err != nil {
+	startupActions := parseProfileStartupActions(snap.ProfileConfig)
+	if startupActions.RandomFingerprintOnStart {
+		filteredFingerprintArgs = withFingerprintSeed(filteredFingerprintArgs, newRandomFingerprintSeed())
+	}
+	if err := applyProfilePreStartActions(userDataDir, startupActions); err != nil {
+		startErr := fmt.Errorf("browser startup action failed before launch: %w", err)
+		log.Error("pre-start profile action failed",
+			logger.F("profile_id", profileId),
+			logger.F("user_data_dir", userDataDir),
+			logger.F("error", err.Error()),
+			logger.F("reason", startErr.Error()))
+		return commitFailure(startErr), startErr
+	}
+
+	if err := func() error {
+		if !shouldApplyDefaultBookmarks(startupActions) {
+			return nil
+		}
+		return browser.EnsureDefaultBookmarks(userDataDir, a.BookmarkList())
+	}(); err != nil {
 		log.Error("默认书签写入失败", logger.F("error", err.Error()))
 	}
 	if effectiveSearchEngine != "" {
@@ -226,7 +245,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		logger.F("resolved_proxy_config", sanitizeProxyConfigField(resolvedProxyConfig)),
 	)
 	if supported, errorMsg := proxy.ValidateProxyConfig(resolvedProxyConfig, proxies, snap.ProxyId); !supported {
-		startErr := fmt.Errorf("实例启动失败：%s", errorMsg)
+		startErr := fmt.Errorf("窗口启动失败：%s", errorMsg)
 		log.Error("代理配置无效", logger.F("profile_id", profileId), logger.F("proxy_id", snap.ProxyId), logger.F("error", errorMsg), logger.F("reason", startErr.Error()))
 		return commitFailure(startErr), startErr
 	}
@@ -235,7 +254,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		// hysteria2 / tuic → sing-box 桥接
 		socksURL, bridgeErr := a.singboxMgr.EnsureBridge(resolvedProxyConfig, proxies, snap.ProxyId)
 		if bridgeErr != nil {
-			startErr := fmt.Errorf("实例启动失败：代理桥接启动失败（sing-box）。原因：%v。请检查代理节点配置、sing-box 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
+			startErr := fmt.Errorf("窗口启动失败：代理桥接启动失败（sing-box）。原因：%v。请检查代理节点配置、sing-box 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
 			log.Error("代理桥接失败(sing-box)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "proxy:bridge:failed", map[string]interface{}{
@@ -252,7 +271,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		// vmess / vless / trojan / ss → xray 桥接
 		socksURL, bridgeKey, bridgeErr := a.xrayMgr.AcquireBridge(resolvedProxyConfig, proxies, snap.ProxyId)
 		if bridgeErr != nil {
-			startErr := fmt.Errorf("实例启动失败：代理桥接启动失败（xray）。原因：%v。请检查代理节点配置、xray 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
+			startErr := fmt.Errorf("窗口启动失败：代理桥接启动失败（xray）。原因：%v。请检查代理节点配置、xray 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
 			log.Error("代理桥接失败(xray)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "proxy:bridge:failed", map[string]interface{}{
@@ -267,6 +286,14 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		releaseXrayBridge = bridgeKey != ""
 		effectiveProxy = socksURL
 		log.Info("xray 桥接成功", logger.F("socks_url", sanitizeProxyConfigField(socksURL)))
+	}
+
+	// 启动门控：网络不通 / 出口 IP 变化 / 国家变化时停止打开。
+	// 经实际生效的代理链路探测出口 IP，放行时刷新基线。在浏览器进程启动前判定。
+	if gateErr := a.applyProfileStartGate(profileId, startupActions, snap.ProxyId, resolvedProxyConfig); gateErr != nil {
+		startErr := fmt.Errorf("窗口启动失败：%s", gateErr.Error())
+		log.Warn("启动门控拦截", logger.F("profile_id", profileId), logger.F("reason", gateErr.Error()))
+		return commitFailure(startErr), startErr
 	}
 
 	startReadyTimeout, startStableWindow := a.browserStartTimingSettings()
@@ -293,7 +320,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		var err error
 		assignedDebugPort, err = nextAvailablePort()
 		if err != nil {
-			startErr := fmt.Errorf("实例启动失败：本地调试端口分配失败。原因：%v。请关闭占用端口的程序后重试。", err)
+			startErr := fmt.Errorf("窗口启动失败：本地调试端口分配失败。原因：%v。请关闭占用端口的程序后重试。", err)
 			log.Error("调试端口分配失败", logger.F("profile_id", profileId), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
 			return commitFailure(startErr), startErr
 		}
@@ -362,15 +389,16 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 			logger.F("profile_id", profileId),
 			logger.F("args", strings.Join(consistencyArgs, " ")))
 	}
-	// 挂了真实代理但尚无出口地理缓存时，后台补查一次，使下次启动可按代理地区注入时区/语言。
-	if isRealProxy && resolvedProxyHealthJSON == "" && snap.ProxyId != "" {
-		a.refreshProxyGeoCacheAsync(snap.ProxyId)
-	}
+	// 首启盲区：挂了真实代理但启动这一刻还没拿到出口 geo（新窗口/新代理无缓存，且同步拉取
+	// 超时或被并发去重命中），时区/地理定位会回落宿主机。记录下来，待窗口就绪后在后台补查
+	// 并「自愈式」重新应用，无需用户重启。
+	geoMissingAtLaunch := isRealProxy && strings.TrimSpace(healthForInjection) == ""
+	geoAppliedAtLaunch := effectiveGeolocation.shouldApply()
 	runtimeOverrides := browserRuntimeOverrides{
 		Geolocation: effectiveGeolocation,
 		Timezone:    timezoneOverrideFromLaunchArgs(args),
 	}
-	// 注入绑定到该实例的本地扩展（启用 + 目录含 manifest.json）
+	// 注入绑定到该窗口的本地扩展（启用 + 目录含 manifest.json）
 	if extPaths := a.extensionLoadPathsForProfile(profileId); len(extPaths) > 0 {
 		args = append(args, fmt.Sprintf("--load-extension=%s", strings.Join(extPaths, ",")))
 		log.Info("注入扩展", logger.F("profile_id", profileId), logger.F("count", len(extPaths)))
@@ -387,7 +415,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		if debugPipe != nil {
 			debugPipe.Close()
 		}
-		startErr := fmt.Errorf("实例启动失败：无法建立浏览器错误输出捕获。可执行文件：%s。原因：%v。", chromeBinaryPath, err)
+		startErr := fmt.Errorf("窗口启动失败：无法建立浏览器错误输出捕获。可执行文件：%s。原因：%v。", chromeBinaryPath, err)
 		log.Error("浏览器错误输出捕获初始化失败", logger.F("profile_id", profileId), logger.F("chrome", chromeBinaryPath), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
 		return commitFailure(startErr), startErr
 	}
@@ -428,7 +456,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 				if pipeConn != nil {
 					pipeConn.Close()
 				}
-				startErr := fmt.Errorf("实例启动已取消（实例在启动过程中被移除或停止）")
+				startErr := fmt.Errorf("窗口启动已取消（窗口在启动过程中被移除或停止）")
 				log.Warn("启动提交被取消", logger.F("profile_id", profileId), logger.F("debug_port", stableDebugPort))
 				return nil, startErr
 			}
@@ -446,8 +474,16 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 					logger.F("timezone_source", runtimeOverrides.timezoneSource()),
 					logger.F("error", err.Error()))
 			}
+			// 首启未拿到代理 geo：窗口已就绪，后台补查出口地理并自愈式重新应用时区/地理定位，无需重启。
+			if geoMissingAtLaunch {
+				a.scheduleProxyGeoRuntimeReapply(profileId, stableDebugPort, snap.ProxyId, resolvedProxyConfig, resolvedProxyFromPool, consistencyControls, geoAppliedAtLaunch)
+			}
+			// 网址访问黑 / 白名单（端口模式经 CDP Fetch 拦截；后台监听，新标签亦生效）。
+			if urlFilter := parseURLAccessFilter(startupActions.WebsiteAccessBlacklist, startupActions.WebsiteAccessWhitelist); urlFilter.enabled() {
+				a.startProfileURLFilterWatcher(profileId, stableDebugPort, urlFilter)
+			}
 
-			log.Info("实例启动",
+			log.Info("窗口启动",
 				logger.F("profile_id", profileId),
 				logger.F("debug_port", stableDebugPort),
 				logger.F("pid", snapshot.Pid),
@@ -458,7 +494,19 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 				logger.F("args", strings.Join(sanitizeLaunchArgs(args), " ")),
 			)
 			a.emitBrowserInstanceStarted(snapshot, false)
-			a.recordActivity("start", "info", "实例启动成功", snapshot.ProfileName)
+			a.recordActivity("start", "info", "窗口启动成功", snapshot.ProfileName)
+			if err := a.applyProfilePostStartActions(profileId, startupActions, args); err != nil {
+				actionErr := fmt.Errorf("browser startup action failed after launch: %w", err)
+				a.setProfileLastError(profileId, actionErr.Error())
+				snapshot.LastError = actionErr.Error()
+				log.Error("post-start profile action failed",
+					logger.F("profile_id", profileId),
+					logger.F("error", err.Error()),
+					logger.F("reason", actionErr.Error()))
+				a.emitBrowserInstanceUpdated(snapshot)
+				go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
+				return snapshot, actionErr
+			}
 
 			go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
 			return snapshot, nil
@@ -500,7 +548,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		snapshot, committed := a.commitBrowserStart(profileId, cmd, cmd.Process.Pid, assignedDebugPort, false, runtimeWarning)
 		if !committed {
 			_ = a.stopProcessCmd(cmd)
-			startErr := fmt.Errorf("实例启动已取消（实例在启动过程中被移除或停止）")
+			startErr := fmt.Errorf("窗口启动已取消（窗口在启动过程中被移除或停止）")
 			log.Warn("启动提交被取消（待接管阶段）", logger.F("profile_id", profileId), logger.F("debug_port", assignedDebugPort))
 			return nil, startErr
 		}
@@ -517,9 +565,9 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 			logger.F("warning", runtimeWarning),
 		)
 		a.emitBrowserInstanceStarted(snapshot, false)
-		a.recordActivity("start", "warn", "实例已启动，调试接口后台接管中", snapshot.ProfileName)
+		a.recordActivity("start", "warn", "窗口已启动，调试接口后台接管中", snapshot.ProfileName)
 		go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
-		go a.waitBrowserDebugReadyAsync(profileId, assignedDebugPort, browserAsyncDebugAttachTimeout, runtimeOverrides)
+		go a.waitBrowserDebugReadyAsync(profileId, assignedDebugPort, browserAsyncDebugAttachTimeout, startupActions, args, runtimeOverrides)
 
 		a.setProfileLastError(profileId, pendingStartNotice)
 		snapshot.LastError = pendingStartNotice
@@ -531,7 +579,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 		pipeConn.Close()
 	}
 	if lastStartErr == nil {
-		lastStartErr = fmt.Errorf("实例启动失败：浏览器在等待窗口内仍未就绪")
+		lastStartErr = fmt.Errorf("窗口启动失败：浏览器在等待窗口内仍未就绪")
 	}
 	return commitFailure(lastStartErr), lastStartErr
 }
@@ -551,29 +599,29 @@ func (a *App) BrowserInstanceStop(profileId string) (*BrowserProfile, error) {
 	debugPort := profile.DebugPort
 	if tryCloseBrowserViaCDP(debugPort, 5*time.Second) {
 		a.markProfileStoppedLocked(profileId, profile)
-		log.Info("实例停止", logger.F("profile_id", profileId), logger.F("method", "cdp"), logger.F("debug_port", debugPort))
-		a.recordActivity("stop", "info", "实例已停止", profile.ProfileName)
+		log.Info("窗口停止", logger.F("profile_id", profileId), logger.F("method", "cdp"), logger.F("debug_port", debugPort))
+		a.recordActivity("stop", "info", "窗口已停止", profile.ProfileName)
 		return profile, nil
 	}
 
 	if cmd != nil && cmd.Process != nil {
 		if err := a.stopBrowserProcess(cmd); err != nil {
-			log.Error("实例停止失败", logger.F("profile_id", profileId), logger.F("error", err))
+			log.Error("窗口停止失败", logger.F("profile_id", profileId), logger.F("error", err))
 			profile.LastError = err.Error()
 			return profile, err
 		}
 	}
 
 	if debugPort > 0 && canConnectDebugPort(debugPort, 250*time.Millisecond) {
-		err := fmt.Errorf("实例停止失败：浏览器仍在运行（调试端口 %d 仍可访问）", debugPort)
-		log.Error("实例停止失败", logger.F("profile_id", profileId), logger.F("debug_port", debugPort), logger.F("reason", err.Error()))
+		err := fmt.Errorf("窗口停止失败：浏览器仍在运行（调试端口 %d 仍可访问）", debugPort)
+		log.Error("窗口停止失败", logger.F("profile_id", profileId), logger.F("debug_port", debugPort), logger.F("reason", err.Error()))
 		profile.LastError = err.Error()
 		return profile, err
 	}
 
 	a.markProfileStoppedLocked(profileId, profile)
-	log.Info("实例停止", logger.F("profile_id", profileId))
-	a.recordActivity("stop", "info", "实例已停止", profile.ProfileName)
+	log.Info("窗口停止", logger.F("profile_id", profileId))
+	a.recordActivity("stop", "info", "窗口已停止", profile.ProfileName)
 	return profile, nil
 }
 
@@ -584,7 +632,7 @@ func (a *App) BrowserInstanceRestart(profileId string) (*BrowserProfile, error) 
 	return a.BrowserInstanceStart(profileId)
 }
 
-// BrowserProfileBatchSetTags 批量为实例设置标签（追加模式：将 tags 加入已有标签；replace 模式：直接替换）
+// BrowserProfileBatchSetTags 批量为窗口设置标签（追加模式：将 tags 加入已有标签；replace 模式：直接替换）
 func (a *App) BrowserProfileBatchSetTags(profileIds []string, tags []string, replace bool) error {
 	log := logger.New("Browser")
 	a.browserMgr.Mutex.Lock()
@@ -621,7 +669,7 @@ func (a *App) BrowserProfileBatchSetTags(profileIds []string, tags []string, rep
 	return nil
 }
 
-// BrowserProfileBatchRemoveTags 批量从实例移除指定标签
+// BrowserProfileBatchRemoveTags 批量从窗口移除指定标签
 func (a *App) BrowserProfileBatchRemoveTags(profileIds []string, tags []string) error {
 	log := logger.New("Browser")
 	a.browserMgr.Mutex.Lock()
@@ -655,7 +703,7 @@ func (a *App) BrowserProfileBatchRemoveTags(profileIds []string, tags []string) 
 	return nil
 }
 
-// BrowserRenameTag 重命名所有实例中的指定标签
+// BrowserRenameTag 重命名所有窗口中的指定标签
 func (a *App) BrowserRenameTag(oldName string, newName string) error {
 	log := logger.New("Browser")
 	oldName = strings.TrimSpace(oldName)
@@ -808,7 +856,7 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 		// 区分异常崩溃与正常退出：崩溃时置 crashed 状态并记录原因（在锁内写回，避免竞态）
 		if wasRunning && err != nil && profile != nil {
 			profile.Status = browser.StatusCrashed
-			profile.LastError = fmt.Sprintf("实例运行异常退出：%s", err.Error())
+			profile.LastError = fmt.Sprintf("窗口运行异常退出：%s", err.Error())
 		}
 	}
 	a.browserMgr.Mutex.Unlock()
@@ -826,7 +874,7 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 			"profileName": profileName,
 			"error":       err.Error(),
 		})
-		a.recordActivity("crash", "error", fmt.Sprintf("实例异常退出：%s", err.Error()), profileName)
+		a.recordActivity("crash", "error", fmt.Sprintf("窗口异常退出：%s", err.Error()), profileName)
 	} else {
 		runtime.EventsEmit(a.ctx, "browser:instance:stopped", profileId)
 	}
@@ -864,7 +912,7 @@ func (a *App) waitDetachedBrowser(profileId string, debugPort int) {
 		a.markProfileStoppedLocked(profileId, profile)
 		a.browserMgr.Mutex.Unlock()
 
-		log.Info("检测到浏览器调试端口关闭，实例已停止",
+		log.Info("检测到浏览器调试端口关闭，窗口已停止",
 			logger.F("profile_id", profileId),
 			logger.F("profile_name", profileName),
 			logger.F("debug_port", debugPort),
@@ -937,13 +985,13 @@ func (a *App) markProfileStoppedLocked(profileId string, profile *BrowserProfile
 	profile.RuntimeWarning = ""
 	profile.LastStopAt = time.Now().Format(time.RFC3339)
 	delete(a.browserMgr.BrowserProcesses, profileId)
-	// 统一在此取消启动认领：若实例在启动过程中被停止，进行中的启动会在提交阶段
+	// 统一在此取消启动认领：若窗口在启动过程中被停止，进行中的启动会在提交阶段
 	// 检测到认领丢失而中止（见 browserInstanceStartInternal 的 Phase 3）。
 	delete(a.browserMgr.StartingProfiles, profileId)
 	a.releaseProfileXrayBridge(profileId)
 	a.closePipeConn(profileId) // 关闭 pipe 连接（若有）
 
-	// 关闭该实例的所有 CDP sessions
+	// 关闭该窗口的所有 CDP sessions
 	if a.cdpManager != nil {
 		a.cdpManager.CloseSessionsByProfile(profileId)
 	}

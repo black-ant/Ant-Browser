@@ -205,6 +205,40 @@ func TestCountInstancesByCoreTreatsLegacyDefaultReferenceAsDefault(t *testing.T)
 	}
 
 	if got := mgr.CountInstancesByCore("core-142"); got != 3 {
-		t.Fatalf("默认内核实例计数错误: got=%d want=3", got)
+		t.Fatalf("默认内核窗口计数错误: got=%d want=3", got)
+	}
+}
+
+// TestGetChromeVersionFallsBackToManifest 验证：无法从真实 exe 版本资源取版本时
+// （非 Windows、stub exe、或无 exe），GetChromeVersion 回退到 manifest。
+// 真实 exe 版本读取路径依赖 Windows 版本资源，归手动/集成验证。
+func TestGetChromeVersionFallsBackToManifest(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	mgr := NewManager(config.DefaultConfig(), root)
+
+	// 1) *.manifest 文件名回退（无 exe、无 manifest.json）。
+	dirName := filepath.Join(root, "core-manifest-name")
+	if err := os.MkdirAll(dirName, 0o755); err != nil {
+		t.Fatalf("创建内核目录失败: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dirName, "144.0.7559.96.manifest"), []byte(""), 0o644); err != nil {
+		t.Fatalf("写入 *.manifest 失败: %v", err)
+	}
+	if got := mgr.GetChromeVersion("core-manifest-name"); got != "144.0.7559.96" {
+		t.Fatalf("应回退 *.manifest 文件名版本: got=%q want=144.0.7559.96", got)
+	}
+
+	// 2) manifest.json version 字段回退。
+	dirJSON := filepath.Join(root, "core-manifest-json")
+	if err := os.MkdirAll(dirJSON, 0o755); err != nil {
+		t.Fatalf("创建内核目录失败: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dirJSON, "manifest.json"), []byte(`{"version":"143.0.7000.50"}`), 0o644); err != nil {
+		t.Fatalf("写入 manifest.json 失败: %v", err)
+	}
+	if got := mgr.GetChromeVersion("core-manifest-json"); got != "143.0.7000.50" {
+		t.Fatalf("应读取 manifest.json version 字段: got=%q want=143.0.7000.50", got)
 	}
 }

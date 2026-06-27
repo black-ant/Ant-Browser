@@ -15,7 +15,7 @@ type LaunchCodeDAO interface {
 	FindCode(profileId string) (string, error)
 	// Upsert 保存或更新映射
 	Upsert(profileId, code string) error
-	// Delete 删除映射（实例删除时调用）
+	// Delete 删除映射（窗口删除时调用）
 	Delete(profileId string) error
 	// LoadAll 加载所有映射（启动时用），返回 profileId -> code 的 map
 	LoadAll() (map[string]string, error)

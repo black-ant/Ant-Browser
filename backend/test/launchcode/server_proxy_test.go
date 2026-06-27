@@ -121,7 +121,7 @@ func TestCDPProxySwitchesToLatestLaunchedProfile(t *testing.T) {
 			t.Fatalf("代理请求失败: code=%s status=%d body=%s", tc.code, proxyResp.Code, proxyResp.Body.String())
 		}
 		if !strings.Contains(proxyResp.Body.String(), tc.wantMarker) {
-			t.Fatalf("代理未切换到最新实例: want=%s body=%s", tc.wantMarker, proxyResp.Body.String())
+			t.Fatalf("代理未切换到最新窗口: want=%s body=%s", tc.wantMarker, proxyResp.Body.String())
 		}
 	}
 }
@@ -160,7 +160,7 @@ func TestCDPProxySkipsPendingDebugProfile(t *testing.T) {
 		t.Fatalf("解析启动响应失败: %v", err)
 	}
 	if ready, _ := launchPayload["debugReady"].(bool); ready {
-		t.Fatalf("pending 实例不应被标记为 debugReady: %+v", launchPayload)
+		t.Fatalf("pending 窗口不应被标记为 debugReady: %+v", launchPayload)
 	}
 
 	proxyReq := httptest.NewRequest(http.MethodGet, "/json/version", nil)
@@ -168,7 +168,7 @@ func TestCDPProxySkipsPendingDebugProfile(t *testing.T) {
 	proxyResp := httptest.NewRecorder()
 	handler.ServeHTTP(proxyResp, proxyReq)
 	if proxyResp.Code != http.StatusServiceUnavailable {
-		t.Fatalf("pending 实例不应成为活动 CDP target: status=%d body=%s", proxyResp.Code, proxyResp.Body.String())
+		t.Fatalf("pending 窗口不应成为活动 CDP target: status=%d body=%s", proxyResp.Code, proxyResp.Body.String())
 	}
 }
 

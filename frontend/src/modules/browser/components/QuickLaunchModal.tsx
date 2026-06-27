@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Keyboard, Play, Search, Tag } from 'lucide-react'
 import { Badge, Button, Modal, toast } from '../../../shared/components'
 import { fetchBrowserProfiles, fetchGroups, startBrowserInstanceByCode } from '../api'
@@ -88,7 +88,7 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
         if (profilesResult.status === 'fulfilled') {
           setProfiles((profilesResult.value || []).slice().sort(sortProfiles))
         } else {
-          toast.error('加载实例列表失败')
+          toast.error('加载窗口列表失败')
           setProfiles([])
         }
 
@@ -282,7 +282,7 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
     setStartingCode(normalized)
     try {
       const profile = await startBrowserInstanceByCode(normalized)
-      toast.success(profile?.running ? `实例「${profile.profileName}」已在运行` : `实例「${profile?.profileName || normalized}」已启动`)
+      toast.success(profile?.running ? `窗口「${profile.profileName}」已在运行` : `窗口「${profile?.profileName || normalized}」已启动`)
       onClose()
       return true
     } catch (error: any) {
@@ -300,7 +300,7 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
 
   const startProfile = async (profile: BrowserProfile) => {
     if (!profile.launchCode) {
-      toast.error('该实例尚未分配 Code，请先在实例列表设置')
+      toast.error('该窗口尚未分配 Code，请先在窗口列表设置')
       return
     }
     await startByCode(profile.launchCode)
@@ -374,7 +374,7 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="输入 Code 或实例名 / 标签 / 关键字"
+              placeholder="输入 Code 或窗口名 / 标签 / 关键字"
               className="h-9 w-full border-0 bg-transparent text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none px-0"
             />
             <Button
@@ -460,7 +460,7 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
               {loading ? (
                 <div className="px-4 py-8 text-sm text-[var(--color-text-muted)] text-center">加载中...</div>
               ) : filteredProfiles.length === 0 ? (
-                <div className="px-4 py-8 text-sm text-[var(--color-text-muted)] text-center">没有匹配的实例</div>
+                <div className="px-4 py-8 text-sm text-[var(--color-text-muted)] text-center">没有匹配的窗口</div>
               ) : (
                 <div className="space-y-4">
                   {tagSections.map((section) => (
@@ -475,7 +475,7 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
                         <h3 className="text-sm font-semibold text-[var(--color-text-primary)] inline-flex items-center gap-1.5">
                           <Tag className="w-3.5 h-3.5" /> {section.tag}
                         </h3>
-                        <span className="text-xs text-[var(--color-text-muted)]">{section.items.length} 个实例</span>
+                        <span className="text-xs text-[var(--color-text-muted)]">{section.items.length} 个窗口</span>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

@@ -11,10 +11,10 @@ interface CardProps {
   hover?: boolean
 }
 
-export function Card({ 
-  title, 
-  subtitle, 
-  children, 
+export function Card({
+  title,
+  subtitle,
+  children,
   className,
   padding = 'md',
   actions,
@@ -23,7 +23,7 @@ export function Card({
   const paddings = {
     none: '',
     sm: 'p-4',
-    md: 'p-5',
+    md: 'p-3',
     lg: 'p-6',
   }
 
@@ -39,7 +39,7 @@ export function Card({
       )}
     >
       {(title || actions) && (
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border-muted)] bg-gradient-to-r from-[var(--color-bg-surface)] to-[var(--color-bg-subtle)]">
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--color-border-muted)] bg-gradient-to-r from-[var(--color-bg-surface)] to-[var(--color-bg-subtle)]">
           <div>
             {title && (
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">

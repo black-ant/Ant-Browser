@@ -44,11 +44,11 @@ func TestIsBrowserProfileLive(t *testing.T) {
 		DebugPort: listenerPort(t, ln),
 	}
 	if !isBrowserProfileLive(profile, nil) {
-		t.Fatal("期望存活中的调试端口被识别为运行中实例")
+		t.Fatal("期望存活中的调试端口被识别为运行中窗口")
 	}
 
 	if isBrowserProfileLive(&BrowserProfile{Running: true, DebugPort: 0}, nil) {
-		t.Fatal("debugPort=0 不应被识别为运行中实例")
+		t.Fatal("debugPort=0 不应被识别为运行中窗口")
 	}
 }
 
@@ -73,7 +73,7 @@ func TestIsBrowserProfileLiveKeepsPendingDebugProcessAlive(t *testing.T) {
 		DebugReady: false,
 	}
 	if !isBrowserProfileLive(profile, cmd) {
-		t.Fatal("期望调试接口未就绪但进程仍存活时识别为运行中实例")
+		t.Fatal("期望调试接口未就绪但进程仍存活时识别为运行中窗口")
 	}
 }
 
@@ -369,10 +369,10 @@ func TestWaitForBrowserDebugReadyMarksProfileReady(t *testing.T) {
 		t.Fatal("期望等待到调试接口就绪")
 	}
 	if !changed {
-		t.Fatal("期望调试接口就绪后标记实例状态变更")
+		t.Fatal("期望调试接口就绪后标记窗口状态变更")
 	}
 	if !snapshot.DebugReady {
-		t.Fatal("期望实例被标记为调试接口已就绪")
+		t.Fatal("期望窗口被标记为调试接口已就绪")
 	}
 	if snapshot.RuntimeWarning != "" {
 		t.Fatalf("期望调试接口就绪后清空警告，实际=%q", snapshot.RuntimeWarning)

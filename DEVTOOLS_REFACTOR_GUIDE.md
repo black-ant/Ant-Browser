@@ -45,7 +45,7 @@ const [consoleLogs, setConsoleLogs] = useState<CDPConsoleLog[]>([])
 
 const startCapture = async () => {
   if (!selectedProfileId) {
-    toast.error('请选择一个运行中的浏览器实例')
+    toast.error('请选择一个运行中的浏览器窗口')
     return
   }
 

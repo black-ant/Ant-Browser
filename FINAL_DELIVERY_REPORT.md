@@ -57,7 +57,7 @@
 9. `frontend/src/modules/browser/pages/BrowserDevToolsPageNew_v2.tsx` - DevTools 主页
 10. `frontend/src/modules/dashboard/DashboardPage_v2.tsx` - 运行概览
 11. `frontend/src/modules/browser/pages/AccountManagementPage_v2.tsx` - 账号管理
-12. `frontend/src/modules/browser/pages/BrowserCreatePageV2.tsx` - 实例创建 V2
+12. `frontend/src/modules/browser/pages/BrowserCreatePageV2.tsx` - 窗口创建 V2
 13. `frontend/src/modules/browser/utils/fingerprintGenerator.ts` - 指纹生成器
 14. `frontend/src/modules/browser/pages/browser-create-v2/converter.ts` - 转换器
 
@@ -135,7 +135,7 @@
   - 向后兼容
 
 **converter.ts 修改**：
-- **影响范围**：实例创建/编辑表单转换
+- **影响范围**：窗口创建/编辑表单转换
 - **缓解措施**：
   - 保持了原有逻辑
   - 仅添加了账号选择器支持
@@ -151,8 +151,8 @@
 ### 需要测试的页面
 
 **关键页面**：
-1. ✓ 实例列表页（现有功能保持）
-2. ✓ 实例创建页（V2 为新路由）
+1. ✓ 窗口列表页（现有功能保持）
+2. ✓ 窗口创建页（V2 为新路由）
 3. ✓ DevTools 页面（V2 为新路由）
 4. ✓ Dashboard（V2 为新文件）
 5. ✓ 账号管理（V2 为新文件）
@@ -291,7 +291,7 @@ git add frontend/src/modules/browser/pages/BrowserCreatePageV2.tsx
 git commit -m "feat(frontend): 优化核心页面
 
 - DashboardPage_v2: 简洁运行概览
-- AccountManagementPage_v2: Cookie 状态和关联实例优化
+- AccountManagementPage_v2: Cookie 状态和关联窗口优化
 - BrowserCreatePageV2: 集成账号选择器和指纹生成
 "
 ```

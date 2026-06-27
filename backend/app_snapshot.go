@@ -16,7 +16,7 @@ import (
 )
 
 // ============================================================================
-// 实例数据快照 API
+// 窗口数据快照 API
 // ============================================================================
 
 // SnapshotInfo 快照元数据
@@ -29,7 +29,7 @@ type SnapshotInfo struct {
 	FilePath   string  `json:"filePath,omitempty"`
 }
 
-// snapshotDir 返回指定实例的快照目录路径（存放在 data/snapshots 下）
+// snapshotDir 返回指定窗口的快照目录路径（存放在 data/snapshots 下）
 func (a *App) snapshotDir(profileId string) (string, error) {
 	dir := filepath.Join(a.resolveAppPath("data"), "snapshots", profileId)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -123,13 +123,13 @@ func unzipTo(src, dest string) error {
 	return nil
 }
 
-// getProfileForSnapshot 获取实例信息（加锁）
+// getProfileForSnapshot 获取窗口信息（加锁）
 func (a *App) getProfileForSnapshot(profileId string) (*BrowserProfile, error) {
 	a.browserMgr.Mutex.Lock()
 	defer a.browserMgr.Mutex.Unlock()
 	profile, exists := a.browserMgr.Profiles[profileId]
 	if !exists {
-		return nil, fmt.Errorf("实例不存在: %s", profileId)
+		return nil, fmt.Errorf("窗口不存在: %s", profileId)
 	}
 	return profile, nil
 }
@@ -141,7 +141,7 @@ func (a *App) BrowserSnapshotCreate(profileId, name string) (SnapshotInfo, error
 		return SnapshotInfo{}, err
 	}
 	if profile.Running {
-		return SnapshotInfo{}, fmt.Errorf("请先停止实例再创建快照")
+		return SnapshotInfo{}, fmt.Errorf("请先停止窗口再创建快照")
 	}
 
 	userDataDir := a.browserMgr.ResolveUserDataDir(profile)
@@ -188,7 +188,7 @@ func (a *App) BrowserSnapshotCreate(profileId, name string) (SnapshotInfo, error
 	return info, nil
 }
 
-// BrowserSnapshotList 列出实例的所有快照
+// BrowserSnapshotList 列出窗口的所有快照
 func (a *App) BrowserSnapshotList(profileId string) ([]SnapshotInfo, error) {
 	snapDir, err := a.snapshotDir(profileId)
 	if err != nil {
@@ -233,7 +233,7 @@ func (a *App) BrowserSnapshotRestore(profileId, snapshotId string) error {
 		return err
 	}
 	if profile.Running {
-		return fmt.Errorf("请先停止实例再恢复快照")
+		return fmt.Errorf("请先停止窗口再恢复快照")
 	}
 
 	snapDir, err := a.snapshotDir(profileId)

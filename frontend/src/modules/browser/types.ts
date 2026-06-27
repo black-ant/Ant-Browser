@@ -79,6 +79,8 @@ export interface CreateWindowFormState {
   timezone?: string
   geolocationDisplay?: string
   geolocation?: string
+  latitude?: string
+  longitude?: string
   audio?: boolean
   image?: boolean
   video?: boolean
@@ -166,8 +168,28 @@ export interface BrowserSettings {
   defaultFingerprintArgs: string[]
   defaultLaunchArgs: string[]
   defaultProxy: string
+  // 全局前置代理：让走 xray 桥接的带账密代理流量先经过本地前置代理出口，
+  // 绕过上游网关按本地区 IP 的准入限制。
+  frontProxyEnabled: boolean
+  frontProxyAuto: boolean
+  frontProxyAddr: string
   startReadyTimeoutMs: number
   startStableWindowMs: number
+}
+
+// LocalProxyCandidate 本地代理扫描命中的单个候选。
+export interface LocalProxyCandidate {
+  addr: string      // 规范化地址，如 socks5://127.0.0.1:7891
+  protocol: string  // "socks5" | "http"
+  port: number
+}
+
+// LocalProxyScanResult 本地代理扫描结果（对应后端 proxy.LocalProxyScanResult）。
+export interface LocalProxyScanResult {
+  found: boolean
+  best: string
+  candidates: LocalProxyCandidate[]
+  error: string
 }
 
 export interface BrowserCore {
@@ -269,6 +291,18 @@ export interface IPDetectResult {
 export interface IPDetectSource {
   key: string
   label: string
+}
+
+// 代理协议探测结果（导入裸格式 host:port[:user:pass] 时自动判定 SOCKS5 / HTTP）
+export interface ProxyProbeResult {
+  protocol: string        // 'socks5' | 'http' | ''（无法判定）
+  reachable: boolean      // server:port 可建立 TCP 连接
+  usable: boolean         // 握手 / CONNECT 完整成功，可真正转发
+  needAuth: boolean       // 需要鉴权但凭据缺失或被拒
+  gatewayStatus: number   // HTTP CONNECT 返回的状态码（403 / 407 等）
+  gatewayMessage: string  // 网关自身响应文本（如 403 china IP is not allow）
+  latencyMs: number
+  error: string
 }
 
 export interface BrowserCoreExtended {

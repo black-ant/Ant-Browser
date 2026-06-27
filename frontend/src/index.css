@@ -207,3 +207,79 @@ input, select, textarea {
 .animate-slide-in-bottom {
   animation: slideInBottom 0.3s ease-out;
 }
+
+/* 浏览器创建页面紧凑优化 */
+.browser-create-form-stack > * + * {
+  margin-top: 0.5rem; /* 8px - 大幅减少卡片间距 */
+}
+
+.browser-create-side-panel {
+  position: sticky;
+  top: 1rem;
+}
+
+/* 减少所有配置区块的内边距 */
+.browser-create-form-stack .Card,
+.browser-create-side-panel .Card {
+  overflow: hidden;
+}
+
+.browser-create-form-stack h3,
+.browser-create-side-panel h3 {
+  font-size: 0.875rem; /* 14px */
+  margin-bottom: 0.5rem; /* 8px - 减少标题间距 */
+}
+
+/* 输入框统一紧凑样式 */
+.browser-create-form-stack input[type="text"],
+.browser-create-form-stack input[type="number"],
+.browser-create-form-stack select,
+.browser-create-form-stack textarea {
+  padding: 0.375rem 0.75rem; /* 6px 12px */
+  font-size: 0.875rem; /* 14px */
+}
+
+/* 标签文字统一 */
+.browser-create-form-stack label {
+  font-size: 0.75rem; /* 12px */
+  margin-bottom: 0.25rem; /* 4px - 大幅减少标签底部间距 */
+}
+
+/* 提示文字统一 */
+.browser-create-form-stack p.text-xs,
+.browser-create-form-stack p[class*="text-[10px]"] {
+  font-size: 0.625rem; /* 10px */
+  line-height: 1.4;
+  margin-top: 0.25rem; /* 4px */
+}
+
+/* 概要列表更紧凑 */
+.browser-create-summary-list > div {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+/* 表单项之间的间距 */
+.browser-create-form-stack .space-y-2 > * + * {
+  margin-top: 0.5rem; /* 8px */
+}
+
+/* 折叠卡片样式优化 */
+.browser-create-accordion-toggle {
+  font-size: 0.875rem; /* 14px */
+  font-weight: 600;
+  padding: 0.375rem 0.625rem !important; /* 6px 10px - 极度压缩 */
+  min-height: 2rem; /* 32px - 最小高度 */
+}
+
+.browser-create-accordion-toggle h3,
+.browser-create-accordion-toggle span {
+  font-size: 0.875rem; /* 14px */
+  margin: 0;
+}
+
+/* 移除折叠卡片之间过多的空白 */
+.browser-create-accordion-card {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}

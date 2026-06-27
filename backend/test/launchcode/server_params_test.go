@@ -124,7 +124,7 @@ func TestLaunchWithParamsUsingCodeAsKeywordFallback(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profile.ProfileId {
-		t.Fatalf("code 关键字兜底命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+		t.Fatalf("code 关键字兜底命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
 	}
 	if len(starter.lastParams.LaunchArgs) != 2 {
 		t.Fatalf("launchArgs 传递错误: %+v", starter.lastParams.LaunchArgs)
@@ -176,7 +176,7 @@ func TestLaunchWithParamsUsingCodeAsKeywordFallbackPrefersExactKeywordMatch(t *t
 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 	if starter.lastProfile != profileExact.ProfileId {
-		t.Fatalf("code 关键字兜底应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+		t.Fatalf("code 关键字兜底应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
 	}
 	if len(starter.lastParams.LaunchArgs) != 2 {
 		t.Fatalf("launchArgs 传递错误: %+v", starter.lastParams.LaunchArgs)

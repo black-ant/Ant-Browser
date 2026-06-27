@@ -85,7 +85,7 @@ func (m *Manager) CloseSession(sessionID string) error {
 	return session.Close()
 }
 
-// CloseSessionsByProfile 关闭指定 profileID 的所有会话（实例停止时调用）
+// CloseSessionsByProfile 关闭指定 profileID 的所有会话（窗口停止时调用）
 func (m *Manager) CloseSessionsByProfile(profileID string) {
 	m.mu.Lock()
 	toClose := make([]*CDPSession, 0)

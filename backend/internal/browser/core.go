@@ -283,7 +283,12 @@ func (m *Manager) ResolveChromeBinary(profile *Profile) (string, error) {
 	return exePath, nil
 }
 
-// GetChromeVersion 从 manifest.json 读取 Chrome 版本号
+// GetChromeVersion 解析内核的 Chrome 版本号。
+//
+// 反检测要点：该版本号会被前端用来拼装 navigator.userAgent。它必须等于内核真实二进制版本，
+// 否则与 navigator.userAgentData（Client Hints，照实报告二进制版本）不一致，被检测站判为
+// 「更改了 UserAgent / 浏览器版本不同」。因此优先读取真实可执行文件的版本资源；
+// manifest 文件名/字段可能领先或滞后于实际二进制，仅作回退。
 func (m *Manager) GetChromeVersion(corePath string) string {
 	corePath = strings.TrimSpace(corePath)
 	if corePath == "" {
@@ -292,14 +297,20 @@ func (m *Manager) GetChromeVersion(corePath string) string {
 
 	baseDir := m.ResolveRelativePath(corePath)
 
-	// 尝试读取 manifest.json 或 *.manifest 文件
+	// 1) 优先读真实内核可执行文件的版本资源（Windows；其它平台返回空，自动回退）。
+	if exePath, _, ok := FindCoreExecutable(baseDir); ok {
+		if version := readExecutableProductVersion(exePath); version != "" {
+			return version
+		}
+	}
+
+	// 2) 回退 manifest.json 的 version 字段。
 	manifestPath := filepath.Join(baseDir, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		// 尝试查找 *.manifest 文件
+		// 3) 再回退 *.manifest 文件名，如 "142.0.7444.175.manifest"。
 		matches, _ := filepath.Glob(filepath.Join(baseDir, "*.manifest"))
 		if len(matches) > 0 {
-			// 从文件名提取版本号，如 "142.0.7444.175.manifest"
 			baseName := filepath.Base(matches[0])
 			version := strings.TrimSuffix(baseName, ".manifest")
 			if version != "" {
@@ -320,12 +331,12 @@ func (m *Manager) GetChromeVersion(corePath string) string {
 	return manifest.Version
 }
 
-// CountInstancesByCore 统计使用指定内核的实例数量
+// CountInstancesByCore 统计使用指定内核的窗口数量
 func (m *Manager) CountInstancesByCore(coreId string) int {
 	coreId = strings.TrimSpace(coreId)
 	count := 0
 	countByCoreID := func(profileCoreId string) {
-		// 如果实例的 CoreId 为空，则使用默认内核
+		// 如果窗口的 CoreId 为空，则使用默认内核
 		if profileCoreId == "" {
 			defaultCore, found := m.GetDefaultCore()
 			if found && strings.EqualFold(defaultCore.CoreId, coreId) {

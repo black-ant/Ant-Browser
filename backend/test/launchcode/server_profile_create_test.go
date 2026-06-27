@@ -220,7 +220,7 @@ func TestCreateProfileAPIRollsBackOnDuplicateLaunchCode(t *testing.T) {
 
 	existing, err := mgr.Create(browser.ProfileInput{ProfileName: "existing"})
 	if err != nil {
-		t.Fatalf("预创建实例失败: %v", err)
+		t.Fatalf("预创建窗口失败: %v", err)
 	}
 	if _, err := svc.SetCode(existing.ProfileId, "BUYER_DUP"); err != nil {
 		t.Fatalf("预设 launchCode 失败: %v", err)

@@ -1,0 +1,2578 @@
+diff --git a/backend/app.go b/backend/app.go
+index d979332b..6818902e 100644
+--- a/backend/app.go
++++ b/backend/app.go
+@@ -910,6 +910,11 @@ func (a *App) BrowserProxyDetectIPByConfig(source string, proxyConfig string) pr
+ 	return proxy.DetectIPByConfig(source, proxyConfig, proxies, a.xrayMgr, a.singboxMgr)
+ }
+ 
++// BrowserProxyDetectLocalIP 不经过代理，直接查询本机出口公网 IP（用于创建页“本机网络环境”展示）
++func (a *App) BrowserProxyDetectLocalIP(source string) proxy.IPDetectResult {
++	return proxy.DetectLocalIP(source)
++}
++
+ // BrowserProxyBatchCheckIPHealth 批量并发检测代理出口 IP 健康信息
+ func (a *App) BrowserProxyBatchCheckIPHealth(proxyIds []string, concurrency int) []ProxyIPHealthResult {
+ 	if len(proxyIds) == 0 {
+diff --git a/backend/app_account_link_test.go b/backend/app_account_link_test.go
+index 29f9f69a..cdb2a883 100644
+--- a/backend/app_account_link_test.go
++++ b/backend/app_account_link_test.go
+@@ -6,14 +6,14 @@ import (
+ 	"ant-chrome/backend/internal/browser"
+ )
+ 
+-// 测试账号关联到实例的功能
++// 测试账号关联到窗口的功能
+ func TestAccountLinkToProfile(t *testing.T) {
+ 	// 这是单元测试的占位符
+-	// 实际测试需要初始化完整的 App 实例（包括数据库）
++	// 实际测试需要初始化完整的 App 窗口（包括数据库）
+ 	// 在集成测试中验证功能
+ 
+ 	input := browser.ProfileInput{
+-		ProfileName: "测试实例",
++		ProfileName: "测试窗口",
+ 		AccountIds:  []string{"account-123", "account-456"},
+ 	}
+ 
+diff --git a/backend/app_backup_ops.go b/backend/app_backup_ops.go
+index d4c7a891..61184a45 100644
+--- a/backend/app_backup_ops.go
++++ b/backend/app_backup_ops.go
+@@ -519,7 +519,7 @@ func (a *App) backupClearBusinessTables() error {
+ 	}
+ 	defer tx.Rollback()
+ 
+-	tables := []string{"launch_codes", "browser_profiles", "browser_proxies", "browser_cores", "browser_bookmarks", "browser_groups"}
++	tables := []string{"launch_codes", "browser_profiles", "browser_proxies", "browser_cores", "browser_bookmarks", "browser_groups", "browser_templates"}
+ 	for _, table := range tables {
+ 		if _, err := tx.Exec("DELETE FROM " + table); err != nil && !backupIsNoSuchTableError(err) {
+ 			return fmt.Errorf("清空数据表失败(%s): %w", table, err)
+@@ -948,11 +948,32 @@ func (a *App) backupMergeDatabaseFromSource(srcDBPath string, resetFirst bool, s
+ 	}
+ 	defer tx.Exec(`DETACH DATABASE src`)
+ 
++	profileConfigInsertAll := "'{}'"
++	profileConfigInsertSafe := "'{}'"
++	if exists, err := backupSrcColumnExists(tx, "browser_profiles", "profile_config"); err != nil {
++		return err
++	} else if exists {
++		profileConfigInsertAll = "COALESCE(profile_config,'{}')"
++		profileConfigInsertSafe = "COALESCE(s.profile_config,'{}')"
++	}
++
+ 	mergeTables := []struct {
+ 		name       string
+ 		insertAll  string
+ 		insertSafe string
+ 	}{
++		{
++			name: "browser_templates",
++			insertAll: `INSERT INTO browser_templates (template_id, template_name, profile_config, created_at, updated_at)
++SELECT template_id, template_name, COALESCE(profile_config,'{}'), created_at, updated_at FROM src.browser_templates`,
++			insertSafe: `INSERT INTO browser_templates (template_id, template_name, profile_config, created_at, updated_at)
++SELECT s.template_id, s.template_name, COALESCE(s.profile_config,'{}'), s.created_at, s.updated_at
++FROM src.browser_templates s
++WHERE NOT EXISTS (
++  SELECT 1 FROM browser_templates t
++  WHERE t.template_id = s.template_id OR lower(t.template_name) = lower(s.template_name)
++)`,
++		},
+ 		{
+ 			name: "browser_groups",
+ 			insertAll: `INSERT INTO browser_groups (group_id, group_name, parent_id, sort_order, created_at, updated_at)
+@@ -992,16 +1013,16 @@ WHERE NOT EXISTS (
+ 		},
+ 		{
+ 			name: "browser_profiles",
+-			insertAll: `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at)
+-SELECT profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, COALESCE(group_id,''), created_at, updated_at
+-FROM src.browser_profiles`,
+-			insertSafe: `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at)
+-SELECT s.profile_id, s.profile_name, s.user_data_dir, s.core_id, s.fingerprint_args, s.proxy_id, s.proxy_config, s.launch_args, s.tags, s.keywords, COALESCE(s.group_id,''), s.created_at, s.updated_at
++			insertAll: fmt.Sprintf(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, profile_config, tags, keywords, group_id, created_at, updated_at)
++SELECT profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, %s, tags, keywords, COALESCE(group_id,''), created_at, updated_at
++FROM src.browser_profiles`, profileConfigInsertAll),
++			insertSafe: fmt.Sprintf(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, profile_config, tags, keywords, group_id, created_at, updated_at)
++SELECT s.profile_id, s.profile_name, s.user_data_dir, s.core_id, s.fingerprint_args, s.proxy_id, s.proxy_config, s.launch_args, %s, s.tags, s.keywords, COALESCE(s.group_id,''), s.created_at, s.updated_at
+ FROM src.browser_profiles s
+ WHERE NOT EXISTS (
+   SELECT 1 FROM browser_profiles t
+   WHERE t.profile_id = s.profile_id OR lower(t.user_data_dir) = lower(s.user_data_dir)
+-)`,
++)`, profileConfigInsertSafe),
+ 		},
+ 		{
+ 			name: "browser_bookmarks",
+@@ -1607,6 +1628,46 @@ func backupSrcTableExists(tx *sql.Tx, table string) (bool, error) {
+ 	return cnt > 0, nil
+ }
+ 
++func backupSrcColumnExists(tx *sql.Tx, table string, column string) (bool, error) {
++	if !backupSafeSQLiteIdent(table) {
++		return false, fmt.Errorf("invalid sqlite table name: %s", table)
++	}
++	rows, err := tx.Query(fmt.Sprintf("PRAGMA src.table_info(%s)", table))
++	if err != nil {
++		return false, err
++	}
++	defer rows.Close()
++
++	for rows.Next() {
++		var cid int
++		var name string
++		var typeName string
++		var notNull int
++		var defaultValue sql.NullString
++		var pk int
++		if err := rows.Scan(&cid, &name, &typeName, &notNull, &defaultValue, &pk); err != nil {
++			return false, err
++		}
++		if strings.EqualFold(name, column) {
++			return true, nil
++		}
++	}
++	return false, rows.Err()
++}
++
++func backupSafeSQLiteIdent(value string) bool {
++	if value == "" {
++		return false
++	}
++	for _, ch := range value {
++		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' {
++			continue
++		}
++		return false
++	}
++	return true
++}
++
+ func backupCountRows(tx *sql.Tx, tableName string) (int, error) {
+ 	var cnt int
+ 	row := tx.QueryRow("SELECT COUNT(1) FROM " + tableName)
+diff --git a/backend/app_cdp.go b/backend/app_cdp.go
+index be471534..523b67de 100644
+--- a/backend/app_cdp.go
++++ b/backend/app_cdp.go
+@@ -9,22 +9,22 @@ import (
+ 
+ // CDPSessionCreate 创建CDP会话
+ func (a *App) CDPSessionCreate(profileID string, targetType string) (string, error) {
+-	// 获取实例的调试端口
++	// 获取窗口的调试端口
+ 	a.browserMgr.InitData()
+ 	a.browserMgr.Mutex.Lock()
+ 	profile, exists := a.browserMgr.Profiles[profileID]
+ 	a.browserMgr.Mutex.Unlock()
+ 
+ 	if !exists {
+-		return "", fmt.Errorf("实例不存在")
++		return "", fmt.Errorf("窗口不存在")
+ 	}
+ 
+ 	if !profile.Running {
+-		return "", fmt.Errorf("实例未运行")
++		return "", fmt.Errorf("窗口未运行")
+ 	}
+ 
+ 	if profile.DebugPort == 0 {
+-		return "", fmt.Errorf("实例调试端口未开启")
++		return "", fmt.Errorf("窗口调试端口未开启")
+ 	}
+ 
+ 	// 创建CDP会话
+@@ -207,7 +207,7 @@ func (a *App) CDPGetStorage(sessionID string, storageType string) (map[string]st
+ }
+ 
+ // CDPReloadPage 通过 CDP 重新加载当前页面（用于完整抓取一次页面加载的网络请求，
+-// 避免在实例里手动 F5）。
++// 避免在窗口里手动 F5）。
+ func (a *App) CDPReloadPage(sessionID string) error {
+ 	session, err := a.cdpManager.GetSession(sessionID)
+ 	if err != nil {
+diff --git a/backend/app_cdp_transport.go b/backend/app_cdp_transport.go
+index 12b63159..49d52e76 100644
+--- a/backend/app_cdp_transport.go
++++ b/backend/app_cdp_transport.go
+@@ -32,7 +32,7 @@ func (a *App) cdpUsePipe() bool {
+ 	// }
+ }
+ 
+-// registerPipeConn 记录某实例的共享 pipe 连接。
++// registerPipeConn 记录某窗口的共享 pipe 连接。
+ func (a *App) registerPipeConn(profileID string, conn *cdp.PipeConn) {
+ 	if conn == nil {
+ 		return
+@@ -49,7 +49,7 @@ func (a *App) registerPipeConn(profileID string, conn *cdp.PipeConn) {
+ 	a.pipeConnsMu.Unlock()
+ }
+ 
+-// cdpPipeConnFor 返回实例的共享 pipe 连接；端口模式或无连接时返回 nil。
++// cdpPipeConnFor 返回窗口的共享 pipe 连接；端口模式或无连接时返回 nil。
+ func (a *App) cdpPipeConnFor(profileID string) *cdp.PipeConn {
+ 	a.pipeConnsMu.Lock()
+ 	defer a.pipeConnsMu.Unlock()
+@@ -59,7 +59,7 @@ func (a *App) cdpPipeConnFor(profileID string) *cdp.PipeConn {
+ 	return a.pipeConns[profileID]
+ }
+ 
+-// closePipeConn 关闭并移除某实例的 pipe 连接（实例停止时调用）。
++// closePipeConn 关闭并移除某窗口的 pipe 连接（窗口停止时调用）。
+ func (a *App) closePipeConn(profileID string) {
+ 	a.pipeConnsMu.Lock()
+ 	conn := a.pipeConns[profileID]
+@@ -72,14 +72,14 @@ func (a *App) closePipeConn(profileID string) {
+ 	}
+ }
+ 
+-// profileCDP 表示与某实例浏览器通信的 CDP 通道，自动适配 pipe 或调试端口，
++// profileCDP 表示与某窗口浏览器通信的 CDP 通道，自动适配 pipe 或调试端口，
+ // 供 Cookie / 用户名扫描等"单命令"型消费者统一调用。
+ type profileCDP struct {
+ 	pipe      *cdp.PipeConn // 非 nil = pipe 模式
+ 	debugPort int           // pipe 为 nil 时使用
+ }
+ 
+-// profileCDP 解析某实例可用的 CDP 通道。优先 pipe，否则回退调试端口。
++// profileCDP 解析某窗口可用的 CDP 通道。优先 pipe，否则回退调试端口。
+ func (a *App) profileCDP(profileID string) (*profileCDP, error) {
+ 	if conn := a.cdpPipeConnFor(profileID); conn != nil {
+ 		return &profileCDP{pipe: conn}, nil
+diff --git a/backend/app_cookie.go b/backend/app_cookie.go
+index f7c2dab4..ff01aff4 100644
+--- a/backend/app_cookie.go
++++ b/backend/app_cookie.go
+@@ -19,6 +19,7 @@ import (
+ type CookieInfo struct {
+ 	Name     string  `json:"name"`
+ 	Value    string  `json:"value"`
++	URL      string  `json:"url,omitempty"`
+ 	Domain   string  `json:"domain"`
+ 	Path     string  `json:"path"`
+ 	Expires  float64 `json:"expires"`
+@@ -155,7 +156,7 @@ func cdpBrowserCall(debugPort int, method string, params map[string]any) error {
+ 	return nil
+ }
+ 
+-// getDebugPort 获取运行中实例的调试端口
++// getDebugPort 获取运行中窗口的调试端口
+ func (a *App) getDebugPort(profileId string) (int, error) {
+ 	a.browserMgr.Mutex.Lock()
+ 	defer a.browserMgr.Mutex.Unlock()
+@@ -164,15 +165,15 @@ func (a *App) getDebugPort(profileId string) (int, error) {
+ 		return 0, fmt.Errorf("profile not found")
+ 	}
+ 	if !profile.Running {
+-		return 0, fmt.Errorf("实例未运行")
++		return 0, fmt.Errorf("窗口未运行")
+ 	}
+ 	if profile.DebugPort == 0 || !profile.DebugReady {
+-		return 0, fmt.Errorf("实例调试接口尚未就绪，请稍后重试")
++		return 0, fmt.Errorf("窗口调试接口尚未就绪，请稍后重试")
+ 	}
+ 	return profile.DebugPort, nil
+ }
+ 
+-// BrowserGetCookies 通过 CDP 获取实例所有 Cookie
++// BrowserGetCookies 通过 CDP 获取窗口所有 Cookie
+ func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
+ 	pc, err := a.profileCDP(profileId)
+ 	if err != nil {
+@@ -198,7 +199,7 @@ func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
+ 	return cookies, nil
+ }
+ 
+-// BrowserSetCookies 通过 CDP 将一组 Cookie 写入运行中的实例（回写/恢复）
++// BrowserSetCookies 通过 CDP 将一组 Cookie 写入运行中的窗口（回写/恢复）
+ func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
+ 	pc, err := a.profileCDP(profileId)
+ 	if err != nil {
+@@ -220,6 +221,9 @@ func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
+ 			"secure":   c.Secure,
+ 			"httpOnly": c.HttpOnly,
+ 		}
++		if strings.TrimSpace(c.URL) != "" {
++			m["url"] = c.URL
++		}
+ 		if strings.TrimSpace(c.Domain) != "" {
+ 			m["domain"] = c.Domain
+ 		}
+@@ -241,7 +245,7 @@ func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
+ 	return err
+ }
+ 
+-// BrowserClearCookies 通过 CDP 清除实例所有 Cookie
++// BrowserClearCookies 通过 CDP 清除窗口所有 Cookie
+ func (a *App) BrowserClearCookies(profileId string) error {
+ 	pc, err := a.profileCDP(profileId)
+ 	if err != nil {
+diff --git a/backend/app_dashboard.go b/backend/app_dashboard.go
+index a7e66492..66f01be3 100644
+--- a/backend/app_dashboard.go
++++ b/backend/app_dashboard.go
+@@ -21,7 +21,7 @@ type MetricSample struct {
+ 	MemUsedMB        int     `json:"memUsedMB"`        // 系统已用内存 MB
+ 	MemTotalMB       int     `json:"memTotalMB"`       // 系统总内存 MB
+ 	AppMemMB         int     `json:"appMemMB"`         // 应用堆内存 MB
+-	RunningInstances int     `json:"runningInstances"` // 运行中实例数
++	RunningInstances int     `json:"runningInstances"` // 运行中窗口数
+ }
+ 
+ // ActivityEntry 活动日志条目（真实事件）
+@@ -53,7 +53,7 @@ type dashboardMonitor struct {
+ 	running  bool
+ }
+ 
+-// startDashboardMonitor 启动后台资源采样（真实 CPU/内存/运行实例）
++// startDashboardMonitor 启动后台资源采样（真实 CPU/内存/运行窗口）
+ func (a *App) startDashboardMonitor() {
+ 	if a.dashboard == nil {
+ 		a.dashboard = &dashboardMonitor{}
+diff --git a/backend/app_extension.go b/backend/app_extension.go
+index c5560dcc..2ef8d7c6 100644
+--- a/backend/app_extension.go
++++ b/backend/app_extension.go
+@@ -16,7 +16,7 @@ type BrowserExtension struct {
+ 	ExtensionPath   string   `json:"extensionPath"`
+ 	Version         string   `json:"version"`
+ 	Enabled         bool     `json:"enabled"`
+-	BoundProfileIDs []string `json:"boundProfileIds"` // 绑定的实例ID
++	BoundProfileIDs []string `json:"boundProfileIds"` // 绑定的窗口ID
+ 	SourceType      string   `json:"sourceType"`      // local/crx/url/store
+ 	SourceURL       string   `json:"sourceUrl"`
+ 	Description     string   `json:"description"`
+@@ -54,10 +54,10 @@ func (a *App) BrowserExtensionCreate(input BrowserExtensionInput) (*BrowserExten
+ 	extensionID := fmt.Sprintf("ext-%s", generateUUID()[:8])
+ 	now := time.Now().UTC().Format(time.RFC3339)
+ 
+-	// 序列化绑定实例ID
++	// 序列化绑定窗口ID
+ 	boundIDsJSON, err := json.Marshal(input.BoundProfileIDs)
+ 	if err != nil {
+-		return nil, fmt.Errorf("序列化绑定实例ID失败: %w", err)
++		return nil, fmt.Errorf("序列化绑定窗口ID失败: %w", err)
+ 	}
+ 
+ 	enabled := 0
+@@ -127,7 +127,7 @@ func (a *App) BrowserExtensionList() ([]BrowserExtension, error) {
+ 
+ 		ext.Enabled = enabled == 1
+ 
+-		// 反序列化绑定实例ID
++		// 反序列化绑定窗口ID
+ 		if err := json.Unmarshal([]byte(boundIDsJSON), &ext.BoundProfileIDs); err != nil {
+ 			ext.BoundProfileIDs = []string{}
+ 		}
+@@ -170,7 +170,7 @@ func (a *App) BrowserExtensionGet(extensionID string) (*BrowserExtension, error)
+ 
+ 	ext.Enabled = enabled == 1
+ 
+-	// 反序列化绑定实例ID
++	// 反序列化绑定窗口ID
+ 	if err := json.Unmarshal([]byte(boundIDsJSON), &ext.BoundProfileIDs); err != nil {
+ 		ext.BoundProfileIDs = []string{}
+ 	}
+@@ -199,10 +199,10 @@ func (a *App) BrowserExtensionUpdate(extensionID string, input BrowserExtensionI
+ 
+ 	now := time.Now().UTC().Format(time.RFC3339)
+ 
+-	// 序列化绑定实例ID
++	// 序列化绑定窗口ID
+ 	boundIDsJSON, err := json.Marshal(input.BoundProfileIDs)
+ 	if err != nil {
+-		return nil, fmt.Errorf("序列化绑定实例ID失败: %w", err)
++		return nil, fmt.Errorf("序列化绑定窗口ID失败: %w", err)
+ 	}
+ 
+ 	enabled := 0
+diff --git a/backend/app_extension_launch.go b/backend/app_extension_launch.go
+index 00ded33c..c93dc2d4 100644
+--- a/backend/app_extension_launch.go
++++ b/backend/app_extension_launch.go
+@@ -60,8 +60,8 @@ func isLocalExtensionSource(sourceType string) bool {
+ 	return s == "" || s == "local"
+ }
+ 
+-// extensionLoadPathsForProfile 返回某实例启动时应加载的扩展目录：
+-// 启用 + 本地来源 + 已绑定该实例 + 目录含 manifest.json。
++// extensionLoadPathsForProfile 返回某窗口启动时应加载的扩展目录：
++// 启用 + 本地来源 + 已绑定该窗口 + 目录含 manifest.json。
+ func (a *App) extensionLoadPathsForProfile(profileID string) []string {
+ 	if a.db == nil || strings.TrimSpace(profileID) == "" {
+ 		return nil
+@@ -98,7 +98,7 @@ func (a *App) extensionLoadPathsForProfile(profileID string) []string {
+ 	return paths
+ }
+ 
+-// BrowserExtensionSetProfiles 设置扩展绑定的实例集合（过滤无效/重复 id）
++// BrowserExtensionSetProfiles 设置扩展绑定的窗口集合（过滤无效/重复 id）
+ func (a *App) BrowserExtensionSetProfiles(extensionID string, profileIDs []string) error {
+ 	valid := map[string]bool{}
+ 	a.browserMgr.Mutex.Lock()
+diff --git a/backend/app_geolocation.go b/backend/app_geolocation.go
+index 5f51d2a8..dc907480 100644
+--- a/backend/app_geolocation.go
++++ b/backend/app_geolocation.go
+@@ -76,7 +76,6 @@ func extractProfileGeolocationArgs(args []string) ([]string, profileGeolocationO
+ 			geo.Explicit = true
+ 			geo.Source = "profile"
+ 		case strings.HasPrefix(arg, antGeolocationPermissionArgPrefix):
+-			geo.Explicit = true
+ 			geo.Permission = normalizeGeolocationPermission(strings.TrimPrefix(arg, antGeolocationPermissionArgPrefix))
+ 		default:
+ 			filtered = append(filtered, arg)
+diff --git a/backend/app_geolocation_test.go b/backend/app_geolocation_test.go
+index 10456530..bea57f8d 100644
+--- a/backend/app_geolocation_test.go
++++ b/backend/app_geolocation_test.go
+@@ -68,6 +68,25 @@ func TestExtractProfileGeolocationArgsTreatsModeAsExplicit(t *testing.T) {
+ 	}
+ }
+ 
++func TestExtractProfileGeolocationArgsPermissionOnlyKeepsProxyPosition(t *testing.T) {
++	t.Parallel()
++
++	filtered, geo, warnings := extractProfileGeolocationArgs([]string{
++		"--ant-geolocation-permission=allow",
++		"--disable-sync",
++	})
++
++	if !reflect.DeepEqual(filtered, []string{"--disable-sync"}) {
++		t.Fatalf("filtered args mismatch: got=%v", filtered)
++	}
++	if len(warnings) != 0 {
++		t.Fatalf("expected no warnings, got=%v", warnings)
++	}
++	if geo.Explicit || geo.HasPosition || geo.Permission != "allow" || !geo.shouldApply() {
++		t.Fatalf("permission-only override should not suppress proxy position: %+v", geo)
++	}
++}
++
+ func TestProxyConsistencyControlsSkipTimezone(t *testing.T) {
+ 	t.Parallel()
+ 
+diff --git a/backend/app_group.go b/backend/app_group.go
+index cacc34cb..364eeb0d 100644
+--- a/backend/app_group.go
++++ b/backend/app_group.go
+@@ -18,7 +18,7 @@ type BrowserGroupWithCount = browser.GroupWithCount
+ // 分组管理 API
+ // ============================================================================
+ 
+-// ListGroups 获取所有分组（带实例计数）
++// ListGroups 获取所有分组（带窗口计数）
+ func (a *App) ListGroups() []BrowserGroupWithCount {
+ 	log := logger.New("Group")
+ 	if a.browserMgr.GroupDAO == nil {
+@@ -32,7 +32,7 @@ func (a *App) ListGroups() []BrowserGroupWithCount {
+ 		return []BrowserGroupWithCount{}
+ 	}
+ 
+-	// 统计每个分组的实例数量
++	// 统计每个分组的窗口数量
+ 	profiles, _ := a.browserMgr.ProfileDAO.List()
+ 	countMap := make(map[string]int)
+ 	for _, p := range profiles {
+@@ -98,7 +98,7 @@ func (a *App) DeleteGroup(groupId string) error {
+ 	return nil
+ }
+ 
+-// MoveInstancesToGroup 批量移动实例到分组
++// MoveInstancesToGroup 批量移动窗口到分组
+ func (a *App) MoveInstancesToGroup(profileIds []string, groupId string) error {
+ 	log := logger.New("Group")
+ 	dao, ok := a.browserMgr.ProfileDAO.(*browser.SQLiteProfileDAO)
+@@ -107,9 +107,9 @@ func (a *App) MoveInstancesToGroup(profileIds []string, groupId string) error {
+ 	}
+ 
+ 	if err := dao.MoveToGroup(profileIds, groupId); err != nil {
+-		log.Error("批量移动实例失败", logger.F("count", len(profileIds)), logger.F("error", err))
++		log.Error("批量移动窗口失败", logger.F("count", len(profileIds)), logger.F("error", err))
+ 		return err
+ 	}
+-	log.Info("实例已移动到分组", logger.F("count", len(profileIds)), logger.F("group_id", groupId))
++	log.Info("窗口已移动到分组", logger.F("count", len(profileIds)), logger.F("group_id", groupId))
+ 	return nil
+ }
+diff --git a/backend/app_instance.go b/backend/app_instance.go
+index 047aa387..ba2e60e7 100644
+--- a/backend/app_instance.go
++++ b/backend/app_instance.go
+@@ -17,14 +17,14 @@ import (
+ )
+ 
+ // ============================================================================
+-// 浏览器实例管理 API
++// 浏览器窗口管理 API
+ // ============================================================================
+ 
+ func (a *App) BrowserInstanceStart(profileId string) (*BrowserProfile, error) {
+ 	return a.browserInstanceStartInternal(profileId, nil, nil, false, false)
+ }
+ 
+-// BrowserInstanceStartWithParams 通过额外参数启动实例（仅本次启动生效，不落库）
++// BrowserInstanceStartWithParams 通过额外参数启动窗口（仅本次启动生效，不落库）
+ func (a *App) BrowserInstanceStartWithParams(profileId string, extraLaunchArgs []string, startURLs []string, skipDefaultStartURLs bool) (*BrowserProfile, error) {
+ 	return a.browserInstanceStartInternal(profileId, extraLaunchArgs, startURLs, skipDefaultStartURLs, true)
+ }
+@@ -43,13 +43,13 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 	profile, exists := a.browserMgr.Profiles[profileId]
+ 	if !exists {
+ 		a.browserMgr.Mutex.Unlock()
+-		err := fmt.Errorf("实例启动失败：未找到实例配置。请刷新列表后重试。")
+-		log.Error("实例不存在", logger.F("profile_id", profileId), logger.F("reason", err.Error()))
++		err := fmt.Errorf("窗口启动失败：未找到窗口配置。请刷新列表后重试。")
++		log.Error("窗口不存在", logger.F("profile_id", profileId), logger.F("reason", err.Error()))
+ 		return nil, err
+ 	}
+ 	if profile.Running {
+ 		if !isBrowserProfileLive(profile, a.browserMgr.BrowserProcesses[profileId]) {
+-			log.Info("检测到实例运行状态已失效，准备重新启动",
++			log.Info("检测到窗口运行状态已失效，准备重新启动",
+ 				logger.F("profile_id", profileId),
+ 				logger.F("pid", profile.Pid),
+ 				logger.F("debug_port", profile.DebugPort),
+@@ -58,11 +58,11 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		} else {
+ 			if preferVisibleWindow {
+ 				if err := a.openBrowserWindowForRunningProfile(profile, normalizedExtraLaunchArgs, normalizedStartURLs); err != nil {
+-					startErr := fmt.Errorf("实例已在运行，但窗口唤起失败：%w", err)
++					startErr := fmt.Errorf("窗口已在运行，但窗口唤起失败：%w", err)
+ 					profile.LastError = startErr.Error()
+ 					snapshot := copyBrowserProfileSnapshot(profile)
+ 					a.browserMgr.Mutex.Unlock()
+-					log.Error("运行中实例窗口唤起失败",
++					log.Error("运行中窗口窗口唤起失败",
+ 						logger.F("profile_id", profileId),
+ 						logger.F("debug_port", snapshot.DebugPort),
+ 						logger.F("error", err.Error()),
+@@ -81,12 +81,12 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		}
+ 	}
+ 
+-	// 原子检查并认领：防止同一实例并发重复启动（TOCTOU修复）
++	// 原子检查并认领：防止同一窗口并发重复启动（TOCTOU修复）
+ 	if a.browserMgr.StartingProfiles[profileId] {
+ 		snapshot := copyBrowserProfileSnapshot(profile)
+ 		a.browserMgr.Mutex.Unlock()
+-		err := fmt.Errorf("实例正在启动中，请稍候。")
+-		log.Warn("重复启动被拒绝（实例正在启动中）", logger.F("profile_id", profileId))
++		err := fmt.Errorf("窗口正在启动中，请稍候。")
++		log.Warn("重复启动被拒绝（窗口正在启动中）", logger.F("profile_id", profileId))
+ 		return snapshot, err
+ 	}
+ 
+@@ -140,7 +140,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 
+ 	// ===== Phase 2：慢操作（不持大锁，受启动队列限流）=====
+ 	if err := a.startupQueue.Acquire(profileId); err != nil {
+-		startErr := fmt.Errorf("实例启动失败：%v", err)
++		startErr := fmt.Errorf("窗口启动失败：%v", err)
+ 		log.Error("启动队列等待失败", logger.F("profile_id", profileId), logger.F("error", err.Error()))
+ 		return commitFailure(startErr), startErr
+ 	}
+@@ -148,7 +148,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 
+ 	// 启动前检查：内核路径、用户数据目录权限、磁盘空间
+ 	if pre := a.browserMgr.ValidateStartupPreconditions(&snap); !pre.OK {
+-		startErr := fmt.Errorf("实例启动失败：%s检查未通过 - %s", pre.Stage, pre.Message)
++		startErr := fmt.Errorf("窗口启动失败：%s检查未通过 - %s", pre.Stage, pre.Message)
+ 		log.Error("启动前检查未通过", logger.F("profile_id", profileId), logger.F("stage", pre.Stage), logger.F("reason", pre.Message))
+ 		return commitFailure(startErr), startErr
+ 	}
+@@ -173,20 +173,39 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 
+ 	chromeBinaryPath, err := a.browserMgr.ResolveChromeBinary(&snap)
+ 	if err != nil {
+-		startErr := fmt.Errorf("实例启动失败：%w", err)
++		startErr := fmt.Errorf("窗口启动失败：%w", err)
+ 		log.Error("内核路径解析失败", logger.F("profile_id", profileId), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
+ 		return commitFailure(startErr), startErr
+ 	}
+ 
+ 	userDataDir := a.browserMgr.ResolveUserDataDir(&snap)
+ 	if err := os.MkdirAll(userDataDir, 0755); err != nil {
+-		startErr := fmt.Errorf("实例启动失败：无法创建用户数据目录。请检查目录权限或路径配置。")
++		startErr := fmt.Errorf("窗口启动失败：无法创建用户数据目录。请检查目录权限或路径配置。")
+ 		log.Error("创建用户数据目录失败", logger.F("profile_id", profileId), logger.F("user_data_dir", userDataDir), logger.F("error", err))
+ 		log.Error("用户数据目录创建失败", logger.F("profile_id", profileId), logger.F("dir", userDataDir), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
+ 		return commitFailure(startErr), startErr
+ 	}
+ 	// 每次启动时合并默认书签（已存在的 URL 不重复添加）
+-	if err := browser.EnsureDefaultBookmarks(userDataDir, a.BookmarkList()); err != nil {
++	startupActions := parseProfileStartupActions(snap.ProfileConfig)
++	if startupActions.RandomFingerprintOnStart {
++		filteredFingerprintArgs = withFingerprintSeed(filteredFingerprintArgs, newRandomFingerprintSeed())
++	}
++	if err := applyProfilePreStartActions(userDataDir, startupActions); err != nil {
++		startErr := fmt.Errorf("browser startup action failed before launch: %w", err)
++		log.Error("pre-start profile action failed",
++			logger.F("profile_id", profileId),
++			logger.F("user_data_dir", userDataDir),
++			logger.F("error", err.Error()),
++			logger.F("reason", startErr.Error()))
++		return commitFailure(startErr), startErr
++	}
++
++	if err := func() error {
++		if !shouldApplyDefaultBookmarks(startupActions) {
++			return nil
++		}
++		return browser.EnsureDefaultBookmarks(userDataDir, a.BookmarkList())
++	}(); err != nil {
+ 		log.Error("默认书签写入失败", logger.F("error", err.Error()))
+ 	}
+ 	if effectiveSearchEngine != "" {
+@@ -226,7 +245,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		logger.F("resolved_proxy_config", sanitizeProxyConfigField(resolvedProxyConfig)),
+ 	)
+ 	if supported, errorMsg := proxy.ValidateProxyConfig(resolvedProxyConfig, proxies, snap.ProxyId); !supported {
+-		startErr := fmt.Errorf("实例启动失败：%s", errorMsg)
++		startErr := fmt.Errorf("窗口启动失败：%s", errorMsg)
+ 		log.Error("代理配置无效", logger.F("profile_id", profileId), logger.F("proxy_id", snap.ProxyId), logger.F("error", errorMsg), logger.F("reason", startErr.Error()))
+ 		return commitFailure(startErr), startErr
+ 	}
+@@ -235,7 +254,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		// hysteria2 / tuic → sing-box 桥接
+ 		socksURL, bridgeErr := a.singboxMgr.EnsureBridge(resolvedProxyConfig, proxies, snap.ProxyId)
+ 		if bridgeErr != nil {
+-			startErr := fmt.Errorf("实例启动失败：代理桥接启动失败（sing-box）。原因：%v。请检查代理节点配置、sing-box 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
++			startErr := fmt.Errorf("窗口启动失败：代理桥接启动失败（sing-box）。原因：%v。请检查代理节点配置、sing-box 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
+ 			log.Error("代理桥接失败(sing-box)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
+ 			if a.ctx != nil {
+ 				runtime.EventsEmit(a.ctx, "proxy:bridge:failed", map[string]interface{}{
+@@ -252,7 +271,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		// vmess / vless / trojan / ss → xray 桥接
+ 		socksURL, bridgeKey, bridgeErr := a.xrayMgr.AcquireBridge(resolvedProxyConfig, proxies, snap.ProxyId)
+ 		if bridgeErr != nil {
+-			startErr := fmt.Errorf("实例启动失败：代理桥接启动失败（xray）。原因：%v。请检查代理节点配置、xray 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
++			startErr := fmt.Errorf("窗口启动失败：代理桥接启动失败（xray）。原因：%v。请检查代理节点配置、xray 可执行文件是否存在，以及本地端口是否被占用。", bridgeErr)
+ 			log.Error("代理桥接失败(xray)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
+ 			if a.ctx != nil {
+ 				runtime.EventsEmit(a.ctx, "proxy:bridge:failed", map[string]interface{}{
+@@ -269,6 +288,14 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		log.Info("xray 桥接成功", logger.F("socks_url", sanitizeProxyConfigField(socksURL)))
+ 	}
+ 
++	// 启动门控：网络不通 / 出口 IP 变化 / 国家变化时停止打开。
++	// 经实际生效的代理链路探测出口 IP，放行时刷新基线。在浏览器进程启动前判定。
++	if gateErr := a.applyProfileStartGate(profileId, startupActions, snap.ProxyId, resolvedProxyConfig); gateErr != nil {
++		startErr := fmt.Errorf("窗口启动失败：%s", gateErr.Error())
++		log.Warn("启动门控拦截", logger.F("profile_id", profileId), logger.F("reason", gateErr.Error()))
++		return commitFailure(startErr), startErr
++	}
++
+ 	startReadyTimeout, startStableWindow := a.browserStartTimingSettings()
+ 	maxStartAttempts := browserStartAttemptCount()
+ 	totalReadyTimeout := time.Duration(maxStartAttempts) * startReadyTimeout
+@@ -293,7 +320,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		var err error
+ 		assignedDebugPort, err = nextAvailablePort()
+ 		if err != nil {
+-			startErr := fmt.Errorf("实例启动失败：本地调试端口分配失败。原因：%v。请关闭占用端口的程序后重试。", err)
++			startErr := fmt.Errorf("窗口启动失败：本地调试端口分配失败。原因：%v。请关闭占用端口的程序后重试。", err)
+ 			log.Error("调试端口分配失败", logger.F("profile_id", profileId), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
+ 			return commitFailure(startErr), startErr
+ 		}
+@@ -370,7 +397,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		Geolocation: effectiveGeolocation,
+ 		Timezone:    timezoneOverrideFromLaunchArgs(args),
+ 	}
+-	// 注入绑定到该实例的本地扩展（启用 + 目录含 manifest.json）
++	// 注入绑定到该窗口的本地扩展（启用 + 目录含 manifest.json）
+ 	if extPaths := a.extensionLoadPathsForProfile(profileId); len(extPaths) > 0 {
+ 		args = append(args, fmt.Sprintf("--load-extension=%s", strings.Join(extPaths, ",")))
+ 		log.Info("注入扩展", logger.F("profile_id", profileId), logger.F("count", len(extPaths)))
+@@ -387,7 +414,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		if debugPipe != nil {
+ 			debugPipe.Close()
+ 		}
+-		startErr := fmt.Errorf("实例启动失败：无法建立浏览器错误输出捕获。可执行文件：%s。原因：%v。", chromeBinaryPath, err)
++		startErr := fmt.Errorf("窗口启动失败：无法建立浏览器错误输出捕获。可执行文件：%s。原因：%v。", chromeBinaryPath, err)
+ 		log.Error("浏览器错误输出捕获初始化失败", logger.F("profile_id", profileId), logger.F("chrome", chromeBinaryPath), logger.F("error", err.Error()), logger.F("reason", startErr.Error()))
+ 		return commitFailure(startErr), startErr
+ 	}
+@@ -428,7 +455,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 				if pipeConn != nil {
+ 					pipeConn.Close()
+ 				}
+-				startErr := fmt.Errorf("实例启动已取消（实例在启动过程中被移除或停止）")
++				startErr := fmt.Errorf("窗口启动已取消（窗口在启动过程中被移除或停止）")
+ 				log.Warn("启动提交被取消", logger.F("profile_id", profileId), logger.F("debug_port", stableDebugPort))
+ 				return nil, startErr
+ 			}
+@@ -446,8 +473,12 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 					logger.F("timezone_source", runtimeOverrides.timezoneSource()),
+ 					logger.F("error", err.Error()))
+ 			}
++			// 网址访问黑 / 白名单（端口模式经 CDP Fetch 拦截；后台监听，新标签亦生效）。
++			if urlFilter := parseURLAccessFilter(startupActions.WebsiteAccessBlacklist, startupActions.WebsiteAccessWhitelist); urlFilter.enabled() {
++				a.startProfileURLFilterWatcher(profileId, stableDebugPort, urlFilter)
++			}
+ 
+-			log.Info("实例启动",
++			log.Info("窗口启动",
+ 				logger.F("profile_id", profileId),
+ 				logger.F("debug_port", stableDebugPort),
+ 				logger.F("pid", snapshot.Pid),
+@@ -458,7 +489,19 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 				logger.F("args", strings.Join(sanitizeLaunchArgs(args), " ")),
+ 			)
+ 			a.emitBrowserInstanceStarted(snapshot, false)
+-			a.recordActivity("start", "info", "实例启动成功", snapshot.ProfileName)
++			a.recordActivity("start", "info", "窗口启动成功", snapshot.ProfileName)
++			if err := a.applyProfilePostStartActions(profileId, startupActions, args); err != nil {
++				actionErr := fmt.Errorf("browser startup action failed after launch: %w", err)
++				a.setProfileLastError(profileId, actionErr.Error())
++				snapshot.LastError = actionErr.Error()
++				log.Error("post-start profile action failed",
++					logger.F("profile_id", profileId),
++					logger.F("error", err.Error()),
++					logger.F("reason", actionErr.Error()))
++				a.emitBrowserInstanceUpdated(snapshot)
++				go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
++				return snapshot, actionErr
++			}
+ 
+ 			go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
+ 			return snapshot, nil
+@@ -500,7 +543,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		snapshot, committed := a.commitBrowserStart(profileId, cmd, cmd.Process.Pid, assignedDebugPort, false, runtimeWarning)
+ 		if !committed {
+ 			_ = a.stopProcessCmd(cmd)
+-			startErr := fmt.Errorf("实例启动已取消（实例在启动过程中被移除或停止）")
++			startErr := fmt.Errorf("窗口启动已取消（窗口在启动过程中被移除或停止）")
+ 			log.Warn("启动提交被取消（待接管阶段）", logger.F("profile_id", profileId), logger.F("debug_port", assignedDebugPort))
+ 			return nil, startErr
+ 		}
+@@ -517,7 +560,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 			logger.F("warning", runtimeWarning),
+ 		)
+ 		a.emitBrowserInstanceStarted(snapshot, false)
+-		a.recordActivity("start", "warn", "实例已启动，调试接口后台接管中", snapshot.ProfileName)
++		a.recordActivity("start", "warn", "窗口已启动，调试接口后台接管中", snapshot.ProfileName)
+ 		go a.waitBrowserProcess(profileId, monitor, runtimeOverrides)
+ 		go a.waitBrowserDebugReadyAsync(profileId, assignedDebugPort, browserAsyncDebugAttachTimeout, runtimeOverrides)
+ 
+@@ -531,7 +574,7 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
+ 		pipeConn.Close()
+ 	}
+ 	if lastStartErr == nil {
+-		lastStartErr = fmt.Errorf("实例启动失败：浏览器在等待窗口内仍未就绪")
++		lastStartErr = fmt.Errorf("窗口启动失败：浏览器在等待窗口内仍未就绪")
+ 	}
+ 	return commitFailure(lastStartErr), lastStartErr
+ }
+@@ -551,29 +594,29 @@ func (a *App) BrowserInstanceStop(profileId string) (*BrowserProfile, error) {
+ 	debugPort := profile.DebugPort
+ 	if tryCloseBrowserViaCDP(debugPort, 5*time.Second) {
+ 		a.markProfileStoppedLocked(profileId, profile)
+-		log.Info("实例停止", logger.F("profile_id", profileId), logger.F("method", "cdp"), logger.F("debug_port", debugPort))
+-		a.recordActivity("stop", "info", "实例已停止", profile.ProfileName)
++		log.Info("窗口停止", logger.F("profile_id", profileId), logger.F("method", "cdp"), logger.F("debug_port", debugPort))
++		a.recordActivity("stop", "info", "窗口已停止", profile.ProfileName)
+ 		return profile, nil
+ 	}
+ 
+ 	if cmd != nil && cmd.Process != nil {
+ 		if err := a.stopBrowserProcess(cmd); err != nil {
+-			log.Error("实例停止失败", logger.F("profile_id", profileId), logger.F("error", err))
++			log.Error("窗口停止失败", logger.F("profile_id", profileId), logger.F("error", err))
+ 			profile.LastError = err.Error()
+ 			return profile, err
+ 		}
+ 	}
+ 
+ 	if debugPort > 0 && canConnectDebugPort(debugPort, 250*time.Millisecond) {
+-		err := fmt.Errorf("实例停止失败：浏览器仍在运行（调试端口 %d 仍可访问）", debugPort)
+-		log.Error("实例停止失败", logger.F("profile_id", profileId), logger.F("debug_port", debugPort), logger.F("reason", err.Error()))
++		err := fmt.Errorf("窗口停止失败：浏览器仍在运行（调试端口 %d 仍可访问）", debugPort)
++		log.Error("窗口停止失败", logger.F("profile_id", profileId), logger.F("debug_port", debugPort), logger.F("reason", err.Error()))
+ 		profile.LastError = err.Error()
+ 		return profile, err
+ 	}
+ 
+ 	a.markProfileStoppedLocked(profileId, profile)
+-	log.Info("实例停止", logger.F("profile_id", profileId))
+-	a.recordActivity("stop", "info", "实例已停止", profile.ProfileName)
++	log.Info("窗口停止", logger.F("profile_id", profileId))
++	a.recordActivity("stop", "info", "窗口已停止", profile.ProfileName)
+ 	return profile, nil
+ }
+ 
+@@ -584,7 +627,7 @@ func (a *App) BrowserInstanceRestart(profileId string) (*BrowserProfile, error)
+ 	return a.BrowserInstanceStart(profileId)
+ }
+ 
+-// BrowserProfileBatchSetTags 批量为实例设置标签（追加模式：将 tags 加入已有标签；replace 模式：直接替换）
++// BrowserProfileBatchSetTags 批量为窗口设置标签（追加模式：将 tags 加入已有标签；replace 模式：直接替换）
+ func (a *App) BrowserProfileBatchSetTags(profileIds []string, tags []string, replace bool) error {
+ 	log := logger.New("Browser")
+ 	a.browserMgr.Mutex.Lock()
+@@ -621,7 +664,7 @@ func (a *App) BrowserProfileBatchSetTags(profileIds []string, tags []string, rep
+ 	return nil
+ }
+ 
+-// BrowserProfileBatchRemoveTags 批量从实例移除指定标签
++// BrowserProfileBatchRemoveTags 批量从窗口移除指定标签
+ func (a *App) BrowserProfileBatchRemoveTags(profileIds []string, tags []string) error {
+ 	log := logger.New("Browser")
+ 	a.browserMgr.Mutex.Lock()
+@@ -655,7 +698,7 @@ func (a *App) BrowserProfileBatchRemoveTags(profileIds []string, tags []string)
+ 	return nil
+ }
+ 
+-// BrowserRenameTag 重命名所有实例中的指定标签
++// BrowserRenameTag 重命名所有窗口中的指定标签
+ func (a *App) BrowserRenameTag(oldName string, newName string) error {
+ 	log := logger.New("Browser")
+ 	oldName = strings.TrimSpace(oldName)
+@@ -808,7 +851,7 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
+ 		// 区分异常崩溃与正常退出：崩溃时置 crashed 状态并记录原因（在锁内写回，避免竞态）
+ 		if wasRunning && err != nil && profile != nil {
+ 			profile.Status = browser.StatusCrashed
+-			profile.LastError = fmt.Sprintf("实例运行异常退出：%s", err.Error())
++			profile.LastError = fmt.Sprintf("窗口运行异常退出：%s", err.Error())
+ 		}
+ 	}
+ 	a.browserMgr.Mutex.Unlock()
+@@ -826,7 +869,7 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
+ 			"profileName": profileName,
+ 			"error":       err.Error(),
+ 		})
+-		a.recordActivity("crash", "error", fmt.Sprintf("实例异常退出：%s", err.Error()), profileName)
++		a.recordActivity("crash", "error", fmt.Sprintf("窗口异常退出：%s", err.Error()), profileName)
+ 	} else {
+ 		runtime.EventsEmit(a.ctx, "browser:instance:stopped", profileId)
+ 	}
+@@ -864,7 +907,7 @@ func (a *App) waitDetachedBrowser(profileId string, debugPort int) {
+ 		a.markProfileStoppedLocked(profileId, profile)
+ 		a.browserMgr.Mutex.Unlock()
+ 
+-		log.Info("检测到浏览器调试端口关闭，实例已停止",
++		log.Info("检测到浏览器调试端口关闭，窗口已停止",
+ 			logger.F("profile_id", profileId),
+ 			logger.F("profile_name", profileName),
+ 			logger.F("debug_port", debugPort),
+@@ -937,13 +980,13 @@ func (a *App) markProfileStoppedLocked(profileId string, profile *BrowserProfile
+ 	profile.RuntimeWarning = ""
+ 	profile.LastStopAt = time.Now().Format(time.RFC3339)
+ 	delete(a.browserMgr.BrowserProcesses, profileId)
+-	// 统一在此取消启动认领：若实例在启动过程中被停止，进行中的启动会在提交阶段
++	// 统一在此取消启动认领：若窗口在启动过程中被停止，进行中的启动会在提交阶段
+ 	// 检测到认领丢失而中止（见 browserInstanceStartInternal 的 Phase 3）。
+ 	delete(a.browserMgr.StartingProfiles, profileId)
+ 	a.releaseProfileXrayBridge(profileId)
+ 	a.closePipeConn(profileId) // 关闭 pipe 连接（若有）
+ 
+-	// 关闭该实例的所有 CDP sessions
++	// 关闭该窗口的所有 CDP sessions
+ 	if a.cdpManager != nil {
+ 		a.cdpManager.CloseSessionsByProfile(profileId)
+ 	}
+diff --git a/backend/app_instance_errors.go b/backend/app_instance_errors.go
+index 9215a3fc..a6a7685e 100644
+--- a/backend/app_instance_errors.go
++++ b/backend/app_instance_errors.go
+@@ -279,32 +279,32 @@ func describeChromeProcessStartError(chromeBinaryPath string, err error) string
+ 	case strings.Contains(lower, "access is denied"),
+ 		strings.Contains(lower, "permission denied"),
+ 		strings.Contains(raw, "拒绝访问"):
+-		return fmt.Sprintf("实例启动失败：系统拒绝启动浏览器进程。可执行文件：%s。请检查文件权限、杀毒软件拦截，或尝试以管理员身份运行。", chromeBinaryPath)
++		return fmt.Sprintf("窗口启动失败：系统拒绝启动浏览器进程。可执行文件：%s。请检查文件权限、杀毒软件拦截，或尝试以管理员身份运行。", chromeBinaryPath)
+ 	case strings.Contains(lower, "not a valid win32 application"),
+ 		strings.Contains(raw, "不是有效的 win32 应用程序"),
+ 		strings.Contains(raw, "不是有效的 Win32 应用程序"),
+ 		strings.Contains(raw, "bad exe format"),
+ 		strings.Contains(lower, "exec format error"),
+ 		strings.Contains(lower, "cannot execute binary file"):
+-		return fmt.Sprintf("实例启动失败：当前浏览器内核与系统/架构不兼容。可执行文件：%s。请确认 Linux 环境使用的是对应架构的 Chrome 内核，而不是 Windows 可执行文件。", chromeBinaryPath)
++		return fmt.Sprintf("窗口启动失败：当前浏览器内核与系统/架构不兼容。可执行文件：%s。请确认 Linux 环境使用的是对应架构的 Chrome 内核，而不是 Windows 可执行文件。", chromeBinaryPath)
+ 	case strings.Contains(raw, "系统找不到指定的文件"),
+ 		strings.Contains(lower, "file not found"),
+ 		strings.Contains(lower, "no such file"),
+ 		strings.Contains(lower, "cannot find the file"):
+-		return fmt.Sprintf("实例启动失败：浏览器可执行文件不存在。可执行文件：%s。请检查内核路径是否正确，或重新下载内核。", chromeBinaryPath)
++		return fmt.Sprintf("窗口启动失败：浏览器可执行文件不存在。可执行文件：%s。请检查内核路径是否正确，或重新下载内核。", chromeBinaryPath)
+ 	case strings.Contains(raw, "目录名称无效"),
+ 		strings.Contains(lower, "directory name is invalid"):
+-		return fmt.Sprintf("实例启动失败：浏览器工作目录无效。当前目录：%s。请检查内核路径配置是否正确。", chromeBinaryPath)
++		return fmt.Sprintf("窗口启动失败：浏览器工作目录无效。当前目录：%s。请检查内核路径配置是否正确。", chromeBinaryPath)
+ 	default:
+-		return fmt.Sprintf("实例启动失败：浏览器进程拉起失败。可执行文件：%s。原因：%s。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", chromeBinaryPath, raw)
++		return fmt.Sprintf("窗口启动失败：浏览器进程拉起失败。可执行文件：%s。原因：%s。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", chromeBinaryPath, raw)
+ 	}
+ }
+ 
+ func describeBrowserReadyTimeout(debugPort int, timeout time.Duration) string {
+ 	if debugPort <= 0 {
+-		return fmt.Sprintf("实例启动失败：浏览器进程已拉起，但在 %s 内未完成就绪，且未获取到调试端口。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", timeout.Round(time.Second))
++		return fmt.Sprintf("窗口启动失败：浏览器进程已拉起，但在 %s 内未完成就绪，且未获取到调试端口。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", timeout.Round(time.Second))
+ 	}
+-	return fmt.Sprintf("实例启动失败：浏览器进程已拉起，但在 %s 内未完成就绪，调试端口 %d 未就绪。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", timeout.Round(time.Second), debugPort)
++	return fmt.Sprintf("窗口启动失败：浏览器进程已拉起，但在 %s 内未完成就绪，调试端口 %d 未就绪。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", timeout.Round(time.Second), debugPort)
+ }
+ 
+ func describeBrowserReadyFailure(chromeBinaryPath string, debugPort int, timeout time.Duration, err error) string {
+@@ -315,9 +315,9 @@ func describeBrowserReadyFailure(chromeBinaryPath string, debugPort int, timeout
+ 			detail = strings.TrimSpace(exitErr.exitErr.Error())
+ 		}
+ 		if detail != "" {
+-			return fmt.Sprintf("实例启动失败：浏览器进程在完成就绪前退出。可执行文件：%s。原因：%s。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", chromeBinaryPath, detail)
++			return fmt.Sprintf("窗口启动失败：浏览器进程在完成就绪前退出。可执行文件：%s。原因：%s。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", chromeBinaryPath, detail)
+ 		}
+-		return fmt.Sprintf("实例启动失败：浏览器进程在完成就绪前退出。可执行文件：%s。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", chromeBinaryPath)
++		return fmt.Sprintf("窗口启动失败：浏览器进程在完成就绪前退出。可执行文件：%s。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", chromeBinaryPath)
+ 	}
+ 	return describeBrowserReadyTimeout(debugPort, timeout)
+ }
+diff --git a/backend/app_instance_errors_test.go b/backend/app_instance_errors_test.go
+index c2505ef3..4b86f74a 100644
+--- a/backend/app_instance_errors_test.go
++++ b/backend/app_instance_errors_test.go
+@@ -87,7 +87,7 @@ func TestBrowserDebugPendingMessages(t *testing.T) {
+ 	}
+ 
+ 	notice := browserDebugPendingStartNotice(15 * time.Second)
+-	if !strings.Contains(notice, "尚未完成接管") || !strings.Contains(notice, "稍后查看实例状态") {
++	if !strings.Contains(notice, "尚未完成接管") || !strings.Contains(notice, "稍后查看窗口状态") {
+ 		t.Fatalf("unexpected pending start notice: %q", notice)
+ 	}
+ }
+diff --git a/backend/app_instance_start_test.go b/backend/app_instance_start_test.go
+index 0ac37346..9a927c7d 100644
+--- a/backend/app_instance_start_test.go
++++ b/backend/app_instance_start_test.go
+@@ -44,11 +44,11 @@ func TestIsBrowserProfileLive(t *testing.T) {
+ 		DebugPort: listenerPort(t, ln),
+ 	}
+ 	if !isBrowserProfileLive(profile, nil) {
+-		t.Fatal("期望存活中的调试端口被识别为运行中实例")
++		t.Fatal("期望存活中的调试端口被识别为运行中窗口")
+ 	}
+ 
+ 	if isBrowserProfileLive(&BrowserProfile{Running: true, DebugPort: 0}, nil) {
+-		t.Fatal("debugPort=0 不应被识别为运行中实例")
++		t.Fatal("debugPort=0 不应被识别为运行中窗口")
+ 	}
+ }
+ 
+@@ -73,7 +73,7 @@ func TestIsBrowserProfileLiveKeepsPendingDebugProcessAlive(t *testing.T) {
+ 		DebugReady: false,
+ 	}
+ 	if !isBrowserProfileLive(profile, cmd) {
+-		t.Fatal("期望调试接口未就绪但进程仍存活时识别为运行中实例")
++		t.Fatal("期望调试接口未就绪但进程仍存活时识别为运行中窗口")
+ 	}
+ }
+ 
+@@ -369,10 +369,10 @@ func TestWaitForBrowserDebugReadyMarksProfileReady(t *testing.T) {
+ 		t.Fatal("期望等待到调试接口就绪")
+ 	}
+ 	if !changed {
+-		t.Fatal("期望调试接口就绪后标记实例状态变更")
++		t.Fatal("期望调试接口就绪后标记窗口状态变更")
+ 	}
+ 	if !snapshot.DebugReady {
+-		t.Fatal("期望实例被标记为调试接口已就绪")
++		t.Fatal("期望窗口被标记为调试接口已就绪")
+ 	}
+ 	if snapshot.RuntimeWarning != "" {
+ 		t.Fatalf("期望调试接口就绪后清空警告，实际=%q", snapshot.RuntimeWarning)
+diff --git a/backend/app_launchcode.go b/backend/app_launchcode.go
+index b4e842f1..4f010119 100644
+--- a/backend/app_launchcode.go
++++ b/backend/app_launchcode.go
+@@ -30,7 +30,7 @@ func (a *App) createBrowserProfileFromInput(input browser.ProfileInput) (*browse
+ 
+ 	if err := a.applyRequestedProfileLaunchCode(profile, input.LaunchCode); err != nil {
+ 		if deleteErr := a.browserMgr.Delete(profile.ProfileId); deleteErr != nil {
+-			logger.New("Browser").Warn("创建实例后回滚失败",
++			logger.New("Browser").Warn("创建窗口后回滚失败",
+ 				logger.F("profile_id", profile.ProfileId),
+ 				logger.F("error", deleteErr.Error()),
+ 			)
+@@ -38,10 +38,10 @@ func (a *App) createBrowserProfileFromInput(input browser.ProfileInput) (*browse
+ 		return nil, err
+ 	}
+ 
+-	// 关联账号到实例
++	// 关联账号到窗口
+ 	if len(input.AccountIds) > 0 {
+ 		if err := a.linkAccountsToProfile(profile.ProfileId, input.AccountIds); err != nil {
+-			logger.New("Browser").Warn("创建实例后关联账号失败",
++			logger.New("Browser").Warn("创建窗口后关联账号失败",
+ 				logger.F("profile_id", profile.ProfileId),
+ 				logger.F("error", err.Error()),
+ 			)
+@@ -75,7 +75,7 @@ func (a *App) updateBrowserProfileFromInput(profileId string, input browser.Prof
+ 	if err := a.applyRequestedProfileLaunchCode(profile, input.LaunchCode); err != nil {
+ 		if previous != nil {
+ 			if _, rollbackErr := a.browserMgr.Update(profileId, browserProfileToInput(previous)); rollbackErr != nil {
+-				logger.New("Browser").Warn("更新实例后回滚失败",
++				logger.New("Browser").Warn("更新窗口后回滚失败",
+ 					logger.F("profile_id", profileId),
+ 					logger.F("error", rollbackErr.Error()),
+ 				)
+@@ -84,10 +84,10 @@ func (a *App) updateBrowserProfileFromInput(profileId string, input browser.Prof
+ 		return nil, err
+ 	}
+ 
+-	// 关联账号到实例
++	// 关联账号到窗口
+ 	if len(input.AccountIds) > 0 {
+ 		if err := a.linkAccountsToProfile(profile.ProfileId, input.AccountIds); err != nil {
+-			logger.New("Browser").Warn("更新实例后关联账号失败",
++			logger.New("Browser").Warn("更新窗口后关联账号失败",
+ 				logger.F("profile_id", profile.ProfileId),
+ 				logger.F("error", err.Error()),
+ 			)
+@@ -129,6 +129,7 @@ func browserProfileToInput(profile *browser.Profile) browser.ProfileInput {
+ 		ProxyId:         strings.TrimSpace(profile.ProxyId),
+ 		ProxyConfig:     strings.TrimSpace(profile.ProxyConfig),
+ 		LaunchArgs:      append([]string{}, profile.LaunchArgs...),
++		ProfileConfig:   strings.TrimSpace(profile.ProfileConfig),
+ 		Tags:            append([]string{}, profile.Tags...),
+ 		Keywords:        append([]string{}, profile.Keywords...),
+ 		GroupId:         strings.TrimSpace(profile.GroupId),
+@@ -137,7 +138,7 @@ func browserProfileToInput(profile *browser.Profile) browser.ProfileInput {
+ 	}
+ }
+ 
+-// BrowserProfileGetCode 获取实例的 LaunchCode（Wails 绑定）
++// BrowserProfileGetCode 获取窗口的 LaunchCode（Wails 绑定）
+ func (a *App) BrowserProfileGetCode(profileId string) (string, error) {
+ 	if a.launchCodeSvc == nil {
+ 		return "", nil
+@@ -145,7 +146,7 @@ func (a *App) BrowserProfileGetCode(profileId string) (string, error) {
+ 	return a.launchCodeSvc.EnsureCode(profileId)
+ }
+ 
+-// BrowserProfileRegenerateCode 重新生成实例的 LaunchCode（Wails 绑定）
++// BrowserProfileRegenerateCode 重新生成窗口的 LaunchCode（Wails 绑定）
+ func (a *App) BrowserProfileRegenerateCode(profileId string) (string, error) {
+ 	if a.launchCodeSvc == nil {
+ 		return "", nil
+@@ -153,7 +154,7 @@ func (a *App) BrowserProfileRegenerateCode(profileId string) (string, error) {
+ 	return a.launchCodeSvc.RegenerateCode(profileId)
+ }
+ 
+-// BrowserProfileSetCode 自定义设置实例 LaunchCode（Wails 绑定）
++// BrowserProfileSetCode 自定义设置窗口 LaunchCode（Wails 绑定）
+ func (a *App) BrowserProfileSetCode(profileId string, code string) (string, error) {
+ 	if a.launchCodeSvc == nil {
+ 		return "", nil
+@@ -161,7 +162,7 @@ func (a *App) BrowserProfileSetCode(profileId string, code string) (string, erro
+ 	return a.launchCodeSvc.SetCode(profileId, code)
+ }
+ 
+-// BrowserInstanceStartByCode 通过 LaunchCode 启动实例（Wails 绑定）
++// BrowserInstanceStartByCode 通过 LaunchCode 启动窗口（Wails 绑定）
+ func (a *App) BrowserInstanceStartByCode(code string) (*browser.Profile, error) {
+ 	if a.launchCodeSvc == nil {
+ 		return nil, fmt.Errorf("launch code service not initialized")
+diff --git a/backend/app_proxy_binding.go b/backend/app_proxy_binding.go
+index c82af8f4..c66019ed 100644
+--- a/backend/app_proxy_binding.go
++++ b/backend/app_proxy_binding.go
+@@ -5,7 +5,7 @@ import (
+ 	"time"
+ )
+ 
+-// reconcileProfileProxyBindings 对实例代理绑定执行幂等修复：
++// reconcileProfileProxyBindings 对窗口代理绑定执行幂等修复：
+ // 1. 同步已存在 proxyId 的绑定快照；
+ // 2. 当 proxyId 失效时按绑定快照/配置执行自动重关联；
+ // 3. 仅在有变更时持久化。
+@@ -28,7 +28,7 @@ func (a *App) reconcileProfileProxyBindings() {
+ 		}
+ 		if boundInPool && mode != "" && mode != "proxy_id" {
+ 			reboundCount++
+-			log.Info("实例代理重关联成功",
++			log.Info("窗口代理重关联成功",
+ 				logger.F("profile_id", profile.ProfileId),
+ 				logger.F("profile_name", profile.ProfileName),
+ 				logger.F("proxy_id", profile.ProxyId),
+@@ -41,10 +41,10 @@ func (a *App) reconcileProfileProxyBindings() {
+ 		return
+ 	}
+ 	if err := a.browserMgr.SaveProfiles(); err != nil {
+-		log.Error("实例代理绑定修复持久化失败", logger.F("error", err.Error()))
++		log.Error("窗口代理绑定修复持久化失败", logger.F("error", err.Error()))
+ 		return
+ 	}
+-	log.Info("实例代理绑定修复完成",
++	log.Info("窗口代理绑定修复完成",
+ 		logger.F("changed", changedCount),
+ 		logger.F("rebound", reboundCount),
+ 	)
+diff --git a/backend/app_proxy_geo.go b/backend/app_proxy_geo.go
+index 062d7500..c144d7b4 100644
+--- a/backend/app_proxy_geo.go
++++ b/backend/app_proxy_geo.go
+@@ -52,7 +52,7 @@ func extractProxyConsistencyControlArgs(args []string) ([]string, proxyConsisten
+ //   - 时区 / 语言依赖代理地理信息，只有解析出可用 geo 时才注入。
+ //   - WebRTC 策略与代理与否无关，缺失即补默认防泄露值，保护历史 profile。
+ //
+-// existingArgs 为该实例当前已拼好的全部启动参数（含用户指纹/启动参数）。
++// existingArgs 为该窗口当前已拼好的全部启动参数（含用户指纹/启动参数）。
+ func buildProxyConsistencyArgs(existingArgs []string, healthJSON string, controls ...proxyConsistencyControls) []string {
+ 	control := proxyConsistencyControls{}
+ 	if len(controls) > 0 {
+diff --git a/backend/app_proxy_source.go b/backend/app_proxy_source.go
+index 2d863f13..fddd4ddd 100644
+--- a/backend/app_proxy_source.go
++++ b/backend/app_proxy_source.go
+@@ -349,7 +349,7 @@ func (a *App) seedProxySourcesFromProxies() {
+ 	}
+ }
+ 
+-// newExistingProxyIDPicker 按 (name+config) 优先、其次 name 复用旧 proxyId，保留实例绑定。
++// newExistingProxyIDPicker 按 (name+config) 优先、其次 name 复用旧 proxyId，保留窗口绑定。
+ // 与前端 createExistingProxyIDPicker 行为一致。
+ func newExistingProxyIDPicker(old []browser.Proxy) func(name string, config string) string {
+ 	exact := map[string][]string{}
+diff --git a/backend/app_shutdown.go b/backend/app_shutdown.go
+index ec802cfc..9581a74e 100644
+--- a/backend/app_shutdown.go
++++ b/backend/app_shutdown.go
+@@ -117,9 +117,9 @@ func (a *App) stopAllBrowserProcessesForExit(log *logger.Logger) {
+ 			if item.cmd != nil && item.cmd.Process != nil {
+ 				pid = item.cmd.Process.Pid
+ 			}
+-			log.Info("退出前关闭浏览器实例", logger.F("profile_id", item.profileID), logger.F("pid", pid))
++			log.Info("退出前关闭浏览器窗口", logger.F("profile_id", item.profileID), logger.F("pid", pid))
+ 			if err := stopProcessCmdForShutdown(item.cmd); err != nil {
+-				log.Error("退出前关闭浏览器实例失败", logger.F("profile_id", item.profileID), logger.F("pid", pid), logger.F("error", err.Error()))
++				log.Error("退出前关闭浏览器窗口失败", logger.F("profile_id", item.profileID), logger.F("pid", pid), logger.F("error", err.Error()))
+ 			}
+ 		}(item)
+ 	}
+diff --git a/backend/app_snapshot.go b/backend/app_snapshot.go
+index 78d807d7..01954cdb 100644
+--- a/backend/app_snapshot.go
++++ b/backend/app_snapshot.go
+@@ -16,7 +16,7 @@ import (
+ )
+ 
+ // ============================================================================
+-// 实例数据快照 API
++// 窗口数据快照 API
+ // ============================================================================
+ 
+ // SnapshotInfo 快照元数据
+@@ -29,7 +29,7 @@ type SnapshotInfo struct {
+ 	FilePath   string  `json:"filePath,omitempty"`
+ }
+ 
+-// snapshotDir 返回指定实例的快照目录路径（存放在 data/snapshots 下）
++// snapshotDir 返回指定窗口的快照目录路径（存放在 data/snapshots 下）
+ func (a *App) snapshotDir(profileId string) (string, error) {
+ 	dir := filepath.Join(a.resolveAppPath("data"), "snapshots", profileId)
+ 	if err := os.MkdirAll(dir, 0755); err != nil {
+@@ -123,13 +123,13 @@ func unzipTo(src, dest string) error {
+ 	return nil
+ }
+ 
+-// getProfileForSnapshot 获取实例信息（加锁）
++// getProfileForSnapshot 获取窗口信息（加锁）
+ func (a *App) getProfileForSnapshot(profileId string) (*BrowserProfile, error) {
+ 	a.browserMgr.Mutex.Lock()
+ 	defer a.browserMgr.Mutex.Unlock()
+ 	profile, exists := a.browserMgr.Profiles[profileId]
+ 	if !exists {
+-		return nil, fmt.Errorf("实例不存在: %s", profileId)
++		return nil, fmt.Errorf("窗口不存在: %s", profileId)
+ 	}
+ 	return profile, nil
+ }
+@@ -141,7 +141,7 @@ func (a *App) BrowserSnapshotCreate(profileId, name string) (SnapshotInfo, error
+ 		return SnapshotInfo{}, err
+ 	}
+ 	if profile.Running {
+-		return SnapshotInfo{}, fmt.Errorf("请先停止实例再创建快照")
++		return SnapshotInfo{}, fmt.Errorf("请先停止窗口再创建快照")
+ 	}
+ 
+ 	userDataDir := a.browserMgr.ResolveUserDataDir(profile)
+@@ -188,7 +188,7 @@ func (a *App) BrowserSnapshotCreate(profileId, name string) (SnapshotInfo, error
+ 	return info, nil
+ }
+ 
+-// BrowserSnapshotList 列出实例的所有快照
++// BrowserSnapshotList 列出窗口的所有快照
+ func (a *App) BrowserSnapshotList(profileId string) ([]SnapshotInfo, error) {
+ 	snapDir, err := a.snapshotDir(profileId)
+ 	if err != nil {
+@@ -233,7 +233,7 @@ func (a *App) BrowserSnapshotRestore(profileId, snapshotId string) error {
+ 		return err
+ 	}
+ 	if profile.Running {
+-		return fmt.Errorf("请先停止实例再恢复快照")
++		return fmt.Errorf("请先停止窗口再恢复快照")
+ 	}
+ 
+ 	snapDir, err := a.snapshotDir(profileId)
+diff --git a/backend/app_username_scan_browser.go b/backend/app_username_scan_browser.go
+index 36253775..e19d2ccc 100644
+--- a/backend/app_username_scan_browser.go
++++ b/backend/app_username_scan_browser.go
+@@ -63,7 +63,7 @@ func (a *App) scanUsernameInBrowser(ctx context.Context, request usernamescan.St
+ 	options := normalizeUsernameBrowserOptions(request.Browser)
+ 	profileID := options.ProfileID
+ 
+-	// 验证实例运行中（pipe 或端口）
++	// 验证窗口运行中（pipe 或端口）
+ 	if _, err := a.profileCDP(profileID); err != nil {
+ 		return usernameScanErrorResult(name, err)
+ 	}
+diff --git a/backend/browser_runtime_state.go b/backend/browser_runtime_state.go
+index 882587f9..5cdc821f 100644
+--- a/backend/browser_runtime_state.go
++++ b/backend/browser_runtime_state.go
+@@ -32,7 +32,7 @@ func browserDebugPendingWarning(timeout time.Duration) string {
+ }
+ 
+ func browserDebugPendingStartNotice(timeout time.Duration) string {
+-	return fmt.Sprintf("浏览器窗口已启动，但在 %s 内尚未完成接管；系统会继续在后台连接，请稍后查看实例状态。连接完成前，Cookie、自动化和统一 CDP 入口暂不可用。", formatBrowserWaitWindow(timeout))
++	return fmt.Sprintf("浏览器窗口已启动，但在 %s 内尚未完成接管；系统会继续在后台连接，请稍后查看窗口状态。连接完成前，Cookie、自动化和统一 CDP 入口暂不可用。", formatBrowserWaitWindow(timeout))
+ }
+ 
+ func formatBrowserWaitWindow(timeout time.Duration) string {
+@@ -117,7 +117,7 @@ func (a *App) markProfileDebugReadyLocked(profile *BrowserProfile, debugPort int
+ }
+ 
+ // commitBrowserStart 在短临界区内提交一次启动结果（Phase 3）。
+-// 若实例在启动期间被删除（Profiles 中不存在）或启动认领已被清除（被 Stop 取消），
++// 若窗口在启动期间被删除（Profiles 中不存在）或启动认领已被清除（被 Stop 取消），
+ // 返回 committed=false，调用方应杀掉已启动的进程并释放代理桥接等资源。
+ func (a *App) commitBrowserStart(profileId string, cmd *exec.Cmd, pid int, debugPort int, debugReady bool, runtimeWarning string) (*BrowserProfile, bool) {
+ 	a.browserMgr.Mutex.Lock()
+@@ -137,7 +137,7 @@ func (a *App) commitBrowserStart(profileId string, cmd *exec.Cmd, pid int, debug
+ 	return copyBrowserProfileSnapshot(profile), true
+ }
+ 
+-// setProfileLastError 在短临界区内写回实例的 LastError（用于待接管提示等）。
++// setProfileLastError 在短临界区内写回窗口的 LastError（用于待接管提示等）。
+ func (a *App) setProfileLastError(profileId string, msg string) {
+ 	a.browserMgr.Mutex.Lock()
+ 	if p, ok := a.browserMgr.Profiles[profileId]; ok && p != nil {
+@@ -207,7 +207,7 @@ func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeou
+ 		return
+ 	}
+ 
+-	logger.New("Browser").Info("实例调试接口已就绪",
++	logger.New("Browser").Info("窗口调试接口已就绪",
+ 		logger.F("profile_id", profileId),
+ 		logger.F("debug_port", debugPort),
+ 	)
+diff --git a/backend/internal/browser/connector.go b/backend/internal/browser/connector.go
+index 8ffde43f..6ada7c03 100644
+--- a/backend/internal/browser/connector.go
++++ b/backend/internal/browser/connector.go
+@@ -1,7 +1,7 @@
+ package browser
+ 
+ // BuildLaunchArgs 把默认起始页 URL 追加到启动参数末尾。
+-// startURLs 为空时不追加任何内容（实例启动落到浏览器默认新标签页），
++// startURLs 为空时不追加任何内容（窗口启动落到浏览器默认新标签页），
+ // 避免每次启动都自动外联第三方 IP 检测站点而暴露行为特征。
+ func BuildLaunchArgs(args []string, startURLs []string) []string {
+ 	for _, u := range startURLs {
+diff --git a/backend/internal/browser/core.go b/backend/internal/browser/core.go
+index 6bac1e75..4a256390 100644
+--- a/backend/internal/browser/core.go
++++ b/backend/internal/browser/core.go
+@@ -320,12 +320,12 @@ func (m *Manager) GetChromeVersion(corePath string) string {
+ 	return manifest.Version
+ }
+ 
+-// CountInstancesByCore 统计使用指定内核的实例数量
++// CountInstancesByCore 统计使用指定内核的窗口数量
+ func (m *Manager) CountInstancesByCore(coreId string) int {
+ 	coreId = strings.TrimSpace(coreId)
+ 	count := 0
+ 	countByCoreID := func(profileCoreId string) {
+-		// 如果实例的 CoreId 为空，则使用默认内核
++		// 如果窗口的 CoreId 为空，则使用默认内核
+ 		if profileCoreId == "" {
+ 			defaultCore, found := m.GetDefaultCore()
+ 			if found && strings.EqualFold(defaultCore.CoreId, coreId) {
+diff --git a/backend/internal/browser/core_test.go b/backend/internal/browser/core_test.go
+index 4bbcb290..728e4497 100644
+--- a/backend/internal/browser/core_test.go
++++ b/backend/internal/browser/core_test.go
+@@ -205,6 +205,6 @@ func TestCountInstancesByCoreTreatsLegacyDefaultReferenceAsDefault(t *testing.T)
+ 	}
+ 
+ 	if got := mgr.CountInstancesByCore("core-142"); got != 3 {
+-		t.Fatalf("默认内核实例计数错误: got=%d want=3", got)
++		t.Fatalf("默认内核窗口计数错误: got=%d want=3", got)
+ 	}
+ }
+diff --git a/backend/internal/browser/group_dao.go b/backend/internal/browser/group_dao.go
+index c9f29e0e..45570195 100644
+--- a/backend/internal/browser/group_dao.go
++++ b/backend/internal/browser/group_dao.go
+@@ -134,7 +134,7 @@ func (d *SQLiteGroupDAO) Update(groupId string, input GroupInput) (*Group, error
+ 	return existing, nil
+ }
+ 
+-// Delete 删除分组（级联处理：子分组和实例移动到父分组）
++// Delete 删除分组（级联处理：子分组和窗口移动到父分组）
+ func (d *SQLiteGroupDAO) Delete(groupId string) error {
+ 	group, err := d.GetById(groupId)
+ 	if err != nil {
+@@ -144,10 +144,10 @@ func (d *SQLiteGroupDAO) Delete(groupId string) error {
+ 	if err := d.MoveChildren(groupId, group.ParentId); err != nil {
+ 		return err
+ 	}
+-	// 将该分组下的实例移动到父分组
++	// 将该分组下的窗口移动到父分组
+ 	_, err = d.db.Exec(`UPDATE browser_profiles SET group_id = ? WHERE group_id = ?`, group.ParentId, groupId)
+ 	if err != nil {
+-		return fmt.Errorf("移动实例失败: %w", err)
++		return fmt.Errorf("移动窗口失败: %w", err)
+ 	}
+ 	// 删除分组
+ 	_, err = d.db.Exec(`DELETE FROM browser_groups WHERE group_id = ?`, groupId)
+diff --git a/backend/internal/browser/profile.go b/backend/internal/browser/profile.go
+index 60294454..ef2bf98c 100644
+--- a/backend/internal/browser/profile.go
++++ b/backend/internal/browser/profile.go
+@@ -2,6 +2,7 @@ package browser
+ 
+ import (
+ 	"ant-chrome/backend/internal/logger"
++	"encoding/json"
+ 	"fmt"
+ 	"os/exec"
+ 	"sort"
+@@ -11,6 +12,17 @@ import (
+ 	"github.com/google/uuid"
+ )
+ 
++func normalizeProfileConfigJSON(raw string) string {
++	raw = strings.TrimSpace(raw)
++	if raw == "" {
++		return "{}"
++	}
++	if !json.Valid([]byte(raw)) {
++		return "{}"
++	}
++	return raw
++}
++
+ // InitData 初始化浏览器数据
+ func (m *Manager) InitData() {
+ 	m.Mutex.Lock()
+@@ -42,17 +54,17 @@ func (m *Manager) loadProfiles() {
+ 	if m.ProfileDAO != nil {
+ 		profiles, err := m.ProfileDAO.List()
+ 		if err != nil {
+-			log.Error("从数据库加载实例配置失败", logger.F("error", err))
++			log.Error("从数据库加载窗口配置失败", logger.F("error", err))
+ 		} else {
+-			// SQLite 模式：无论是否为空都直接使用，不自动创建默认实例
++			// SQLite 模式：无论是否为空都直接使用，不自动创建默认窗口
+ 			for _, p := range profiles {
+ 				p.CoreId = normalizeProfileCoreID(p.CoreId)
+ 				m.Profiles[p.ProfileId] = p
+ 			}
+ 			if len(profiles) > 0 {
+-				log.Info("实例配置从数据库加载完成", logger.F("count", len(profiles)))
++				log.Info("窗口配置从数据库加载完成", logger.F("count", len(profiles)))
+ 			} else {
+-				log.Info("实例表为空，用户可手动创建新实例")
++				log.Info("窗口表为空，用户可手动创建新窗口")
+ 			}
+ 			return
+ 		}
+@@ -60,8 +72,8 @@ func (m *Manager) loadProfiles() {
+ 
+ 	// 降级：从 config.yaml 加载（仅在无 SQLite 时使用）
+ 	if len(m.Config.Browser.Profiles) == 0 {
+-		// 不自动创建默认实例，保持空列表
+-		log.Info("实例配置为空，用户可手动创建新实例")
++		// 不自动创建默认窗口，保持空列表
++		log.Info("窗口配置为空，用户可手动创建新窗口")
+ 		return
+ 	}
+ 	now := time.Now().Format(time.RFC3339)
+@@ -91,6 +103,7 @@ func (m *Manager) loadProfiles() {
+ 			ProxyBindName:      item.ProxyBindName,
+ 			ProxyBindUpdatedAt: item.ProxyBindUpdatedAt,
+ 			LaunchArgs:         append([]string{}, item.LaunchArgs...),
++			ProfileConfig:      normalizeProfileConfigJSON(item.ProfileConfig),
+ 			Tags:               append([]string{}, item.Tags...),
+ 			Keywords:           append([]string{}, item.Keywords...),
+ 			Running:            false,
+@@ -104,18 +117,18 @@ func (m *Manager) loadProfiles() {
+ 	log.Info("浏览器配置从文件加载完成", logger.F("count", len(m.Profiles)))
+ }
+ 
+-// SaveProfiles 保存所有实例配置（DAO 模式：逐条 upsert）
++// SaveProfiles 保存所有窗口配置（DAO 模式：逐条 upsert）
+ func (m *Manager) SaveProfiles() error {
+ 	log := logger.New("Browser")
+ 	if m.ProfileDAO != nil {
+ 		for _, profile := range m.Profiles {
+ 			profile.CoreId = normalizeProfileCoreID(profile.CoreId)
+ 			if err := m.ProfileDAO.Upsert(profile); err != nil {
+-				log.Error("实例配置持久化失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
++				log.Error("窗口配置持久化失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
+ 				return err
+ 			}
+ 		}
+-		log.Info("实例配置持久化成功", logger.F("count", len(m.Profiles)))
++		log.Info("窗口配置持久化成功", logger.F("count", len(m.Profiles)))
+ 		return nil
+ 	}
+ 
+@@ -135,6 +148,7 @@ func (m *Manager) SaveProfiles() error {
+ 			ProxyBindName:      profile.ProxyBindName,
+ 			ProxyBindUpdatedAt: profile.ProxyBindUpdatedAt,
+ 			LaunchArgs:         append([]string{}, profile.LaunchArgs...),
++			ProfileConfig:      normalizeProfileConfigJSON(profile.ProfileConfig),
+ 			Tags:               append([]string{}, profile.Tags...),
+ 			Keywords:           append([]string{}, profile.Keywords...),
+ 			CreatedAt:          profile.CreatedAt,
+@@ -224,7 +238,7 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
+ 
+ 	// Check Profile Limit
+ 	if m.Config.App.MaxProfileLimit > 0 && len(m.Profiles) >= m.Config.App.MaxProfileLimit {
+-		return nil, fmt.Errorf("实例数量已达上限 (%d个)，无法创建新的实例。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
++		return nil, fmt.Errorf("窗口数量已达上限 (%d个)，无法创建新的窗口。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
+ 	}
+ 
+ 	now := time.Now().Format(time.RFC3339)
+@@ -264,6 +278,7 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
+ 		ProxyId:         proxyId,
+ 		ProxyConfig:     proxyConfig,
+ 		LaunchArgs:      input.LaunchArgs,
++		ProfileConfig:   normalizeProfileConfigJSON(input.ProfileConfig),
+ 		Tags:            input.Tags,
+ 		Keywords:        append([]string{}, input.Keywords...),
+ 		GroupId:         strings.TrimSpace(input.GroupId),
+@@ -317,6 +332,7 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
+ 		_ = ClearProfileProxyBinding(profile)
+ 	}
+ 	profile.LaunchArgs = input.LaunchArgs
++	profile.ProfileConfig = normalizeProfileConfigJSON(input.ProfileConfig)
+ 	profile.Tags = input.Tags
+ 	profile.Keywords = append([]string{}, input.Keywords...)
+ 	profile.GroupId = strings.TrimSpace(input.GroupId)
+@@ -341,11 +357,11 @@ func (m *Manager) Delete(profileId string) error {
+ 		return fmt.Errorf("profile not found")
+ 	}
+ 
+-	// 防止删除运行中的实例：保护用户数据和会话。
++	// 防止删除运行中的窗口：保护用户数据和会话。
+ 	// API 层 (profile_api.go:250) 有此检查，但 Wails 绑定层 (app.go:565) 直接调用本方法，
+ 	// 因此必须在底层也加检查，形成纵深防御。
+ 	if profile.Running {
+-		log.Error("运行中的实例不可删除", logger.F("profile_id", profileId))
++		log.Error("运行中的窗口不可删除", logger.F("profile_id", profileId))
+ 		return fmt.Errorf("cannot delete running profile")
+ 	}
+ 
+@@ -355,7 +371,7 @@ func (m *Manager) Delete(profileId string) error {
+ 	// DAO 删除
+ 	if m.ProfileDAO != nil {
+ 		if err := m.ProfileDAO.Delete(profileId); err != nil {
+-			log.Error("数据库删除实例失败", logger.F("profile_id", profileId), logger.F("error", err))
++			log.Error("数据库删除窗口失败", logger.F("profile_id", profileId), logger.F("error", err))
+ 			return err
+ 		}
+ 	} else {
+@@ -379,6 +395,7 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
+ 	if profile.LaunchArgs == nil || len(profile.LaunchArgs) == 0 {
+ 		profile.LaunchArgs = append([]string{}, m.Config.Browser.DefaultLaunchArgs...)
+ 	}
++	profile.ProfileConfig = normalizeProfileConfigJSON(profile.ProfileConfig)
+ 	if strings.TrimSpace(profile.UserDataDir) == "" {
+ 		profile.UserDataDir = profile.ProfileId
+ 	}
+@@ -394,7 +411,7 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
+ 		proxyChanged = true
+ 	}
+ 	if bindMode != "" && bindMode != "proxy_id" {
+-		log.Info("实例代理自动重关联",
++		log.Info("窗口代理自动重关联",
+ 			logger.F("profile_id", profile.ProfileId),
+ 			logger.F("proxy_id", profile.ProxyId),
+ 			logger.F("mode", bindMode),
+@@ -402,9 +419,9 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
+ 	}
+ 	if profile.ProxyId != "" && !boundInPool {
+ 		if strings.TrimSpace(profile.ProxyConfig) == "" {
+-			log.Error("实例代理未找到", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
++			log.Error("窗口代理未找到", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
+ 		} else {
+-			log.Warn("实例代理未找到，回退使用历史代理配置", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
++			log.Warn("窗口代理未找到，回退使用历史代理配置", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
+ 		}
+ 	}
+ 	if profile.ProxyConfig == "" && m.Config.Browser.DefaultProxy != "" {
+@@ -414,7 +431,7 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
+ 	return proxyChanged
+ }
+ 
+-// Copy 复制实例配置（除指纹参数外全部复制，指纹使用默认值生成新种子）
++// Copy 复制窗口配置（除指纹参数外全部复制，指纹使用默认值生成新种子）
+ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
+ 	log := logger.New("Browser")
+ 	m.InitData()
+@@ -423,13 +440,13 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
+ 
+ 	// Check Profile Limit
+ 	if m.Config.App.MaxProfileLimit > 0 && len(m.Profiles) >= m.Config.App.MaxProfileLimit {
+-		log.Error("复制实例失败: 达到数量上限", logger.F("limit", m.Config.App.MaxProfileLimit))
+-		return nil, fmt.Errorf("实例数量已达上限 (%d个)，无法复制实例。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
++		log.Error("复制窗口失败: 达到数量上限", logger.F("limit", m.Config.App.MaxProfileLimit))
++		return nil, fmt.Errorf("窗口数量已达上限 (%d个)，无法复制窗口。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
+ 	}
+ 
+ 	src, exists := m.Profiles[profileId]
+ 	if !exists {
+-		log.Error("源实例不存在", logger.F("profile_id", profileId))
++		log.Error("源窗口不存在", logger.F("profile_id", profileId))
+ 		return nil, fmt.Errorf("profile not found")
+ 	}
+ 
+@@ -456,6 +473,7 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
+ 		ProxyBindName:      src.ProxyBindName,
+ 		ProxyBindUpdatedAt: src.ProxyBindUpdatedAt,
+ 		LaunchArgs:         append([]string{}, src.LaunchArgs...),
++		ProfileConfig:      normalizeProfileConfigJSON(src.ProfileConfig),
+ 		Tags:               append([]string{}, src.Tags...),
+ 		Keywords:           append([]string{}, src.Keywords...),
+ 		GroupId:            src.GroupId, // 复制分组
+@@ -468,7 +486,7 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
+ 	}
+ 
+ 	m.Profiles[newId] = profile
+-	log.Info("实例复制成功", logger.F("src_id", profileId), logger.F("new_id", newId), logger.F("new_name", profileName))
++	log.Info("窗口复制成功", logger.F("src_id", profileId), logger.F("new_id", newId), logger.F("new_name", profileName))
+ 
+ 	if err := m.SaveProfiles(); err != nil {
+ 		return nil, err
+@@ -483,7 +501,7 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
+ 	return profile, nil
+ }
+ 
+-// SetKeywords 设置实例关键字（独立接口，不影响其他字段）
++// SetKeywords 设置窗口关键字（独立接口，不影响其他字段）
+ func (m *Manager) SetKeywords(profileId string, keywords []string) (*Profile, error) {
+ 	log := logger.New("Browser")
+ 	m.InitData()
+diff --git a/backend/internal/browser/profile_dao.go b/backend/internal/browser/profile_dao.go
+index a76d4a78..36a12b45 100644
+--- a/backend/internal/browser/profile_dao.go
++++ b/backend/internal/browser/profile_dao.go
+@@ -5,10 +5,11 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"strings"
+ 	"time"
+ )
+ 
+-// ProfileDAO 实例配置持久化接口
++// ProfileDAO 窗口配置持久化接口
+ type ProfileDAO interface {
+ 	List() ([]*Profile, error)
+ 	GetById(profileId string) (*Profile, error)
+@@ -26,7 +27,7 @@ func NewSQLiteProfileDAO(db *sql.DB) *SQLiteProfileDAO {
+ 	return &SQLiteProfileDAO{db: db}
+ }
+ 
+-// List 查询所有实例配置，按创建时间升序
++// List 查询所有窗口配置，按创建时间升序
+ func (d *SQLiteProfileDAO) List() ([]*Profile, error) {
+ 	rows, err := d.db.Query(`
+ 		SELECT profile_id, profile_name, user_data_dir, core_id,
+@@ -34,10 +35,11 @@ func (d *SQLiteProfileDAO) List() ([]*Profile, error) {
+ 		       COALESCE(proxy_bind_source_id, ''), COALESCE(proxy_bind_source_url, ''),
+ 		       COALESCE(proxy_bind_name, ''), COALESCE(proxy_bind_updated_at, ''),
+ 		       launch_args,
++		       COALESCE(profile_config, '{}'),
+ 		       tags, keywords, group_id, created_at, updated_at
+ 		FROM browser_profiles ORDER BY created_at ASC`)
+ 	if err != nil {
+-		return nil, fmt.Errorf("查询实例列表失败: %w", err)
++		return nil, fmt.Errorf("查询窗口列表失败: %w", err)
+ 	}
+ 	defer rows.Close()
+ 
+@@ -52,7 +54,7 @@ func (d *SQLiteProfileDAO) List() ([]*Profile, error) {
+ 	return list, rows.Err()
+ }
+ 
+-// GetById 根据 profileId 查询单个实例
++// GetById 根据 profileId 查询单个窗口
+ func (d *SQLiteProfileDAO) GetById(profileId string) (*Profile, error) {
+ 	row := d.db.QueryRow(`
+ 		SELECT profile_id, profile_name, user_data_dir, core_id,
+@@ -60,16 +62,17 @@ func (d *SQLiteProfileDAO) GetById(profileId string) (*Profile, error) {
+ 		       COALESCE(proxy_bind_source_id, ''), COALESCE(proxy_bind_source_url, ''),
+ 		       COALESCE(proxy_bind_name, ''), COALESCE(proxy_bind_updated_at, ''),
+ 		       launch_args,
++		       COALESCE(profile_config, '{}'),
+ 		       tags, keywords, group_id, created_at, updated_at
+ 		FROM browser_profiles WHERE profile_id = ?`, profileId)
+ 	p, err := scanProfile(row)
+ 	if errors.Is(err, sql.ErrNoRows) {
+-		return nil, fmt.Errorf("实例不存在: %s", profileId)
++		return nil, fmt.Errorf("窗口不存在: %s", profileId)
+ 	}
+ 	return p, err
+ }
+ 
+-// Upsert 新增或更新实例配置
++// Upsert 新增或更新窗口配置
+ func (d *SQLiteProfileDAO) Upsert(profile *Profile) error {
+ 	fingerprintArgs, _ := json.Marshal(profile.FingerprintArgs)
+ 	launchArgs, _ := json.Marshal(profile.LaunchArgs)
+@@ -88,8 +91,8 @@ func (d *SQLiteProfileDAO) Upsert(profile *Profile) error {
+ 		INSERT INTO browser_profiles
+ 		  (profile_id, profile_name, user_data_dir, core_id, fingerprint_args,
+ 		   proxy_id, proxy_config, proxy_bind_source_id, proxy_bind_source_url, proxy_bind_name, proxy_bind_updated_at,
+-		   launch_args, tags, keywords, group_id, created_at, updated_at)
+-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++		   launch_args, profile_config, tags, keywords, group_id, created_at, updated_at)
++		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ 		ON CONFLICT(profile_id) DO UPDATE SET
+ 		  profile_name     = excluded.profile_name,
+ 		  user_data_dir    = excluded.user_data_dir,
+@@ -102,6 +105,7 @@ func (d *SQLiteProfileDAO) Upsert(profile *Profile) error {
+ 		  proxy_bind_name = excluded.proxy_bind_name,
+ 		  proxy_bind_updated_at = excluded.proxy_bind_updated_at,
+ 		  launch_args      = excluded.launch_args,
++		  profile_config   = excluded.profile_config,
+ 		  tags             = excluded.tags,
+ 		  keywords         = excluded.keywords,
+ 		  group_id         = excluded.group_id,
+@@ -109,27 +113,27 @@ func (d *SQLiteProfileDAO) Upsert(profile *Profile) error {
+ 		profile.ProfileId, profile.ProfileName, profile.UserDataDir, profile.CoreId,
+ 		string(fingerprintArgs), profile.ProxyId, profile.ProxyConfig,
+ 		profile.ProxyBindSourceID, profile.ProxyBindSourceURL, profile.ProxyBindName, profile.ProxyBindUpdatedAt,
+-		string(launchArgs), string(tags), string(keywords), profile.GroupId,
++		string(launchArgs), normalizeProfileConfigJSON(profile.ProfileConfig), string(tags), string(keywords), profile.GroupId,
+ 		profile.CreatedAt, profile.UpdatedAt,
+ 	)
+ 	if err != nil {
+-		return fmt.Errorf("保存实例配置失败: %w", err)
++		return fmt.Errorf("保存窗口配置失败: %w", err)
+ 	}
+ 	return nil
+ }
+ 
+-// Delete 删除实例配置
++// Delete 删除窗口配置
+ func (d *SQLiteProfileDAO) Delete(profileId string) error {
+ 	_, err := d.db.Exec(`DELETE FROM browser_profiles WHERE profile_id = ?`, profileId)
+ 	if err != nil {
+-		return fmt.Errorf("删除实例配置失败: %w", err)
++		return fmt.Errorf("删除窗口配置失败: %w", err)
+ 	}
+ 	return nil
+ }
+ 
+-// ListByGroup 按分组筛选实例
+-// groupId 为空字符串时返回未分组的实例
+-// includeChildren=true 时同时包含 childGroupIds 中的子分组实例
++// ListByGroup 按分组筛选窗口
++// groupId 为空字符串时返回未分组的窗口
++// includeChildren=true 时同时包含 childGroupIds 中的子分组窗口
+ func (d *SQLiteProfileDAO) ListByGroup(groupId string, includeChildren bool, childGroupIds []string) ([]*Profile, error) {
+ 	var rows *sql.Rows
+ 	var err error
+@@ -152,6 +156,7 @@ func (d *SQLiteProfileDAO) ListByGroup(groupId string, includeChildren bool, chi
+ 			       COALESCE(proxy_bind_source_id, ''), COALESCE(proxy_bind_source_url, ''),
+ 			       COALESCE(proxy_bind_name, ''), COALESCE(proxy_bind_updated_at, ''),
+ 			       launch_args,
++			       COALESCE(profile_config, '{}'),
+ 			       tags, keywords, group_id, created_at, updated_at
+ 			FROM browser_profiles WHERE group_id IN (%s) ORDER BY created_at ASC`, inClause), args...)
+ 	} else {
+@@ -162,12 +167,13 @@ func (d *SQLiteProfileDAO) ListByGroup(groupId string, includeChildren bool, chi
+ 			       COALESCE(proxy_bind_source_id, ''), COALESCE(proxy_bind_source_url, ''),
+ 			       COALESCE(proxy_bind_name, ''), COALESCE(proxy_bind_updated_at, ''),
+ 			       launch_args,
++			       COALESCE(profile_config, '{}'),
+ 			       tags, keywords, group_id, created_at, updated_at
+ 			FROM browser_profiles WHERE group_id = ? ORDER BY created_at ASC`, groupId)
+ 	}
+ 
+ 	if err != nil {
+-		return nil, fmt.Errorf("按分组查询实例失败: %w", err)
++		return nil, fmt.Errorf("按分组查询窗口失败: %w", err)
+ 	}
+ 	defer rows.Close()
+ 
+@@ -182,7 +188,7 @@ func (d *SQLiteProfileDAO) ListByGroup(groupId string, includeChildren bool, chi
+ 	return list, rows.Err()
+ }
+ 
+-// MoveToGroup 批量移动实例到分组
++// MoveToGroup 批量移动窗口到分组
+ func (d *SQLiteProfileDAO) MoveToGroup(profileIds []string, groupId string) error {
+ 	if len(profileIds) == 0 {
+ 		return nil
+@@ -199,7 +205,7 @@ func (d *SQLiteProfileDAO) MoveToGroup(profileIds []string, groupId string) erro
+ 	}
+ 	_, err := d.db.Exec(fmt.Sprintf(`UPDATE browser_profiles SET group_id = ? WHERE profile_id IN (%s)`, inClause), args...)
+ 	if err != nil {
+-		return fmt.Errorf("批量移动实例失败: %w", err)
++		return fmt.Errorf("批量移动窗口失败: %w", err)
+ 	}
+ 	return nil
+ }
+@@ -211,14 +217,14 @@ type scanner interface {
+ 
+ func scanProfile(s scanner) (*Profile, error) {
+ 	var (
+-		fingerprintArgsJSON, launchArgsJSON, tagsJSON, keywordsJSON string
+-		p                                                           Profile
++		fingerprintArgsJSON, launchArgsJSON, profileConfigJSON, tagsJSON, keywordsJSON string
++		p                                                                              Profile
+ 	)
+ 	err := s.Scan(
+ 		&p.ProfileId, &p.ProfileName, &p.UserDataDir, &p.CoreId,
+ 		&fingerprintArgsJSON, &p.ProxyId, &p.ProxyConfig,
+ 		&p.ProxyBindSourceID, &p.ProxyBindSourceURL, &p.ProxyBindName, &p.ProxyBindUpdatedAt,
+-		&launchArgsJSON, &tagsJSON, &keywordsJSON, &p.GroupId,
++		&launchArgsJSON, &profileConfigJSON, &tagsJSON, &keywordsJSON, &p.GroupId,
+ 		&p.CreatedAt, &p.UpdatedAt,
+ 	)
+ 	if err != nil {
+@@ -226,6 +232,7 @@ func scanProfile(s scanner) (*Profile, error) {
+ 	}
+ 	_ = json.Unmarshal([]byte(fingerprintArgsJSON), &p.FingerprintArgs)
+ 	_ = json.Unmarshal([]byte(launchArgsJSON), &p.LaunchArgs)
++	p.ProfileConfig = normalizeProfileConfigJSON(profileConfigJSON)
+ 	_ = json.Unmarshal([]byte(tagsJSON), &p.Tags)
+ 	_ = json.Unmarshal([]byte(keywordsJSON), &p.Keywords)
+ 	if p.FingerprintArgs == nil {
+@@ -234,6 +241,9 @@ func scanProfile(s scanner) (*Profile, error) {
+ 	if p.LaunchArgs == nil {
+ 		p.LaunchArgs = []string{}
+ 	}
++	if strings.TrimSpace(p.ProfileConfig) == "" {
++		p.ProfileConfig = "{}"
++	}
+ 	if p.Tags == nil {
+ 		p.Tags = []string{}
+ 	}
+diff --git a/backend/internal/browser/proxy_binding.go b/backend/internal/browser/proxy_binding.go
+index 63505d4a..f409e09e 100644
+--- a/backend/internal/browser/proxy_binding.go
++++ b/backend/internal/browser/proxy_binding.go
+@@ -52,7 +52,7 @@ func (m *Manager) GetProxyByID(proxyID string) (Proxy, bool) {
+ 	return findProxyByID(m.listProxyCatalog(), proxyID)
+ }
+ 
+-// BindProfileToProxy 将实例绑定到指定代理并同步绑定快照。
++// BindProfileToProxy 将窗口绑定到指定代理并同步绑定快照。
+ // syncProxyConfig=true 时会同步更新 profile.ProxyConfig。
+ func BindProfileToProxy(profile *Profile, proxy Proxy, syncProxyConfig bool) bool {
+ 	if profile == nil {
+@@ -93,7 +93,7 @@ func BindProfileToProxy(profile *Profile, proxy Proxy, syncProxyConfig bool) boo
+ 	return changed
+ }
+ 
+-// ClearProfileProxyBinding 清空实例的代理绑定快照。
++// ClearProfileProxyBinding 清空窗口的代理绑定快照。
+ func ClearProfileProxyBinding(profile *Profile) bool {
+ 	if profile == nil {
+ 		return false
+@@ -117,8 +117,8 @@ func ClearProfileProxyBinding(profile *Profile) bool {
+ 	return changed
+ }
+ 
+-// ResolveProfileProxyBinding 尝试修复实例代理绑定。
+-// 返回值: changed 是否修改实例, boundInPool 是否在代理池成功定位, mode 重关联命中模式
++// ResolveProfileProxyBinding 尝试修复窗口代理绑定。
++// 返回值: changed 是否修改窗口, boundInPool 是否在代理池成功定位, mode 重关联命中模式
+ func (m *Manager) ResolveProfileProxyBinding(profile *Profile) (bool, bool, string) {
+ 	if profile == nil {
+ 		return false, false, ""
+diff --git a/backend/internal/browser/startup_queue.go b/backend/internal/browser/startup_queue.go
+index dfefbe07..2c02b646 100644
+--- a/backend/internal/browser/startup_queue.go
++++ b/backend/internal/browser/startup_queue.go
+@@ -68,7 +68,7 @@ func (q *StartupQueue) GetQueueInfo() map[string]interface{} {
+ 	}
+ }
+ 
+-// GetWaitingProfiles 获取等待中的实例列表
++// GetWaitingProfiles 获取等待中的窗口列表
+ func (q *StartupQueue) GetWaitingProfiles() []string {
+ 	q.mu.Lock()
+ 	defer q.mu.Unlock()
+diff --git a/backend/internal/browser/status.go b/backend/internal/browser/status.go
+index 658a540b..cca2723a 100644
+--- a/backend/internal/browser/status.go
++++ b/backend/internal/browser/status.go
+@@ -2,7 +2,7 @@ package browser
+ 
+ import "time"
+ 
+-// ProfileStatus 实例状态
++// ProfileStatus 窗口状态
+ type ProfileStatus string
+ 
+ const (
+diff --git a/backend/internal/browser/types.go b/backend/internal/browser/types.go
+index 389d1988..f5749766 100644
+--- a/backend/internal/browser/types.go
++++ b/backend/internal/browser/types.go
+@@ -21,6 +21,7 @@ type Profile struct {
+ 	ProxyBindName      string        `json:"proxyBindName"`
+ 	ProxyBindUpdatedAt string        `json:"proxyBindUpdatedAt"`
+ 	LaunchArgs         []string      `json:"launchArgs"`
++	ProfileConfig      string        `json:"profileConfig"`
+ 	Tags               []string      `json:"tags"`
+ 	Keywords           []string      `json:"keywords"`
+ 	GroupId            string        `json:"groupId"` // 所属分组ID
+@@ -47,6 +48,7 @@ type ProfileInput struct {
+ 	ProxyId         string   `json:"proxyId"`
+ 	ProxyConfig     string   `json:"proxyConfig"`
+ 	LaunchArgs      []string `json:"launchArgs"`
++	ProfileConfig   string   `json:"profileConfig"`
+ 	Tags            []string `json:"tags"`
+ 	Keywords        []string `json:"keywords"`
+ 	GroupId         string   `json:"groupId"` // 所属分组ID
+@@ -93,7 +95,7 @@ type CoreExtendedInfo struct {
+ 	InstanceCount int    `json:"instanceCount"`
+ }
+ 
+-// Group 实例分组
++// Group 窗口分组
+ type Group struct {
+ 	GroupId   string `json:"groupId"`
+ 	GroupName string `json:"groupName"`
+@@ -110,12 +112,28 @@ type GroupInput struct {
+ 	SortOrder int    `json:"sortOrder"`
+ }
+ 
+-// GroupWithCount 带实例计数的分组
++// GroupWithCount 带窗口计数的分组
+ type GroupWithCount struct {
+ 	Group
+ 	InstanceCount int `json:"instanceCount"`
+ }
+ 
++// Template 窗口创建模板。保存创建页的完整结构化配置（profileConfig JSON），
++// 供「存为新模板」「从模板创建」复用。不含具体窗口实例字段（如 userDataDir）。
++type Template struct {
++	TemplateId    string `json:"templateId"`
++	TemplateName  string `json:"templateName"`
++	ProfileConfig string `json:"profileConfig"`
++	CreatedAt     string `json:"createdAt"`
++	UpdatedAt     string `json:"updatedAt"`
++}
++
++// TemplateInput 创建/更新模板的输入
++type TemplateInput struct {
++	TemplateName  string `json:"templateName"`
++	ProfileConfig string `json:"profileConfig"`
++}
++
+ // 类型别名
+ type Proxy = config.BrowserProxy
+ type Core = config.BrowserCore
+@@ -161,7 +179,7 @@ type Manager struct {
+ 	BrowserProcesses map[string]*exec.Cmd
+ 	XrayBridges      map[string]*XrayBridge
+ 	CodeProvider     CodeProvider
+-	// StartingProfiles 记录正在启动中的实例，用于防止同一实例并发重复启动。
++	// StartingProfiles 记录正在启动中的窗口，用于防止同一窗口并发重复启动。
+ 	// 由 Mutex 保护。键为 profileId。
+ 	StartingProfiles map[string]bool
+ 
+@@ -172,6 +190,7 @@ type Manager struct {
+ 	CoreDAO        CoreDAO
+ 	BookmarkDAO    BookmarkDAO
+ 	GroupDAO       GroupDAO
++	TemplateDAO    TemplateDAO
+ }
+ 
+ // XrayBridge Xray 桥接进程
+diff --git a/backend/internal/cdp/manager.go b/backend/internal/cdp/manager.go
+index 69582bbc..482688d6 100644
+--- a/backend/internal/cdp/manager.go
++++ b/backend/internal/cdp/manager.go
+@@ -85,7 +85,7 @@ func (m *Manager) CloseSession(sessionID string) error {
+ 	return session.Close()
+ }
+ 
+-// CloseSessionsByProfile 关闭指定 profileID 的所有会话（实例停止时调用）
++// CloseSessionsByProfile 关闭指定 profileID 的所有会话（窗口停止时调用）
+ func (m *Manager) CloseSessionsByProfile(profileID string) {
+ 	m.mu.Lock()
+ 	toClose := make([]*CDPSession, 0)
+diff --git a/backend/internal/config/config.go b/backend/internal/config/config.go
+index bf0d7157..bdf5abd3 100644
+--- a/backend/internal/config/config.go
++++ b/backend/internal/config/config.go
+@@ -32,7 +32,7 @@ func RewardForUsedKey(key string) int {
+ 	return StandardCDKeyProfileBonus
+ }
+ 
+-// MinimumProfileLimitForUsedKeys 根据兑换记录计算最低应得实例额度。
++// MinimumProfileLimitForUsedKeys 根据兑换记录计算最低应得窗口额度。
+ func MinimumProfileLimitForUsedKeys(keys []string) int {
+ 	limit := DefaultMaxProfileLimit
+ 	seen := make(map[string]struct{}, len(keys))
+@@ -117,7 +117,7 @@ type BrowserConfig struct {
+ 	UserDataRoot           string   `yaml:"user_data_root"`
+ 	DefaultFingerprintArgs []string `yaml:"default_fingerprint_args"`
+ 	DefaultLaunchArgs      []string `yaml:"default_launch_args"`
+-	// DefaultStartURLs 实例启动且未指定网址时打开的默认起始页。默认空（落到浏览器
++	// DefaultStartURLs 窗口启动且未指定网址时打开的默认起始页。默认空（落到浏览器
+ 	// 新标签页），避免每次启动都自动外联第三方 IP 检测站点而暴露行为特征。
+ 	DefaultStartURLs []string `yaml:"default_start_urls,omitempty"`
+ 	// CDPTransport 选择 CDP 与浏览器的通信方式："port"(默认，调试端口，全平台稳定) /
+@@ -195,6 +195,7 @@ type BrowserProfileConfig struct {
+ 	ProxyBindName      string   `yaml:"proxy_bind_name,omitempty" json:"proxyBindName,omitempty"`
+ 	ProxyBindUpdatedAt string   `yaml:"proxy_bind_updated_at,omitempty" json:"proxyBindUpdatedAt,omitempty"`
+ 	LaunchArgs         []string `yaml:"launch_args" json:"launchArgs"`
++	ProfileConfig      string   `yaml:"profile_config,omitempty" json:"profileConfig,omitempty"`
+ 	Tags               []string `yaml:"tags" json:"tags"`
+ 	Keywords           []string `yaml:"keywords,omitempty" json:"keywords,omitempty"`
+ 	CreatedAt          string   `yaml:"created_at" json:"createdAt"`
+@@ -404,8 +405,8 @@ func DefaultConfig() *Config {
+ 		App: AppConfig{
+ 			Name: "Ant Browser",
+ 			Window: WindowConfig{
+-				Width:     1750,
+-				Height:    1000,
++				Width:     1440,
++				Height:    900,
+ 				MinWidth:  1200,
+ 				MinHeight: 700,
+ 			},
+diff --git a/backend/internal/launchcode/dao.go b/backend/internal/launchcode/dao.go
+index 15a8af74..b23842a8 100644
+--- a/backend/internal/launchcode/dao.go
++++ b/backend/internal/launchcode/dao.go
+@@ -15,7 +15,7 @@ type LaunchCodeDAO interface {
+ 	FindCode(profileId string) (string, error)
+ 	// Upsert 保存或更新映射
+ 	Upsert(profileId, code string) error
+-	// Delete 删除映射（实例删除时调用）
++	// Delete 删除映射（窗口删除时调用）
+ 	Delete(profileId string) error
+ 	// LoadAll 加载所有映射（启动时用），返回 profileId -> code 的 map
+ 	LoadAll() (map[string]string, error)
+diff --git a/backend/internal/launchcode/profile_api.go b/backend/internal/launchcode/profile_api.go
+index a4f4e8c4..6738f992 100644
+--- a/backend/internal/launchcode/profile_api.go
++++ b/backend/internal/launchcode/profile_api.go
+@@ -12,7 +12,7 @@ import (
+ 	"ant-chrome/backend/internal/logger"
+ )
+ 
+-// ProfileWriteRequest 用于创建/更新实例配置。
++// ProfileWriteRequest 用于创建/更新窗口配置。
+ // profile 为持久化配置；start 为本次自动启动的临时参数。
+ type ProfileWriteRequest struct {
+ 	Profile    *browser.ProfileInput `json:"profile"`
+@@ -124,7 +124,7 @@ func (s *LaunchServer) handleCreateProfile(w http.ResponseWriter, r *http.Reques
+ 	}
+ 
+ 	writeJSON(w, http.StatusCreated, s.profileWriteSuccessPayload(profile, launchCode, true, false, launched))
+-	log.Info("Profile API 创建实例",
++	log.Info("Profile API 创建窗口",
+ 		logger.F("profile_id", profile.ProfileId),
+ 		logger.F("profile_name", profile.ProfileName),
+ 		logger.F("launch_code", launchCode),
+@@ -229,7 +229,7 @@ func (s *LaunchServer) handleUpdateProfile(w http.ResponseWriter, r *http.Reques
+ 	}
+ 
+ 	writeJSON(w, http.StatusOK, s.profileWriteSuccessPayload(profile, launchCode, false, true, launched))
+-	log.Info("Profile API 更新实例",
++	log.Info("Profile API 更新窗口",
+ 		logger.F("profile_id", profile.ProfileId),
+ 		logger.F("profile_name", profile.ProfileName),
+ 		logger.F("launch_code", launchCode),
+@@ -607,7 +607,7 @@ func mapProfileWriteErrorStatus(err error) int {
+ 	case strings.Contains(msg, "launch code format invalid"),
+ 		strings.Contains(msg, "launch code must be"):
+ 		return http.StatusBadRequest
+-	case strings.Contains(msg, "实例数量已达上限"):
++	case strings.Contains(msg, "窗口数量已达上限"):
+ 		return http.StatusConflict
+ 	default:
+ 		return http.StatusInternalServerError
+diff --git a/backend/internal/launchcode/selector.go b/backend/internal/launchcode/selector.go
+index 051db074..a46df925 100644
+--- a/backend/internal/launchcode/selector.go
++++ b/backend/internal/launchcode/selector.go
+@@ -14,7 +14,7 @@ const (
+ 	launchMatchModeAll    = "all"
+ )
+ 
+-// LaunchSelector 定义实例选择条件。
++// LaunchSelector 定义窗口选择条件。
+ // 推荐在 POST /api/launch 中通过 selector 传入，兼容旧版 top-level code 用法。
+ type LaunchSelector struct {
+ 	Code        string   `json:"code,omitempty"`
+diff --git a/backend/internal/launchcode/server.go b/backend/internal/launchcode/server.go
+index 51ed8c87..44bef691 100644
+--- a/backend/internal/launchcode/server.go
++++ b/backend/internal/launchcode/server.go
+@@ -51,7 +51,7 @@ type LaunchRequest struct {
+ 	LaunchRequestParams
+ }
+ 
+-// BrowserStarterWithParams 可选接口：支持带参数启动实例
++// BrowserStarterWithParams 可选接口：支持带参数启动窗口
+ type BrowserStarterWithParams interface {
+ 	StartInstanceWithParams(profileId string, params LaunchRequestParams) (*browser.Profile, error)
+ }
+@@ -260,14 +260,14 @@ func (s *LaunchServer) CDPURL() string {
+ 	return fmt.Sprintf("http://127.0.0.1:%d", port)
+ }
+ 
+-// ActiveDebugPort 返回当前活动实例的内部调试端口。
++// ActiveDebugPort 返回当前活动窗口的内部调试端口。
+ func (s *LaunchServer) ActiveDebugPort() int {
+ 	s.activeMu.RLock()
+ 	defer s.activeMu.RUnlock()
+ 	return s.activePort
+ }
+ 
+-// SetActiveProfile 将统一入口切换到指定实例的调试端口。
++// SetActiveProfile 将统一入口切换到指定窗口的调试端口。
+ func (s *LaunchServer) SetActiveProfile(profile *browser.Profile) {
+ 	if profile == nil || profile.DebugPort <= 0 || !profile.DebugReady {
+ 		return
+@@ -280,7 +280,7 @@ func (s *LaunchServer) SetActiveProfile(profile *browser.Profile) {
+ 	s.activeMu.Unlock()
+ }
+ 
+-// ClearActiveProfile 在当前活动实例停止后清空统一入口。
++// ClearActiveProfile 在当前活动窗口停止后清空统一入口。
+ func (s *LaunchServer) ClearActiveProfile(profileID string) {
+ 	profileID = strings.TrimSpace(profileID)
+ 	if profileID == "" {
+@@ -373,7 +373,7 @@ func (s *LaunchServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+ 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+ }
+ 
+-// handleCDPProxy 将统一端口上的非 /api 请求转发到当前活动实例的 CDP 端口。
++// handleCDPProxy 将统一端口上的非 /api 请求转发到当前活动窗口的 CDP 端口。
+ //
+ // 安全说明：该端口转发的是 Chromium 调试协议（CDP），可执行任意 JS、读取
+ // cookie/存储、导航到 file:// 等，等同于完全控制浏览器。CDP 端点对 WebSocket
+@@ -426,7 +426,7 @@ func (s *LaunchServer) handleCDPProxy(w http.ResponseWriter, r *http.Request) {
+ }
+ 
+ // handleLaunch GET /api/launch/{code}
+-// ⚠️ GET 方法有副作用（启动浏览器实例），存在 CSRF 风险。
++// ⚠️ GET 方法有副作用（启动浏览器窗口），存在 CSRF 风险。
+ // 为了防止跨站请求伪造攻击，当 API 认证未启用时，要求自定义请求头 X-Launch-Request。
+ // 推荐使用 POST /api/launch 接口。
+ func (s *LaunchServer) handleLaunch(w http.ResponseWriter, r *http.Request) {
+@@ -612,7 +612,7 @@ func (s *LaunchServer) handleLaunchLogs(w http.ResponseWriter, r *http.Request)
+ 	})
+ }
+ 
+-// handleStop POST /api/stop 停止实例
++// handleStop POST /api/stop 停止窗口
+ func (s *LaunchServer) handleStop(w http.ResponseWriter, r *http.Request) {
+ 	if r.Method != http.MethodPost {
+ 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+@@ -709,7 +709,7 @@ func (s *LaunchServer) handleStop(w http.ResponseWriter, r *http.Request) {
+ 		profileID = profileSnapshot.ProfileId
+ 	}
+ 
+-	// 停止实例
++	// 停止窗口
+ 	if err := s.stopper.StopInstance(profileID); err != nil {
+ 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+ 			"ok":    false,
+diff --git a/backend/internal/logger/logger.go b/backend/internal/logger/logger.go
+index d7a51593..c47a49f2 100644
+--- a/backend/internal/logger/logger.go
++++ b/backend/internal/logger/logger.go
+@@ -102,7 +102,7 @@ type Logger struct {
+ 	fileWriteFailed bool
+ }
+ 
+-// 全局日志实例
++// 全局日志窗口
+ var (
+ 	globalLogger *Logger
+ 	globalMu     sync.RWMutex
+diff --git a/backend/internal/proxy/ipdetect.go b/backend/internal/proxy/ipdetect.go
+index 37d5a83c..bfce2d1e 100644
+--- a/backend/internal/proxy/ipdetect.go
++++ b/backend/internal/proxy/ipdetect.go
+@@ -166,6 +166,27 @@ func DetectIPByConfig(
+ 		return result
+ 	}
+ 
++	runIPDetectRequest(client, svc, &result)
++	return result
++}
++
++// DetectLocalIP 不经过任何代理，直接查询本机出口公网 IP 信息。
++// 用于创建页“本机网络环境”展示真实出口 IP。
++func DetectLocalIP(source string) IPDetectResult {
++	svc := resolveIPDetectService(source)
++	result := IPDetectResult{
++		Source:    svc.key,
++		RawData:   map[string]interface{}{},
++		UpdatedAt: time.Now().Format(time.RFC3339),
++	}
++
++	client := &http.Client{Timeout: 15 * time.Second}
++	runIPDetectRequest(client, svc, &result)
++	return result
++}
++
++// runIPDetectRequest 用给定 HTTP 客户端请求检测源并把结果写入 result。
++func runIPDetectRequest(client *http.Client, svc ipDetectService, result *IPDetectResult) {
+ 	req, _ := http.NewRequest(http.MethodGet, svc.endpoint, nil)
+ 	req.Header.Set("Accept", "application/json")
+ 	req.Header.Set("User-Agent", "AntChrome/1.0")
+@@ -174,7 +195,7 @@ func DetectIPByConfig(
+ 	resp, err := client.Do(req)
+ 	if err != nil {
+ 		result.Error = fmt.Sprintf("请求检测源失败: %v", err)
+-		return result
++		return
+ 	}
+ 	defer resp.Body.Close()
+ 	result.LatencyMs = time.Since(start).Milliseconds()
+@@ -182,34 +203,33 @@ func DetectIPByConfig(
+ 	body, err := io.ReadAll(resp.Body)
+ 	if err != nil {
+ 		result.Error = fmt.Sprintf("读取检测源响应失败: %v", err)
+-		return result
++		return
+ 	}
+ 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+ 		result.Error = fmt.Sprintf("检测源 HTTP %d: %s", resp.StatusCode, bodySnippet(body, 180))
+-		return result
++		return
+ 	}
+ 
+ 	var data map[string]interface{}
+ 	if err := json.Unmarshal(body, &data); err != nil {
+ 		result.Error = fmt.Sprintf("检测源 JSON 解析失败: %v", err)
+-		return result
++		return
+ 	}
+ 
+ 	// ip-api 失败时 status=fail
+ 	if status := mapString(data, "status"); strings.EqualFold(status, "fail") {
+ 		result.Error = firstNonEmpty(mapString(data, "message"), "检测源返回失败")
+ 		result.RawData = data
+-		return result
++		return
+ 	}
+ 
+-	svc.parse(data, &result)
++	svc.parse(data, result)
+ 	result.RawData = data
+ 	if strings.TrimSpace(result.IP) == "" {
+ 		result.Error = "未能解析出口 IP"
+-		return result
++		return
+ 	}
+ 	result.Ok = true
+-	return result
+ }
+ 
+ // mapString 从 map 中取字符串字段，缺失或非字符串时返回空串。
+diff --git a/backend/internal/proxy/singbox.go b/backend/internal/proxy/singbox.go
+index db824bb2..f915c178 100644
+--- a/backend/internal/proxy/singbox.go
++++ b/backend/internal/proxy/singbox.go
+@@ -30,7 +30,7 @@ type SingBoxBridge struct {
+ 	Running    bool
+ 	Stopping   bool
+ 	LastError  string
+-	RefCount   int       // 当前引用计数（有多少实例正使用此桥接）
++	RefCount   int       // 当前引用计数（有多少窗口正使用此桥接）
+ 	LastUsedAt time.Time // 上次被使用的时间（用于空闲回收）
+ }
+ 
+diff --git a/backend/internal/proxy/speedtest.go b/backend/internal/proxy/speedtest.go
+index 342eeef3..b42dc6f8 100644
+--- a/backend/internal/proxy/speedtest.go
++++ b/backend/internal/proxy/speedtest.go
+@@ -103,7 +103,7 @@ func SpeedTest(
+ 		return tcpPingFallback(proxyId, resolvedSrc, cfg.TCPTimeout, log)
+ 	}
+ 
+-	// 使用 mihomo adapter.ParseProxy 创建代理实例
++	// 使用 mihomo adapter.ParseProxy 创建代理窗口
+ 	proxyInstance, err := adapter.ParseProxy(mapping)
+ 	if err != nil {
+ 		log.Warn("mihomo 代理创建失败，降级到 TCP ping",
+diff --git a/backend/internal/proxy/xray.go b/backend/internal/proxy/xray.go
+index ea5f0363..9435631c 100644
+--- a/backend/internal/proxy/xray.go
++++ b/backend/internal/proxy/xray.go
+@@ -158,7 +158,7 @@ func (m *XrayManager) EnsureBridge(proxyConfig string, proxies []config.BrowserP
+ 	return socksURL, err
+ }
+ 
+-// AcquireBridge 获取一个带引用计数的 Xray 桥接，用于浏览器实例等长生命周期场景。
++// AcquireBridge 获取一个带引用计数的 Xray 桥接，用于浏览器窗口等长生命周期场景。
+ func (m *XrayManager) AcquireBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, string, error) {
+ 	return m.ensureBridge(proxyConfig, proxies, proxyId, true)
+ }
+diff --git a/backend/test/launchcode/server_params_test.go b/backend/test/launchcode/server_params_test.go
+index 8dc891bb..187444e3 100644
+--- a/backend/test/launchcode/server_params_test.go
++++ b/backend/test/launchcode/server_params_test.go
+@@ -124,7 +124,7 @@ func TestLaunchWithParamsUsingCodeAsKeywordFallback(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profile.ProfileId {
+-		t.Fatalf("code 关键字兜底命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
++		t.Fatalf("code 关键字兜底命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+ 	}
+ 	if len(starter.lastParams.LaunchArgs) != 2 {
+ 		t.Fatalf("launchArgs 传递错误: %+v", starter.lastParams.LaunchArgs)
+@@ -176,7 +176,7 @@ func TestLaunchWithParamsUsingCodeAsKeywordFallbackPrefersExactKeywordMatch(t *t
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profileExact.ProfileId {
+-		t.Fatalf("code 关键字兜底应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
++		t.Fatalf("code 关键字兜底应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+ 	}
+ 	if len(starter.lastParams.LaunchArgs) != 2 {
+ 		t.Fatalf("launchArgs 传递错误: %+v", starter.lastParams.LaunchArgs)
+diff --git a/backend/test/launchcode/server_profile_create_test.go b/backend/test/launchcode/server_profile_create_test.go
+index a68f82fb..7acb0777 100644
+--- a/backend/test/launchcode/server_profile_create_test.go
++++ b/backend/test/launchcode/server_profile_create_test.go
+@@ -220,7 +220,7 @@ func TestCreateProfileAPIRollsBackOnDuplicateLaunchCode(t *testing.T) {
+ 
+ 	existing, err := mgr.Create(browser.ProfileInput{ProfileName: "existing"})
+ 	if err != nil {
+-		t.Fatalf("预创建实例失败: %v", err)
++		t.Fatalf("预创建窗口失败: %v", err)
+ 	}
+ 	if _, err := svc.SetCode(existing.ProfileId, "BUYER_DUP"); err != nil {
+ 		t.Fatalf("预设 launchCode 失败: %v", err)
+diff --git a/backend/test/launchcode/server_profile_manage_test.go b/backend/test/launchcode/server_profile_manage_test.go
+index 65da3a9e..fa4add59 100644
+--- a/backend/test/launchcode/server_profile_manage_test.go
++++ b/backend/test/launchcode/server_profile_manage_test.go
+@@ -32,7 +32,7 @@ func TestListProfilesAPIIncludesLaunchCodes(t *testing.T) {
+ 		Keywords:    []string{"buyer-a"},
+ 	})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	second, err := mgr.Create(browser.ProfileInput{
+ 		ProfileName: "buyer-b",
+@@ -40,7 +40,7 @@ func TestListProfilesAPIIncludesLaunchCodes(t *testing.T) {
+ 		Keywords:    []string{"buyer-b"},
+ 	})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	if _, err := svc.SetCode(first.ProfileId, "BUYER_A"); err != nil {
+ 		t.Fatalf("设置 launchCode 失败: %v", err)
+@@ -74,10 +74,10 @@ func TestListProfilesAPIIncludesLaunchCodes(t *testing.T) {
+ 		seen[item.ProfileId] = item
+ 	}
+ 	if _, ok := seen[first.ProfileId]; !ok {
+-		t.Fatalf("列表缺少第一个实例: %+v", resp.Items)
++		t.Fatalf("列表缺少第一个窗口: %+v", resp.Items)
+ 	}
+ 	if _, ok := seen[second.ProfileId]; !ok {
+-		t.Fatalf("列表缺少第二个实例: %+v", resp.Items)
++		t.Fatalf("列表缺少第二个窗口: %+v", resp.Items)
+ 	}
+ }
+ 
+@@ -95,7 +95,7 @@ func TestGetProfileAPIReturnsProfileByID(t *testing.T) {
+ 		GroupId:     "group-get",
+ 	})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	if _, err := svc.SetCode(profile.ProfileId, "BUYER_GET"); err != nil {
+ 		t.Fatalf("设置 launchCode 失败: %v", err)
+@@ -145,7 +145,7 @@ func TestUpdateProfileAPIUpdatesFieldsAndAutoLaunches(t *testing.T) {
+ 		Keywords:    []string{"buyer-old"},
+ 	})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	if _, err := svc.SetCode(profile.ProfileId, "BUYER_OLD"); err != nil {
+ 		t.Fatalf("设置 launchCode 失败: %v", err)
+@@ -187,7 +187,7 @@ func TestUpdateProfileAPIUpdatesFieldsAndAutoLaunches(t *testing.T) {
+ 
+ 	updated, status, errMsg := handlerProfileSnapshot(t, mgr, svc, profile.ProfileId)
+ 	if errMsg != "" || status != http.StatusOK {
+-		t.Fatalf("读取更新后实例失败: status=%d err=%s", status, errMsg)
++		t.Fatalf("读取更新后窗口失败: status=%d err=%s", status, errMsg)
+ 	}
+ 	if updated.ProfileName != "buyer-new" || updated.ProxyId != "proxy-us" || updated.ProxyConfig != "socks5://127.0.0.1:1080" {
+ 		t.Fatalf("更新未生效: %+v", updated)
+@@ -208,14 +208,14 @@ func TestUpdateProfileAPIRollsBackOnDuplicateLaunchCode(t *testing.T) {
+ 		ProxyConfig: "http://127.0.0.1:8080",
+ 	})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	second, err := mgr.Create(browser.ProfileInput{
+ 		ProfileName: "buyer-second",
+ 		ProxyConfig: "http://127.0.0.1:9090",
+ 	})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	if _, err := svc.SetCode(first.ProfileId, "BUYER_FIRST"); err != nil {
+ 		t.Fatalf("设置 launchCode 失败: %v", err)
+@@ -244,7 +244,7 @@ func TestUpdateProfileAPIRollsBackOnDuplicateLaunchCode(t *testing.T) {
+ 
+ 	current, status, errMsg := handlerProfileSnapshot(t, mgr, svc, first.ProfileId)
+ 	if errMsg != "" || status != http.StatusOK {
+-		t.Fatalf("读取回滚后实例失败: status=%d err=%s", status, errMsg)
++		t.Fatalf("读取回滚后窗口失败: status=%d err=%s", status, errMsg)
+ 	}
+ 	if current.ProfileName != "buyer-first" || current.ProxyConfig != "http://127.0.0.1:8080" || current.LaunchCode != "BUYER_FIRST" {
+ 		t.Fatalf("launchCode 冲突后应回滚更新: %+v", current)
+@@ -259,7 +259,7 @@ func TestDeleteProfileAPIRemovesProfileAndLaunchCode(t *testing.T) {
+ 
+ 	profile, err := mgr.Create(browser.ProfileInput{ProfileName: "buyer-delete"})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	if _, err := svc.SetCode(profile.ProfileId, "BUYER_DELETE"); err != nil {
+ 		t.Fatalf("设置 launchCode 失败: %v", err)
+@@ -273,7 +273,7 @@ func TestDeleteProfileAPIRemovesProfileAndLaunchCode(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if _, ok := mgr.Profiles[profile.ProfileId]; ok {
+-		t.Fatalf("实例删除后仍存在于内存: %s", profile.ProfileId)
++		t.Fatalf("窗口删除后仍存在于内存: %s", profile.ProfileId)
+ 	}
+ 	if _, err := svc.Resolve("BUYER_DELETE"); err == nil {
+ 		t.Fatal("删除后 launchCode 仍可解析")
+@@ -288,7 +288,7 @@ func TestDeleteProfileAPIRejectsRunningProfile(t *testing.T) {
+ 
+ 	profile, err := mgr.Create(browser.ProfileInput{ProfileName: "buyer-running"})
+ 	if err != nil {
+-		t.Fatalf("创建测试实例失败: %v", err)
++		t.Fatalf("创建测试窗口失败: %v", err)
+ 	}
+ 	mgr.Profiles[profile.ProfileId].Running = true
+ 
+@@ -300,7 +300,7 @@ func TestDeleteProfileAPIRejectsRunningProfile(t *testing.T) {
+ 		t.Fatalf("期望 409，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if _, ok := mgr.Profiles[profile.ProfileId]; !ok {
+-		t.Fatalf("运行中实例不应被删除: %s", profile.ProfileId)
++		t.Fatalf("运行中窗口不应被删除: %s", profile.ProfileId)
+ 	}
+ }
+ 
+diff --git a/backend/test/launchcode/server_prop_test.go b/backend/test/launchcode/server_prop_test.go
+index ad90c642..cc43ebc2 100644
+--- a/backend/test/launchcode/server_prop_test.go
++++ b/backend/test/launchcode/server_prop_test.go
+@@ -189,7 +189,7 @@ func TestProperty7_InvalidCodeReturns404(t *testing.T) {
+ // --- Property 8: 重复唤起的幂等性 ---
+ 
+ // TestProperty8_IdempotentLaunch
+-// 对于已运行的实例，连续两次 GET /api/launch/{code}：
++// 对于已运行的窗口，连续两次 GET /api/launch/{code}：
+ //   - 两次均返回 HTTP 200
+ //   - 两次返回的 pid 相同（不重新启动）
+ func TestProperty8_IdempotentLaunch(t *testing.T) {
+diff --git a/backend/test/launchcode/server_proxy_test.go b/backend/test/launchcode/server_proxy_test.go
+index 21e2ff01..be53dcd0 100644
+--- a/backend/test/launchcode/server_proxy_test.go
++++ b/backend/test/launchcode/server_proxy_test.go
+@@ -121,7 +121,7 @@ func TestCDPProxySwitchesToLatestLaunchedProfile(t *testing.T) {
+ 			t.Fatalf("代理请求失败: code=%s status=%d body=%s", tc.code, proxyResp.Code, proxyResp.Body.String())
+ 		}
+ 		if !strings.Contains(proxyResp.Body.String(), tc.wantMarker) {
+-			t.Fatalf("代理未切换到最新实例: want=%s body=%s", tc.wantMarker, proxyResp.Body.String())
++			t.Fatalf("代理未切换到最新窗口: want=%s body=%s", tc.wantMarker, proxyResp.Body.String())
+ 		}
+ 	}
+ }
+@@ -160,7 +160,7 @@ func TestCDPProxySkipsPendingDebugProfile(t *testing.T) {
+ 		t.Fatalf("解析启动响应失败: %v", err)
+ 	}
+ 	if ready, _ := launchPayload["debugReady"].(bool); ready {
+-		t.Fatalf("pending 实例不应被标记为 debugReady: %+v", launchPayload)
++		t.Fatalf("pending 窗口不应被标记为 debugReady: %+v", launchPayload)
+ 	}
+ 
+ 	proxyReq := httptest.NewRequest(http.MethodGet, "/json/version", nil)
+@@ -168,7 +168,7 @@ func TestCDPProxySkipsPendingDebugProfile(t *testing.T) {
+ 	proxyResp := httptest.NewRecorder()
+ 	handler.ServeHTTP(proxyResp, proxyReq)
+ 	if proxyResp.Code != http.StatusServiceUnavailable {
+-		t.Fatalf("pending 实例不应成为活动 CDP target: status=%d body=%s", proxyResp.Code, proxyResp.Body.String())
++		t.Fatalf("pending 窗口不应成为活动 CDP target: status=%d body=%s", proxyResp.Code, proxyResp.Body.String())
+ 	}
+ }
+ 
+diff --git a/backend/test/launchcode/server_selector_test.go b/backend/test/launchcode/server_selector_test.go
+index 7cc6c9aa..847ba854 100644
+--- a/backend/test/launchcode/server_selector_test.go
++++ b/backend/test/launchcode/server_selector_test.go
+@@ -62,7 +62,7 @@ func TestLaunchWithKeywordSelector(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profile.ProfileId {
+-		t.Fatalf("命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
++		t.Fatalf("命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+ 	}
+ 
+ 	var resp struct {
+@@ -105,7 +105,7 @@ func TestLaunchWithTopLevelKeywordSelector(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profile.ProfileId {
+-		t.Fatalf("命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
++		t.Fatalf("命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+ 	}
+ }
+ 
+@@ -133,7 +133,7 @@ func TestLaunchWithTopLevelKeyAliasSelector(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profile.ProfileId {
+-		t.Fatalf("命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
++		t.Fatalf("命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+ 	}
+ }
+ 
+@@ -169,7 +169,7 @@ func TestLaunchWithTopLevelKeyPrefersExactKeywordMatch(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profileExact.ProfileId {
+-		t.Fatalf("key 应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
++		t.Fatalf("key 应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+ 	}
+ }
+ 
+@@ -205,7 +205,7 @@ func TestLaunchWithNestedSelectorKeyPrefersExactKeywordMatch(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profileExact.ProfileId {
+-		t.Fatalf("selector.key 应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
++		t.Fatalf("selector.key 应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+ 	}
+ }
+ 
+@@ -233,7 +233,7 @@ func TestLaunchWithTopLevelCodeFallbackToKeyword(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profile.ProfileId {
+-		t.Fatalf("code 关键字兜底命中实例错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
++		t.Fatalf("code 关键字兜底命中窗口错误: got=%s want=%s", starter.lastProfile, profile.ProfileId)
+ 	}
+ }
+ 
+@@ -269,7 +269,7 @@ func TestLaunchWithTopLevelCodeFallbackPrefersExactKeywordMatch(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profileExact.ProfileId {
+-		t.Fatalf("code 关键字兜底应优先命中精确关键字实例: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
++		t.Fatalf("code 关键字兜底应优先命中精确关键字窗口: got=%s want=%s", starter.lastProfile, profileExact.ProfileId)
+ 	}
+ }
+ 
+@@ -305,7 +305,7 @@ func TestLaunchWithAmbiguousKeywordSelectorReturnsFirstByDefault(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profileA.ProfileId {
+-		t.Fatalf("关键字多命中时应默认取排序后的第一个实例: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
++		t.Fatalf("关键字多命中时应默认取排序后的第一个窗口: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
+ 	}
+ }
+ 
+@@ -341,7 +341,7 @@ func TestLaunchWithTopLevelCodeFallbackReturnsFirstByDefault(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profileA.ProfileId {
+-		t.Fatalf("code 关键字兜底多命中时应默认取排序后的第一个实例: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
++		t.Fatalf("code 关键字兜底多命中时应默认取排序后的第一个窗口: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
+ 	}
+ }
+ 
+@@ -377,7 +377,7 @@ func TestLaunchWithAmbiguousKeywordSelectorAndExplicitUniqueReturnsConflict(t *t
+ 		t.Fatalf("期望 409，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != "" {
+-		t.Fatalf("歧义场景不应启动实例: %s", starter.lastProfile)
++		t.Fatalf("歧义场景不应启动窗口: %s", starter.lastProfile)
+ 	}
+ 	if !strings.Contains(w.Body.String(), "matchMode=first") {
+ 		t.Fatalf("错误信息未提示 matchMode=first: %s", w.Body.String())
+@@ -408,7 +408,7 @@ func TestGetLaunchByCodeDoesNotFallbackToKeyword(t *testing.T) {
+ 		t.Fatalf("GET /api/launch/{code} 应保持纯 code 语义，期望 404，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != "" {
+-		t.Fatalf("GET /api/launch/{code} 不应按关键字兜底启动实例: %s", starter.lastProfile)
++		t.Fatalf("GET /api/launch/{code} 不应按关键字兜底启动窗口: %s", starter.lastProfile)
+ 	}
+ }
+ 
+@@ -444,7 +444,7 @@ func TestLaunchWithMatchModeFirst(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if starter.lastProfile != profileA.ProfileId {
+-		t.Fatalf("matchMode=first 应命中排序后的第一个实例: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
++		t.Fatalf("matchMode=first 应命中排序后的第一个窗口: got=%s want=%s", starter.lastProfile, profileA.ProfileId)
+ 	}
+ }
+ 
+@@ -480,7 +480,7 @@ func TestLaunchWithMatchModeAllStartsAllMatchedProfiles(t *testing.T) {
+ 		t.Fatalf("期望 200，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if len(starter.started) != 2 {
+-		t.Fatalf("matchMode=all 应启动 2 个实例: %+v", starter.started)
++		t.Fatalf("matchMode=all 应启动 2 个窗口: %+v", starter.started)
+ 	}
+ 	if starter.started[0] != profileA.ProfileId || starter.started[1] != profileB.ProfileId {
+ 		t.Fatalf("matchMode=all 应按稳定排序依次启动: got=%+v", starter.started)
+@@ -544,6 +544,6 @@ func TestLaunchWithTopLevelCodeFallbackAndExplicitUniqueReturnsConflict(t *testi
+ 		t.Fatalf("期望 409，实际 %d，body=%s", w.Code, w.Body.String())
+ 	}
+ 	if len(starter.started) != 0 {
+-		t.Fatalf("显式 unique 不应启动任何实例: %+v", starter.started)
++		t.Fatalf("显式 unique 不应启动任何窗口: %+v", starter.started)
+ 	}
+ }
+diff --git a/main.go b/main.go
+index eeecbec5..27fec447 100644
+--- a/main.go
++++ b/main.go
+@@ -164,7 +164,7 @@ func main() {
+ 		cfg = backend.DefaultConfig()
+ 	}
+ 
+-	// 创建应用实例
++	// 创建应用窗口
+ 	app := NewApp(appRoot, buildVersion)
+ 
+ 	var wailsCtx context.Context

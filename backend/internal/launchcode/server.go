@@ -51,7 +51,7 @@ type LaunchRequest struct {
 	LaunchRequestParams
 }
 
-// BrowserStarterWithParams 可选接口：支持带参数启动实例
+// BrowserStarterWithParams 可选接口：支持带参数启动窗口
 type BrowserStarterWithParams interface {
 	StartInstanceWithParams(profileId string, params LaunchRequestParams) (*browser.Profile, error)
 }
@@ -260,14 +260,14 @@ func (s *LaunchServer) CDPURL() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
-// ActiveDebugPort 返回当前活动实例的内部调试端口。
+// ActiveDebugPort 返回当前活动窗口的内部调试端口。
 func (s *LaunchServer) ActiveDebugPort() int {
 	s.activeMu.RLock()
 	defer s.activeMu.RUnlock()
 	return s.activePort
 }
 
-// SetActiveProfile 将统一入口切换到指定实例的调试端口。
+// SetActiveProfile 将统一入口切换到指定窗口的调试端口。
 func (s *LaunchServer) SetActiveProfile(profile *browser.Profile) {
 	if profile == nil || profile.DebugPort <= 0 || !profile.DebugReady {
 		return
@@ -280,7 +280,7 @@ func (s *LaunchServer) SetActiveProfile(profile *browser.Profile) {
 	s.activeMu.Unlock()
 }
 
-// ClearActiveProfile 在当前活动实例停止后清空统一入口。
+// ClearActiveProfile 在当前活动窗口停止后清空统一入口。
 func (s *LaunchServer) ClearActiveProfile(profileID string) {
 	profileID = strings.TrimSpace(profileID)
 	if profileID == "" {
@@ -373,7 +373,7 @@ func (s *LaunchServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
-// handleCDPProxy 将统一端口上的非 /api 请求转发到当前活动实例的 CDP 端口。
+// handleCDPProxy 将统一端口上的非 /api 请求转发到当前活动窗口的 CDP 端口。
 //
 // 安全说明：该端口转发的是 Chromium 调试协议（CDP），可执行任意 JS、读取
 // cookie/存储、导航到 file:// 等，等同于完全控制浏览器。CDP 端点对 WebSocket
@@ -426,7 +426,7 @@ func (s *LaunchServer) handleCDPProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLaunch GET /api/launch/{code}
-// ⚠️ GET 方法有副作用（启动浏览器实例），存在 CSRF 风险。
+// ⚠️ GET 方法有副作用（启动浏览器窗口），存在 CSRF 风险。
 // 为了防止跨站请求伪造攻击，当 API 认证未启用时，要求自定义请求头 X-Launch-Request。
 // 推荐使用 POST /api/launch 接口。
 func (s *LaunchServer) handleLaunch(w http.ResponseWriter, r *http.Request) {
@@ -612,7 +612,7 @@ func (s *LaunchServer) handleLaunchLogs(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// handleStop POST /api/stop 停止实例
+// handleStop POST /api/stop 停止窗口
 func (s *LaunchServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
@@ -709,7 +709,7 @@ func (s *LaunchServer) handleStop(w http.ResponseWriter, r *http.Request) {
 		profileID = profileSnapshot.ProfileId
 	}
 
-	// 停止实例
+	// 停止窗口
 	if err := s.stopper.StopInstance(profileID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"ok":    false,

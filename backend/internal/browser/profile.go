@@ -2,6 +2,7 @@ package browser
 
 import (
 	"ant-chrome/backend/internal/logger"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -10,6 +11,17 @@ import (
 
 	"github.com/google/uuid"
 )
+
+func normalizeProfileConfigJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "{}"
+	}
+	if !json.Valid([]byte(raw)) {
+		return "{}"
+	}
+	return raw
+}
 
 // InitData 初始化浏览器数据
 func (m *Manager) InitData() {
@@ -42,17 +54,17 @@ func (m *Manager) loadProfiles() {
 	if m.ProfileDAO != nil {
 		profiles, err := m.ProfileDAO.List()
 		if err != nil {
-			log.Error("从数据库加载实例配置失败", logger.F("error", err))
+			log.Error("从数据库加载窗口配置失败", logger.F("error", err))
 		} else {
-			// SQLite 模式：无论是否为空都直接使用，不自动创建默认实例
+			// SQLite 模式：无论是否为空都直接使用，不自动创建默认窗口
 			for _, p := range profiles {
 				p.CoreId = normalizeProfileCoreID(p.CoreId)
 				m.Profiles[p.ProfileId] = p
 			}
 			if len(profiles) > 0 {
-				log.Info("实例配置从数据库加载完成", logger.F("count", len(profiles)))
+				log.Info("窗口配置从数据库加载完成", logger.F("count", len(profiles)))
 			} else {
-				log.Info("实例表为空，用户可手动创建新实例")
+				log.Info("窗口表为空，用户可手动创建新窗口")
 			}
 			return
 		}
@@ -60,8 +72,8 @@ func (m *Manager) loadProfiles() {
 
 	// 降级：从 config.yaml 加载（仅在无 SQLite 时使用）
 	if len(m.Config.Browser.Profiles) == 0 {
-		// 不自动创建默认实例，保持空列表
-		log.Info("实例配置为空，用户可手动创建新实例")
+		// 不自动创建默认窗口，保持空列表
+		log.Info("窗口配置为空，用户可手动创建新窗口")
 		return
 	}
 	now := time.Now().Format(time.RFC3339)
@@ -91,6 +103,7 @@ func (m *Manager) loadProfiles() {
 			ProxyBindName:      item.ProxyBindName,
 			ProxyBindUpdatedAt: item.ProxyBindUpdatedAt,
 			LaunchArgs:         append([]string{}, item.LaunchArgs...),
+			ProfileConfig:      normalizeProfileConfigJSON(item.ProfileConfig),
 			Tags:               append([]string{}, item.Tags...),
 			Keywords:           append([]string{}, item.Keywords...),
 			Running:            false,
@@ -104,18 +117,18 @@ func (m *Manager) loadProfiles() {
 	log.Info("浏览器配置从文件加载完成", logger.F("count", len(m.Profiles)))
 }
 
-// SaveProfiles 保存所有实例配置（DAO 模式：逐条 upsert）
+// SaveProfiles 保存所有窗口配置（DAO 模式：逐条 upsert）
 func (m *Manager) SaveProfiles() error {
 	log := logger.New("Browser")
 	if m.ProfileDAO != nil {
 		for _, profile := range m.Profiles {
 			profile.CoreId = normalizeProfileCoreID(profile.CoreId)
 			if err := m.ProfileDAO.Upsert(profile); err != nil {
-				log.Error("实例配置持久化失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
+				log.Error("窗口配置持久化失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
 				return err
 			}
 		}
-		log.Info("实例配置持久化成功", logger.F("count", len(m.Profiles)))
+		log.Info("窗口配置持久化成功", logger.F("count", len(m.Profiles)))
 		return nil
 	}
 
@@ -135,6 +148,7 @@ func (m *Manager) SaveProfiles() error {
 			ProxyBindName:      profile.ProxyBindName,
 			ProxyBindUpdatedAt: profile.ProxyBindUpdatedAt,
 			LaunchArgs:         append([]string{}, profile.LaunchArgs...),
+			ProfileConfig:      normalizeProfileConfigJSON(profile.ProfileConfig),
 			Tags:               append([]string{}, profile.Tags...),
 			Keywords:           append([]string{}, profile.Keywords...),
 			CreatedAt:          profile.CreatedAt,
@@ -224,7 +238,7 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 
 	// Check Profile Limit
 	if m.Config.App.MaxProfileLimit > 0 && len(m.Profiles) >= m.Config.App.MaxProfileLimit {
-		return nil, fmt.Errorf("实例数量已达上限 (%d个)，无法创建新的实例。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
+		return nil, fmt.Errorf("窗口数量已达上限 (%d个)，无法创建新的窗口。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
 	}
 
 	now := time.Now().Format(time.RFC3339)
@@ -264,6 +278,7 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 		ProxyId:         proxyId,
 		ProxyConfig:     proxyConfig,
 		LaunchArgs:      input.LaunchArgs,
+		ProfileConfig:   normalizeProfileConfigJSON(input.ProfileConfig),
 		Tags:            input.Tags,
 		Keywords:        append([]string{}, input.Keywords...),
 		GroupId:         strings.TrimSpace(input.GroupId),
@@ -317,6 +332,7 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 		_ = ClearProfileProxyBinding(profile)
 	}
 	profile.LaunchArgs = input.LaunchArgs
+	profile.ProfileConfig = normalizeProfileConfigJSON(input.ProfileConfig)
 	profile.Tags = input.Tags
 	profile.Keywords = append([]string{}, input.Keywords...)
 	profile.GroupId = strings.TrimSpace(input.GroupId)
@@ -341,11 +357,11 @@ func (m *Manager) Delete(profileId string) error {
 		return fmt.Errorf("profile not found")
 	}
 
-	// 防止删除运行中的实例：保护用户数据和会话。
+	// 防止删除运行中的窗口：保护用户数据和会话。
 	// API 层 (profile_api.go:250) 有此检查，但 Wails 绑定层 (app.go:565) 直接调用本方法，
 	// 因此必须在底层也加检查，形成纵深防御。
 	if profile.Running {
-		log.Error("运行中的实例不可删除", logger.F("profile_id", profileId))
+		log.Error("运行中的窗口不可删除", logger.F("profile_id", profileId))
 		return fmt.Errorf("cannot delete running profile")
 	}
 
@@ -355,7 +371,7 @@ func (m *Manager) Delete(profileId string) error {
 	// DAO 删除
 	if m.ProfileDAO != nil {
 		if err := m.ProfileDAO.Delete(profileId); err != nil {
-			log.Error("数据库删除实例失败", logger.F("profile_id", profileId), logger.F("error", err))
+			log.Error("数据库删除窗口失败", logger.F("profile_id", profileId), logger.F("error", err))
 			return err
 		}
 	} else {
@@ -379,6 +395,7 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 	if profile.LaunchArgs == nil || len(profile.LaunchArgs) == 0 {
 		profile.LaunchArgs = append([]string{}, m.Config.Browser.DefaultLaunchArgs...)
 	}
+	profile.ProfileConfig = normalizeProfileConfigJSON(profile.ProfileConfig)
 	if strings.TrimSpace(profile.UserDataDir) == "" {
 		profile.UserDataDir = profile.ProfileId
 	}
@@ -394,7 +411,7 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 		proxyChanged = true
 	}
 	if bindMode != "" && bindMode != "proxy_id" {
-		log.Info("实例代理自动重关联",
+		log.Info("窗口代理自动重关联",
 			logger.F("profile_id", profile.ProfileId),
 			logger.F("proxy_id", profile.ProxyId),
 			logger.F("mode", bindMode),
@@ -402,9 +419,9 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 	}
 	if profile.ProxyId != "" && !boundInPool {
 		if strings.TrimSpace(profile.ProxyConfig) == "" {
-			log.Error("实例代理未找到", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
+			log.Error("窗口代理未找到", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
 		} else {
-			log.Warn("实例代理未找到，回退使用历史代理配置", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
+			log.Warn("窗口代理未找到，回退使用历史代理配置", logger.F("profile_id", profile.ProfileId), logger.F("proxy_id", profile.ProxyId))
 		}
 	}
 	if profile.ProxyConfig == "" && m.Config.Browser.DefaultProxy != "" {
@@ -414,7 +431,7 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 	return proxyChanged
 }
 
-// Copy 复制实例配置（除指纹参数外全部复制，指纹使用默认值生成新种子）
+// Copy 复制窗口配置（除指纹参数外全部复制，指纹使用默认值生成新种子）
 func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
 	log := logger.New("Browser")
 	m.InitData()
@@ -423,13 +440,13 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
 
 	// Check Profile Limit
 	if m.Config.App.MaxProfileLimit > 0 && len(m.Profiles) >= m.Config.App.MaxProfileLimit {
-		log.Error("复制实例失败: 达到数量上限", logger.F("limit", m.Config.App.MaxProfileLimit))
-		return nil, fmt.Errorf("实例数量已达上限 (%d个)，无法复制实例。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
+		log.Error("复制窗口失败: 达到数量上限", logger.F("limit", m.Config.App.MaxProfileLimit))
+		return nil, fmt.Errorf("窗口数量已达上限 (%d个)，无法复制窗口。请兑换额度后重试！", m.Config.App.MaxProfileLimit)
 	}
 
 	src, exists := m.Profiles[profileId]
 	if !exists {
-		log.Error("源实例不存在", logger.F("profile_id", profileId))
+		log.Error("源窗口不存在", logger.F("profile_id", profileId))
 		return nil, fmt.Errorf("profile not found")
 	}
 
@@ -456,6 +473,7 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
 		ProxyBindName:      src.ProxyBindName,
 		ProxyBindUpdatedAt: src.ProxyBindUpdatedAt,
 		LaunchArgs:         append([]string{}, src.LaunchArgs...),
+		ProfileConfig:      normalizeProfileConfigJSON(src.ProfileConfig),
 		Tags:               append([]string{}, src.Tags...),
 		Keywords:           append([]string{}, src.Keywords...),
 		GroupId:            src.GroupId, // 复制分组
@@ -468,7 +486,7 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
 	}
 
 	m.Profiles[newId] = profile
-	log.Info("实例复制成功", logger.F("src_id", profileId), logger.F("new_id", newId), logger.F("new_name", profileName))
+	log.Info("窗口复制成功", logger.F("src_id", profileId), logger.F("new_id", newId), logger.F("new_name", profileName))
 
 	if err := m.SaveProfiles(); err != nil {
 		return nil, err
@@ -483,7 +501,7 @@ func (m *Manager) Copy(profileId string, newName string) (*Profile, error) {
 	return profile, nil
 }
 
-// SetKeywords 设置实例关键字（独立接口，不影响其他字段）
+// SetKeywords 设置窗口关键字（独立接口，不影响其他字段）
 func (m *Manager) SetKeywords(profileId string, keywords []string) (*Profile, error) {
 	log := logger.New("Browser")
 	m.InitData()

@@ -31,7 +31,7 @@ export function EnhancedToolbar({
         <Input
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="搜索实例名称、标签、关键字..."
+          placeholder="搜索窗口名称、标签、关键字..."
           className="pl-10 pr-9 h-9"
         />
         {searchQuery && (
@@ -102,7 +102,7 @@ export function EnhancedToolbar({
         <Link to="/browser/create">
           <Button size="sm">
             <Plus className="w-4 h-4" />
-            新建实例
+            新建窗口
           </Button>
         </Link>
       </div>

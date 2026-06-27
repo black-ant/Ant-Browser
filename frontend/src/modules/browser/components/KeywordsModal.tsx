@@ -60,7 +60,7 @@ export function KeywordsModal({ profileId, profileName, initialKeywords, open, o
     >
       <div className="space-y-2">
         <p className="text-xs text-[var(--color-text-muted)] mb-3">
-          关键字附加在实例上，例如账号、备注等，支持在列表页搜索。
+          关键字附加在窗口上，例如账号、备注等，支持在列表页搜索。
         </p>
 
         {items.map((item, i) => (

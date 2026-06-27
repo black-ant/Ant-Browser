@@ -158,7 +158,7 @@ func (m *XrayManager) EnsureBridge(proxyConfig string, proxies []config.BrowserP
 	return socksURL, err
 }
 
-// AcquireBridge 获取一个带引用计数的 Xray 桥接，用于浏览器实例等长生命周期场景。
+// AcquireBridge 获取一个带引用计数的 Xray 桥接，用于浏览器窗口等长生命周期场景。
 func (m *XrayManager) AcquireBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, string, error) {
 	return m.ensureBridge(proxyConfig, proxies, proxyId, true)
 }
@@ -230,9 +230,10 @@ func (m *XrayManager) ensureBridge(proxyConfig string, proxies []config.BrowserP
 	src = normalizeNodeScheme(src)
 
 	var (
-		outbounds     []interface{}
-		routes        []interface{}
-		preferredPort int
+		outbounds       []interface{}
+		routes          []interface{}
+		preferredPort   int
+		frontProxyForKey string
 	)
 
 	if IsChainSocks5Proxy(src) {
@@ -273,9 +274,24 @@ func (m *XrayManager) ensureBridge(proxyConfig string, proxies []config.BrowserP
 				"outboundTag": "proxy-out",
 			},
 		}
+
+		// 全局前置代理：让目标代理的流量先经过本地前置代理出口，使上游网关
+		// 看到的是前置出口 IP（而非本机真实 IP），用于绕过「拒绝本地区 IP」类准入。
+		// 仅对标准代理（带账密走桥接）生效，不影响链式/机场节点。
+		if front := m.resolveFrontProxyOutbound(); front != "" {
+			frontOB, err := buildStandardProxyOutbound(front)
+			if err != nil {
+				log.Warn("前置代理解析失败，已跳过前置", logger.F("front", front), logger.F("error", err))
+			} else {
+				frontOB["tag"] = "front-proxy"
+				outbound["proxySettings"] = map[string]interface{}{"tag": "front-proxy"}
+				outbounds = []interface{}{outbound, frontOB}
+				frontProxyForKey = front
+			}
+		}
 	}
 
-	key := computeNodeKey(src + "\x00" + dnsServers)
+	key := computeNodeKey(src + "\x00" + dnsServers + "\x00" + frontProxyForKey)
 
 	if socksURL, reused := m.tryReuseBridge(key, pin); reused {
 		log.Info("复用桥接进程", logger.F("key", key), logger.F("socks_url", socksURL))
@@ -835,6 +851,27 @@ func (m *XrayManager) resolveWorkdir(key string) string {
 func computeNodeKey(src string) string {
 	h := sha256.Sum256([]byte(strings.TrimSpace(src)))
 	return hex.EncodeToString(h[:])
+}
+
+// resolveFrontProxyOutbound 返回当前应套用的全局前置代理地址（如 socks5://127.0.0.1:7891）。
+//   - 未开启全局前置代理时返回空串。
+//   - 自动模式：扫描本地常见端口，取第一个活着的代理。
+//   - 固定模式：返回用户配置的固定地址。
+// 返回空串表示「不套前置」（扫不到 / 未配置），调用方据此降级为直连上游。
+func (m *XrayManager) resolveFrontProxyOutbound() string {
+	if m == nil || m.Config == nil {
+		return ""
+	}
+	if !m.Config.Browser.FrontProxyEnabled {
+		return ""
+	}
+	if m.Config.Browser.FrontProxyAuto {
+		if scan := ScanLocalProxy(); scan.Found {
+			return scan.Best
+		}
+		return ""
+	}
+	return strings.TrimSpace(m.Config.Browser.FrontProxyAddr)
 }
 
 func normalizeNodeScheme(src string) string {

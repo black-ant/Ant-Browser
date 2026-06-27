@@ -1,4 +1,4 @@
-# 浏览器实例生命周期优化方案
+# 浏览器窗口生命周期优化方案
 
 **目标：** 减少启动卡顿，提高批量启动稳定性
 
@@ -30,7 +30,7 @@ func (a *App) browserInstanceStartInternal(...) (*BrowserProfile, error) {
 | **长时间持锁** | 批量启动时串行化，UI卡顿 | 第33-34行 |
 | **启动进程时持锁** | 进程启动耗时1-3秒 | 第227-241行 |
 | **等待端口时持锁** | 端口稳定检测耗时2-5秒 | 第242-250行 |
-| **无并发控制** | 同时启动大量实例资源竞争 | - |
+| **无并发控制** | 同时启动大量窗口资源竞争 | - |
 | **状态不明确** | 只有running/stopped | - |
 | **无启动前检查** | 启动失败才发现问题 | - |
 
@@ -309,7 +309,7 @@ func (m *Manager) setProfileStatus(profileId string, status ProfileStatus, messa
     profile.StatusMessage = message
     profile.LastStateChange = time.Now()
     
-    logger.Info("实例状态变更",
+    logger.Info("窗口状态变更",
         "profile_id", profileId,
         "old_status", oldStatus,
         "new_status", status,
@@ -376,8 +376,8 @@ export function useProfileEvents() {
 
 | 指标 | 优化前 | 优化后 | 改进 |
 |------|--------|--------|------|
-| **单实例启动时间** | 3-5秒 | 3-5秒 | 无变化 |
-| **批量启动10个实例** | 30-50秒（串行） | 15-20秒（并发） | **50%提升** |
+| **单窗口启动时间** | 3-5秒 | 3-5秒 | 无变化 |
+| **批量启动10个窗口** | 30-50秒（串行） | 15-20秒（并发） | **50%提升** |
 | **UI响应性** | 卡顿 | 流畅 | **显著改善** |
 | **启动失败率** | 10-15% | 5%以下 | **降低50%** |
 | **错误可追踪性** | 模糊 | 清晰 | **明确定位** |
@@ -418,7 +418,7 @@ export function useProfileEvents() {
 ## ✅ 验收标准
 
 1. ✅ **批量启动时UI不假死**
-   - 同时启动10个实例
+   - 同时启动10个窗口
    - UI保持响应
    - 可以继续操作
 
@@ -433,8 +433,8 @@ export function useProfileEvents() {
    - 如何解决
 
 4. ✅ **并发控制有效**
-   - 最多3个实例同时启动
-   - 其他实例排队等待
+   - 最多3个窗口同时启动
+   - 其他窗口排队等待
    - 队列位置可见
 
 5. ✅ **启动前检查生效**

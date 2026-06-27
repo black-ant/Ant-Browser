@@ -74,6 +74,10 @@ func SpeedTest(
 		testURL = cfg.URLs[0]
 	}
 
+	if shouldUseBridgeHTTPDelayTest(src, proxies, proxyId, xrayMgr) {
+		return httpClientDelayTest(proxyId, src, proxies, xrayMgr, singboxMgr, testURL, cfg.Timeout)
+	}
+
 	resolvedSrc := src
 	if IsChainSocks5Proxy(src) {
 		if xrayMgr == nil {
@@ -103,7 +107,7 @@ func SpeedTest(
 		return tcpPingFallback(proxyId, resolvedSrc, cfg.TCPTimeout, log)
 	}
 
-	// 使用 mihomo adapter.ParseProxy 创建代理实例
+	// 使用 mihomo adapter.ParseProxy 创建代理窗口
 	proxyInstance, err := adapter.ParseProxy(mapping)
 	if err != nil {
 		log.Warn("mihomo 代理创建失败，降级到 TCP ping",
@@ -116,6 +120,59 @@ func SpeedTest(
 
 	// unified-delay 测速：分离连接建立和 HTTP 往返计时
 	return unifiedDelayTest(proxyId, proxyInstance, testURL, cfg.Timeout)
+}
+
+func shouldUseBridgeHTTPDelayTest(
+	src string,
+	proxies []config.BrowserProxy,
+	proxyId string,
+	xrayMgr *XrayManager,
+) bool {
+	if xrayMgr == nil || !isStandardProxyConfig(src) {
+		return false
+	}
+	// 带账密的标准代理启动时会走 xray 桥接；测速也走同一链路，
+	// 这样全局前置代理才能参与延迟测试，避免 UI 与实际启动路径不一致。
+	return RequiresBridge(src, proxies, proxyId)
+}
+
+func httpClientDelayTest(
+	proxyId string,
+	src string,
+	proxies []config.BrowserProxy,
+	xrayMgr *XrayManager,
+	singboxMgr *SingBoxManager,
+	testURL string,
+	timeout time.Duration,
+) TestResult {
+	client, err := buildProxyHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, timeout)
+	if err != nil {
+		return TestResult{ProxyId: proxyId, Ok: false, Error: err.Error()}
+	}
+	defer client.CloseIdleConnections()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, testURL, nil)
+	if err != nil {
+		return TestResult{ProxyId: proxyId, Ok: false, Error: fmt.Sprintf("URL 解析失败: %v", err)}
+	}
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return TestResult{ProxyId: proxyId, Ok: false, LatencyMs: latency, Error: err.Error()}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return TestResult{ProxyId: proxyId, Ok: false, LatencyMs: latency,
+			Error: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+	}
+
+	return TestResult{ProxyId: proxyId, Ok: true, LatencyMs: latency}
 }
 
 // unifiedDelayTest 模拟 Clash unified-delay 模式：
@@ -238,6 +295,13 @@ func proxyConfigToMapping(src string) (map[string]any, error) {
 
 	// Clash YAML 格式 → 直接解析
 	return parseClashYAMLToMapping(src)
+}
+
+func isStandardProxyConfig(src string) bool {
+	l := strings.ToLower(strings.TrimSpace(src))
+	return strings.HasPrefix(l, "http://") ||
+		strings.HasPrefix(l, "https://") ||
+		strings.HasPrefix(l, "socks5://")
 }
 
 func parseStandardProxy(src string, proxyType string) (map[string]any, error) {

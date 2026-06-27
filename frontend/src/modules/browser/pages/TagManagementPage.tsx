@@ -72,7 +72,7 @@ function TagPanel({ tags, selected, profilesByTag, totalCount, onSelect, onCreat
               : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
             }`}
         >
-          <span>全部实例</span>
+          <span>全部窗口</span>
           <span className="text-xs opacity-60">{totalCount}</span>
         </button>
         {tags.map(tag => (
@@ -206,10 +206,10 @@ export function TagManagementPage() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
-  // 用户新建但尚未分配给任何实例的标签（纯前端暂存）
+  // 用户新建但尚未分配给任何窗口的标签（纯前端暂存）
   const [pendingTags, setPendingTags] = useState<string[]>([])
 
-  // 合并：实例已有标签 + 用户新建的待分配标签
+  // 合并：窗口已有标签 + 用户新建的待分配标签
   const allTagsWithPending = useMemo(() => {
     const set = new Set<string>()
     profiles.forEach(p => p.tags?.forEach(t => set.add(t)))
@@ -228,7 +228,7 @@ export function TagManagementPage() {
     try {
       const data = await fetchBrowserProfiles()
       setProfiles(data)
-      // 清理已被实例使用的 pendingTags
+      // 清理已被窗口使用的 pendingTags
       const usedTags = new Set<string>()
       data.forEach(p => p.tags?.forEach(t => usedTags.add(t)))
       setPendingTags(prev => prev.filter(t => !usedTags.has(t)))
@@ -270,7 +270,7 @@ export function TagManagementPage() {
     setSaving(true)
     try {
       await batchSetProfileTags(ids, tags, false)
-      toast.success(`已为 ${ids.length} 个实例添加标签`)
+      toast.success(`已为 ${ids.length} 个窗口添加标签`)
       await load()
     } catch (e: any) {
       toast.error(e?.message || '操作失败')
@@ -283,7 +283,7 @@ export function TagManagementPage() {
     setSaving(true)
     try {
       await batchRemoveProfileTags(ids, tags)
-      toast.success(`已从 ${ids.length} 个实例移除标签`)
+      toast.success(`已从 ${ids.length} 个窗口移除标签`)
       await load()
     } catch (e: any) {
       toast.error(e?.message || '操作失败')
@@ -336,9 +336,9 @@ export function TagManagementPage() {
             <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">标签管理</h1>
             <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
               {selectedTag ? (
-                <>标签 <span className="text-[var(--color-primary)]">「{selectedTag}」</span> 下共 {displayProfiles.length} 个实例</>
+                <>标签 <span className="text-[var(--color-primary)]">「{selectedTag}」</span> 下共 {displayProfiles.length} 个窗口</>
               ) : (
-                <>全部实例，共 {profiles.length} 个</>
+                <>全部窗口，共 {profiles.length} 个</>
               )}
             </p>
           </div>
@@ -353,7 +353,7 @@ export function TagManagementPage() {
           onClear={() => setSelectedIds(new Set())}
         />
 
-        {/* 实例表格 */}
+        {/* 窗口表格 */}
         <Card padding="none" className="flex-1 overflow-hidden">
           <div className="overflow-auto h-full">
             <table className="min-w-full">
@@ -368,7 +368,7 @@ export function TagManagementPage() {
                       onChange={toggleAll}
                     />
                   </th>
-                  <th className="px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)] text-left">实例名称</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)] text-left">窗口名称</th>
                   <th className="px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)] text-left">当前标签</th>
                   <th className="px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)] text-left">状态</th>
                 </tr>
@@ -377,7 +377,7 @@ export function TagManagementPage() {
                 {loading ? (
                   <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-[var(--color-text-muted)]">加载中...</td></tr>
                 ) : displayProfiles.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-[var(--color-text-muted)]">暂无实例</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-[var(--color-text-muted)]">暂无窗口</td></tr>
                 ) : displayProfiles.map(p => (
                   <tr
                     key={p.profileId}

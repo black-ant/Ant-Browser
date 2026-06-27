@@ -12,7 +12,7 @@ import (
 	"ant-chrome/backend/internal/logger"
 )
 
-// ProfileWriteRequest 用于创建/更新实例配置。
+// ProfileWriteRequest 用于创建/更新窗口配置。
 // profile 为持久化配置；start 为本次自动启动的临时参数。
 type ProfileWriteRequest struct {
 	Profile    *browser.ProfileInput `json:"profile"`
@@ -124,7 +124,7 @@ func (s *LaunchServer) handleCreateProfile(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusCreated, s.profileWriteSuccessPayload(profile, launchCode, true, false, launched))
-	log.Info("Profile API 创建实例",
+	log.Info("Profile API 创建窗口",
 		logger.F("profile_id", profile.ProfileId),
 		logger.F("profile_name", profile.ProfileName),
 		logger.F("launch_code", launchCode),
@@ -229,7 +229,7 @@ func (s *LaunchServer) handleUpdateProfile(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, s.profileWriteSuccessPayload(profile, launchCode, false, true, launched))
-	log.Info("Profile API 更新实例",
+	log.Info("Profile API 更新窗口",
 		logger.F("profile_id", profile.ProfileId),
 		logger.F("profile_name", profile.ProfileName),
 		logger.F("launch_code", launchCode),
@@ -607,7 +607,7 @@ func mapProfileWriteErrorStatus(err error) int {
 	case strings.Contains(msg, "launch code format invalid"),
 		strings.Contains(msg, "launch code must be"):
 		return http.StatusBadRequest
-	case strings.Contains(msg, "实例数量已达上限"):
+	case strings.Contains(msg, "窗口数量已达上限"):
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError

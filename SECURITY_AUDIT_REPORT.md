@@ -123,7 +123,7 @@ func (a *App) GenerateCDKeys(count int) ([]string, error) {
 
 **漏洞描述**:
 - TOCTOU：检查 `StartingProfiles` 到设置之间存在窗口
-- 并发启动同一实例导致资源泄漏
+- 并发启动同一窗口导致资源泄漏
 
 **修复方案**:
 ```go
@@ -849,7 +849,7 @@ for i in {1..10}; do
   curl -X POST http://localhost:PORT/browser/start \
     -d '{"profileId":"same-profile"}' &
 done
-# 预期：只有一个请求成功，其余返回"实例正在启动中"
+# 预期：只有一个请求成功，其余返回"窗口正在启动中"
 
 # HAR导出大响应测试
 # 1. 访问包含大量资源的页面

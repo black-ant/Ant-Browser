@@ -27,6 +27,11 @@ var defaultKey = []byte("ant-browser-secret-key-32bytes!!")
 
 // Encrypt 用当前默认密钥加密字符串，并添加v2版本前缀
 func Encrypt(plaintext string) (string, error) {
+	// 空明文直接返回空，不加版本前缀（否则 "v2:" 会污染存储，
+	// 且 NeedsMigration 会把它误判为已迁移）。
+	if plaintext == "" {
+		return "", nil
+	}
 	ciphertext, err := encryptWith(plaintext, defaultKey)
 	if err != nil {
 		return "", err

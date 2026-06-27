@@ -11,7 +11,7 @@ interface StatusOverviewProps {
 export function StatusOverview({ total, running, starting, error, proxyError }: StatusOverviewProps) {
   const stats = [
     {
-      label: '总实例',
+      label: '总窗口',
       value: total,
       icon: Server,
       color: 'text-[var(--color-text-secondary)]',
@@ -49,24 +49,24 @@ export function StatusOverview({ total, running, starting, error, proxyError }: 
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-      {stats.map((stat) => {
-        const Icon = stat.icon
-        return (
-          <div
-            key={stat.label}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] hover:border-[var(--color-border-strong)] transition-colors"
-          >
-            <div className={`w-10 h-10 rounded-lg ${stat.bgColor} flex items-center justify-center flex-shrink-0`}>
-              <Icon className={`w-5 h-5 ${stat.color} ${stat.spin ? 'animate-spin' : ''}`} />
+    <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <div className="grid min-w-[780px] grid-cols-5 gap-3">
+        {stats.map((stat) => {
+          const Icon = stat.icon
+          return (
+            <div
+              key={stat.label}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 whitespace-nowrap transition-colors hover:border-[var(--color-border-strong)]"
+            >
+              <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${stat.bgColor}`}>
+                <Icon className={`h-4 w-4 ${stat.color} ${stat.spin ? 'animate-spin' : ''}`} />
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">{stat.label}</span>
+              <span className="text-lg font-semibold leading-none text-[var(--color-text-primary)]">{stat.value}</span>
             </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs text-[var(--color-text-muted)] truncate">{stat.label}</span>
-              <span className="text-xl font-semibold text-[var(--color-text-primary)]">{stat.value}</span>
-            </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

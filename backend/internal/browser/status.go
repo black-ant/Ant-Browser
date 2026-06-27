@@ -2,7 +2,7 @@ package browser
 
 import "time"
 
-// ProfileStatus 实例状态
+// ProfileStatus 窗口状态
 type ProfileStatus string
 
 const (

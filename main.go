@@ -164,7 +164,7 @@ func main() {
 		cfg = backend.DefaultConfig()
 	}
 
-	// 创建应用实例
+	// 创建应用窗口
 	app := NewApp(appRoot, buildVersion)
 
 	var wailsCtx context.Context

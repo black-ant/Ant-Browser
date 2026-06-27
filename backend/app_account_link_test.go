@@ -6,14 +6,14 @@ import (
 	"ant-chrome/backend/internal/browser"
 )
 
-// 测试账号关联到实例的功能
+// 测试账号关联到窗口的功能
 func TestAccountLinkToProfile(t *testing.T) {
 	// 这是单元测试的占位符
-	// 实际测试需要初始化完整的 App 实例（包括数据库）
+	// 实际测试需要初始化完整的 App 窗口（包括数据库）
 	// 在集成测试中验证功能
 
 	input := browser.ProfileInput{
-		ProfileName: "测试实例",
+		ProfileName: "测试窗口",
 		AccountIds:  []string{"account-123", "account-456"},
 	}
 

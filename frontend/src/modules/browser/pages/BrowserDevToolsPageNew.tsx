@@ -160,16 +160,16 @@ export function BrowserDevToolsPageNew() {
   const loadProfiles = async () => {
     try {
       const list = await fetchBrowserProfiles()
-      // 只显示运行中且调试端口已就绪的实例（debugPort > 0 表示端口已初始化）
+      // 只显示运行中且调试端口已就绪的窗口（debugPort > 0 表示端口已初始化）
       setProfiles(list.filter(p => p.running && p.debugPort > 0))
     } catch {
-      toast.error('加载浏览器实例失败')
+      toast.error('加载浏览器窗口失败')
     }
   }
 
   const startCapture = async () => {
     if (!selectedProfileId) {
-      toast.error('请选择一个运行中的浏览器实例')
+      toast.error('请选择一个运行中的浏览器窗口')
       return
     }
 
@@ -224,7 +224,7 @@ export function BrowserDevToolsPageNew() {
 
   const requireSession = (): string | null => {
     if (!sessionId) {
-      toast.error('请先点击「开始」连接实例')
+      toast.error('请先点击「开始」连接窗口')
       return null
     }
     return sessionId
@@ -783,7 +783,7 @@ export function BrowserDevToolsPageNew() {
             disabled={capturing}
             className="flex-1"
             options={[
-              { value: '', label: profiles.length ? '选择运行中的浏览器实例' : '暂无运行中的实例（先去实例列表启动）' },
+              { value: '', label: profiles.length ? '选择运行中的浏览器窗口' : '暂无运行中的窗口（先去窗口列表启动）' },
               ...profiles.map(p => ({ value: p.profileId, label: `${p.profileName}（端口 ${p.debugPort}）` })),
             ]}
           />
@@ -794,11 +794,11 @@ export function BrowserDevToolsPageNew() {
           >
             {connecting ? '连接中...' : capturing ? '停止' : '连接'}
           </Button>
-          <Button variant="ghost" onClick={loadProfiles} disabled={capturing || connecting}>刷新实例</Button>
+          <Button variant="ghost" onClick={loadProfiles} disabled={capturing || connecting}>刷新窗口</Button>
         </div>
         {profiles.length === 0 && (
           <p className="text-xs text-[var(--color-text-muted)] px-1 pt-2">
-            没有运行中且调试就绪的实例——请先在实例列表启动一个实例，并等待调试端口初始化（通常需要 2-3 秒）
+            没有运行中且调试就绪的窗口——请先在窗口列表启动一个窗口，并等待调试端口初始化（通常需要 2-3 秒）
           </p>
         )}
       </Card>

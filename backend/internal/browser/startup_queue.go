@@ -68,7 +68,7 @@ func (q *StartupQueue) GetQueueInfo() map[string]interface{} {
 	}
 }
 
-// GetWaitingProfiles 获取等待中的实例列表
+// GetWaitingProfiles 获取等待中的窗口列表
 func (q *StartupQueue) GetWaitingProfiles() []string {
 	q.mu.Lock()
 	defer q.mu.Unlock()

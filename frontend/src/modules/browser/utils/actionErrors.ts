@@ -26,7 +26,7 @@ export function isBackgroundAttachMessage(message: string): boolean {
 
 export function resolveActionFeedback(error: unknown, fallback: string): { message: string; tone: 'error' | 'warning'; pendingAttach: boolean } {
   const normalized = extractActionMessage(error)
-  const message = normalized || `${fallback}，但系统没有返回明确原因。请在实例详情中查看最近错误，或检查应用日志。`
+  const message = normalized || `${fallback}，但系统没有返回明确原因。请在窗口详情中查看最近错误，或检查应用日志。`
   const pendingAttach = isBackgroundAttachMessage(message)
   return {
     message,

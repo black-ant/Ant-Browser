@@ -5,7 +5,6 @@ package fileutil
 import (
 	"fmt"
 	"os"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -69,7 +68,9 @@ func setWindowsACL(path string) error {
 	if err != nil {
 		return fmt.Errorf("创建ACL失败: %w", err)
 	}
-	defer windows.LocalFree(windows.Handle(unsafe.Pointer(dacl)))
+	// 注意：ACLFromEntries 内部已 LocalFree 掉 Win32 堆副本，返回的 *ACL 指向
+	// Go 运行时分配的内存。此处绝不能再 LocalFree，否则会跨分配器释放、破坏堆
+	// （触发 STATUS_HEAP_CORRUPTION 0xc0000374）。让 GC 管理即可。
 
 	// 打开文件句柄
 	pathUTF16, err := windows.UTF16PtrFromString(path)

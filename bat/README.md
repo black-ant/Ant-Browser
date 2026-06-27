@@ -7,7 +7,7 @@
 - `dev.bat`：统一的本地开发入口
 - `build.bat`：本地构建可执行文件
 - `publish.bat`：发布打包入口（Windows / Linux / 两者）
-- `recover-profiles.ps1`：从现有 `user_data_root` 目录补回丢失的实例配置
+- `recover-profiles.ps1`：从现有 `user_data_root` 目录补回丢失的窗口配置
 
 ## 用法
 
@@ -180,7 +180,7 @@ publish\output\AntBrowser-Setup-<version>.exe
 
 ### `recover-profiles.ps1`
 
-用于“实例配置丢了，但 `data\<userDataDir>` 目录还在”的恢复场景。
+用于“窗口配置丢了，但 `data\<userDataDir>` 目录还在”的恢复场景。
 
 默认只预览，不写数据库：
 

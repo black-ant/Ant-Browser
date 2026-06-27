@@ -32,7 +32,7 @@ func browserDebugPendingWarning(timeout time.Duration) string {
 }
 
 func browserDebugPendingStartNotice(timeout time.Duration) string {
-	return fmt.Sprintf("浏览器窗口已启动，但在 %s 内尚未完成接管；系统会继续在后台连接，请稍后查看实例状态。连接完成前，Cookie、自动化和统一 CDP 入口暂不可用。", formatBrowserWaitWindow(timeout))
+	return fmt.Sprintf("浏览器窗口已启动，但在 %s 内尚未完成接管；系统会继续在后台连接，请稍后查看窗口状态。连接完成前，Cookie、自动化和统一 CDP 入口暂不可用。", formatBrowserWaitWindow(timeout))
 }
 
 func formatBrowserWaitWindow(timeout time.Duration) string {
@@ -117,7 +117,7 @@ func (a *App) markProfileDebugReadyLocked(profile *BrowserProfile, debugPort int
 }
 
 // commitBrowserStart 在短临界区内提交一次启动结果（Phase 3）。
-// 若实例在启动期间被删除（Profiles 中不存在）或启动认领已被清除（被 Stop 取消），
+// 若窗口在启动期间被删除（Profiles 中不存在）或启动认领已被清除（被 Stop 取消），
 // 返回 committed=false，调用方应杀掉已启动的进程并释放代理桥接等资源。
 func (a *App) commitBrowserStart(profileId string, cmd *exec.Cmd, pid int, debugPort int, debugReady bool, runtimeWarning string) (*BrowserProfile, bool) {
 	a.browserMgr.Mutex.Lock()
@@ -137,7 +137,7 @@ func (a *App) commitBrowserStart(profileId string, cmd *exec.Cmd, pid int, debug
 	return copyBrowserProfileSnapshot(profile), true
 }
 
-// setProfileLastError 在短临界区内写回实例的 LastError（用于待接管提示等）。
+// setProfileLastError 在短临界区内写回窗口的 LastError（用于待接管提示等）。
 func (a *App) setProfileLastError(profileId string, msg string) {
 	a.browserMgr.Mutex.Lock()
 	if p, ok := a.browserMgr.Profiles[profileId]; ok && p != nil {
@@ -201,24 +201,40 @@ func (a *App) waitForBrowserDebugReady(profileId string, debugPort int, timeout 
 	}
 }
 
-func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeout time.Duration, overrides ...browserRuntimeOverrides) {
+func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeout time.Duration, startupActions profileStartupActions, launchArgs []string, overrides ...browserRuntimeOverrides) {
 	snapshot, changed := a.waitForBrowserDebugReady(profileId, debugPort, timeout)
 	if snapshot == nil || !changed {
 		return
 	}
 
-	logger.New("Browser").Info("实例调试接口已就绪",
+	log := logger.New("Browser")
+	log.Info("窗口调试接口已就绪",
 		logger.F("profile_id", profileId),
 		logger.F("debug_port", debugPort),
 	)
 	if len(overrides) > 0 {
 		if err := a.applyAndWatchBrowserRuntimeOverrides(profileId, debugPort, overrides[0]); err != nil {
-			logger.New("Browser").Warn("运行时指纹覆盖应用失败",
+			log.Warn("运行时指纹覆盖应用失败",
 				logger.F("profile_id", profileId),
 				logger.F("geolocation_source", overrides[0].geolocationSource()),
 				logger.F("timezone_source", overrides[0].timezoneSource()),
 				logger.F("error", err.Error()))
 		}
+	}
+
+	// 与同步就绪路径对齐：后台接管成功后同样启用网址访问过滤、执行后置动作（Cookie 导入等），
+	// 否则经"调试口超时→后台附着"降级路径起来的窗口会拿不到这两项且无任何提示。
+	if urlFilter := parseURLAccessFilter(startupActions.WebsiteAccessBlacklist, startupActions.WebsiteAccessWhitelist); urlFilter.enabled() {
+		a.startProfileURLFilterWatcher(profileId, debugPort, urlFilter)
+	}
+	if err := a.applyProfilePostStartActions(profileId, startupActions, launchArgs); err != nil {
+		actionErr := fmt.Errorf("browser startup action failed after async debug attach: %w", err)
+		a.setProfileLastError(profileId, actionErr.Error())
+		snapshot.LastError = actionErr.Error()
+		log.Error("post-start profile action failed (async attach)",
+			logger.F("profile_id", profileId),
+			logger.F("error", err.Error()),
+			logger.F("reason", actionErr.Error()))
 	}
 	a.emitBrowserInstanceUpdated(snapshot)
 }

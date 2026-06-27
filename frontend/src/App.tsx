@@ -30,7 +30,6 @@ const ChartsPage = lazyNamed(() => import('./modules/charts/ChartsPage'), 'Chart
 const BrowserListPage = lazyNamed(() => import('./modules/browser/pages/BrowserListPage'), 'BrowserListPage')
 const BrowserDetailPage = lazyNamed(() => import('./modules/browser/pages/BrowserDetailPage'), 'BrowserDetailPage')
 const BrowserEditPage = lazyNamed(() => import('./modules/browser/pages/BrowserEditPage'), 'BrowserEditPage')
-const BrowserCreatePageV2 = lazyNamed(() => import('./modules/browser/pages/BrowserCreatePageV2'), 'BrowserCreatePageV2')
 const BrowserCopyPage = lazyNamed(() => import('./modules/browser/pages/BrowserCopyPage'), 'BrowserCopyPage')
 const BrowserLogsPage = lazyNamed(() => import('./modules/browser/pages/BrowserLogsPage'), 'BrowserLogsPage')
 const ProxyPoolPage = lazyNamed(() => import('./modules/browser/pages/ProxyPoolPage'), 'ProxyPoolPage')
@@ -58,7 +57,7 @@ function useWailsNotifications() {
       (data: { profileId: string; profileName: string; error: string }) => {
         addNotification({
           type: 'error',
-          title: '实例异常退出',
+          title: '窗口异常退出',
           message: `「${data.profileName || data.profileId}」意外崩溃：${data.error}`,
         })
       }
@@ -81,7 +80,7 @@ function useWailsNotifications() {
         addNotification({
           type: 'warning',
           title: '连接池节点失效',
-          message: `代理节点 ${data.key} 连接中断，相关实例可能无法访问网络`,
+          message: `代理节点 ${data.key} 连接中断，相关窗口可能无法访问网络`,
         })
       }
     )
@@ -291,7 +290,7 @@ function App() {
               <Route path="/browser/list" element={<BrowserListPage />} />
               <Route path="/browser/detail/:id" element={<BrowserDetailPage />} />
               <Route path="/browser/edit/:id" element={<BrowserEditPage />} />
-              <Route path="/browser/create" element={<BrowserCreatePageV2 />} />
+              <Route path="/browser/create" element={<Navigate to="/browser/edit/new" replace />} />
               <Route path="/browser/copy/:id" element={<BrowserCopyPage />} />
               <Route path="/browser/monitor" element={<Navigate to="/browser/list" replace />} />
               <Route path="/browser/logs" element={<BrowserLogsPage />} />

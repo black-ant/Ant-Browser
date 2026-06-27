@@ -103,7 +103,7 @@ password, err := crypto.Decrypt(passwordEnc)
 - ✅ 密码和Cookie自动加密存储
 - ✅ 列表接口不返回敏感信息
 - ✅ 详情接口解密返回完整数据
-- ✅ 关联实例ID以JSON数组存储
+- ✅ 关联窗口ID以JSON数组存储
 - ✅ 日志记录所有操作
 
 #### **扩展管理API** (`backend/app_extension.go`)
@@ -119,7 +119,7 @@ password, err := crypto.Decrypt(passwordEnc)
 
 **特性：**
 - ✅ 支持多种来源类型（local/crx/url/store）
-- ✅ 绑定实例ID管理
+- ✅ 绑定窗口ID管理
 - ✅ 启用/禁用快速切换
 - ✅ 版本信息跟踪
 
@@ -191,7 +191,7 @@ password, err := crypto.Decrypt(passwordEnc)
 
 **ExtensionManagementPage.tsx：**
 - [ ] 替换localStorage为API调用
-- [ ] 实现扩展绑定实例功能
+- [ ] 实现扩展绑定窗口功能
 - [ ] 实现启用/禁用切换
 
 ---
@@ -372,7 +372,7 @@ localStorage.removeItem('ant-browser:extensions')
 
 3. **✅ 功能丰富**
    - 高级查询和过滤
-   - 关联实例管理
+   - 关联窗口管理
    - 版本控制
 
 4. **✅ 性能优化**

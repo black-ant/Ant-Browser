@@ -9,20 +9,62 @@ import type {
 interface ConvertOptions {
   launchArgsText?: string
   cores?: BrowserCore[]
+  coreVersions?: Record<string, string>
   selectedExtensionIds?: string[]
+  // 屏幕可用尺寸（通常取 window.screen.availWidth/availHeight），用于把九宫格窗口位置
+  // 换算成 --window-position=x,y 绝对坐标。缺省时不生成窗口位置参数。
+  screen?: { width: number; height: number }
 }
 
 const CREATE_WINDOW_CONFIG_VERSION = 1
 const SWITCH_WITH_VALUE_RE = /^(--[^=\s]+)=/
 const SWITCH_RE = /^(--[^\s=]+)/
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
+
+// 受管参数：完全由富表单控件生成的开关。编辑回显时必须从存量 args 中剥离，
+// 否则 createWindowFormToProfileInput 的「prefer-first」合并会让旧值压制控件
+// 重新生成的值，导致改了控件却不生效。注意 --disable-features / --blink-settings
+// 按开关名整体剥离：若旧 profile 在这两个开关里混入了其他特性（如 --disable-features=Foo,WebGPU），
+// 重存时只会保留控件对应的部分，其余需在「启动参数」文本框手动补回。
+const MANAGED_FINGERPRINT_SWITCHES = new Set([
+  '--user-agent',
+  '--fingerprint-platform',
+  '--lang',
+  '--timezone',
+  '--ant-timezone-mode',
+  '--fingerprint-hardware-concurrency',
+  '--fingerprint-device-memory',
+  '--fingerprint-do-not-track',
+  '--webrtc-ip-handling-policy',
+  '--ant-geolocation-permission',
+  '--ant-geolocation',
+  '--disable-spoofing',
+  // Chrome 144+ 已废弃，仍按受管剥离，值已保留在 profileConfig.formState 中用于回显
+  '--fingerprint-webgl-vendor',
+  '--fingerprint-webgl-renderer',
+])
+
+const MANAGED_LAUNCH_SWITCHES = new Set([
+  '--accept-language',
+  '--start-maximized',
+  '--window-size',
+  '--window-position',
+  '--mute-audio',
+  '--blink-settings',
+  '--autoplay-policy',
+  '--ant-search-engine',
+  '--disable-gpu',
+  '--no-sandbox',
+  '--disable-features',
+  '--allow-browser-signin',
+])
+const FALLBACK_CHROME_VERSION = '144.0.0.0'
+const LEGACY_DEFAULT_CHROME_149_UA_RE = /^Mozilla\/5\.0 \((?:Windows NT 10\.0; Win64; x64|Macintosh; Intel Mac OS X 14_6|X11; Linux x86_64)\) AppleWebKit\/537\.36 \(KHTML, like Gecko\) Chrome\/149\.0\.0\.0 Safari\/537\.36$/
 const DISABLE_SPOOFING_ORDER = ['font', 'gpu', 'canvas', 'audio', 'clientrects'] as const
 
 const DEFAULT_CREATE_WINDOW_FORM_STATE: Partial<CreateWindowFormState> = {
   system: 'windows',
   systemVersion: 'Windows 11',
   browserCore: 'chrome',
-  userAgent: DEFAULT_USER_AGENT,
   language: 'auto',
   uiLanguage: 'auto',
   timezone: 'auto',
@@ -77,6 +119,27 @@ function switchKey(arg: string): string | null {
   return arg.match(SWITCH_WITH_VALUE_RE)?.[1] || arg.match(SWITCH_RE)?.[1] || null
 }
 
+function isStartupUrlArg(arg: string): boolean {
+  return !arg.startsWith('--') && /^(https?:\/\/|about:|chrome:|edge:)/i.test(arg)
+}
+
+// 剥离由富表单控件托管的参数，只保留用户真正手填的非受管参数（如 --fingerprint= 种子、
+// 其它自定义启动开关）。用于编辑回显，避免存量受管参数在重新转换时压制控件新值。
+function stripManagedFingerprintArgs(args: string[]): string[] {
+  return normalizeArgs(args).filter(arg => {
+    const key = switchKey(arg)
+    return !(key && MANAGED_FINGERPRINT_SWITCHES.has(key))
+  })
+}
+
+function stripManagedLaunchArgs(args: string[]): string[] {
+  return normalizeArgs(args).filter(arg => {
+    if (isStartupUrlArg(arg)) return false
+    const key = switchKey(arg)
+    return !(key && MANAGED_LAUNCH_SWITCHES.has(key))
+  })
+}
+
 function mergeArgsPreferFirst(...groups: string[][]): string[] {
   const seenSwitches = new Set<string>()
   const out: string[] = []
@@ -100,6 +163,63 @@ function mergeArgsPreferFirst(...groups: string[][]): string[] {
 function appendValueArg(args: string[], prefix: string, value: string | undefined) {
   const normalized = trim(value)
   if (normalized) args.push(`${prefix}${normalized}`)
+}
+
+function normalizeChromeVersion(value: string | undefined): string {
+  const match = trim(value).match(/\b(\d{2,3})(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?\b/)
+  if (!match) return ''
+  return [match[1], match[2] || '0', match[3] || '0', match[4] || '0'].join('.')
+}
+
+function selectedCore(formState: CreateWindowFormState, cores: BrowserCore[] | undefined): BrowserCore | undefined {
+  if (!cores || cores.length === 0) return undefined
+  const explicit = trim(formState.coreId)
+  if (explicit) {
+    const matched = cores.find(core => core.coreId === explicit)
+    if (matched) return matched
+  }
+  const version = trim(formState.browserVersion)
+  if (version) {
+    const matched = cores.find(core => core.coreName === version)
+    if (matched) return matched
+  }
+  return cores.find(core => core.isDefault) || cores[0]
+}
+
+export function coreChromeVersion(
+  core: BrowserCore | undefined,
+  coreVersions: Record<string, string> | undefined,
+): string {
+  if (!core) return ''
+  return (
+    normalizeChromeVersion(coreVersions?.[core.coreId]) ||
+    normalizeChromeVersion(core.coreName) ||
+    normalizeChromeVersion(core.corePath)
+  )
+}
+
+export function buildChromeUserAgent(version: string | undefined, platform: string | undefined = 'windows'): string {
+  const chromeVersion = normalizeChromeVersion(version) || FALLBACK_CHROME_VERSION
+  const normalizedPlatform = trim(platform).toLowerCase()
+  const platformToken = normalizedPlatform === 'mac'
+    ? 'Macintosh; Intel Mac OS X 14_6'
+    : normalizedPlatform === 'linux'
+      ? 'X11; Linux x86_64'
+      : 'Windows NT 10.0; Win64; x64'
+  return `Mozilla/5.0 (${platformToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`
+}
+
+export function defaultUserAgentForCreateWindow(
+  formState: CreateWindowFormState,
+  cores: BrowserCore[] | undefined,
+  coreVersions?: Record<string, string>,
+): string {
+  return buildChromeUserAgent(coreChromeVersion(selectedCore(formState, cores), coreVersions), formState.system)
+}
+
+export function shouldRegenerateUserAgent(userAgent: string | undefined): boolean {
+  const normalized = trim(userAgent)
+  return !normalized || LEGACY_DEFAULT_CHROME_149_UA_RE.test(normalized)
 }
 
 function appendModeArg(args: string[], prefix: string, value: string | undefined) {
@@ -153,6 +273,17 @@ function mapGeolocationPermission(value: string | undefined): string | undefined
   return undefined
 }
 
+// buildGeolocationValue 在「地理位置=自定义」且经纬度合法时，生成后端 --ant-geolocation=
+// 的取值 lat,lon（经纬度超范围或非数字时返回 null，不生成参数，由后端按代理 IP 推导兜底）。
+function buildGeolocationValue(formState: CreateWindowFormState): string | null {
+  if (trim(formState.geolocation) !== 'custom') return null
+  const lat = Number.parseFloat(trim(formState.latitude))
+  const lon = Number.parseFloat(trim(formState.longitude))
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
+  return `${lat},${lon}`
+}
+
 function resolveCoreId(formState: CreateWindowFormState, cores: BrowserCore[] | undefined): string {
   const explicit = trim(formState.coreId)
   if (explicit) return explicit
@@ -163,13 +294,18 @@ function resolveCoreId(formState: CreateWindowFormState, cores: BrowserCore[] | 
 function withCreateWindowDefaults(
   formState: CreateWindowFormState,
   cores: BrowserCore[] | undefined,
+  coreVersions?: Record<string, string>,
 ): CreateWindowFormState {
   const defaultCoreName = cores?.find(core => core.isDefault)?.coreName
-  return {
+  const normalized = {
     ...DEFAULT_CREATE_WINDOW_FORM_STATE,
-    browserVersion: defaultCoreName || 'RoxyChrome 149',
+    browserVersion: defaultCoreName || 'Chrome',
     ...formState,
   }
+  if (shouldRegenerateUserAgent(normalized.userAgent)) {
+    normalized.userAgent = defaultUserAgentForCreateWindow(normalized, cores, coreVersions)
+  }
+  return normalized
 }
 
 function generatedFingerprintArgs(formState: CreateWindowFormState): string[] {
@@ -195,6 +331,8 @@ function generatedFingerprintArgs(formState: CreateWindowFormState): string[] {
   const webrtcPolicy = mapWebRtcPolicy(formState.webrtc)
   appendValueArg(args, '--webrtc-ip-handling-policy=', webrtcPolicy)
   appendValueArg(args, '--ant-geolocation-permission=', mapGeolocationPermission(formState.geolocationDisplay))
+  const geolocationValue = buildGeolocationValue(formState)
+  if (geolocationValue) args.push(`--ant-geolocation=${geolocationValue}`)
   appendDisableSpoofingArg(args, formState)
 
   // 注意：--fingerprint-webgl-vendor / --fingerprint-webgl-renderer 在 Chrome 144+ 内核已废弃，
@@ -204,7 +342,37 @@ function generatedFingerprintArgs(formState: CreateWindowFormState): string[] {
   return args
 }
 
-function generatedLaunchArgs(formState: CreateWindowFormState): string[] {
+// resolveWindowPosition 把九宫格位置（top-left/center/bottom-right 等）按屏幕可用尺寸
+// 与窗口尺寸换算成 --window-position=x,y 像素坐标。
+//   - top-left 等于 OS 默认放置，返回 null（不生成参数，避免每个窗口都多出 0,0 噪声）。
+//   - 缺少屏幕尺寸或窗口尺寸无法解析时返回 null（无法可靠定位）。
+function resolveWindowPosition(
+  position: string,
+  windowWidth: string,
+  windowHeight: string,
+  screen: { width: number; height: number } | undefined,
+): string | null {
+  if (!screen || !position || position === 'top-left') return null
+  const winW = Number.parseInt(trim(windowWidth), 10)
+  const winH = Number.parseInt(trim(windowHeight), 10)
+  if (!Number.isFinite(winW) || !Number.isFinite(winH) || winW <= 0 || winH <= 0) return null
+
+  const [vRaw, hRaw] = position.includes('-') ? position.split('-') : [position, position]
+  const vMap: Record<string, number> = { top: 0, center: 0.5, bottom: 1 }
+  const hMap: Record<string, number> = { left: 0, center: 0.5, right: 1 }
+  // 单字 token（top/bottom 居中水平；left/right 居中垂直；center 双向居中）
+  const vFactor = vMap[vRaw] ?? 0.5
+  const hFactor = hMap[hRaw] ?? 0.5
+
+  const x = Math.max(0, Math.round((screen.width - winW) * hFactor))
+  const y = Math.max(0, Math.round((screen.height - winH) * vFactor))
+  return `--window-position=${x},${y}`
+}
+
+function generatedLaunchArgs(
+  formState: CreateWindowFormState,
+  screen?: { width: number; height: number },
+): string[] {
   const args: string[] = []
   appendModeArg(args, '--accept-language=', formState.uiLanguage)
 
@@ -215,6 +383,13 @@ function generatedLaunchArgs(formState: CreateWindowFormState): string[] {
     const width = trim(formState.windowWidth)
     const height = trim(formState.windowHeight)
     if (width && height) args.push(`--window-size=${width},${height}`)
+    const positionArg = resolveWindowPosition(
+      trim(formState.windowPosition),
+      width,
+      height,
+      screen,
+    )
+    if (positionArg) args.push(positionArg)
   }
 
   if (formState.audio === false) args.push('--mute-audio')
@@ -231,8 +406,11 @@ function generatedLaunchArgs(formState: CreateWindowFormState): string[] {
 }
 
 function sanitizeFormStateForPersistence(formState: CreateWindowFormState): CreateWindowFormState {
+  const persistableFormState = { ...formState }
+  delete persistableFormState.webglVendor
+  delete persistableFormState.webglRenderer
   return {
-    ...formState,
+    ...persistableFormState,
     cookies: '',
     launchArgs: normalizeArgs(formState.launchArgs),
     fingerprintArgs: normalizeArgs(formState.fingerprintArgs),
@@ -266,10 +444,10 @@ export function createWindowFormToProfileInput(
   formState: CreateWindowFormState,
   options: ConvertOptions = {},
 ): BrowserProfileInput {
-  const normalizedFormState = withCreateWindowDefaults(formState, options.cores)
+  const normalizedFormState = withCreateWindowDefaults(formState, options.cores, options.coreVersions)
   const manualLaunchArgs = parseLaunchArgsText(options.launchArgsText)
   const generatedFp = generatedFingerprintArgs(normalizedFormState)
-  const generatedLaunch = generatedLaunchArgs(normalizedFormState)
+  const generatedLaunch = generatedLaunchArgs(normalizedFormState, options.screen)
 
   return {
     profileName: normalizedFormState.profileName,
@@ -323,6 +501,19 @@ function restoreGeolocationDisplay(args: string[]): string | undefined {
   return undefined
 }
 
+// restoreGeolocation 从 --ant-geolocation=lat,lon[,accuracy] 反解析自定义经纬度，
+// 解析成功时回填 geolocation='custom' 与纬度/经度；无该参数则返回空（落回 auto）。
+function restoreGeolocation(args: string[]): Pick<CreateWindowFormState, 'geolocation' | 'latitude' | 'longitude'> {
+  const value = argValue(args, '--ant-geolocation=')
+  if (!value) return {}
+  const parts = value.split(',').map(item => item.trim())
+  if (parts.length < 2) return {}
+  const lat = Number.parseFloat(parts[0])
+  const lon = Number.parseFloat(parts[1])
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return {}
+  return { geolocation: 'custom', latitude: parts[0], longitude: parts[1] }
+}
+
 function restoreWindowSize(args: string[]): Pick<CreateWindowFormState, 'resolution' | 'windowWidth' | 'windowHeight'> {
   if (hasArg(args, '--start-maximized')) {
     return { resolution: 'fullscreen' }
@@ -365,14 +556,16 @@ function compactFormState(values: Partial<CreateWindowFormState>): Partial<Creat
 }
 
 export function restoreCreateWindowFormState(profile: BrowserProfile): CreateWindowFormState {
+  // 只保留非受管的手填参数：受管开关由富表单控件托管，回显时从存量 args 剥离，
+  // 这样再次保存时控件能重新生成受管参数，而不会被旧值压制（见 MANAGED_*_SWITCHES）。
   const base: CreateWindowFormState = {
     profileName: profile.profileName,
     userDataDir: profile.userDataDir,
     coreId: profile.coreId,
-    fingerprintArgs: normalizeArgs(profile.fingerprintArgs),
+    fingerprintArgs: stripManagedFingerprintArgs(profile.fingerprintArgs || []),
     proxyId: profile.proxyId,
     proxyConfig: profile.proxyConfig,
-    launchArgs: normalizeArgs(profile.launchArgs),
+    launchArgs: stripManagedLaunchArgs(profile.launchArgs || []),
     tags: profile.tags || [],
     keywords: profile.keywords || [],
     groupId: profile.groupId || '',
@@ -420,6 +613,7 @@ export function restoreCreateWindowFormState(profile: BrowserProfile): CreateWin
     doNotTrack: restoreDoNotTrack(fingerprintArgs),
     webrtc: restoreWebRtc(fingerprintArgs),
     geolocationDisplay: restoreGeolocationDisplay(fingerprintArgs),
+    ...restoreGeolocation(fingerprintArgs),
     // 旧 profile 可能残留已废弃的 webgl vendor/renderer，仍读出来回显，避免显示空白。
     webglVendor: argValue(fingerprintArgs, '--fingerprint-webgl-vendor='),
     webglRenderer: argValue(fingerprintArgs, '--fingerprint-webgl-renderer='),

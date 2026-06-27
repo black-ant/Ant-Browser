@@ -4,6 +4,7 @@ import {backup} from '../models';
 import {config} from '../models';
 import {backend} from '../models';
 import {browser} from '../models';
+import {proxy} from '../models';
 import {cdp} from '../models';
 import {logger} from '../models';
 import {launchcode} from '../models';
@@ -139,6 +140,10 @@ export function BrowserProxyCancelBatch():Promise<void>;
 
 export function BrowserProxyCheckIPHealth(arg1:string):Promise<backend.ProxyIPHealthResult>;
 
+export function BrowserProxyDetectIPByConfig(arg1:string,arg2:string):Promise<proxy.IPDetectResult>;
+
+export function BrowserProxyDetectLocalIP(arg1:string):Promise<proxy.IPDetectResult>;
+
 export function BrowserProxyFetchClashByURL(arg1:string):Promise<Record<string, any>>;
 
 export function BrowserProxyList():Promise<Array<config.BrowserProxy>>;
@@ -146,6 +151,10 @@ export function BrowserProxyList():Promise<Array<config.BrowserProxy>>;
 export function BrowserProxyListByGroup(arg1:string):Promise<Array<config.BrowserProxy>>;
 
 export function BrowserProxyListGroups():Promise<Array<string>>;
+
+export function BrowserProxyListIPDetectSources():Promise<Array<proxy.IPDetectSource>>;
+
+export function BrowserProxyProbeProtocol(arg1:string):Promise<proxy.ProbeResult>;
 
 export function BrowserProxySourceDelete(arg1:string,arg2:boolean):Promise<void>;
 
@@ -183,6 +192,8 @@ export function CDPCaptureScreenshot(arg1:string):Promise<string>;
 
 export function CDPClearAllCookies(arg1:string):Promise<void>;
 
+export function CDPClearAllCookiesAuth(arg1:string,arg2:string):Promise<void>;
+
 export function CDPClearConsoleLogs(arg1:string):Promise<void>;
 
 export function CDPClearNetworkRequests(arg1:string):Promise<void>;
@@ -199,15 +210,23 @@ export function CDPEnableIntercept(arg1:string):Promise<void>;
 
 export function CDPExecuteJavaScript(arg1:string,arg2:string):Promise<string>;
 
+export function CDPExecuteJavaScriptAuth(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function CDPExportHAR(arg1:string):Promise<string>;
 
 export function CDPGetConsoleLogs(arg1:string):Promise<Array<cdp.ConsoleLog>>;
 
+export function CDPGetConsoleLogsAuth(arg1:string,arg2:string):Promise<Array<cdp.ConsoleLog>>;
+
 export function CDPGetCookies(arg1:string):Promise<Array<cdp.Cookie>>;
+
+export function CDPGetCookiesAuth(arg1:string,arg2:string):Promise<Array<cdp.Cookie>>;
 
 export function CDPGetInterceptRules(arg1:string):Promise<Array<cdp.InterceptRule>>;
 
 export function CDPGetNetworkRequests(arg1:string):Promise<Array<cdp.NetworkRequest>>;
+
+export function CDPGetNetworkRequestsAuth(arg1:string,arg2:string):Promise<Array<cdp.NetworkRequest>>;
 
 export function CDPGetStatistics(arg1:string):Promise<Record<string, any>>;
 
@@ -227,6 +246,8 @@ export function CDPSessionCreate(arg1:string,arg2:string):Promise<string>;
 
 export function CDPSetCookie(arg1:string,arg2:cdp.Cookie):Promise<void>;
 
+export function CDPSetCookieAuth(arg1:string,arg2:string,arg3:cdp.Cookie):Promise<void>;
+
 export function CDPUpdateInterceptRule(arg1:string,arg2:cdp.InterceptRule):Promise<void>;
 
 export function ClearAppLogs():Promise<void>;
@@ -235,9 +256,13 @@ export function CreateGroup(arg1:browser.GroupInput):Promise<browser.Group>;
 
 export function CreateProfile(arg1:browser.ProfileInput):Promise<browser.Profile>;
 
+export function CreateTemplate(arg1:browser.TemplateInput):Promise<browser.Template>;
+
 export function DeleteGroup(arg1:string):Promise<void>;
 
 export function DeleteProfile(arg1:string):Promise<void>;
+
+export function DeleteTemplate(arg1:string):Promise<void>;
 
 export function FetchRemoteAuthorProfile(arg1:string,arg2:number):Promise<Record<string, any>>;
 
@@ -273,6 +298,8 @@ export function GetRunningInstances():Promise<Array<browser.Profile>>;
 
 export function ListGroups():Promise<Array<browser.GroupWithCount>>;
 
+export function ListTemplates():Promise<Array<browser.Template>>;
+
 export function MoveInstancesToGroup(arg1:Array<string>,arg2:string):Promise<void>;
 
 export function OpenCorePath(arg1:string):Promise<void>;
@@ -291,6 +318,8 @@ export function SaveBrowserProxies(arg1:Array<config.BrowserProxy>):Promise<void
 
 export function SaveBrowserSettings(arg1:browser.Settings):Promise<void>;
 
+export function ScanLocalProxy():Promise<proxy.LocalProxyScanResult>;
+
 export function SetLogLevel(arg1:string):Promise<void>;
 
 export function StartInstance(arg1:string):Promise<browser.Profile>;
@@ -308,6 +337,8 @@ export function TriggerGC():Promise<void>;
 export function UpdateGroup(arg1:string,arg2:browser.GroupInput):Promise<browser.Group>;
 
 export function UpdateProfile(arg1:string,arg2:browser.ProfileInput):Promise<browser.Profile>;
+
+export function UpdateTemplate(arg1:string,arg2:browser.TemplateInput):Promise<browser.Template>;
 
 export function UsernameScanGenerate(arg1:usernamescan.GeneratorOptions):Promise<Array<string>>;
 

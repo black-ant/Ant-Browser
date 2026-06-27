@@ -349,7 +349,7 @@ func (a *App) seedProxySourcesFromProxies() {
 	}
 }
 
-// newExistingProxyIDPicker 按 (name+config) 优先、其次 name 复用旧 proxyId，保留实例绑定。
+// newExistingProxyIDPicker 按 (name+config) 优先、其次 name 复用旧 proxyId，保留窗口绑定。
 // 与前端 createExistingProxyIDPicker 行为一致。
 func newExistingProxyIDPicker(old []browser.Proxy) func(name string, config string) string {
 	exact := map[string][]string{}

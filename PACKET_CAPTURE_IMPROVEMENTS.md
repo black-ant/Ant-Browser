@@ -401,8 +401,8 @@ if len(s.networkRequests) > 500 {
 ### WebSocket 功能验证
 
 **测试步骤**：
-1. 启动一个浏览器实例
-2. 打开开发工具，连接实例
+1. 启动一个浏览器窗口
+2. 打开开发工具，连接窗口
 3. 访问 WebSocket 测试站点（如 `wss://echo.websocket.org`）
 4. 切换到「WebSocket」标签页
 5. 发送测试消息

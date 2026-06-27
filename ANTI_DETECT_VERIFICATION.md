@@ -61,12 +61,12 @@ wails dev  # 或双击 exe
 
 **新建 profile 测试**:
 1. 新建一个 profile,**挂任意代理**(如美国 socks5)
-2. 启动该实例 → 日志应显示:
+2. 启动该窗口 → 日志应显示:
    ```
    注入代理一致性指纹参数: --timezone=America/New_York --lang=en-US
    cdp_transport=port
    ```
-3. 在实例内访问 `https://browserleaks.com/webrtc` → 确认:
+3. 在窗口内访问 `https://browserleaks.com/webrtc` → 确认:
    - **WebRTC IP 栏**:仅显示代理 IP,无真实公网/内网 IP 泄露
    - 页面时区 = 代理地理位置(美国东部)
 4. 访问 `https://abrahamjuliot.github.io/creepjs` → 检查:

@@ -76,7 +76,6 @@ func extractProfileGeolocationArgs(args []string) ([]string, profileGeolocationO
 			geo.Explicit = true
 			geo.Source = "profile"
 		case strings.HasPrefix(arg, antGeolocationPermissionArgPrefix):
-			geo.Explicit = true
 			geo.Permission = normalizeGeolocationPermission(strings.TrimPrefix(arg, antGeolocationPermissionArgPrefix))
 		default:
 			filtered = append(filtered, arg)

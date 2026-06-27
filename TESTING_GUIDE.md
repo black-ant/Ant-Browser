@@ -148,9 +148,9 @@ FROM browser_accounts;
 ERR | listen tcp 127.0.0.1:34115: bind: Only one usage of each socket address...
 ```
 
-**原因：** 之前的Wails实例还在运行
+**原因：** 之前的Wails窗口还在运行
 **影响：** 无影响，应用仍正常工作
-**解决：** 可以忽略，或者关闭之前的实例
+**解决：** 可以忽略，或者关闭之前的窗口
 
 ---
 

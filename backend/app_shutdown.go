@@ -117,9 +117,9 @@ func (a *App) stopAllBrowserProcessesForExit(log *logger.Logger) {
 			if item.cmd != nil && item.cmd.Process != nil {
 				pid = item.cmd.Process.Pid
 			}
-			log.Info("退出前关闭浏览器实例", logger.F("profile_id", item.profileID), logger.F("pid", pid))
+			log.Info("退出前关闭浏览器窗口", logger.F("profile_id", item.profileID), logger.F("pid", pid))
 			if err := stopProcessCmdForShutdown(item.cmd); err != nil {
-				log.Error("退出前关闭浏览器实例失败", logger.F("profile_id", item.profileID), logger.F("pid", pid), logger.F("error", err.Error()))
+				log.Error("退出前关闭浏览器窗口失败", logger.F("profile_id", item.profileID), logger.F("pid", pid), logger.F("error", err.Error()))
 			}
 		}(item)
 	}

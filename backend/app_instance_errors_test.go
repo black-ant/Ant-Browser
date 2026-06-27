@@ -87,7 +87,7 @@ func TestBrowserDebugPendingMessages(t *testing.T) {
 	}
 
 	notice := browserDebugPendingStartNotice(15 * time.Second)
-	if !strings.Contains(notice, "尚未完成接管") || !strings.Contains(notice, "稍后查看实例状态") {
+	if !strings.Contains(notice, "尚未完成接管") || !strings.Contains(notice, "稍后查看窗口状态") {
 		t.Fatalf("unexpected pending start notice: %q", notice)
 	}
 }

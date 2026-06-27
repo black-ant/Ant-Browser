@@ -21,6 +21,7 @@ type Profile struct {
 	ProxyBindName      string        `json:"proxyBindName"`
 	ProxyBindUpdatedAt string        `json:"proxyBindUpdatedAt"`
 	LaunchArgs         []string      `json:"launchArgs"`
+	ProfileConfig      string        `json:"profileConfig"`
 	Tags               []string      `json:"tags"`
 	Keywords           []string      `json:"keywords"`
 	GroupId            string        `json:"groupId"` // 所属分组ID
@@ -47,6 +48,7 @@ type ProfileInput struct {
 	ProxyId         string   `json:"proxyId"`
 	ProxyConfig     string   `json:"proxyConfig"`
 	LaunchArgs      []string `json:"launchArgs"`
+	ProfileConfig   string   `json:"profileConfig"`
 	Tags            []string `json:"tags"`
 	Keywords        []string `json:"keywords"`
 	GroupId         string   `json:"groupId"` // 所属分组ID
@@ -70,6 +72,10 @@ type Settings struct {
 	DefaultProxy           string   `json:"defaultProxy"`
 	StartReadyTimeoutMs    int      `json:"startReadyTimeoutMs"`
 	StartStableWindowMs    int      `json:"startStableWindowMs"`
+	// 全局前置代理：让走桥接的代理流量先经过本地前置代理出口，绕过上游网关按本地区 IP 的准入限制。
+	FrontProxyEnabled bool   `json:"frontProxyEnabled"`
+	FrontProxyAuto    bool   `json:"frontProxyAuto"`
+	FrontProxyAddr    string `json:"frontProxyAddr"`
 }
 
 // CoreInput 内核配置输入
@@ -93,7 +99,7 @@ type CoreExtendedInfo struct {
 	InstanceCount int    `json:"instanceCount"`
 }
 
-// Group 实例分组
+// Group 窗口分组
 type Group struct {
 	GroupId   string `json:"groupId"`
 	GroupName string `json:"groupName"`
@@ -110,10 +116,26 @@ type GroupInput struct {
 	SortOrder int    `json:"sortOrder"`
 }
 
-// GroupWithCount 带实例计数的分组
+// GroupWithCount 带窗口计数的分组
 type GroupWithCount struct {
 	Group
 	InstanceCount int `json:"instanceCount"`
+}
+
+// Template 窗口创建模板。保存创建页的完整结构化配置（profileConfig JSON），
+// 供「存为新模板」「从模板创建」复用。不含具体窗口实例字段（如 userDataDir）。
+type Template struct {
+	TemplateId    string `json:"templateId"`
+	TemplateName  string `json:"templateName"`
+	ProfileConfig string `json:"profileConfig"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
+}
+
+// TemplateInput 创建/更新模板的输入
+type TemplateInput struct {
+	TemplateName  string `json:"templateName"`
+	ProfileConfig string `json:"profileConfig"`
 }
 
 // 类型别名
@@ -161,7 +183,7 @@ type Manager struct {
 	BrowserProcesses map[string]*exec.Cmd
 	XrayBridges      map[string]*XrayBridge
 	CodeProvider     CodeProvider
-	// StartingProfiles 记录正在启动中的实例，用于防止同一实例并发重复启动。
+	// StartingProfiles 记录正在启动中的窗口，用于防止同一窗口并发重复启动。
 	// 由 Mutex 保护。键为 profileId。
 	StartingProfiles map[string]bool
 
@@ -172,6 +194,7 @@ type Manager struct {
 	CoreDAO        CoreDAO
 	BookmarkDAO    BookmarkDAO
 	GroupDAO       GroupDAO
+	TemplateDAO    TemplateDAO
 }
 
 // XrayBridge Xray 桥接进程

@@ -188,7 +188,7 @@ export function serialize(config: FingerprintConfig): string[] {
 1. 新建一个 profile
 2. 指纹策略选择 **"自动混淆（推荐）"**
 3. 确保有唯一的指纹种子（自动生成）
-4. 启动实例
+4. 启动窗口
 
 **预期结果**：
 - 日志显示：`--fingerprint=<seed>`
@@ -239,7 +239,7 @@ export function serialize(config: FingerprintConfig): string[] {
 2. **推荐操作**：
    - 编辑现有 profile
    - 将 WebGL 策略改为 **"自动混淆（推荐）"**
-   - 保存后重新启动实例
+   - 保存后重新启动窗口
 
 3. **批量更新**：
    - 可以通过编辑 `config.yaml` 中的 profile 配置

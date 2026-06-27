@@ -54,16 +54,16 @@ export function LaunchCodeCell({ profileId, code, onRefresh }: { profileId: stri
   if (!code) return <span className="text-[var(--color-text-muted)] text-xs">-</span>
 
   return (
-    <div className="flex items-center gap-1">
-      <code className="text-xs font-mono bg-[var(--color-bg-secondary)] px-1.5 py-0.5 rounded text-[var(--color-accent)]">{code}</code>
-      <button onClick={handleCopy} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors" title="复制">
-        <Copy className="w-3 h-3" />
+    <div className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+      <code className="max-w-[84px] truncate rounded bg-[var(--color-bg-secondary)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-accent)]" title={code}>{code}</code>
+      <button onClick={handleCopy} className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)]" title="复制">
+        <Copy className="h-3.5 w-3.5" />
       </button>
-      <button onClick={handleRegenerate} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="重新生成">
-        <RefreshCw className="w-3 h-3" />
+      <button onClick={handleRegenerate} disabled={loading} className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)] disabled:opacity-50" title="重新生成">
+        <RefreshCw className="h-3.5 w-3.5" />
       </button>
-      <button onClick={openCustom} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="自定义">
-        <Pencil className="w-3 h-3" />
+      <button onClick={openCustom} disabled={loading} className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)] disabled:opacity-50" title="自定义">
+        <Pencil className="h-3.5 w-3.5" />
       </button>
 
       <Modal
@@ -83,7 +83,7 @@ export function LaunchCodeCell({ profileId, code, onRefresh }: { profileId: stri
             placeholder="4-32 位，仅支持字母 / 数字 / _ / -"
             onKeyDown={e => { if (e.key === 'Enter') void submitCustom() }}
           />
-          <p className="text-xs text-[var(--color-text-muted)]">用于通过快捷码快速启动该实例。</p>
+          <p className="text-xs text-[var(--color-text-muted)]">用于通过快捷码快速启动该窗口。</p>
         </div>
       </Modal>
     </div>

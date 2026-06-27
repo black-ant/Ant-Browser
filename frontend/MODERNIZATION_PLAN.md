@@ -62,9 +62,9 @@ const filteredProfiles = useMemo(() => {
   <header className="flex-shrink-0 px-6 py-4 bg-[var(--color-bg-surface)] border-b border-[var(--color-border-default)]">
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">实例管理</h1>
+        <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">窗口管理</h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-          共 {profiles.length} 个实例
+          共 {profiles.length} 个窗口
           {filteredProfiles.length !== profiles.length && (
             <span className="text-[var(--color-accent)]"> · 筛选后 {filteredProfiles.length} 个</span>
           )}
@@ -143,12 +143,12 @@ const filteredProfiles = useMemo(() => {
         </div>
       ) : filteredProfiles.length === 0 ? (
         <Empty
-          title={profiles.length === 0 ? '还没有实例' : '未找到匹配的实例'}
-          description={profiles.length === 0 ? '创建第一个浏览器实例开始' : '尝试调整搜索或筛选条件'}
+          title={profiles.length === 0 ? '还没有窗口' : '未找到匹配的窗口'}
+          description={profiles.length === 0 ? '创建第一个浏览器窗口开始' : '尝试调整搜索或筛选条件'}
           action={
             profiles.length === 0 ? (
               <Link to="/browser/create">
-                <Button><Plus className="w-4 h-4" />新建实例</Button>
+                <Button><Plus className="w-4 h-4" />新建窗口</Button>
               </Link>
             ) : (
               <Button variant="secondary" onClick={() => { setSearchQuery(''); setFilters(EMPTY_FILTERS) }}>

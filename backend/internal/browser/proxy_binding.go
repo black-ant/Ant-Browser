@@ -52,7 +52,7 @@ func (m *Manager) GetProxyByID(proxyID string) (Proxy, bool) {
 	return findProxyByID(m.listProxyCatalog(), proxyID)
 }
 
-// BindProfileToProxy 将实例绑定到指定代理并同步绑定快照。
+// BindProfileToProxy 将窗口绑定到指定代理并同步绑定快照。
 // syncProxyConfig=true 时会同步更新 profile.ProxyConfig。
 func BindProfileToProxy(profile *Profile, proxy Proxy, syncProxyConfig bool) bool {
 	if profile == nil {
@@ -93,7 +93,7 @@ func BindProfileToProxy(profile *Profile, proxy Proxy, syncProxyConfig bool) boo
 	return changed
 }
 
-// ClearProfileProxyBinding 清空实例的代理绑定快照。
+// ClearProfileProxyBinding 清空窗口的代理绑定快照。
 func ClearProfileProxyBinding(profile *Profile) bool {
 	if profile == nil {
 		return false
@@ -117,8 +117,8 @@ func ClearProfileProxyBinding(profile *Profile) bool {
 	return changed
 }
 
-// ResolveProfileProxyBinding 尝试修复实例代理绑定。
-// 返回值: changed 是否修改实例, boundInPool 是否在代理池成功定位, mode 重关联命中模式
+// ResolveProfileProxyBinding 尝试修复窗口代理绑定。
+// 返回值: changed 是否修改窗口, boundInPool 是否在代理池成功定位, mode 重关联命中模式
 func (m *Manager) ResolveProfileProxyBinding(profile *Profile) (bool, bool, string) {
 	if profile == nil {
 		return false, false, ""

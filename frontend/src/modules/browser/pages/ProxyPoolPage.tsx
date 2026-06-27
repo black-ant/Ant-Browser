@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Switch, Table, Textarea, toast } from '../../../shared/components'
 import type { SortOrder, TableColumn } from '../../../shared/components/Table'
-import type { BrowserProxy, ProxyIPHealthResult, ProxySourceOverride } from '../types'
-import { fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies, browserProxyTestSpeed, browserProxyBatchTestSpeed, browserProxyCheckIPHealth, browserProxyBatchCheckIPHealth, fetchClashImportFromURL, fetchProxySources, fetchProxySourceOverrides, upsertProxySource, refreshProxySource, refreshAllProxySources, setProxySourceOverride, cancelProxyBatch } from '../api'
+import type { BrowserProxy, ProxyIPHealthResult, ProxySourceOverride, ProxyProbeResult } from '../types'
+import { fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies, browserProxyTestSpeed, browserProxyBatchTestSpeed, browserProxyCheckIPHealth, browserProxyBatchCheckIPHealth, fetchClashImportFromURL, fetchProxySources, fetchProxySourceOverrides, upsertProxySource, refreshProxySource, refreshAllProxySources, setProxySourceOverride, cancelProxyBatch, probeProxyProtocol, fetchBrowserSettings, updateFrontProxySettings } from '../api'
+import { FrontProxySettings } from '../components/FrontProxySettings'
 import { computeProxyScore, proxyScoreVariant } from '../proxyScore'
 import { BUILTIN_PROXIES, BUILTIN_PROXY_IDS } from '../config/builtinProxies'
 import { parseChainSocks5Config, parseProxyInfo, CHAIN_SOCKS5_PREFIX, type ClashProxy, type ChainSocks5Config, type ChainSocks5HopConfig } from '../utils/proxyParse'
@@ -108,6 +109,10 @@ interface ProxyDisplayInfo {
   server: string
   port: number
   latencyMs?: number
+  // 导入时协议探测结果与可读状态（仅 auto 模式开启探测时填充）
+  probe?: ProxyProbeResult
+  probeNote?: string
+  probing?: boolean
 }
 
 interface URLImportSourceMeta {
@@ -443,8 +448,96 @@ function detectUriCandidates(text: string): ImportCandidate[] {
   return out
 }
 
-// detectImportCandidates 自动识别任意粘贴内容：Clash YAML → 节点链接（逐行）→ base64 订阅。
-function detectImportCandidates(raw: string): ImportCandidate[] {
+// parseBareProxyLine 解析无协议头的裸格式代理串，支持：
+//   host:port、host:port:user:pass、user:pass@host:port
+// 行尾可带 #备注（取作节点名）。缺协议信息，故由 defaultProtocol 指定。
+// 端口非法或主机为空时返回 null（交回上层忽略该行）。
+function parseBareProxyLine(
+  line: string,
+  defaultProtocol: 'http' | 'https' | 'socks5',
+): ImportCandidate | null {
+  let core = line.trim()
+  if (!core) return null
+
+  // 行尾 #备注
+  let note = ''
+  const hashIdx = core.indexOf('#')
+  if (hashIdx >= 0) {
+    try {
+      note = decodeURIComponent(core.slice(hashIdx + 1)).trim()
+    } catch {
+      note = core.slice(hashIdx + 1).trim()
+    }
+    core = core.slice(0, hashIdx).trim()
+  }
+  if (!core) return null
+
+  let host = ''
+  let port = ''
+  let username = ''
+  let password = ''
+
+  if (core.includes('@')) {
+    // user:pass@host:port
+    const atIdx = core.lastIndexOf('@')
+    const auth = core.slice(0, atIdx)
+    const hostPart = core.slice(atIdx + 1)
+    const authSegs = auth.split(':')
+    username = (authSegs[0] || '').trim()
+    password = authSegs.slice(1).join(':').trim()
+    const hostSegs = hostPart.split(':')
+    host = (hostSegs[0] || '').trim()
+    port = (hostSegs[1] || '').trim()
+  } else {
+    // host:port[:user:pass]
+    const segs = core.split(':')
+    host = (segs[0] || '').trim()
+    port = (segs[1] || '').trim()
+    username = (segs[2] || '').trim()
+    // 密码可能含 : —— 第 4 段起全部归并为密码
+    password = segs.slice(3).join(':').trim()
+  }
+
+  if (!host || !/^\d+$/.test(port)) return null
+  const portNum = Number(port)
+  if (portNum < 1 || portNum > 65535) return null
+  if (password && !username) return null
+
+  const auth = username
+    ? `${encodeURIComponent(username)}${password ? `:${encodeURIComponent(password)}` : ''}@`
+    : ''
+  const rawConfig = `${defaultProtocol}://${auth}${formatDirectProxyHost(host)}:${portNum}`
+
+  let parsedURL: URL
+  try {
+    parsedURL = new URL(rawConfig)
+  } catch {
+    return null
+  }
+  if (!parsedURL.hostname) return null
+
+  const normalizedConfig = normalizeDirectProxyConfig(parsedURL.toString()).replace(/\/$/, '')
+  const normalizedServer = parsedURL.hostname.replace(/^\[(.*)\]$/, '$1')
+  const proxyName = note || `${defaultProtocol.toUpperCase()}-${normalizedServer}:${portNum}`
+
+  return { proxyName, proxyConfig: normalizedConfig }
+}
+
+// detectBareCandidates 逐行解析裸格式代理串（无协议头），跳过空行 / 注释 / 带 :// 的行。
+function detectBareCandidates(text: string, defaultProtocol: 'http' | 'https' | 'socks5'): ImportCandidate[] {
+  const out: ImportCandidate[] = []
+  text.split(/\r?\n/).forEach((line) => {
+    const v = line.trim()
+    if (!v || v.startsWith('#') || PROXY_URI_RE.test(v) || /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(v)) return
+    const candidate = parseBareProxyLine(v, defaultProtocol)
+    if (candidate) out.push(candidate)
+  })
+  return out
+}
+
+// detectImportCandidates 自动识别任意粘贴内容：Clash YAML → 节点链接（逐行）→ base64 订阅
+// → 裸格式 host:port[:user:pass]（无协议头，按 bareProtocol 补全协议）。
+function detectImportCandidates(raw: string, bareProtocol: 'http' | 'https' | 'socks5' = 'http'): ImportCandidate[] {
   const input = raw.trim()
   if (!input) return []
 
@@ -467,7 +560,72 @@ function detectImportCandidates(raw: string): ImportCandidate[] {
     if (clash2.length) return buildImportCandidatesFromClash(clash2, '')
   } catch { /* 非 base64 */ }
 
+  // 4. 裸格式 host:port[:user:pass] / user:pass@host:port（无协议头）
+  const bareCands = detectBareCandidates(input, bareProtocol)
+  if (bareCands.length) return bareCands
+
   return []
+}
+
+// StandardProxyParts 标准代理（http/https/socks5）拆解出的各段，用于协议探测后重建配置。
+interface StandardProxyParts {
+  scheme: string
+  host: string
+  port: number
+  username: string
+  password: string
+}
+
+// extractStandardProxyParts 从 http(s)/socks5 配置串拆出 host/port/账密；非标准代理返回 null。
+function extractStandardProxyParts(proxyConfig: string): StandardProxyParts | null {
+  const cfg = proxyConfig.trim()
+  if (!/^(socks5|http|https):\/\//i.test(cfg)) return null
+  try {
+    const u = new URL(cfg)
+    const host = u.hostname.replace(/^\[(.*)\]$/, '$1')
+    const port = Number(u.port) || 0
+    if (!host || port <= 0) return null
+    return {
+      scheme: u.protocol.replace(/:$/, '').toLowerCase(),
+      host,
+      port,
+      username: decodeURIComponent(u.username || ''),
+      password: decodeURIComponent(u.password || ''),
+    }
+  } catch {
+    return null
+  }
+}
+
+// rebuildStandardProxyConfig 用探测出的协议重建配置串（保留账密）。
+function rebuildStandardProxyConfig(parts: StandardProxyParts, scheme: string): string {
+  const host = parts.host.includes(':') ? `[${parts.host}]` : parts.host
+  const auth = parts.username
+    ? `${encodeURIComponent(parts.username)}${parts.password ? `:${encodeURIComponent(parts.password)}` : ''}@`
+    : ''
+  return `${scheme}://${auth}${host}:${parts.port}`
+}
+
+// formatProbeNote 把协议探测结果转成一句可读状态，重点把「代理活着但拒绝了你」这类
+// 网关响应（如 403 china IP is not allow、407 鉴权）暴露给用户。
+function formatProbeNote(probe: ProxyProbeResult): string {
+  if (!probe.reachable) {
+    return probe.error || '无法连接代理服务器'
+  }
+  if (!probe.protocol) {
+    return probe.error || '已连接，但无法识别为 SOCKS5 / HTTP 代理'
+  }
+  const proto = probe.protocol.toUpperCase()
+  if (probe.usable) {
+    return `${proto} 可用${probe.latencyMs > 0 ? ` · ${probe.latencyMs}ms` : ''}`
+  }
+  if (probe.needAuth) {
+    return `${proto} · 鉴权失败或缺少账号密码`
+  }
+  if (probe.gatewayStatus > 0 || probe.gatewayMessage) {
+    return `${proto} · 网关拒绝：${probe.gatewayMessage || `HTTP ${probe.gatewayStatus}`}`
+  }
+  return `${proto} · ${probe.error || '握手未成功'}`
 }
 
 function buildImportPreview(candidates: ImportCandidate[], groupName: string): ProxyDisplayInfo[] {
@@ -718,6 +876,48 @@ function toLatencyValue(ok: boolean, latencyMs: number, error?: string): number 
   return error?.includes('不支持') ? -3 : -2
 }
 
+const IPV4_PATTERN = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/
+
+function normalizeIPText(value: unknown): string {
+  if (value === undefined || value === null) return ''
+  return String(value).trim().replace(/^\[|\]$/g, '')
+}
+
+function isIPv4Text(value: string): boolean {
+  return IPV4_PATTERN.test(value)
+}
+
+function isIPv6Text(value: string): boolean {
+  return value.includes(':') && /^[0-9a-f:.]+$/i.test(value)
+}
+
+function rawDataValue(rawData: Record<string, any> | undefined, keys: string[]): unknown {
+  if (!rawData || typeof rawData !== 'object') return undefined
+  const keySet = new Set(keys.map(k => k.toLowerCase()))
+  for (const [key, value] of Object.entries(rawData)) {
+    if (keySet.has(key.toLowerCase())) return value
+  }
+  return undefined
+}
+
+function splitIPVersions(result: ProxyIPHealthResult): { ipv4: string; ipv6: string } {
+  let ipv4 = ''
+  let ipv6 = ''
+  const assign = (value: unknown) => {
+    const ip = normalizeIPText(value)
+    if (!ip) return
+    if (!ipv4 && isIPv4Text(ip)) ipv4 = ip
+    if (!ipv6 && isIPv6Text(ip)) ipv6 = ip
+  }
+
+  assign(rawDataValue(result.rawData, ['ipv4', 'ip_v4', 'ip4', 'v4', 'ipv4Address']))
+  assign(rawDataValue(result.rawData, ['ipv6', 'ip_v6', 'ip6', 'v6', 'ipv6Address']))
+  assign(result.ip)
+  assign(rawDataValue(result.rawData, ['ip', 'query', 'ipAddress', 'address']))
+
+  return { ipv4, ipv6 }
+}
+
 function readLatencyCache(): Record<string, number> {
   try {
     const raw = localStorage.getItem(PROXY_LATENCY_CACHE_KEY)
@@ -825,6 +1025,11 @@ export function ProxyPoolPage() {
   const [importDnsServers, setImportDnsServers] = useState('')
   const [importNamePrefix, setImportNamePrefix] = useState('')
   const [importGroupName, setImportGroupName] = useState('')
+  // 智能识别里裸格式（host:port:user:pass，无协议头）按哪种协议解析；带 :// 的行不受影响。
+  const [bareDefaultProtocol, setBareDefaultProtocol] = useState<DirectImportForm['protocol']>('http')
+  // auto 模式：解析时自动探测裸格式代理的真实协议（SOCKS5 / HTTP），并暴露网关响应
+  const [autoProbeProtocol, setAutoProbeProtocol] = useState(true)
+  const [probingImport, setProbingImport] = useState(false)
   const [directImportForm, setDirectImportForm] = useState<DirectImportForm>(() => ({ ...INITIAL_DIRECT_IMPORT_FORM }))
   const [chainImportForm, setChainImportForm] = useState<ChainImportForm>(() => ({ ...INITIAL_CHAIN_IMPORT_FORM }))
   const [chainEditMode, setChainEditMode] = useState(false)
@@ -837,6 +1042,10 @@ export function ProxyPoolPage() {
   const [refreshingSourceIds, setRefreshingSourceIds] = useState<Set<string>>(new Set())
   const [globalAutoRefreshEnabled, setGlobalAutoRefreshEnabled] = useState(false)
   const [globalRefreshIntervalM, setGlobalRefreshIntervalM] = useState('60')
+
+  // 全局前置代理（持久化在后端 BrowserSettings，非 localStorage）
+  const [frontProxy, setFrontProxy] = useState({ frontProxyEnabled: false, frontProxyAuto: false, frontProxyAddr: '' })
+  const frontProxySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editingProxy, setEditingProxy] = useState<BrowserProxy | null>(null)
@@ -861,7 +1070,25 @@ export function ProxyPoolPage() {
     setLatencyMap(readLatencyCache())
     setIPHealthMap(readIPHealthCache())
     loadProxies()
+    void fetchBrowserSettings().then(s => setFrontProxy({
+      frontProxyEnabled: s.frontProxyEnabled,
+      frontProxyAuto: s.frontProxyAuto,
+      frontProxyAddr: s.frontProxyAddr,
+    })).catch(() => {})
+    return () => { if (frontProxySaveTimerRef.current) clearTimeout(frontProxySaveTimerRef.current) }
   }, [])
+
+  // 全局前置代理改动后防抖落库（与本页其它全局开关一致，无需单独保存按钮）
+  const handleFrontProxyChange = (patch: Partial<typeof frontProxy>) => {
+    const next = { ...frontProxy, ...patch }
+    setFrontProxy(next)
+    if (frontProxySaveTimerRef.current) clearTimeout(frontProxySaveTimerRef.current)
+    frontProxySaveTimerRef.current = setTimeout(() => {
+      void updateFrontProxySettings(next)
+        .then(() => toast.success('前置代理设置已保存'))
+        .catch((e: any) => toast.error(e?.message || '前置代理保存失败'))
+    }, 500)
+  }
 
   useEffect(() => {
     writeLatencyCache(latencyMap)
@@ -991,7 +1218,7 @@ export function ProxyPoolPage() {
       return next
     })
     try {
-      // 后端刷新：套用忽略/重命名覆盖、保留 proxyId（实例绑定）与测速/IP 健康结果
+      // 后端刷新：套用忽略/重命名覆盖、保留 proxyId（窗口绑定）与测速/IP 健康结果
       await refreshProxySource(sourceId)
       await loadProxies()
       if (!silent) {
@@ -1309,21 +1536,41 @@ export function ProxyPoolPage() {
     const result = ipHealthMap[record.proxyId]
     if (!result) return <span className="text-[var(--color-text-muted)] text-xs">-</span>
     if (!result.ok) {
-      return (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-red-500 truncate max-w-[120px]" title={result.error || '检测失败'}>失败</span>
-          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openIPHealthDetail(record.proxyId) }}>原始</Button>
-        </div>
-      )
-    }
+        return (
+          <div className="grid w-full grid-cols-[90px_minmax(0,1fr)_44px] items-center gap-2 whitespace-nowrap">
+            <span className="text-xs text-red-500">失败</span>
+            <span className="truncate text-[11px] text-[var(--color-text-muted)]" title={result.error || '检测失败'}>
+              {result.error || '-'}
+            </span>
+            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openIPHealthDetail(record.proxyId) }}>原始</Button>
+          </div>
+        )
+      }
 
     const location = [result.country, result.region, result.city].filter(Boolean).join(' / ')
+    const { ipv4, ipv6 } = splitIPVersions(result)
+    const healthSummary = `fraud ${result.fraudScore} | ${result.isResidential ? '住宅' : '机房'}${location ? ` | ${location}` : ''}`
     return (
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="min-w-0">
-          <div className="text-xs text-[var(--color-text-primary)] truncate">{result.ip || '-'}</div>
-          <div className="text-[11px] text-[var(--color-text-muted)] truncate">
-            {`fraud ${result.fraudScore} | ${result.isResidential ? '住宅' : '机房'}${location ? ` | ${location}` : ''}`}
+      <div className="grid w-full grid-cols-[minmax(0,1fr)_44px] items-center gap-2">
+        <div className="min-w-0 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="grid h-8 min-w-[370px] grid-cols-[140px_220px] items-center gap-2 whitespace-nowrap">
+            <div className="grid h-8 grid-rows-2 content-center leading-4">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="w-7 shrink-0 text-[10px] font-medium text-[var(--color-text-muted)]">IPv4</span>
+                <span className="min-w-0 truncate font-mono text-[10px] text-[var(--color-text-primary)]" title={ipv4 || '未检测到 IPv4'}>
+                  {ipv4 || '-'}
+                </span>
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="w-7 shrink-0 text-[10px] font-medium text-[var(--color-text-muted)]">IPv6</span>
+                <span className="min-w-0 truncate font-mono text-[10px] text-[var(--color-text-primary)]" title={ipv6 || '未检测到 IPv6'}>
+                  {ipv6 || '-'}
+                </span>
+              </div>
+            </div>
+            <span className="truncate text-[11px] text-[var(--color-text-muted)]" title={healthSummary}>
+              {healthSummary}
+            </span>
           </div>
         </div>
         <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openIPHealthDetail(record.proxyId) }}>原始</Button>
@@ -1358,24 +1605,6 @@ export function ProxyPoolPage() {
       ),
     },
     { key: 'proxyName', title: '代理名称', width: '180px', sortable: true },
-    { key: 'groupName', title: '分组', width: '100px', sortable: true, render: (val) => val ? <span className="px-1.5 py-0.5 text-xs rounded bg-[var(--color-accent)]/10 text-[var(--color-accent)]">{val}</span> : '-' },
-    {
-      key: 'source',
-      title: '来源',
-      width: '180px',
-      render: (_, record) => {
-        if (!record.sourceUrl) return '-'
-        const host = sourceHostLabel(record.sourceUrl)
-        return (
-          <div className="text-xs leading-5">
-            <div className="text-[var(--color-text-primary)] truncate" title={record.sourceUrl}>{host}</div>
-            <div className="text-[var(--color-text-muted)]">
-              {globalAutoRefreshEnabled ? `自动刷新 ${globalRefreshInterval} 分钟（全局）` : '手动刷新'}
-            </div>
-          </div>
-        )
-      },
-    },
     { key: 'type', title: '类型', width: '90px', sortable: true },
     { key: 'server', title: '服务器', width: '180px', sortable: true },
     { key: 'port', title: '端口', width: '80px', sortable: true, render: (val) => val || '-' },
@@ -1395,8 +1624,28 @@ export function ProxyPoolPage() {
     {
       key: 'ipHealth',
       title: 'IP健康',
-      width: '280px',
+      width: '360px',
       render: (_, record) => renderIPHealth(record),
+    },
+    { key: 'groupName', title: '分组', width: '90px', sortable: true, render: (val) => val ? <span className="px-1.5 py-0.5 text-xs rounded bg-[var(--color-accent)]/10 text-[var(--color-accent)]">{val}</span> : '-' },
+    {
+      key: 'source',
+      title: '来源',
+      width: '110px',
+      render: (_, record) => {
+        if (!record.sourceUrl) return '-'
+        const host = sourceHostLabel(record.sourceUrl)
+        const refreshLabel = globalAutoRefreshEnabled ? `${globalRefreshInterval}分` : '手动'
+        const refreshTitle = globalAutoRefreshEnabled ? `自动刷新 ${globalRefreshInterval} 分钟（全局）` : '手动刷新'
+        return (
+          <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs">
+            <span className="max-w-[66px] truncate text-[var(--color-text-primary)]" title={record.sourceUrl}>{host}</span>
+            <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]" title={refreshTitle}>
+              {refreshLabel}
+            </span>
+          </div>
+        )
+      },
     },
     {
       key: 'actions',
@@ -1407,7 +1656,7 @@ export function ProxyPoolPage() {
         const isEditLocked = record.proxyId === '__direct__'
         const hasSource = !!record.sourceId && !!record.sourceUrl
         return (
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 whitespace-nowrap">
             {hasSource && (
               <Button
                 size="sm"
@@ -1456,14 +1705,33 @@ export function ProxyPoolPage() {
   }
 
   const previewColumns: TableColumn<ProxyDisplayInfo>[] = [
-    { key: 'proxyName', title: '代理名称', width: '200px' },
-    { key: 'type', title: '类型', width: '100px' },
-    { key: 'server', title: '服务器', width: '200px' },
-    { key: 'port', title: '端口', width: '100px', render: (val) => val || '-' },
+    { key: 'proxyName', title: '代理名称', width: '180px' },
+    { key: 'type', title: '类型', width: '90px' },
+    { key: 'server', title: '服务器', width: '170px' },
+    { key: 'port', title: '端口', width: '80px', render: (val) => val || '-' },
+    {
+      key: 'probeNote',
+      title: '探测状态',
+      width: '220px',
+      render: (_, record) => {
+        if (record.probing) {
+          return <span className="text-xs text-[var(--color-text-muted)]">探测中…</span>
+        }
+        if (!record.probeNote) {
+          return <span className="text-xs text-[var(--color-text-muted)]">-</span>
+        }
+        const ok = !!record.probe?.usable
+        return (
+          <span className={`text-xs break-all ${ok ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}>
+            {record.probeNote}
+          </span>
+        )
+      },
+    },
     {
       key: 'actions',
       title: '操作',
-      width: '96px',
+      width: '80px',
       render: (_, record) => (
         <Button
           size="sm"
@@ -1613,11 +1881,12 @@ export function ProxyPoolPage() {
     }
   }
 
-  const handleParseImport = () => {
+  const handleParseImport = async () => {
+    let preview: ProxyDisplayInfo[]
     try {
       const prefix = importNamePrefix.trim()
       const candidates = importMode === 'auto'
-        ? detectImportCandidates(importText)
+        ? detectImportCandidates(importText, bareDefaultProtocol)
         : importMode === 'clash'
           ? buildImportCandidatesFromClash(parseClashImportText(importText), prefix)
           : importMode === 'direct'
@@ -1627,13 +1896,70 @@ export function ProxyPoolPage() {
         toast.error(importMode === 'auto' ? '未能自动识别：请粘贴节点链接、Clash YAML 或订阅内容' : '未解析到可导入代理')
         return
       }
-      const preview = buildImportPreview(candidates, importGroupName.trim())
+      preview = buildImportPreview(candidates, importGroupName.trim())
       setRemovedPreviewProxyNames([])
       setPreviewList(preview)
       setImportModalOpen(false)
       setPreviewModalOpen(true)
     } catch (error: any) {
       toast.error(`解析失败: ${error?.message || '未知错误'}`)
+      return
+    }
+
+    // 自动探测协议：仅对标准 http/https/socks5 代理生效，且仅在 auto/direct 模式下开启。
+    if (autoProbeProtocol && (importMode === 'auto' || importMode === 'direct')) {
+      await runProtocolProbe(preview)
+    }
+  }
+
+  // runProtocolProbe 并发探测预览列表里每条标准代理的真实协议，
+  // 把探测出的协议回写到 proxyConfig，并把网关响应（如 403）记到 probeNote。
+  const runProtocolProbe = async (preview: ProxyDisplayInfo[]) => {
+    const probeTargets = preview.filter(p => extractStandardProxyParts(p.proxyConfig))
+    if (probeTargets.length === 0) return
+
+    setProbingImport(true)
+    // 先把待探测项标记为「探测中」
+    setPreviewList(prev => prev.map(p =>
+      probeTargets.some(t => t.proxyId === p.proxyId) ? { ...p, probing: true } : p
+    ))
+
+    const limit = 5
+    let cursor = 0
+    const runNext = async (): Promise<void> => {
+      const index = cursor++
+      if (index >= probeTargets.length) return
+      const target = probeTargets[index]
+      const parts = extractStandardProxyParts(target.proxyConfig)
+      try {
+        const probe = await probeProxyProtocol(target.proxyConfig)
+        let nextConfig = target.proxyConfig
+        let nextType = target.type
+        if (parts && probe.protocol && probe.protocol !== parts.scheme) {
+          // 探测出的协议与当前不一致 → 用探测结果重建配置
+          nextConfig = rebuildStandardProxyConfig(parts, probe.protocol)
+          nextType = probe.protocol
+        }
+        const note = formatProbeNote(probe)
+        setPreviewList(prev => prev.map(p =>
+          p.proxyId === target.proxyId
+            ? { ...p, proxyConfig: nextConfig, type: nextType, probe, probeNote: note, probing: false }
+            : p
+        ))
+      } catch (error: any) {
+        setPreviewList(prev => prev.map(p =>
+          p.proxyId === target.proxyId
+            ? { ...p, probing: false, probeNote: `探测失败: ${error?.message || '未知错误'}` }
+            : p
+        ))
+      }
+      await runNext()
+    }
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(limit, probeTargets.length) }, () => runNext()))
+    } finally {
+      setProbingImport(false)
     }
   }
 
@@ -1758,92 +2084,84 @@ export function ProxyPoolPage() {
       </div>
 
       {/* 代理池健康度监控面板 */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* 可用代理数 */}
-        <Card>
-          <div className="text-center">
-            <div className="text-sm text-[var(--color-text-muted)] mb-2">可用代理</div>
-            <div className="text-3xl font-bold text-green-600 mb-1">
-              {healthStats.available}
+      <div className="-mx-1 overflow-x-auto px-1 pb-1">
+        <div className="grid min-w-[920px] grid-cols-5 gap-4">
+          <Card padding="none" className="rounded-xl">
+            <div className="flex h-11 items-center justify-center gap-2 px-3 whitespace-nowrap">
+              <span className="text-sm text-[var(--color-text-muted)]">可用代理</span>
+              <span className="text-2xl font-bold leading-none text-green-600">{healthStats.available}</span>
+              <span className="text-xs text-[var(--color-text-muted)]">总数: {healthStats.total}</span>
             </div>
-            <div className="text-xs text-[var(--color-text-muted)]">
-              总数: {healthStats.total}
-            </div>
-          </div>
-        </Card>
+          </Card>
 
-        {/* 成功率 */}
-        <Card>
-          <div className="text-center">
-            <div className="text-sm text-[var(--color-text-muted)] mb-2">测试通过率</div>
-            <div className={`text-3xl font-bold mb-1 ${
-              healthStats.successRate >= 90 ? 'text-green-600' :
-              healthStats.successRate >= 70 ? 'text-yellow-600' :
-              'text-red-600'
-            }`}>
-              {healthStats.successRate}%
+          <Card padding="none" className="rounded-xl">
+            <div className="flex h-11 items-center justify-center gap-2 px-3 whitespace-nowrap">
+              <span className="text-sm text-[var(--color-text-muted)]">测试通过率</span>
+              <span className={`text-2xl font-bold leading-none ${
+                healthStats.successRate >= 90 ? 'text-green-600' :
+                healthStats.successRate >= 70 ? 'text-yellow-600' :
+                'text-red-600'
+              }`}>
+                {healthStats.successRate}%
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">{healthStats.available}/{healthStats.total}</span>
             </div>
-            <div className="text-xs text-[var(--color-text-muted)]">
-              {healthStats.available}/{healthStats.total}
-            </div>
-          </div>
-        </Card>
+          </Card>
 
-        {/* 平均延迟 */}
-        <Card>
-          <div className="text-center">
-            <div className="text-sm text-[var(--color-text-muted)] mb-2">平均延迟</div>
-            <div className={`text-3xl font-bold mb-1 ${
-              healthStats.avgLatency === 0 ? 'text-gray-400' :
-              healthStats.avgLatency < 200 ? 'text-green-600' :
-              healthStats.avgLatency < 500 ? 'text-yellow-600' :
-              'text-red-600'
-            }`}>
-              {healthStats.avgLatency === 0 ? '-' : healthStats.avgLatency}
+          <Card padding="none" className="rounded-xl">
+            <div className="flex h-11 items-center justify-center gap-2 px-3 whitespace-nowrap">
+              <span className="text-sm text-[var(--color-text-muted)]">平均延迟</span>
+              <span className={`text-2xl font-bold leading-none ${
+                healthStats.avgLatency === 0 ? 'text-gray-400' :
+                healthStats.avgLatency < 200 ? 'text-green-600' :
+                healthStats.avgLatency < 500 ? 'text-yellow-600' :
+                'text-red-600'
+              }`}>
+                {healthStats.avgLatency === 0 ? '-' : healthStats.avgLatency}
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">毫秒</span>
             </div>
-            <div className="text-xs text-[var(--color-text-muted)]">
-              毫秒
-            </div>
-          </div>
-        </Card>
+          </Card>
 
-        {/* 失效代理 */}
-        <Card>
-          <div className="text-center">
-            <div className="text-sm text-[var(--color-text-muted)] mb-2">最近失效</div>
-            <div className={`text-3xl font-bold mb-1 ${
-              healthStats.recentFailed === 0 ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {healthStats.recentFailed}
+          <Card padding="none" className="rounded-xl">
+            <div className="flex h-11 items-center justify-center gap-2 px-3 whitespace-nowrap">
+              <span className="text-sm text-[var(--color-text-muted)]">最近失效</span>
+              <span className={`text-2xl font-bold leading-none ${
+                healthStats.recentFailed === 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {healthStats.recentFailed}
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">个代理</span>
             </div>
-            <div className="text-xs text-[var(--color-text-muted)]">
-              个代理
-            </div>
-          </div>
-        </Card>
+          </Card>
 
-        {/* 健康度评分 */}
-        <Card>
-          <div className="text-center">
-            <div className="text-sm text-[var(--color-text-muted)] mb-2">健康度</div>
-            <div className={`text-3xl font-bold mb-1 ${
-              healthStats.successRate >= 90 && healthStats.avgLatency < 300 ? 'text-green-600' :
-              healthStats.successRate >= 70 && healthStats.avgLatency < 500 ? 'text-yellow-600' :
-              'text-red-600'
-            }`}>
-              {healthStats.successRate >= 90 && healthStats.avgLatency < 300 ? '优秀' :
-               healthStats.successRate >= 70 && healthStats.avgLatency < 500 ? '良好' :
-               healthStats.successRate >= 50 ? '一般' : '较差'}
+          <Card padding="none" className="rounded-xl">
+            <div className="flex h-11 items-center justify-center gap-2 px-3 whitespace-nowrap">
+              <span className="text-sm text-[var(--color-text-muted)]">健康度</span>
+              <span className={`text-2xl font-bold leading-none ${
+                healthStats.successRate >= 90 && healthStats.avgLatency < 300 ? 'text-green-600' :
+                healthStats.successRate >= 70 && healthStats.avgLatency < 500 ? 'text-yellow-600' :
+                'text-red-600'
+              }`}>
+                {healthStats.successRate >= 90 && healthStats.avgLatency < 300 ? '优秀' :
+                 healthStats.successRate >= 70 && healthStats.avgLatency < 500 ? '良好' :
+                 healthStats.successRate >= 50 ? '一般' : '较差'}
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">综合评价</span>
             </div>
-            <div className="text-xs text-[var(--color-text-muted)]">
-              综合评价
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
 
+      <FrontProxySettings
+        enabled={frontProxy.frontProxyEnabled}
+        auto={frontProxy.frontProxyAuto}
+        addr={frontProxy.frontProxyAddr}
+        onChange={handleFrontProxyChange}
+      />
+
       <Card>
-        <div className="flex items-center gap-3 mb-4">
+        <div className="mb-4 flex items-center gap-3 overflow-x-auto whitespace-nowrap pb-1">
           <Input
             value={filterKeyword}
             onChange={e => setFilterKeyword(e.target.value)}
@@ -1913,6 +2231,7 @@ export function ProxyPoolPage() {
           rowKey="proxyId"
           loading={loading}
           emptyText="暂无代理配置，点击上方按钮添加或导入"
+          className="[&_table]:min-w-[1720px] [&_td]:whitespace-nowrap [&_td]:py-1.5 [&_th]:whitespace-nowrap [&_th]:py-2.5"
           sortColumn={sortColumn}
           sortOrder={sortOrder}
           onSort={({ column, order }) => {
@@ -1958,7 +2277,7 @@ export function ProxyPoolPage() {
           </div>
           <p className="text-sm text-[var(--color-text-muted)]">
             {importMode === 'auto'
-              ? '粘贴任意格式自动识别：节点链接（vmess/vless/trojan/ss/hysteria2/socks5/http(s)://，可多行）、Clash YAML，或 base64 订阅内容'
+              ? '粘贴任意格式自动识别：节点链接（vmess/vless/trojan/ss/hysteria2/socks5/http(s)://，可多行）、裸格式 host:port:用户名:密码、Clash YAML，或 base64 订阅内容'
               : importMode === 'clash'
               ? '支持粘贴 Clash YAML，或通过订阅 URL 自动拉取并解析（含 proxies、dns、proxy-groups）'
               : importMode === 'direct'
@@ -1966,12 +2285,33 @@ export function ProxyPoolPage() {
                 : '支持两层 SOCKS5 链式代理，导入后将由本地桥接生成 127.0.0.1 SOCKS5 供 Chromium 使用'}
           </p>
           {importMode === 'auto' && (
-            <Textarea
-              value={importText}
-              onChange={e => setImportText(e.target.value)}
-              rows={10}
-              placeholder={`粘贴节点链接（每行一个）或 Clash YAML 或 base64 订阅，例如：\nvmess://eyJ2IjoiMiIsInBzIjoi...\nsocks5://user:pass@1.2.3.4:1080#我的节点\ntrojan://pass@host:443?sni=...#HK`}
-            />
+            <>
+              <FormItem label="裸格式默认协议">
+                <Select
+                  options={[...DIRECT_PROXY_PROTOCOL_OPTIONS]}
+                  value={bareDefaultProtocol}
+                  onChange={e => setBareDefaultProtocol(e.target.value as DirectImportForm['protocol'])}
+                />
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                  仅对 <code className="px-1 bg-[var(--color-bg-secondary)] rounded">host:port:用户名:密码</code> 这类无协议头的裸格式生效；带 <code className="px-1 bg-[var(--color-bg-secondary)] rounded">://</code> 的节点链接仍按自身协议解析
+                </p>
+              </FormItem>
+              <div className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2">
+                <Switch checked={autoProbeProtocol} onChange={setAutoProbeProtocol} />
+                <div className="flex-1">
+                  <span className="text-sm text-[var(--color-text-primary)]">解析后自动探测协议</span>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                    对 HTTP/SOCKS5 代理实际握手，自动校正协议并显示网关响应（如 403「china IP is not allow」），避免协议选错导致全部失败
+                  </p>
+                </div>
+              </div>
+              <Textarea
+                value={importText}
+                onChange={e => setImportText(e.target.value)}
+                rows={10}
+                placeholder={`粘贴节点链接、裸格式代理（每行一个）或 Clash YAML 或 base64 订阅，例如：\nus.proxy001.com:7878:user_zone_US:pwd740836\nuser:pass@1.2.3.4:1080#我的节点\nsocks5://user:pass@1.2.3.4:1080#我的节点\nvmess://eyJ2IjoiMiIsInBzIjoi...`}
+              />
+            </>
           )}
           {importMode === 'clash' && (
             <>
@@ -2200,10 +2540,13 @@ export function ProxyPoolPage() {
       </Modal>
 
       <Modal open={previewModalOpen} onClose={() => setPreviewModalOpen(false)} title="确认导入以下代理" width="700px"
-        footer={<><Button variant="secondary" onClick={() => { setPreviewModalOpen(false); setImportModalOpen(true) }}>返回修改</Button><Button onClick={handleConfirmImport} loading={importing} disabled={previewList.length === 0}>确认导入</Button></>}>
+        footer={<><Button variant="secondary" onClick={() => { setPreviewModalOpen(false); setImportModalOpen(true) }}>返回修改</Button><Button onClick={handleConfirmImport} loading={importing} disabled={previewList.length === 0 || probingImport}>确认导入</Button></>}>
         <div className="space-y-3">
           {importMode === 'clash' && importDnsServers.trim() && (
             <p className="text-xs text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] px-3 py-2 rounded">已配置批量 DNS，将应用到以下所有代理</p>
+          )}
+          {probingImport && (
+            <p className="text-xs text-[var(--color-warning)] bg-[var(--color-bg-secondary)] px-3 py-2 rounded">正在探测协议，确定真实的 SOCKS5 / HTTP 并核对网关响应，请稍候…</p>
           )}
           <p className="text-xs text-[var(--color-text-muted)]">
             保留 {previewList.length} 条，删除 {removedPreviewProxyNames.length} 条。删除项不会进入后续比较环节。
@@ -2237,7 +2580,7 @@ export function ProxyPoolPage() {
           {chainEditMode ? (
             <div className="space-y-3 rounded-md border border-[var(--color-border)] p-3">
               <p className="text-xs text-[var(--color-text-muted)]">
-                链式代理会在启动实例时自动桥接为本地 SOCKS5，并以 <code className="px-1 bg-[var(--color-bg-secondary)] rounded">socks5://127.0.0.1:&lt;port&gt;</code> 传给 Chromium。
+                链式代理会在启动窗口时自动桥接为本地 SOCKS5，并以 <code className="px-1 bg-[var(--color-bg-secondary)] rounded">socks5://127.0.0.1:&lt;port&gt;</code> 传给 Chromium。
               </p>
               <FormItem label="本地监听端口（可选）">
                 <Input

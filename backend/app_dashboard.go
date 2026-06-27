@@ -21,7 +21,7 @@ type MetricSample struct {
 	MemUsedMB        int     `json:"memUsedMB"`        // 系统已用内存 MB
 	MemTotalMB       int     `json:"memTotalMB"`       // 系统总内存 MB
 	AppMemMB         int     `json:"appMemMB"`         // 应用堆内存 MB
-	RunningInstances int     `json:"runningInstances"` // 运行中实例数
+	RunningInstances int     `json:"runningInstances"` // 运行中窗口数
 }
 
 // ActivityEntry 活动日志条目（真实事件）
@@ -53,7 +53,7 @@ type dashboardMonitor struct {
 	running  bool
 }
 
-// startDashboardMonitor 启动后台资源采样（真实 CPU/内存/运行实例）
+// startDashboardMonitor 启动后台资源采样（真实 CPU/内存/运行窗口）
 func (a *App) startDashboardMonitor() {
 	if a.dashboard == nil {
 		a.dashboard = &dashboardMonitor{}

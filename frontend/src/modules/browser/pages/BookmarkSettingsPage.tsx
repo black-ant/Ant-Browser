@@ -35,7 +35,7 @@ export function BookmarkSettingsPage() {
     setSaving(true)
     try {
       await saveBookmarks(items)
-      toast.success('书签已保存，下次新建实例时生效')
+      toast.success('书签已保存，下次新建窗口时生效')
     } finally {
       setSaving(false)
     }
@@ -68,7 +68,7 @@ export function BookmarkSettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">默认书签</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">新建实例首次启动时自动写入书签栏，已有书签不受影响</p>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">新建窗口首次启动时自动写入书签栏，已有书签不受影响</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => setResetOpen(true)}>

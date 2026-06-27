@@ -189,7 +189,7 @@ func TestProperty7_InvalidCodeReturns404(t *testing.T) {
 // --- Property 8: 重复唤起的幂等性 ---
 
 // TestProperty8_IdempotentLaunch
-// 对于已运行的实例，连续两次 GET /api/launch/{code}：
+// 对于已运行的窗口，连续两次 GET /api/launch/{code}：
 //   - 两次均返回 HTTP 200
 //   - 两次返回的 pid 相同（不重新启动）
 func TestProperty8_IdempotentLaunch(t *testing.T) {

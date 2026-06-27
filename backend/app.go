@@ -584,6 +584,9 @@ func (a *App) GetBrowserSettings() BrowserSettings {
 		DefaultFingerprintArgs: append([]string{}, a.config.Browser.DefaultFingerprintArgs...),
 		DefaultLaunchArgs:      append([]string{}, a.config.Browser.DefaultLaunchArgs...),
 		DefaultProxy:           a.config.Browser.DefaultProxy,
+		FrontProxyEnabled:      a.config.Browser.FrontProxyEnabled,
+		FrontProxyAuto:         a.config.Browser.FrontProxyAuto,
+		FrontProxyAddr:         a.config.Browser.FrontProxyAddr,
 		StartReadyTimeoutMs:    browserStartReadyTimeoutMillis(a.config),
 		StartStableWindowMs:    browserStartStableWindowMillis(a.config),
 	}
@@ -595,6 +598,9 @@ func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	a.config.Browser.DefaultFingerprintArgs = append([]string{}, settings.DefaultFingerprintArgs...)
 	a.config.Browser.DefaultLaunchArgs = append([]string{}, settings.DefaultLaunchArgs...)
 	a.config.Browser.DefaultProxy = strings.TrimSpace(settings.DefaultProxy)
+	a.config.Browser.FrontProxyEnabled = settings.FrontProxyEnabled
+	a.config.Browser.FrontProxyAuto = settings.FrontProxyAuto
+	a.config.Browser.FrontProxyAddr = strings.TrimSpace(settings.FrontProxyAddr)
 	if settings.StartReadyTimeoutMs > 0 {
 		a.config.Browser.StartReadyTimeoutMs = settings.StartReadyTimeoutMs
 	} else if a.config.Browser.StartReadyTimeoutMs <= 0 {
@@ -610,6 +616,12 @@ func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 		return err
 	}
 	return nil
+}
+
+// ScanLocalProxy 探测本机常见端口上的本地代理（Clash / v2rayN / sing-box 等），
+// 供「全局前置代理」设置在前端预览候选并一键填入固定地址，或确认自动模式能否命中。
+func (a *App) ScanLocalProxy() proxy.LocalProxyScanResult {
+	return proxy.ScanLocalProxy()
 }
 
 // ============================================================================
@@ -908,6 +920,17 @@ func (a *App) BrowserProxyListIPDetectSources() []proxy.IPDetectSource {
 func (a *App) BrowserProxyDetectIPByConfig(source string, proxyConfig string) proxy.IPDetectResult {
 	proxies := a.getLatestProxies()
 	return proxy.DetectIPByConfig(source, proxyConfig, proxies, a.xrayMgr, a.singboxMgr)
+}
+
+// BrowserProxyDetectLocalIP 不经过代理，直接查询本机出口公网 IP（用于创建页“本机网络环境”展示）
+func (a *App) BrowserProxyDetectLocalIP(source string) proxy.IPDetectResult {
+	return proxy.DetectLocalIP(source)
+}
+
+// BrowserProxyProbeProtocol 探测一段代理配置串的真实协议（导入裸格式 host:port[:user:pass] 时使用）。
+// 自动判定 SOCKS5 / HTTP，并把网关自身的响应（如 403「china IP is not allow」、407 鉴权）带回前端。
+func (a *App) BrowserProxyProbeProtocol(proxyConfig string) proxy.ProbeResult {
+	return proxy.ProbeProxyConfig(proxyConfig, 6*time.Second)
 }
 
 // BrowserProxyBatchCheckIPHealth 批量并发检测代理出口 IP 健康信息

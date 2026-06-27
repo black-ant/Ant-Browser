@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import {
@@ -28,19 +28,23 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { Button, Input, Modal } from '../../../shared/components'
 import type { BrowserAccount, BrowserExtension } from '../api'
+import { detectLocalIP } from '../api'
 import { GroupSelector } from '../components/GroupSelector'
 import { platformIcon } from '../config/platformPresets'
 import { TagInput } from '../components/TagInput'
 import type { BrowserCore, BrowserGroup, BrowserProxy, CreateWindowFormState } from '../types'
 import { randomFingerprintSeed } from '../utils/fingerprintSerializer'
+import { buildChromeUserAgent, coreChromeVersion, defaultUserAgentForCreateWindow, shouldRegenerateUserAgent } from '../utils/createWindowConverter'
 
 type CreateMode = 'single' | 'batch' | 'import'
 type SectionKey = 'urls' | 'basic' | 'advanced' | 'preferences'
 type SummaryItem = { label: string; value: ReactNode; muted?: boolean }
 
 interface BrowserCreateWorkstationPageProps {
+  mode?: 'create' | 'edit'
   formData: CreateWindowFormState
   cores: BrowserCore[]
+  coreVersions?: Record<string, string>
   proxies: BrowserProxy[]
   groups: BrowserGroup[]
   allTags: string[]
@@ -102,11 +106,13 @@ const browserTypes = [
   { value: 'firefox', label: 'Firefox', Icon: Flame },
 ]
 
-const userAgents = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-]
+function userAgentPresets(version: string | undefined): string[] {
+  return [
+    buildChromeUserAgent(version, 'windows'),
+    buildChromeUserAgent(version, 'mac'),
+    buildChromeUserAgent(version, 'linux'),
+  ]
+}
 
 // 一键配置预设：每项是一组创建页表单补丁，套用时合并到当前表单（保留窗口身份字段）。
 // 仅设置内核可生效的字段（语言/时区/UA/搜索引擎/WebRTC/字体/媒体开关等）。
@@ -124,7 +130,6 @@ const quickPresets: { label: string; patch: Partial<CreateWindowFormState> }[] =
     patch: {
       language: 'en-US', uiLanguage: 'en-US', timezone: 'America/New_York',
       searchEngine: 'google', webrtc: 'disabled', fontFingerprint: 'random',
-      userAgent: userAgents[0],
     },
   },
   {
@@ -159,20 +164,7 @@ const quickPresets: { label: string; patch: Partial<CreateWindowFormState> }[] =
     },
   },
 ]
-const webglProfiles = [
-  {
-    vendor: 'Google Inc. (AMD)',
-    renderer: 'ANGLE (AMD, AMD Radeon (TM) R9 200 Series Direct3D11 vs_5_0 ps_5_0, D3D11-27.20.14501.28009)',
-  },
-  {
-    vendor: 'Google Inc. (Intel)',
-    renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)',
-  },
-  {
-    vendor: 'Google Inc. (NVIDIA)',
-    renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 Direct3D11 vs_5_0 ps_5_0, D3D11)',
-  },
-]
+const managedWebglValue = 'Managed by --fingerprint seed'
 const deviceNameSamples = ['DESKTOP-TN92C12E', 'DESKTOP-K4M8Q1P', 'LAPTOP-7A3NDQ5M', 'WORKSTATION-0928']
 const macAddressSamples = ['1A-76-07-3B-E3-56', '4C-2F-8A-19-D5-0B', 'A8-3E-7C-42-91-F0', '60-45-BD-77-2C-18']
 const unsupportedTitle = '暂未支持启动生效'
@@ -433,20 +425,35 @@ function SectionDivider({
   title,
   children,
   actions,
+  inline = false,
 }: {
   title: string
   children?: ReactNode
   actions?: ReactNode
+  inline?: boolean
 }) {
+  if (inline) {
+    return (
+      <section className="border-t border-dashed border-[#cbd5e1] py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <h3 className="shrink-0 text-base font-semibold text-[#111827]">{title}</h3>
+            {children && <div className="min-w-0 truncate">{children}</div>}
+          </div>
+          {actions && <div className="flex shrink-0 items-center gap-5 text-sm text-[#111827]">{actions}</div>}
+        </div>
+      </section>
+    )
+  }
   return (
-    <section className="border-t border-dashed border-[#cbd5e1] py-5">
+    <section className="border-t border-dashed border-[#cbd5e1] py-3">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-[#111827]">{title}</h3>
         </div>
         {actions && <div className="flex shrink-0 items-center gap-5 text-sm text-[#111827]">{actions}</div>}
       </div>
-      {children && <div className="mt-3">{children}</div>}
+      {children && <div className="mt-2">{children}</div>}
     </section>
   )
 }
@@ -742,8 +749,10 @@ function WindowPositionPicker({
 }
 
 export function BrowserCreateWorkstationPage({
+  mode = 'create',
   formData,
   cores,
+  coreVersions = {},
   proxies,
   groups,
   allTags,
@@ -768,12 +777,27 @@ export function BrowserCreateWorkstationPage({
   onApplyTemplate,
   onSaveAsTemplate,
 }: BrowserCreateWorkstationPageProps) {
-  const [mode, setMode] = useState<CreateMode>('single')
+  const isEdit = mode === 'edit'
+  const [createTab, setCreateTab] = useState<CreateMode>('single')
   const [summaryPanelOpen, setSummaryPanelOpen] = useState(false)
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [templateNameDraft, setTemplateNameDraft] = useState('')
+  const [localIp, setLocalIp] = useState('')
   const cookieFileInputRef = useRef<HTMLInputElement>(null)
+
+  // 加载本机真实出口公网 IP（不经代理），用于“本机网络环境”展示
+  useEffect(() => {
+    let cancelled = false
+    detectLocalIP('ip-api')
+      .then(result => {
+        if (cancelled || !result.ok) return
+        const loc = [result.country, result.city].filter(Boolean).join('/')
+        setLocalIp(loc ? `${loc}(${result.ip})` : result.ip)
+      })
+      .catch(() => { /* 忽略：失败时不展示 */ })
+    return () => { cancelled = true }
+  }, [])
 
   const handleCookieFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -800,9 +824,18 @@ export function BrowserCreateWorkstationPage({
   const defaultCore = cores.find(core => core.isDefault)
   const system = formData.system || 'windows'
   const browserCore = formData.browserCore || 'chrome'
-  const browserVersion = formData.browserVersion || defaultCore?.coreName || 'RoxyChrome 149'
+  const browserVersion = formData.browserVersion || defaultCore?.coreName || 'Chrome'
   const systemVersion = formData.systemVersion || 'Windows 11'
-  const userAgent = formData.userAgent || userAgents[0]
+  const selectedCore = (
+    cores.find(core => core.coreId === formData.coreId) ||
+    cores.find(core => core.coreName === browserVersion) ||
+    defaultCore ||
+    cores[0]
+  )
+  const chromeVersion = coreChromeVersion(selectedCore, coreVersions)
+  const userAgentOptions = userAgentPresets(chromeVersion)
+  const defaultUserAgent = defaultUserAgentForCreateWindow({ ...formData, browserVersion, system }, cores, coreVersions)
+  const userAgent = shouldRegenerateUserAgent(formData.userAgent) ? defaultUserAgent : formData.userAgent
   const systemLabel = systems.find(item => item.value === system)?.label || systemVersion
   const browserCoreLabel = browserTypes.find(item => item.value === browserCore)?.label || browserCore
   const summaryItems = useMemo<SummaryItem[]>(() => [
@@ -812,7 +845,7 @@ export function BrowserCreateWorkstationPage({
     { label: '语言', value: displayByMode(formData.language, '基于 IP 匹配') },
     { label: '时区', value: displayByMode(formData.timezone, '基于 IP 匹配') },
     { label: '地理位置提示', value: displayByMode(formData.geolocationDisplay || 'allow') },
-    { label: '地理位置', value: displayByMode(formData.geolocation, '基于 IP 匹配'), muted: !formData.geolocation },
+    { label: '地理位置', value: formData.geolocation === 'custom' ? `${formData.latitude || '?'}, ${formData.longitude || '?'}` : displayByMode(formData.geolocation, '基于 IP 匹配'), muted: !formData.geolocation },
     { label: '声音', value: formData.audio === false ? '关闭' : '开启' },
     { label: '图片', value: formData.image === false ? '关闭' : '开启' },
     { label: '视频', value: formData.video === false ? '关闭' : '开启' },
@@ -844,12 +877,9 @@ export function BrowserCreateWorkstationPage({
   }
 
   const handleRandomFingerprint = () => {
-    const webgl = pickRandom(webglProfiles)
-    onChange('userAgent', pickRandom(userAgents))
+    onChange('userAgent', pickRandom(userAgentOptions))
     onChange('hardwareConcurrency', pickRandom(['4', '6', '8', '12', '16']))
     onChange('deviceMemory', pickRandom(['4', '8', '16']))
-    onChange('webglVendor', webgl.vendor)
-    onChange('webglRenderer', webgl.renderer)
     onChange('deviceNameValue', pickRandom(deviceNameSamples))
     onChange('macAddressValue', pickRandom(macAddressSamples))
     onChange('fingerprintArgs', replaceSwitchArg(formData.fingerprintArgs, '--fingerprint=', randomFingerprintSeed()))
@@ -874,28 +904,30 @@ export function BrowserCreateWorkstationPage({
             className="inline-flex items-center gap-3 text-base font-semibold text-[#111827] transition-colors hover:text-[#168fff]"
           >
             <ArrowLeft className="h-5 w-5" />
-            创建窗口
+            {isEdit ? '编辑窗口' : '创建窗口'}
           </button>
         </div>
-        <nav className="flex h-9 items-end gap-8 px-6">
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              type="button"
-              disabled={tab.key !== 'single'}
-              title={tab.key !== 'single' ? unsupportedTitle : undefined}
-              onClick={() => setMode(tab.key)}
-              className={clsx(
-                'relative h-full px-1 text-sm font-medium transition-colors',
-                mode === tab.key ? 'text-[#168fff]' : 'text-[#4b5563] hover:text-[#111827]',
-                tab.key !== 'single' && 'cursor-not-allowed text-[#94a3b8] hover:text-[#94a3b8]',
-              )}
-            >
-              {tab.label}
-              {mode === tab.key && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[#168fff]" />}
-            </button>
-          ))}
-        </nav>
+        {!isEdit && (
+          <nav className="flex h-9 items-end gap-8 px-6">
+            {tabs.map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                disabled={tab.key !== 'single'}
+                title={tab.key !== 'single' ? unsupportedTitle : undefined}
+                onClick={() => setCreateTab(tab.key)}
+                className={clsx(
+                  'relative h-full px-1 text-sm font-medium transition-colors',
+                  createTab === tab.key ? 'text-[#168fff]' : 'text-[#4b5563] hover:text-[#111827]',
+                  tab.key !== 'single' && 'cursor-not-allowed text-[#94a3b8] hover:text-[#94a3b8]',
+                )}
+              >
+                {tab.label}
+                {createTab === tab.key && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[#168fff]" />}
+              </button>
+            ))}
+          </nav>
+        )}
       </header>
 
       <div className="relative min-h-0 flex-1 overflow-auto bg-white">
@@ -906,35 +938,24 @@ export function BrowserCreateWorkstationPage({
           )}
         >
         <main className="min-w-0">
-          <div className="relative mb-5 flex items-center justify-center">
+          <div className="mb-5 flex items-center justify-between gap-4">
             <h2 className="text-base font-semibold text-[#111827]">窗口信息</h2>
-            <div className="absolute right-0 flex items-center gap-5">
-              <div className="relative">
-                <select
-                  value={selectedTemplateId}
-                  onChange={event => onApplyTemplate(event.target.value)}
-                  title={templates.length === 0 ? '暂无模板，可在下方“存为新模板”创建' : '从已保存模板套用配置'}
-                  className="h-8 cursor-pointer appearance-none rounded-md border border-[#cbd5e1] bg-white pl-8 pr-7 text-sm font-semibold text-[#111827] outline-none transition-colors hover:border-[#168fff] focus:border-[#168fff]"
-                >
-                  <option value="">不使用模板</option>
-                  {templates.map(template => (
-                    <option key={template.templateId} value={template.templateId}>
-                      {template.templateName}
-                    </option>
-                  ))}
-                </select>
-                <LayoutTemplate className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748b]" />
-                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748b]" />
-              </div>
-              <button
-                type="button"
-                onClick={() => setSummaryPanelOpen(open => !open)}
-                className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#cbd5e1] bg-white text-[#111827] shadow-md transition-colors hover:border-[#168fff] hover:text-[#168fff]"
-                title={summaryPanelOpen ? '收起概要' : '展开概要'}
-                aria-label={summaryPanelOpen ? '收起概要' : '展开概要'}
+            <div className="relative">
+              <select
+                value={selectedTemplateId}
+                onChange={event => onApplyTemplate(event.target.value)}
+                title={templates.length === 0 ? '暂无模板，可在下方“存为新模板”创建' : '从已保存模板套用配置'}
+                className="h-8 cursor-pointer appearance-none rounded-md border border-[#cbd5e1] bg-white pl-8 pr-7 text-sm font-semibold text-[#111827] outline-none transition-colors hover:border-[#168fff] focus:border-[#168fff]"
               >
-                <FileText className="h-5 w-5" />
-              </button>
+                <option value="">不使用模板</option>
+                {templates.map(template => (
+                  <option key={template.templateId} value={template.templateId}>
+                    {template.templateName}
+                  </option>
+                ))}
+              </select>
+              <LayoutTemplate className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748b]" />
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748b]" />
             </div>
           </div>
 
@@ -1035,7 +1056,7 @@ export function BrowserCreateWorkstationPage({
                     onChange={event => onChange('browserVersion', event.target.value)}
                     className={clsx(controlClass, 'appearance-none pr-9')}
                   >
-                    <option>{defaultCore?.coreName || 'RoxyChrome 149'}</option>
+                    <option>{defaultCore?.coreName || 'Chrome'}</option>
                     {cores.map(core => (
                       <option key={core.coreId} value={core.coreName}>
                         {core.coreName}
@@ -1099,6 +1120,7 @@ export function BrowserCreateWorkstationPage({
           <div className="mt-4">
             <SectionDivider
               title="代理 IP"
+              inline
               actions={
                 <>
                   <InlineAction icon={RefreshCw} onClick={onOpenProxyPicker}>选择</InlineAction>
@@ -1106,19 +1128,23 @@ export function BrowserCreateWorkstationPage({
                 </>
               }
             >
-              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[#475569]">
-                本机网络环境: SG/Singapore(54.151.163.131)
-                <HelpCircle className="h-3.5 w-3.5 text-[#94a3b8]" />
-              </p>
-              {(selectedProxy || formData.proxyConfig) && (
-                <p className="mt-2 text-xs text-[#168fff]">
-                  当前代理: {selectedProxy?.proxyName || selectedProxy?.proxyId || formData.proxyConfig}
-                </p>
-              )}
+              <span className="flex items-center gap-1.5 truncate text-xs text-[#475569]">
+                {(selectedProxy || formData.proxyConfig) ? (
+                  <span className="truncate text-[#168fff]">
+                    当前代理: {selectedProxy?.proxyName || selectedProxy?.proxyId || formData.proxyConfig}
+                  </span>
+                ) : (
+                  <>
+                    <span className="truncate">本机网络环境: {localIp || '检测中...'}</span>
+                    <HelpCircle className="h-3.5 w-3.5 shrink-0 text-[#94a3b8]" />
+                  </>
+                )}
+              </span>
             </SectionDivider>
 
             <SectionDivider
               title="平台账号"
+              inline
               actions={
                 <>
                   <InlineAction icon={RefreshCw} onClick={onOpenAccountPicker}>选择</InlineAction>
@@ -1135,12 +1161,16 @@ export function BrowserCreateWorkstationPage({
 
             <SectionDivider
               title="启动扩展"
+              inline={loadableExtensions.length === 0 && !extensionsLoadError}
               actions={loadableExtensions.length > 0 && (
                 <span className="text-xs font-medium text-[#64748b]">
                   已选 {selectedLoadableExtensionCount} / {loadableExtensions.length}
                 </span>
               )}
             >
+              {loadableExtensions.length === 0 && !extensionsLoadError ? (
+                <span className="truncate text-xs text-[#94a3b8]">暂无可加载的本地启用扩展，请先在扩展管理中添加并启用</span>
+              ) : (
               <div className="space-y-3">
                 {extensionsLoadError && (
                   <div className="rounded-md border border-[#ef4444]/40 bg-[#fef2f2] px-3 py-2 text-sm text-[#b91c1c]">
@@ -1181,12 +1211,9 @@ export function BrowserCreateWorkstationPage({
                       )
                     })}
                   </div>
-                ) : (
-                  <div className="rounded-md border border-[#cbd5e1] bg-[#f8fafc] px-4 py-5 text-sm text-[#64748b]">
-                    暂无可加载的本地启用扩展。请先在扩展管理中添加本地解压目录并启用。
-                  </div>
-                )}
+                ) : null}
               </div>
+              )}
             </SectionDivider>
 
             <CollapsibleRow
@@ -1250,15 +1277,32 @@ export function BrowserCreateWorkstationPage({
                   />
                 </SettingRow>
 
-                <SettingRow label="地理位置">
-                  <SegmentedControl
-                    value={formData.geolocation || 'auto'}
-                    options={[
-                      { value: 'auto', label: '基于 IP 匹配' },
-                    ]}
-                    onChange={value => onChange('geolocation', value)}
-                    className="w-[120px]"
-                  />
+                <SettingRow label="地理位置" alignStart={formData.geolocation === 'custom'}>
+                  <div className="space-y-3">
+                    <SegmentedControl
+                      value={formData.geolocation || 'auto'}
+                      options={[
+                        { value: 'auto', label: '基于 IP 匹配' },
+                        { value: 'custom', label: '自定义' },
+                      ]}
+                      onChange={value => onChange('geolocation', value)}
+                      className="w-[178px]"
+                    />
+                    {formData.geolocation === 'custom' && (
+                      <div className="flex flex-wrap gap-2">
+                        <DimensionInput
+                          label="纬度"
+                          value={formData.latitude || ''}
+                          onChange={value => onChange('latitude', value)}
+                        />
+                        <DimensionInput
+                          label="经度"
+                          value={formData.longitude || ''}
+                          onChange={value => onChange('longitude', value)}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </SettingRow>
 
                 <SettingRow label="声音">
@@ -1421,28 +1465,27 @@ export function BrowserCreateWorkstationPage({
                   />
                 </SettingRow>
 
+                {/* WebGL 厂商/渲染器：--fingerprint-webgl-vendor/-renderer 在 Chrome 144+ 内核已废弃，
+                    设置后会被忽略并导致指纹不一致。WebGL「真实/随机」改由上方 WebGL Info 段控驱动
+                    （real→--disable-spoofing=gpu，random→内核默认混淆）。这里禁用，避免误导用户。 */}
                 <SettingRow label="WebGL 厂商">
                   <RandomizedInput
-                    value={formData.webglVendor || webglProfiles[0].vendor}
-                    onChange={value => onChange('webglVendor', value)}
-                    onRandom={() => {
-                      const webgl = pickRandom(webglProfiles)
-                      onChange('webglVendor', webgl.vendor)
-                      onChange('webglRenderer', webgl.renderer)
-                    }}
+                    value={managedWebglValue}
+                    onChange={() => undefined}
+                    onRandom={() => undefined}
+                    disabled
+                    title={kernelUnsupportedTitle}
                   />
                 </SettingRow>
 
                 <SettingRow label="WebGL 渲染" alignStart>
                   <RandomizedInput
-                    value={formData.webglRenderer || webglProfiles[0].renderer}
-                    onChange={value => onChange('webglRenderer', value)}
-                    onRandom={() => {
-                      const webgl = pickRandom(webglProfiles)
-                      onChange('webglVendor', webgl.vendor)
-                      onChange('webglRenderer', webgl.renderer)
-                    }}
+                    value={managedWebglValue}
+                    onChange={() => undefined}
+                    onRandom={() => undefined}
                     multiline
+                    disabled
+                    title={kernelUnsupportedTitle}
                   />
                 </SettingRow>
 
@@ -1767,12 +1810,10 @@ export function BrowserCreateWorkstationPage({
                 <SettingRow label="网址访问黑名单" info alignStart>
                   <textarea
                     value={formData.websiteAccessBlacklist || ''}
-                    disabled
-                    title={unsupportedTitle}
                     onChange={event => onChange('websiteAccessBlacklist', event.target.value)}
                     rows={3}
-                    placeholder="每行一个 URL，换行以添加多个"
-                    className={clsx(textAreaClass, 'min-h-[74px] max-w-[590px] cursor-not-allowed bg-[#f8fafc] text-[#94a3b8]')}
+                    placeholder="每行一个 URL/域名；填写后拦截匹配项（白名单非空时以白名单为准）"
+                    className={clsx(textAreaClass, 'min-h-[74px] max-w-[590px]')}
                   />
                 </SettingRow>
 
@@ -1852,7 +1893,7 @@ export function BrowserCreateWorkstationPage({
               disabled={saving}
               className="inline-flex h-9 items-center justify-center rounded-md bg-[#168fff] px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0f7edf] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saving ? '创建中...' : '创建窗口'}
+              {saving ? (isEdit ? '保存中...' : '创建中...') : (isEdit ? '保存配置' : '创建窗口')}
             </button>
           </div>
         </div>

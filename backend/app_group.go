@@ -18,7 +18,7 @@ type BrowserGroupWithCount = browser.GroupWithCount
 // 分组管理 API
 // ============================================================================
 
-// ListGroups 获取所有分组（带实例计数）
+// ListGroups 获取所有分组（带窗口计数）
 func (a *App) ListGroups() []BrowserGroupWithCount {
 	log := logger.New("Group")
 	if a.browserMgr.GroupDAO == nil {
@@ -32,7 +32,7 @@ func (a *App) ListGroups() []BrowserGroupWithCount {
 		return []BrowserGroupWithCount{}
 	}
 
-	// 统计每个分组的实例数量
+	// 统计每个分组的窗口数量
 	profiles, _ := a.browserMgr.ProfileDAO.List()
 	countMap := make(map[string]int)
 	for _, p := range profiles {
@@ -98,7 +98,7 @@ func (a *App) DeleteGroup(groupId string) error {
 	return nil
 }
 
-// MoveInstancesToGroup 批量移动实例到分组
+// MoveInstancesToGroup 批量移动窗口到分组
 func (a *App) MoveInstancesToGroup(profileIds []string, groupId string) error {
 	log := logger.New("Group")
 	dao, ok := a.browserMgr.ProfileDAO.(*browser.SQLiteProfileDAO)
@@ -107,9 +107,9 @@ func (a *App) MoveInstancesToGroup(profileIds []string, groupId string) error {
 	}
 
 	if err := dao.MoveToGroup(profileIds, groupId); err != nil {
-		log.Error("批量移动实例失败", logger.F("count", len(profileIds)), logger.F("error", err))
+		log.Error("批量移动窗口失败", logger.F("count", len(profileIds)), logger.F("error", err))
 		return err
 	}
-	log.Info("实例已移动到分组", logger.F("count", len(profileIds)), logger.F("group_id", groupId))
+	log.Info("窗口已移动到分组", logger.F("count", len(profileIds)), logger.F("group_id", groupId))
 	return nil
 }

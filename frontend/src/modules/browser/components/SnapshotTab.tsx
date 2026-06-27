@@ -118,7 +118,7 @@ export function SnapshotTab({ profileId, running }: Props) {
               size="sm"
               variant="ghost"
               disabled={running}
-              title={running ? '请先停止实例' : '恢复此快照'}
+              title={running ? '请先停止窗口' : '恢复此快照'}
               onClick={() => setConfirmRestore(sid)}
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -140,7 +140,7 @@ export function SnapshotTab({ profileId, running }: Props) {
 
   return (
     <div className="space-y-4">
-      <Card title="创建快照" subtitle={running ? '实例运行中，请先停止后再创建快照' : '将当前用户数据目录压缩为快照'}>
+      <Card title="创建快照" subtitle={running ? '窗口运行中，请先停止后再创建快照' : '将当前用户数据目录压缩为快照'}>
         <div className="flex flex-col sm:flex-row gap-3">
           <Input
             value={newName}

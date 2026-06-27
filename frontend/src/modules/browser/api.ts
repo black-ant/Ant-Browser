@@ -1,4 +1,4 @@
-import type { BrowserProfile, BrowserProfileInput, BrowserTab, BrowserSettings, BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserProxy, BrowserCoreExtended, CookieInfo, SnapshotInfo, BrowserBookmark, BrowserGroup, BrowserGroupInput, BrowserGroupWithCount, BrowserTemplate, BrowserTemplateInput, ProxyIPHealthResult, ProxySource, ProxySourceOverride, IPDetectResult, IPDetectSource } from './types'
+import type { BrowserProfile, BrowserProfileInput, BrowserTab, BrowserSettings, BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserProxy, BrowserCoreExtended, CookieInfo, SnapshotInfo, BrowserBookmark, BrowserGroup, BrowserGroupInput, BrowserGroupWithCount, BrowserTemplate, BrowserTemplateInput, ProxyIPHealthResult, ProxySource, ProxySourceOverride, IPDetectResult, IPDetectSource, ProxyProbeResult, LocalProxyScanResult } from './types'
 
 const getBindings = async () => {
   try {
@@ -217,11 +217,12 @@ export async function fetchBrowserTabs(profileId: string): Promise<BrowserTab[]>
 // ============================================================================
 
 export async function fetchBrowserSettings(): Promise<BrowserSettings> {
+  const defaults: BrowserSettings = { userDataRoot: 'data', defaultFingerprintArgs: [], defaultLaunchArgs: [], defaultProxy: '', frontProxyEnabled: false, frontProxyAuto: false, frontProxyAddr: '', startReadyTimeoutMs: 3000, startStableWindowMs: 1200 }
   const bindings: any = await getBindings()
   if (bindings?.GetBrowserSettings) {
-    return (await bindings.GetBrowserSettings()) || { userDataRoot: 'data', defaultFingerprintArgs: [], defaultLaunchArgs: [], defaultProxy: '', startReadyTimeoutMs: 3000, startStableWindowMs: 1200 }
+    return (await bindings.GetBrowserSettings()) || defaults
   }
-  return { userDataRoot: 'data', defaultFingerprintArgs: [], defaultLaunchArgs: [], defaultProxy: '', startReadyTimeoutMs: 3000, startStableWindowMs: 1200 }
+  return defaults
 }
 
 export async function saveBrowserSettings(settings: BrowserSettings): Promise<boolean> {
@@ -231,6 +232,19 @@ export async function saveBrowserSettings(settings: BrowserSettings): Promise<bo
     return true
   }
   return true
+}
+
+// scanLocalProxy 探测本机常见端口上的本地代理（Clash / v2rayN / sing-box 等），
+// 供「全局前置代理」设置预览候选并一键填入固定地址。
+export async function scanLocalProxy(): Promise<LocalProxyScanResult> {
+  return callBinding<LocalProxyScanResult>('ScanLocalProxy', [], { found: false, best: '', candidates: [], error: '检测能力不可用（未连接后端）' })
+}
+
+// updateFrontProxySettings 仅更新「全局前置代理」三字段并落库。
+// 先拉取最新设置再合并，避免覆盖其它配置项（不同页面共享同一份 BrowserSettings）。
+export async function updateFrontProxySettings(fields: { frontProxyEnabled: boolean; frontProxyAuto: boolean; frontProxyAddr: string }): Promise<void> {
+  const cur = await fetchBrowserSettings()
+  await saveBrowserSettings({ ...cur, ...fields })
 }
 
 // ============================================================================
@@ -567,6 +581,49 @@ export async function detectIPByConfig(source: string, proxyConfig: string): Pro
     isp: 'Mock ISP',
     org: 'Mock Org',
     latencyMs: 123,
+    updatedAt: new Date().toISOString(),
+    rawData: {},
+  }
+}
+
+// 探测一段裸格式代理配置（host:port[:user:pass]）的真实协议，并带回网关响应。
+// 用于智能识别导入时自动判定 SOCKS5 / HTTP，避免用户选错协议。
+export async function probeProxyProtocol(proxyConfig: string): Promise<ProxyProbeResult> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyProbeProtocol) {
+    return await bindings.BrowserProxyProbeProtocol(proxyConfig)
+  }
+  return {
+    protocol: '',
+    reachable: false,
+    usable: false,
+    needAuth: false,
+    gatewayStatus: 0,
+    gatewayMessage: '',
+    latencyMs: 0,
+    error: '探测能力不可用（未连接后端）',
+  }
+}
+
+// 查询本机出口公网 IP 信息（不经过代理），用于创建页“本机网络环境”展示
+export async function detectLocalIP(source: string = ''): Promise<IPDetectResult> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyDetectLocalIP) {
+    return await bindings.BrowserProxyDetectLocalIP(source)
+  }
+  await new Promise(r => setTimeout(r, 400))
+  return {
+    source: source || 'ip-api',
+    ok: false,
+    error: '',
+    ip: '',
+    country: '',
+    countryCode: '',
+    region: '',
+    city: '',
+    isp: '',
+    org: '',
+    latencyMs: 0,
     updatedAt: new Date().toISOString(),
     rawData: {},
   }

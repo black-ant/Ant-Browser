@@ -60,8 +60,8 @@ func isLocalExtensionSource(sourceType string) bool {
 	return s == "" || s == "local"
 }
 
-// extensionLoadPathsForProfile 返回某实例启动时应加载的扩展目录：
-// 启用 + 本地来源 + 已绑定该实例 + 目录含 manifest.json。
+// extensionLoadPathsForProfile 返回某窗口启动时应加载的扩展目录：
+// 启用 + 本地来源 + 已绑定该窗口 + 目录含 manifest.json。
 func (a *App) extensionLoadPathsForProfile(profileID string) []string {
 	if a.db == nil || strings.TrimSpace(profileID) == "" {
 		return nil
@@ -98,7 +98,7 @@ func (a *App) extensionLoadPathsForProfile(profileID string) []string {
 	return paths
 }
 
-// BrowserExtensionSetProfiles 设置扩展绑定的实例集合（过滤无效/重复 id）
+// BrowserExtensionSetProfiles 设置扩展绑定的窗口集合（过滤无效/重复 id）
 func (a *App) BrowserExtensionSetProfiles(extensionID string, profileIDs []string) error {
 	valid := map[string]bool{}
 	a.browserMgr.Mutex.Lock()
