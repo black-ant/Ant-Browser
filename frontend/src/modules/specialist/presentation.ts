@@ -20,8 +20,19 @@ const evidenceLabels: Record<string, string> = {
   operation_summary: '处理摘要',
 }
 
+const priorityLabels: Record<string, string> = {
+  critical: '紧急',
+  high: '高',
+  medium: '中',
+  low: '低',
+}
+
 export function specialistTaskStatusLabel(status: string): string {
   return statusLabels[status] ?? (status || '-')
+}
+
+export function specialistTaskPriorityLabel(priority: string): string {
+  return priorityLabels[priority] ?? (priority || '-')
 }
 
 export function specialistTaskDeadlineTone(deadlineAt: string | null): DeadlineTone {

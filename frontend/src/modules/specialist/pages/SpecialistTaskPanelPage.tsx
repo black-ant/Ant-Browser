@@ -1,39 +1,62 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle, Clock, ListChecks, RefreshCw, Store } from 'lucide-react'
+import { ReloadOutlined } from '@ant-design/icons'
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Col,
+  Row,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from 'antd'
+import type { ColumnsType } from 'antd/es/table'
 import { useSearchParams } from 'react-router-dom'
-import { Alert, Badge, Button, Card, Select, StatCard, Table, toast } from '../../../shared/components'
-import type { TableColumn } from '../../../shared/components/Table'
 import {
   fetchShopSpecialistTasks,
   fetchSpecialistTaskDetail,
   fetchTodaySpecialistTasks,
 } from '../api'
 import {
-  requiredStepSummary,
   specialistTaskDeadlineTone,
+  specialistTaskPriorityLabel,
   specialistTaskStatusLabel,
 } from '../presentation'
 import type { SpecialistTaskListResponse, SpecialistTaskRecord } from '../types'
 import { SpecialistTaskDrawer } from '../components/SpecialistTaskDrawer'
 
-function statusVariant(status: string) {
+const { Text, Title } = Typography
+
+function statusColor(status: string) {
   if (status === 'completed') return 'success'
   if (status === 'appeal_in_review' || status === 'overdue') return 'warning'
   if (status === 'validation_failed_penalty' || status === 'rejected_rework') return 'error'
-  if (status === 'submitted_pending_validation' || status === 'in_progress') return 'info'
+  if (status === 'submitted_pending_validation' || status === 'in_progress') return 'processing'
   return 'default'
 }
 
-function deadlineClass(deadlineAt: string | null) {
+function deadlineColor(deadlineAt: string | null) {
   const tone = specialistTaskDeadlineTone(deadlineAt)
-  if (tone === 'danger') return 'text-[var(--color-error)]'
-  if (tone === 'warning') return 'text-[var(--color-warning)]'
-  return 'text-[var(--color-text-secondary)]'
+  if (tone === 'danger') return '#cf1322'
+  if (tone === 'warning') return '#d46b08'
+  return undefined
 }
 
 function formatTime(value: string | null | undefined) {
   if (!value) return '-'
-  return value.replace('T', ' ').slice(0, 16)
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return value
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
 }
 
 function emptyOverview(): SpecialistTaskListResponse {
@@ -53,6 +76,7 @@ function emptyOverview(): SpecialistTaskListResponse {
 }
 
 export function SpecialistTaskPanelPage() {
+  const { notification } = App.useApp()
   const [searchParams] = useSearchParams()
   const shopId = searchParams.get('shopId')?.trim() || ''
   const [statusFilter, setStatusFilter] = useState('')
@@ -77,7 +101,7 @@ export function SpecialistTaskPanelPage() {
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : '专员任务加载失败'
       setError(message)
-      toast.error(message)
+      notification.error({ message: '任务读取失败', description: message })
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -91,8 +115,10 @@ export function SpecialistTaskPanelPage() {
     try {
       setSelectedTask(await fetchSpecialistTaskDetail(task.id))
     } catch (detailError) {
-      const message = detailError instanceof Error ? detailError.message : '任务详情加载失败'
-      toast.error(message)
+      notification.error({
+        message: '任务详情加载失败',
+        description: detailError instanceof Error ? detailError.message : '请稍后重试',
+      })
     } finally {
       setDetailLoading(false)
     }
@@ -102,86 +128,99 @@ export function SpecialistTaskPanelPage() {
     void load()
   }, [shopId, statusFilter])
 
-  const tasks = overview.items
-  const counts = overview.summary
-  const tableColumns = useMemo<TableColumn<SpecialistTaskRecord>[]>(() => [
+  const columns = useMemo<ColumnsType<SpecialistTaskRecord>>(() => [
     {
-      key: 'title',
       title: '任务',
-      width: 280,
+      dataIndex: 'title',
+      key: 'title',
+      width: 300,
+      ellipsis: true,
       render: (_, row) => (
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="max-w-[250px] truncate font-medium text-[var(--color-text-primary)]" title={row.title || row.id}>
+        <Space direction="vertical" size={0} className="min-w-0">
+          <Text strong ellipsis={{ tooltip: row.title || row.id }} style={{ maxWidth: 270 }}>
             {row.title || row.id}
-          </span>
-          <span className="max-w-[250px] truncate text-xs text-[var(--color-text-muted)]" title={row.description}>
+          </Text>
+          <Text type="secondary" ellipsis={{ tooltip: row.description }} style={{ maxWidth: 270, fontSize: 12 }}>
             {row.description || row.id}
-          </span>
-        </div>
+          </Text>
+        </Space>
       ),
     },
     {
-      key: 'shopName',
       title: '店铺',
-      width: 210,
+      dataIndex: 'shopName',
+      key: 'shopName',
+      width: 220,
+      ellipsis: true,
       render: (_, row) => (
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="max-w-[190px] truncate" title={row.shopName || row.shopId}>
+        <Space direction="vertical" size={0} className="min-w-0">
+          <Text ellipsis={{ tooltip: row.shopName || row.shopId }} style={{ maxWidth: 190 }}>
             {row.shopName || row.shopId}
-          </span>
-          <span className="max-w-[190px] truncate text-xs text-[var(--color-text-muted)]" title={row.shopId}>
+          </Text>
+          <Text type="secondary" ellipsis={{ tooltip: row.shopId }} style={{ maxWidth: 190, fontSize: 12 }}>
             {row.shopId}
-          </span>
-        </div>
+          </Text>
+        </Space>
       ),
     },
     {
-      key: 'status',
       title: '状态',
-      width: 136,
-      render: (_, row) => (
-        <Badge variant={statusVariant(String(row.status))}>{specialistTaskStatusLabel(String(row.status))}</Badge>
+      dataIndex: 'status',
+      key: 'status',
+      width: 138,
+      render: (status: string) => (
+        <Tag color={statusColor(String(status))}>{specialistTaskStatusLabel(String(status))}</Tag>
       ),
     },
     {
-      key: 'sop',
-      title: 'SOP',
-      width: 96,
-      render: (_, row) => (
-        <span className="text-sm font-medium text-[var(--color-text-primary)]">{requiredStepSummary(row.sopSteps)}</span>
-      ),
+      title: '优先级',
+      dataIndex: 'priority',
+      key: 'priority',
+      width: 90,
+      render: (priority: string) => specialistTaskPriorityLabel(priority),
     },
     {
+      title: '截止时间',
+      dataIndex: 'deadlineAt',
       key: 'deadlineAt',
-      title: '截止',
       width: 150,
-      render: (_, row) => (
-        <span className={`text-xs font-medium ${deadlineClass(row.deadlineAt)}`}>{formatTime(row.deadlineAt)}</span>
+      render: (deadlineAt: string | null) => (
+        <Text style={{ color: deadlineColor(deadlineAt) }}>{formatTime(deadlineAt)}</Text>
       ),
     },
     {
+      title: '更新时间',
+      dataIndex: 'updatedAt',
       key: 'updatedAt',
-      title: '更新',
       width: 150,
-      render: (_, row) => (
-        <span className="text-xs text-[var(--color-text-muted)]">{formatTime(row.updatedAt)}</span>
-      ),
+      render: (value: string) => <Text type="secondary">{formatTime(value)}</Text>,
     },
   ], [])
 
+  const counts = overview.summary
+  const metrics = [
+    ['任务数', counts.total],
+    ['待开始', counts.pending],
+    ['处理中', counts.inProgress],
+    ['待校验', counts.submittedPendingValidation],
+    ['申诉中', counts.appealInReview],
+    ['已完成', counts.completed],
+  ] as const
+
   return (
-    <div className="space-y-5 p-5 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">专员任务台</h1>
-          <p className="mt-1 break-words text-sm text-[var(--color-text-muted)]">
-            {shopId ? `当前仅看店铺 ${shopId} 的专员任务。` : '今日待处理任务，按 SOP 勾选、证据回传和提交验收推进。'}
-          </p>
+    <div className="space-y-4 p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <Title level={4} style={{ margin: 0 }}>专员任务台</Title>
+          <Text type="secondary">
+            {shopId ? `当前仅看店铺 ${shopId} 的专员任务。` : '按 SOP 执行、回传证据并提交验收。'}
+          </Text>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Space wrap>
           <Select
-            className="w-full sm:w-48"
+            aria-label="任务状态"
             value={statusFilter}
+            style={{ width: 190 }}
             options={[
               { value: '', label: '全部状态' },
               { value: 'pending', label: '待开始' },
@@ -190,43 +229,60 @@ export function SpecialistTaskPanelPage() {
               { value: 'appeal_in_review', label: '申诉中' },
               { value: 'completed', label: '已完成' },
             ]}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={setStatusFilter}
           />
-          <Button className="w-full shrink-0 sm:w-auto" variant="secondary" size="sm" onClick={() => void load(true)} loading={refreshing}>
-            <RefreshCw className="h-4 w-4" />
-            刷新
+          <Button
+            icon={<ReloadOutlined />}
+            loading={refreshing}
+            onClick={() => void load(true)}
+          >
+            刷新任务
           </Button>
-        </div>
+        </Space>
       </div>
 
       {shopId ? (
         <Alert
           type="info"
-          title="店铺级任务视图"
-          message="这里只展示当前店铺关联的专员任务，适合同屏打开 1688 后台后逐项处理。"
+          showIcon
+          message="店铺级任务视图"
+          description="仅展示当前店铺的专员任务，适合同屏打开 1688 后台后逐项处理。"
         />
       ) : null}
-      {error ? <Alert type="error" title="任务读取失败" message={error} /> : null}
+      {error ? <Alert type="error" showIcon message="任务读取失败" description={error} /> : null}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
-        <StatCard title="任务数" value={loading ? '-' : counts.total} icon={<ListChecks className="h-5 w-5" />} />
-        <StatCard title="待开始" value={loading ? '-' : counts.pending} icon={<Clock className="h-5 w-5" />} />
-        <StatCard title="处理中" value={loading ? '-' : counts.inProgress} icon={<Store className="h-5 w-5" />} />
-        <StatCard title="待校验" value={loading ? '-' : counts.submittedPendingValidation} icon={<CheckCircle className="h-5 w-5" />} />
-        <StatCard title="申诉中" value={loading ? '-' : counts.appealInReview} icon={<AlertTriangle className="h-5 w-5" />} />
-        <StatCard title="已完成" value={loading ? '-' : counts.completed} icon={<Badge variant="success">OK</Badge>} />
-      </div>
+      <Card size="small" styles={{ body: { padding: '12px 16px' } }}>
+        <Row gutter={[16, 12]}>
+          {metrics.map(([title, value]) => (
+            <Col key={title} xs={12} sm={8} lg={4}>
+              <Statistic title={title} value={loading ? '-' : value} valueStyle={{ fontSize: 20 }} />
+            </Col>
+          ))}
+        </Row>
+      </Card>
 
-      <Card padding="none">
+      <Card size="small" styles={{ body: { padding: 0 } }}>
         <Table
-          columns={tableColumns}
-          data={tasks}
           rowKey="id"
+          size="small"
+          columns={columns}
+          dataSource={overview.items}
           loading={loading}
-          emptyText={shopId ? '该店铺暂无专员任务' : '今日暂无专员任务'}
-          maxHeight="calc(100vh - 360px)"
-          onRowClick={(row) => void openTask(row)}
-          className="min-w-0 [&_table]:table-fixed [&_td]:px-3 [&_th]:px-3"
+          pagination={false}
+          scroll={{ x: 1040, y: 'calc(100vh - 360px)' }}
+          locale={{ emptyText: shopId ? '该店铺暂无专员任务' : '今日暂无专员任务' }}
+          onRow={(row) => ({
+            onClick: () => void openTask(row),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                void openTask(row)
+              }
+            },
+            tabIndex: 0,
+            style: { cursor: 'pointer' },
+            'aria-label': `查看任务：${row.title || row.id}`,
+          })}
         />
       </Card>
 
@@ -238,10 +294,8 @@ export function SpecialistTaskPanelPage() {
           setSelectedTaskId('')
           setSelectedTask(null)
         }}
-        onTaskUpdated={(task) => setSelectedTask(task)}
-        onReload={() => {
-          void load(true)
-        }}
+        onTaskUpdated={setSelectedTask}
+        onReload={() => void load(true)}
       />
     </div>
   )
