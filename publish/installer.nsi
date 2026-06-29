@@ -195,9 +195,14 @@ Section "Maka Browser (required)" SecMain
   WriteRegStr HKCU "${UNINSTALL_KEY}" "NoModify"        "1"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "NoRepair"        "1"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+  RMDir /r "$SMPROGRAMS\Ant Browser"
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}"
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+  IfFileExists "$DESKTOP\Ant Browser.lnk" 0 bridge_desktop_shortcut_done
+    Delete "$DESKTOP\Ant Browser.lnk"
+    CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}"
+  bridge_desktop_shortcut_done:
 SectionEnd
 
 Section "Proxy Runtime (xray / sing-box)" SecRuntime
@@ -234,6 +239,8 @@ Section "Uninstall"
   Delete /REBOOTOK "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk"
   RMDir /REBOOTOK "$SMPROGRAMS\${PRODUCT_NAME}"
   Delete /REBOOTOK "$DESKTOP\${PRODUCT_NAME}.lnk"
+  Delete /REBOOTOK "$DESKTOP\Ant Browser.lnk"
+  RMDir /r /REBOOTOK "$SMPROGRAMS\Ant Browser"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 "是否彻底清理所有用户数据？$\r$\n$\r$\n选择“是”将删除 data 目录（含数据库/实例数据）以及安装目录残留文件。$\r$\n此操作不可恢复。" IDYES un_remove_all_data IDNO un_keep_user_data
 

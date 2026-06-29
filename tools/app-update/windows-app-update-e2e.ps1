@@ -13,8 +13,8 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $outputDir = Join-Path $repoRoot "publish\output"
 $baselineDir = Join-Path $TestRoot "baseline"
 $targetDir = Join-Path $TestRoot "target"
-$installRoot = Join-Path $env:LOCALAPPDATA "Programs\Maka Browser"
-$stateRoot = Join-Path $env:LOCALAPPDATA "Maka Browser"
+$installRoot = Join-Path $env:LOCALAPPDATA "Programs\Ant Browser"
+$stateRoot = Join-Path $env:LOCALAPPDATA "Ant Browser"
 $statePath = Join-Path $stateRoot "app-update\state.json"
 $manifestPath = Join-Path $targetDir "app-update-stable.json"
 $targetZip = Join-Path $targetDir "MakaBrowser-$TargetVersion-windows-amd64.zip"
@@ -248,8 +248,8 @@ func main() {
 		panic("LOCALAPPDATA is empty")
 	}
 
-	installRoot := filepath.Join(localAppData, "Programs", "Maka Browser")
-	stateRoot := filepath.Join(localAppData, "Maka Browser")
+	installRoot := filepath.Join(localAppData, "Programs", "Ant Browser")
+	stateRoot := filepath.Join(localAppData, "Ant Browser")
 	currentExe := filepath.Join(installRoot, "ant-chrome.exe")
 	manifestPath := ``$ManifestPath``
 

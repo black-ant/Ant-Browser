@@ -44,7 +44,7 @@ function stateMeta(status: EnvironmentStatus, updateBlocking: boolean) {
       }
       return {
         title: '运行环境已就绪',
-        subtitle: '可以继续进入 Ant-Browser，后续如遇异常仍可在设置里重新检查。',
+        subtitle: '可以继续进入 Maka Browser，后续如遇异常仍可在设置里重新检查。',
         badgeVariant: 'success' as const,
         badgeText: '已通过',
         icon: ShieldCheck,
@@ -71,7 +71,7 @@ function stateMeta(status: EnvironmentStatus, updateBlocking: boolean) {
     default:
       return {
         title: '正在检查运行环境',
-        subtitle: 'Ant-Browser 正在核对运行时、目录可写性和当前版本状态。',
+        subtitle: 'Maka Browser 正在核对运行时、目录可写性和当前版本状态。',
         badgeVariant: 'info' as const,
         badgeText: '检查中',
         icon: RefreshCw,

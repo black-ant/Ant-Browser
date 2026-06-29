@@ -48,6 +48,10 @@ def main() -> None:
         "lastErrorCode",
         "lastErrorMessage",
         "data\\app.db",
+        'Join-Path $env:LOCALAPPDATA "Programs\\Ant Browser"',
+        'Join-Path $env:LOCALAPPDATA "Ant Browser"',
+        'filepath.Join(localAppData, "Programs", "Ant Browser")',
+        'filepath.Join(localAppData, "Ant Browser")',
     ]
     missing = [fragment for fragment in required_fragments if fragment not in text]
     if missing:

@@ -49,6 +49,8 @@ def main() -> None:
     require_contains(INSTALLER, '!define PRODUCT_NAME    "Maka Browser"')
     require_contains(INSTALLER, '!define UNINSTALL_KEY   "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AntBrowser"')
     require_contains(INSTALLER, '!define INSTALL_DIR     "$LOCALAPPDATA\\Programs\\Ant Browser"')
+    require_contains(INSTALLER, 'RMDir /r "$SMPROGRAMS\\Ant Browser"')
+    require_contains(INSTALLER, 'Delete /REBOOTOK "$DESKTOP\\Ant Browser.lnk"')
     print("[OK] windows publish script chrome resource contract verified")
 
 

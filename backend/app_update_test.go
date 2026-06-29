@@ -101,10 +101,10 @@ func TestAppUpdateStateRootForWindowsUsesLocalAppDataOutsideInstallRoot(t *testi
 	localAppData := filepath.Join(t.TempDir(), "LocalAppData")
 	t.Setenv("LOCALAPPDATA", localAppData)
 
-	installRoot := filepath.Join(localAppData, "Programs", "Maka Browser")
+	installRoot := filepath.Join(localAppData, "Programs", "Ant Browser")
 	fallback := installRoot
 	got := appUpdateStateRootForOS("windows", installRoot, fallback)
-	want := filepath.Join(localAppData, "Maka Browser")
+	want := filepath.Join(localAppData, "Ant Browser")
 
 	if got != want {
 		t.Fatalf("unexpected app update state root: got=%s want=%s", got, want)

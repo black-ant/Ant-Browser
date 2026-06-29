@@ -110,13 +110,13 @@ func appUpdateInstallRootForOS(goos, installRoot string) string {
 
 func windowsAppUpdateStateRoot() string {
 	if base := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); base != "" {
-		return filepath.Join(base, "Maka Browser")
+		return filepath.Join(base, "Ant Browser")
 	}
 	if base, err := os.UserConfigDir(); err == nil && strings.TrimSpace(base) != "" {
-		return filepath.Join(base, "Maka Browser")
+		return filepath.Join(base, "Ant Browser")
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, "AppData", "Local", "Maka Browser")
+		return filepath.Join(home, "AppData", "Local", "Ant Browser")
 	}
 	return ""
 }
