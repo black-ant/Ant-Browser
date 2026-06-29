@@ -85,6 +85,9 @@ assert.doesNotMatch(
   /requiredStepSummary\(row\.sopSteps\)/,
   'task list must not claim SOP progress when list responses omit SOP steps',
 )
+assert.match(drawerSource, /\bUpload\b/, 'specialist task drawer should expose an Ant Design screenshot upload')
+assert.match(drawerSource, /dataUrl/, 'screenshot evidence should include portable image data')
+assert.match(drawerSource, /return \{ url:/, 'link evidence should submit a URL payload')
 
 await rm(outDir, { recursive: true, force: true })
 console.log('specialist presentation smoke passed')

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { UploadOutlined } from '@ant-design/icons'
 import {
   Alert,
   App,
@@ -19,7 +20,9 @@ import {
   Space,
   Tag,
   Typography,
+  Upload,
 } from 'antd'
+import type { UploadProps } from 'antd'
 import {
   appealSpecialistTask,
   blockSpecialistTask,
@@ -37,6 +40,16 @@ import type { SpecialistTaskRecord, SpecialistTaskSopStep } from '../types'
 
 const { Paragraph, Text } = Typography
 const { TextArea } = Input
+const maxScreenshotSourceBytes = 8 * 1024 * 1024
+const maxScreenshotPayloadBytes = 800 * 1024
+const maxScreenshotDimension = 1600
+
+interface ScreenshotEvidence {
+  fileName: string
+  mimeType: string
+  size: number
+  dataUrl: string
+}
 
 function statusColor(status: string) {
   if (status === 'completed') return 'success'
@@ -64,6 +77,81 @@ function firstEvidenceType(step: SpecialistTaskSopStep | undefined) {
   return step?.evidenceTypes?.[0] || 'text_note'
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('截图读取失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('截图格式无法识别'))
+    image.src = dataUrl
+  })
+}
+
+function dataUrlByteSize(dataUrl: string) {
+  const content = dataUrl.split(',', 2)[1] || ''
+  return Math.ceil(content.length * 0.75)
+}
+
+async function prepareScreenshotEvidence(file: File): Promise<ScreenshotEvidence> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('请选择 PNG、JPG 或 WebP 图片')
+  }
+  if (file.size > maxScreenshotSourceBytes) {
+    throw new Error('原始截图不能超过 8 MB')
+  }
+
+  const source = await readFileAsDataUrl(file)
+  const image = await loadImage(source)
+  const scale = Math.min(1, maxScreenshotDimension / Math.max(image.width, image.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(image.width * scale))
+  canvas.height = Math.max(1, Math.round(image.height * scale))
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('当前环境无法处理截图')
+  }
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.72)
+  const size = dataUrlByteSize(dataUrl)
+  if (size > maxScreenshotPayloadBytes) {
+    throw new Error('截图压缩后仍超过 800 KB，请裁剪后重新选择')
+  }
+  return {
+    fileName: file.name.replace(/\.[^.]+$/, '') + '.jpg',
+    mimeType: 'image/jpeg',
+    size,
+    dataUrl,
+  }
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function evidenceRecordSummary(payload: Record<string, unknown>) {
+  const fileName = String(payload.fileName || '').trim()
+  if (fileName) return fileName
+  const url = String(payload.url || '').trim()
+  if (url) return url
+  const text = String(payload.text || payload.note || '').trim()
+  return text || '已提交'
+}
+
 interface SpecialistTaskDrawerProps {
   open: boolean
   task: SpecialistTaskRecord | null
@@ -87,6 +175,7 @@ export function SpecialistTaskDrawer({
   const [evidenceStepId, setEvidenceStepId] = useState('')
   const [evidenceType, setEvidenceType] = useState('text_note')
   const [evidenceText, setEvidenceText] = useState('')
+  const [screenshotEvidence, setScreenshotEvidence] = useState<ScreenshotEvidence | null>(null)
   const [submitSummary, setSubmitSummary] = useState('')
   const [appealReason, setAppealReason] = useState('')
   const [blockReasonCode, setBlockReasonCode] = useState('backend_unavailable')
@@ -106,6 +195,7 @@ export function SpecialistTaskDrawer({
     setEvidenceStepId(firstStep?.stepId || '')
     setEvidenceType(firstEvidenceType(firstStep))
     setEvidenceText('')
+    setScreenshotEvidence(null)
     setSubmitSummary('')
     setAppealReason('')
     setBlockReasonCode('backend_unavailable')
@@ -114,6 +204,8 @@ export function SpecialistTaskDrawer({
 
   useEffect(() => {
     setEvidenceType(firstEvidenceType(selectedStep))
+    setScreenshotEvidence(null)
+    setEvidenceText('')
   }, [selectedStep?.stepId])
 
   async function runAction(
@@ -140,6 +232,41 @@ export function SpecialistTaskDrawer({
   const evidenceOptions = (selectedStep?.evidenceTypes?.length
     ? selectedStep.evidenceTypes
     : ['text_note']).map((type) => ({ value: type, label: evidenceTypeLabel(type) }))
+  const screenshotSelected = evidenceType === 'screenshot'
+  const linkSelected = evidenceType === 'backend_url' || evidenceType === 'product_url'
+  const evidenceReady = screenshotSelected
+    ? Boolean(screenshotEvidence)
+    : linkSelected
+      ? isHttpUrl(evidenceText.trim())
+      : Boolean(evidenceText.trim())
+
+  function buildEvidencePayload(): Record<string, unknown> {
+    if (screenshotSelected && screenshotEvidence) {
+      return { ...screenshotEvidence, note: evidenceText.trim() }
+    }
+    if (linkSelected) {
+      return { url: evidenceText.trim() }
+    }
+    return { text: evidenceText.trim() }
+  }
+
+  const screenshotUploadProps: UploadProps = {
+    accept: 'image/png,image/jpeg,image/webp',
+    maxCount: 1,
+    showUploadList: false,
+    beforeUpload: async (file) => {
+      try {
+        setScreenshotEvidence(await prepareScreenshotEvidence(file))
+      } catch (error) {
+        setScreenshotEvidence(null)
+        notification.error({
+          message: '截图处理失败',
+          description: error instanceof Error ? error.message : '请重新选择截图',
+        })
+      }
+      return Upload.LIST_IGNORE
+    },
+  }
 
   return (
     <Drawer
@@ -291,36 +418,72 @@ export function SpecialistTaskDrawer({
                     value={evidenceType}
                     style={{ width: '100%' }}
                     options={evidenceOptions}
-                    onChange={setEvidenceType}
+                    onChange={(nextType) => {
+                      setEvidenceType(nextType)
+                      setEvidenceText('')
+                      setScreenshotEvidence(null)
+                    }}
                   />
                 </Form.Item>
               </Col>
               <Col xs={24} md={10}>
-                <Form.Item label="证据说明">
-                  <TextArea
-                    rows={2}
-                    maxLength={2000}
-                    showCount
-                    value={evidenceText}
-                    placeholder="填写截图说明、后台链接或操作结果"
-                    onChange={(event) => setEvidenceText(event.target.value)}
-                  />
-                </Form.Item>
+                {screenshotSelected ? (
+                  <Form.Item label="截图附件" extra="自动压缩为 JPG，单张提交数据不超过 800 KB。">
+                    <Space direction="vertical" size={4}>
+                      <Upload {...screenshotUploadProps}>
+                        <Button icon={<UploadOutlined />}>选择截图</Button>
+                      </Upload>
+                      <Text type={screenshotEvidence ? 'success' : 'secondary'}>
+                        {screenshotEvidence
+                          ? `${screenshotEvidence.fileName}（${Math.ceil(screenshotEvidence.size / 1024)} KB）`
+                          : '尚未选择截图'}
+                      </Text>
+                      <Input
+                        value={evidenceText}
+                        maxLength={500}
+                        placeholder="可补充截图说明"
+                        onChange={(event) => setEvidenceText(event.target.value)}
+                      />
+                    </Space>
+                  </Form.Item>
+                ) : (
+                  <Form.Item label={linkSelected ? '证据链接' : '证据说明'}>
+                    {linkSelected ? (
+                      <Input
+                        value={evidenceText}
+                        maxLength={2000}
+                        status={evidenceText && !isHttpUrl(evidenceText.trim()) ? 'error' : undefined}
+                        placeholder={evidenceType === 'product_url' ? 'https://detail.1688.com/...' : 'https://work.1688.com/...'}
+                        onChange={(event) => setEvidenceText(event.target.value)}
+                      />
+                    ) : (
+                      <TextArea
+                        rows={2}
+                        maxLength={2000}
+                        showCount
+                        value={evidenceText}
+                        placeholder="填写操作结果或说明"
+                        onChange={(event) => setEvidenceText(event.target.value)}
+                      />
+                    )}
+                  </Form.Item>
+                )}
               </Col>
             </Row>
             <Button
               type="primary"
-              disabled={!selectedStep || !evidenceText.trim() || Boolean(savingAction)}
+              disabled={!selectedStep || !evidenceReady || Boolean(savingAction)}
               loading={savingAction === 'evidence'}
               onClick={() => void runAction(
                 'evidence',
                 async () => {
-                  const result = await submitSpecialistTaskEvidence(task.id, {
-                    stepId: selectedStep?.stepId || '',
-                    evidenceType,
-                    payload: { text: evidenceText.trim() },
-                  })
-                  setEvidenceText('')
+                    const result = await submitSpecialistTaskEvidence(task.id, {
+                      stepId: selectedStep?.stepId || '',
+                      evidenceType,
+                      payload: buildEvidencePayload(),
+                    })
+                    setEvidenceText('')
+                    setScreenshotEvidence(null)
                   return result.task
                 },
                 '证据已提交',
@@ -336,7 +499,8 @@ export function SpecialistTaskDrawer({
                 renderItem={(record) => (
                   <List.Item>
                     <Text>
-                      {evidenceTypeLabel(record.evidenceType)}，{record.stepId || '任务级'}，{formatTime(record.createdAt)}
+                      {evidenceTypeLabel(record.evidenceType)}，{evidenceRecordSummary(record.payload)}，
+                      {record.stepId || '任务级'}，{formatTime(record.createdAt)}
                     </Text>
                   </List.Item>
                 )}
