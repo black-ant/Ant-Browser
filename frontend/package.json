@@ -9,10 +9,13 @@
     "dev": "node ./scripts/dev-watcher.mjs",
     "dev:raw": "npm run ensure:native && node --max-old-space-size=256 --max-semi-space-size=16 ./node_modules/vite/bin/vite.js",
     "build": "npm run ensure:native && node --max-old-space-size=1024 ./node_modules/typescript/bin/tsc && node --max-old-space-size=1024 ./node_modules/vite/bin/vite.js build",
-    "preview": "npm run ensure:native && node --max-old-space-size=256 --max-semi-space-size=16 ./node_modules/vite/bin/vite.js preview"
+    "preview": "npm run ensure:native && node --max-old-space-size=256 --max-semi-space-size=16 ./node_modules/vite/bin/vite.js preview",
+    "test": "npm run test:specialist",
+    "test:specialist": "node ./scripts/specialist-presentation-smoke.mjs"
   },
   "dependencies": {
     "@types/js-yaml": "^4.0.9",
+    "antd": "^5.29.3",
     "clsx": "^2.0.0",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.292.0",
