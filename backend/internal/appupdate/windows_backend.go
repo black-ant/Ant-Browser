@@ -228,7 +228,7 @@ $root = [System.IO.Path]::GetFullPath($InstallDir).TrimEnd('\') + '\'
 $rootText = $root.ToLowerInvariant()
 $exclude = ''
 if (-not [string]::IsNullOrWhiteSpace($ExcludePath)) { $exclude = [System.IO.Path]::GetFullPath($ExcludePath) }
-function Get-AntBrowserProcesses {
+function Get-MakaBrowserProcesses {
   @(Get-CimInstance Win32_Process | Where-Object {
     $exe = if ($_.ExecutablePath) { $_.ExecutablePath } else { '' }
     $cmd = if ($_.CommandLine) { $_.CommandLine.ToLowerInvariant() } else { '' }
@@ -244,14 +244,14 @@ function Get-AntBrowserProcesses {
 }
 $deadline = (Get-Date).AddSeconds(10)
 do {
-  $procs = Get-AntBrowserProcesses
+  $procs = Get-MakaBrowserProcesses
   if (-not $procs -or $procs.Count -eq 0) { exit 0 }
   foreach ($p in $procs) {
     try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {}
   }
   Start-Sleep -Milliseconds 400
 } while ((Get-Date) -lt $deadline)
-$left = Get-AntBrowserProcesses
+$left = Get-MakaBrowserProcesses
 if ($left -and $left.Count -gt 0) {
   $names = ($left | ForEach-Object { $_.Name + '#' + $_.ProcessId }) -join ', '
   Write-Host ('still running: ' + $names)

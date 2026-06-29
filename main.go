@@ -40,6 +40,8 @@ type App struct {
 	*backend.App
 }
 
+const desktopWindowTitle = "Maka Browser"
+
 type wailsBuildConfig struct {
 	Info struct {
 		ProductVersion string `json:"productVersion"`
@@ -224,7 +226,7 @@ func main() {
 		log.Printf("准备调用 wails.Run 创建 GUI 窗口")
 	}
 	err = wails.Run(&options.App{
-		Title:     cfg.App.Name,
+		Title:     desktopWindowTitle,
 		Width:     cfg.App.Window.Width,
 		Height:    cfg.App.Window.Height,
 		MinWidth:  cfg.App.Window.MinWidth,

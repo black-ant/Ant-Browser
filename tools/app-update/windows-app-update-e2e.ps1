@@ -1,7 +1,7 @@
 param(
     [string]$BaselineVersion = "1.1.0",
     [string]$TargetVersion = "1.1.5",
-    [string]$TestRoot = "C:\AntBrowserUpdateTest",
+    [string]$TestRoot = "C:\MakaBrowserUpdateTest",
     [int]$RunnerWaitSeconds = 90,
     [switch]$SkipPublish
 )
@@ -13,13 +13,13 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $outputDir = Join-Path $repoRoot "publish\output"
 $baselineDir = Join-Path $TestRoot "baseline"
 $targetDir = Join-Path $TestRoot "target"
-$installRoot = Join-Path $env:LOCALAPPDATA "Programs\Ant Browser"
-$stateRoot = Join-Path $env:LOCALAPPDATA "Ant Browser"
+$installRoot = Join-Path $env:LOCALAPPDATA "Programs\Maka Browser"
+$stateRoot = Join-Path $env:LOCALAPPDATA "Maka Browser"
 $statePath = Join-Path $stateRoot "app-update\state.json"
 $manifestPath = Join-Path $targetDir "app-update-stable.json"
-$targetZip = Join-Path $targetDir "AntBrowser-$TargetVersion-windows-amd64.zip"
-$baselineInstaller = Join-Path $baselineDir "AntBrowser-Setup-$BaselineVersion.exe"
-$targetInstaller = Join-Path $targetDir "AntBrowser-Setup-$TargetVersion.exe"
+$targetZip = Join-Path $targetDir "MakaBrowser-$TargetVersion-windows-amd64.zip"
+$baselineInstaller = Join-Path $baselineDir "MakaBrowser-Setup-$BaselineVersion.exe"
+$targetInstaller = Join-Path $targetDir "MakaBrowser-Setup-$TargetVersion.exe"
 $extractDir = Join-Path $targetDir "extracted"
 $harnessDir = Join-Path $repoRoot "backend\cmd\app-update-e2e"
 $harnessPath = Join-Path $harnessDir "main.go"
@@ -87,7 +87,7 @@ function Invoke-Native {
     }
 }
 
-function Stop-AntBrowser {
+function Stop-MakaBrowser {
     foreach ($name in @("ant-chrome", "xray", "sing-box")) {
         foreach ($process in @(Get-Process $name -ErrorAction SilentlyContinue)) {
             try {
@@ -121,14 +121,14 @@ function Seed-UserData {
 
 function Reset-E2EInstallRoot {
     Write-Step "Reset e2e install root"
-    Stop-AntBrowser
+    Stop-MakaBrowser
     $deadline = (Get-Date).AddSeconds(15)
     do {
         Remove-Item -Recurse -Force $installRoot -ErrorAction SilentlyContinue
         if (-not (Test-Path -LiteralPath $installRoot)) {
             break
         }
-        Stop-AntBrowser
+        Stop-MakaBrowser
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
     if (Test-Path -LiteralPath $installRoot) {
@@ -162,9 +162,9 @@ function Copy-ReleaseArtifacts {
         [string]$Destination
     )
     New-Item -ItemType Directory -Force $Destination | Out-Null
-    Copy-Item -LiteralPath (Join-Path $outputDir "AntBrowser-Setup-$Version.exe") -Destination $Destination -Force
-    Copy-Item -LiteralPath (Join-Path $outputDir "AntBrowser-$Version-windows-amd64.zip") -Destination $Destination -Force
-    Copy-Item -LiteralPath (Join-Path $outputDir "AntBrowser-$Version-windows-amd64.zip.sha256") -Destination $Destination -Force
+    Copy-Item -LiteralPath (Join-Path $outputDir "MakaBrowser-Setup-$Version.exe") -Destination $Destination -Force
+    Copy-Item -LiteralPath (Join-Path $outputDir "MakaBrowser-$Version-windows-amd64.zip") -Destination $Destination -Force
+    Copy-Item -LiteralPath (Join-Path $outputDir "MakaBrowser-$Version-windows-amd64.zip.sha256") -Destination $Destination -Force
     Copy-Item -LiteralPath (Join-Path $outputDir "app-update-stable.json") -Destination $Destination -Force
     Copy-Item -LiteralPath (Join-Path $outputDir "app-update-stable.json.sha256") -Destination $Destination -Force
 }
@@ -172,9 +172,9 @@ function Copy-ReleaseArtifacts {
 function Test-ReleaseArtifacts {
     param([string]$Version)
     $required = @(
-        (Join-Path $outputDir "AntBrowser-Setup-$Version.exe"),
-        (Join-Path $outputDir "AntBrowser-$Version-windows-amd64.zip"),
-        (Join-Path $outputDir "AntBrowser-$Version-windows-amd64.zip.sha256"),
+        (Join-Path $outputDir "MakaBrowser-Setup-$Version.exe"),
+        (Join-Path $outputDir "MakaBrowser-$Version-windows-amd64.zip"),
+        (Join-Path $outputDir "MakaBrowser-$Version-windows-amd64.zip.sha256"),
         (Join-Path $outputDir "app-update-stable.json"),
         (Join-Path $outputDir "app-update-stable.json.sha256")
     )
@@ -198,9 +198,9 @@ function Copy-PrebuiltTargetArtifacts {
 function Restore-PrebuiltTargetArtifacts {
     Write-Step "Restore prebuilt target artifacts $TargetVersion"
     New-Item -ItemType Directory -Force $outputDir | Out-Null
-    Copy-Item -LiteralPath (Join-Path $targetDir "AntBrowser-Setup-$TargetVersion.exe") -Destination $outputDir -Force
-    Copy-Item -LiteralPath (Join-Path $targetDir "AntBrowser-$TargetVersion-windows-amd64.zip") -Destination $outputDir -Force
-    Copy-Item -LiteralPath (Join-Path $targetDir "AntBrowser-$TargetVersion-windows-amd64.zip.sha256") -Destination $outputDir -Force
+    Copy-Item -LiteralPath (Join-Path $targetDir "MakaBrowser-Setup-$TargetVersion.exe") -Destination $outputDir -Force
+    Copy-Item -LiteralPath (Join-Path $targetDir "MakaBrowser-$TargetVersion-windows-amd64.zip") -Destination $outputDir -Force
+    Copy-Item -LiteralPath (Join-Path $targetDir "MakaBrowser-$TargetVersion-windows-amd64.zip.sha256") -Destination $outputDir -Force
     Copy-Item -LiteralPath (Join-Path $targetDir "app-update-stable.json") -Destination $outputDir -Force
     Copy-Item -LiteralPath (Join-Path $targetDir "app-update-stable.json.sha256") -Destination $outputDir -Force
 }
@@ -213,7 +213,7 @@ function Publish-Version {
     Invoke-Native -FilePath "python" -Arguments @(
         (Join-Path $repoRoot "tools\app-update\verify-app-update-package.py"),
         (Join-Path $outputDir "app-update-stable.json"),
-        (Join-Path $outputDir "AntBrowser-$Version-windows-amd64.zip"),
+        (Join-Path $outputDir "MakaBrowser-$Version-windows-amd64.zip"),
         "windows-amd64"
     )
     Copy-ReleaseArtifacts -Version $Version -Destination $Destination
@@ -248,8 +248,8 @@ func main() {
 		panic("LOCALAPPDATA is empty")
 	}
 
-	installRoot := filepath.Join(localAppData, "Programs", "Ant Browser")
-	stateRoot := filepath.Join(localAppData, "Ant Browser")
+	installRoot := filepath.Join(localAppData, "Programs", "Maka Browser")
+	stateRoot := filepath.Join(localAppData, "Maka Browser")
 	currentExe := filepath.Join(installRoot, "ant-chrome.exe")
 	manifestPath := ``$ManifestPath``
 
@@ -410,7 +410,7 @@ Require-File -Path $targetZip -Label "target app-update zip"
 Write-Step "Install baseline $BaselineVersion"
 Reset-E2EInstallRoot
 Invoke-Native -FilePath $baselineInstaller -Arguments @("/S")
-Stop-AntBrowser
+Stop-MakaBrowser
 Wait-ForFile -Path (Join-Path $installRoot "ant-chrome.exe") -Label "baseline ant-chrome.exe" -TimeoutSeconds 15
 Seed-UserData
 Seed-PreservedDirectories
@@ -435,7 +435,7 @@ finally {
 }
 
 Wait-ForUpdateRunner
-Stop-AntBrowser
+Stop-MakaBrowser
 
 if ($beforeDataHash -ne "") {
     $afterDataHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $installRoot "data\app.db")).Hash

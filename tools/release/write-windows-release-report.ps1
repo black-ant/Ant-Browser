@@ -40,16 +40,16 @@ function Get-Artifact {
 }
 
 $artifacts = @(
-    Get-Artifact "AntBrowser-Setup-$Version.exe"
-    Get-Artifact "AntBrowser-$Version-windows-amd64.zip"
-    Get-Artifact "AntBrowser-$Version-windows-amd64.zip.sha256"
+    Get-Artifact "MakaBrowser-Setup-$Version.exe"
+    Get-Artifact "MakaBrowser-$Version-windows-amd64.zip"
+    Get-Artifact "MakaBrowser-$Version-windows-amd64.zip.sha256"
     Get-Artifact "app-update-stable.json"
     Get-Artifact "app-update-stable.json.sha256"
 )
 
 $report = [ordered]@{
     schemaVersion = 1
-    product = "Ant Browser"
+    product = "Maka Browser"
     platform = "windows-amd64"
     channel = $Channel
     version = $Version

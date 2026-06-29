@@ -149,7 +149,7 @@ ZIP_NAME="MakaBrowser-${VERSION}-macos-${ARCH}.zip"
 APP_UPDATE_ZIP_NAME="MakaBrowser-${VERSION}-${TARGET}.zip"
 APP_EXPORT="$OUTPUT_DIR/MakaBrowser-${VERSION}-macos-${ARCH}.app"
 STAGE_DIR="$STAGING_ROOT/$TARGET"
-APP_STAGE="$STAGE_DIR/Maka Browser.app"
+APP_STAGE="$STAGE_DIR/Ant Browser.app"
 APP_UPDATE_MANIFEST="$OUTPUT_DIR/app-update-stable.json"
 
 find_built_app_bundle() {

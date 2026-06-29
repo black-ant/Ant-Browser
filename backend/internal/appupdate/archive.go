@@ -254,9 +254,11 @@ func rejectMutableUserData(stagedRoot string) error {
 		if hasPathSegment(rel, "user data") {
 			return fmt.Errorf("staged payload contains mutable user data: %s", path)
 		}
-		darwinData := "ant browser.app/contents/macos/data"
-		if rel == darwinData || strings.HasPrefix(rel, darwinData+"/") {
-			return fmt.Errorf("staged payload contains mutable user data: %s", path)
+		for _, appRoot := range []string{"ant browser.app", "maka browser.app"} {
+			darwinData := appRoot + "/contents/macos/data"
+			if rel == darwinData || strings.HasPrefix(rel, darwinData+"/") {
+				return fmt.Errorf("staged payload contains mutable user data: %s", path)
+			}
 		}
 		if entry.IsDir() {
 			return nil

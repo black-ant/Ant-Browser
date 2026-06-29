@@ -20,7 +20,7 @@ func TestIsWailsDevExecutableDir(t *testing.T) {
 	})
 
 	t.Run("detects mac app under build bin", func(t *testing.T) {
-		exeDir := "/Users/robbin/project/build/bin/Ant Browser.app/Contents/MacOS"
+		exeDir := "/Users/robbin/project/build/bin/Maka Browser.app/Contents/MacOS"
 		if !isWailsDevExecutableDir(exeDir, "/var/folders/tmp") {
 			t.Fatalf("expected mac .app under build/bin to be treated as wails dev executable")
 		}
@@ -28,7 +28,7 @@ func TestIsWailsDevExecutableDir(t *testing.T) {
 
 	t.Run("treats build bin mac app with runtime manifest as packaged", func(t *testing.T) {
 		root := t.TempDir()
-		exeDir := filepath.Join(root, "build", "bin", "Ant Browser.app", "Contents", "MacOS")
+		exeDir := filepath.Join(root, "build", "bin", "Maka Browser.app", "Contents", "MacOS")
 		manifestPath := filepath.Join(exeDir, "publish", "runtime-manifest.json")
 		if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
 			t.Fatalf("create manifest dir: %v", err)
@@ -43,7 +43,7 @@ func TestIsWailsDevExecutableDir(t *testing.T) {
 	})
 
 	t.Run("ignores packaged app outside build bin", func(t *testing.T) {
-		exeDir := "/Applications/Ant Browser.app/Contents/MacOS"
+		exeDir := "/Applications/Maka Browser.app/Contents/MacOS"
 		if isWailsDevExecutableDir(exeDir, "/var/folders/tmp") {
 			t.Fatalf("expected packaged app outside build/bin to be treated as production")
 		}

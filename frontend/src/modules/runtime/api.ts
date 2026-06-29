@@ -98,7 +98,7 @@ export async function getAppConfig(): Promise<{ name: string; version: string }>
   const fn = bindings?.GetAppConfig
   if (!fn) {
     return {
-      name: 'Ant Browser',
+      name: 'Maka Browser',
       version: 'dev',
     }
   }

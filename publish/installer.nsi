@@ -1,4 +1,4 @@
-﻿; Ant Browser NSIS Installer Script
+﻿; Maka Browser NSIS Installer Script
 ; Usage: makensis /DVERSION=1.1.0 /DSTAGINGDIR=C:\path\to\staging installer.nsi
 
 Unicode True
@@ -10,8 +10,10 @@ Unicode True
   !define STAGINGDIR "..\publish\staging"
 !endif
 
-!define PRODUCT_NAME    "Ant Browser"
+!define PRODUCT_NAME    "Maka Browser"
 !define PRODUCT_EXE     "ant-chrome.exe"
+; Keep the legacy registration and install path for the first Maka bridge
+; release so existing Ant Browser installations upgrade in place.
 !define UNINSTALL_KEY   "Software\Microsoft\Windows\CurrentVersion\Uninstall\AntBrowser"
 !define INSTALL_DIR     "$LOCALAPPDATA\Programs\Ant Browser"
 !define POWERSHELL_EXE  "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
@@ -26,19 +28,19 @@ Unicode True
   FileWrite ${HANDLE} "$$root = [System.IO.Path]::GetFullPath($$InstallDir).TrimEnd('\') + '\'$\r$\n"
   FileWrite ${HANDLE} "$$exclude = ''$\r$\n"
   FileWrite ${HANDLE} "if (-not [string]::IsNullOrWhiteSpace($$ExcludePath)) { $$exclude = [System.IO.Path]::GetFullPath($$ExcludePath) }$\r$\n"
-  FileWrite ${HANDLE} "function Get-AntBrowserProcesses {$\r$\n"
+  FileWrite ${HANDLE} "function Get-MakaBrowserProcesses {$\r$\n"
   FileWrite ${HANDLE} "  @(Get-CimInstance Win32_Process | Where-Object {$\r$\n"
   FileWrite ${HANDLE} "    $$_.ExecutablePath -and $$_.ExecutablePath.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) -and ($$exclude -eq '' -or -not $$_.ExecutablePath.Equals($$exclude, [System.StringComparison]::OrdinalIgnoreCase))$\r$\n"
   FileWrite ${HANDLE} "  })$\r$\n"
   FileWrite ${HANDLE} "}$\r$\n"
   FileWrite ${HANDLE} "$$deadline = (Get-Date).AddSeconds(10)$\r$\n"
   FileWrite ${HANDLE} "do {$\r$\n"
-  FileWrite ${HANDLE} "  $$procs = Get-AntBrowserProcesses$\r$\n"
+  FileWrite ${HANDLE} "  $$procs = Get-MakaBrowserProcesses$\r$\n"
   FileWrite ${HANDLE} "  if (-not $$procs -or $$procs.Count -eq 0) { exit 0 }$\r$\n"
   FileWrite ${HANDLE} "  foreach ($$p in $$procs) { try { Stop-Process -Id $$p.ProcessId -Force -ErrorAction Stop } catch {} }$\r$\n"
   FileWrite ${HANDLE} "  Start-Sleep -Milliseconds 400$\r$\n"
   FileWrite ${HANDLE} "} while ((Get-Date) -lt $$deadline)$\r$\n"
-  FileWrite ${HANDLE} "$$left = Get-AntBrowserProcesses$\r$\n"
+  FileWrite ${HANDLE} "$$left = Get-MakaBrowserProcesses$\r$\n"
   FileWrite ${HANDLE} "if ($$left -and $$left.Count -gt 0) {$\r$\n"
   FileWrite ${HANDLE} "  $$names = ($$left | ForEach-Object { $$_.Name + '#' + $$_.ProcessId }) -join ', '$\r$\n"
   FileWrite ${HANDLE} "  Write-Host ('still running: ' + $$names)$\r$\n"
@@ -120,7 +122,7 @@ done:
 FunctionEnd
 
 Name "${PRODUCT_NAME} ${VERSION}"
-OutFile "..\publish\output\AntBrowser-Setup-${VERSION}.exe"
+OutFile "..\publish\output\MakaBrowser-Setup-${VERSION}.exe"
 InstallDir "${INSTALL_DIR}"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 RequestExecutionLevel user
@@ -139,7 +141,7 @@ RequestExecutionLevel user
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "Launch Ant Browser"
+!define MUI_FINISHPAGE_RUN_TEXT "Launch Maka Browser"
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -147,7 +149,7 @@ RequestExecutionLevel user
 
 !insertmacro MUI_LANGUAGE "SimpChinese"
 
-Section "Ant Browser (required)" SecMain
+Section "Maka Browser (required)" SecMain
   SectionIn RO
   Call CloseInstalledProcesses
   SetOutPath "$INSTDIR"
@@ -186,7 +188,7 @@ Section "Ant Browser (required)" SecMain
   CreateDirectory "$INSTDIR\data"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName"     "${PRODUCT_NAME}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion"  "${VERSION}"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher"       "Ant Chrome Team"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher"       "Maka Browser Team"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon"     "$INSTDIR\${PRODUCT_EXE}"
@@ -210,7 +212,7 @@ Section /o "Desktop Shortcut" SecDesktop
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}    "Ant Browser main program and default config (required)"
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}    "Maka Browser main program and default config (required)"
   !insertmacro MUI_DESCRIPTION_TEXT ${SecRuntime} "xray and sing-box proxy tools (vless/vmess/hysteria2)"
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Create a shortcut on the desktop"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END

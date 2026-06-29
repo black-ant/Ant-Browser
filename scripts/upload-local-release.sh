@@ -88,19 +88,19 @@ fi
 case "$TARGET" in
   windows-amd64)
     PLATFORM="windows"
-    UPDATE_ZIP="$OUTPUT_DIR/AntBrowser-${VERSION}-windows-amd64.zip"
-    INSTALLER="$OUTPUT_DIR/AntBrowser-Setup-${VERSION}.exe"
+    UPDATE_ZIP="$OUTPUT_DIR/MakaBrowser-${VERSION}-windows-amd64.zip"
+    INSTALLER="$OUTPUT_DIR/MakaBrowser-Setup-${VERSION}.exe"
     EXTRA_FILES=("$INSTALLER")
     ;;
   darwin-arm64)
     PLATFORM="mac"
-    UPDATE_ZIP="$OUTPUT_DIR/AntBrowser-${VERSION}-darwin-arm64.zip"
-    EXTRA_FILES=("$OUTPUT_DIR/AntBrowser-${VERSION}-macos-arm64.app")
+    UPDATE_ZIP="$OUTPUT_DIR/MakaBrowser-${VERSION}-darwin-arm64.zip"
+    EXTRA_FILES=("$OUTPUT_DIR/MakaBrowser-${VERSION}-macos-arm64.app")
     ;;
   darwin-amd64)
     PLATFORM="mac"
-    UPDATE_ZIP="$OUTPUT_DIR/AntBrowser-${VERSION}-darwin-amd64.zip"
-    EXTRA_FILES=("$OUTPUT_DIR/AntBrowser-${VERSION}-macos-amd64.app")
+    UPDATE_ZIP="$OUTPUT_DIR/MakaBrowser-${VERSION}-darwin-amd64.zip"
+    EXTRA_FILES=("$OUTPUT_DIR/MakaBrowser-${VERSION}-macos-amd64.app")
     ;;
   *)
     fail "Unsupported --target: $TARGET"

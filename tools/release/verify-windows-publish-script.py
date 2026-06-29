@@ -7,6 +7,7 @@ PUBLISH_SCRIPT = ROOT / "bat" / "publish.ps1"
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-release-factory.yml"
 PREFLIGHT = ROOT / "tools" / "release" / "windows-release-preflight.ps1"
 RUNNER_SETUP = ROOT / "docs" / "release" / "windows-self-hosted-runner-setup.md"
+INSTALLER = ROOT / "publish" / "installer.nsi"
 
 
 def require_contains(path: Path, needle: str) -> None:
@@ -44,6 +45,10 @@ def main() -> None:
     require_contains(RUNNER_SETUP, "ANT_BROWSER_REQUIRE_WINDOWS_CHROME")
     require_contains(RUNNER_SETUP, "ANT_BROWSER_WORKSPACE_AGENT_ROOT")
     require_contains(RUNNER_SETUP, "ANT_BROWSER_WORKSPACE_NODE_ROOT")
+    require_contains(WORKFLOW, "runs-on: [self-hosted, windows, ant-browser-release]")
+    require_contains(INSTALLER, '!define PRODUCT_NAME    "Maka Browser"')
+    require_contains(INSTALLER, '!define UNINSTALL_KEY   "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AntBrowser"')
+    require_contains(INSTALLER, '!define INSTALL_DIR     "$LOCALAPPDATA\\Programs\\Ant Browser"')
     print("[OK] windows publish script chrome resource contract verified")
 
 

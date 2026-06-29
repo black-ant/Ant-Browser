@@ -182,7 +182,7 @@ func TestWriteAndReadApplyPlan(t *testing.T) {
 		NewAppVersion:    "1.1.0",
 		StagedPath:       filepath.Join(layout.StagingRoot(), "payload.zip"),
 		BackupPath:       filepath.Join(layout.BackupsRoot(), "backup.zip"),
-		CurrentExePath:   filepath.Join(layout.InstallRoot, "AntBrowser.exe"),
+		CurrentExePath:   filepath.Join(layout.InstallRoot, "MakaBrowser.exe"),
 		ExpectedSHA256:   validSHA256,
 		ManifestSource:   "runtime-config",
 		ManifestURL:      "https://updates.example.test/app-update.json",

@@ -75,7 +75,7 @@ fi
 mkdir -p '$RemoteRoot/stable'
 cp -a "`$test_dir" "`$stable_dir"
 cd "`$stable_dir"
-sha256sum AntBrowser-$Version-windows-amd64.zip app-update-stable.json > promotion-sha256.txt
+sha256sum MakaBrowser-$Version-windows-amd64.zip app-update-stable.json > promotion-sha256.txt
 cp -f "`$`{stable_dir`}/app-update-stable.json" "`$stable_alias"
 echo "[OK] promoted $Version to stable"
 "@

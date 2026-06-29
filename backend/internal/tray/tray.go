@@ -27,8 +27,8 @@ func Run(cb Callbacks) {
 
 	systray.Run(func() {
 		systray.SetIcon(iconData)
-		systray.SetTitle("Ant Chrome")
-		systray.SetTooltip("Ant Chrome")
+		systray.SetTitle("Maka Browser")
+		systray.SetTooltip("Maka Browser")
 
 		mShow := systray.AddMenuItem("显示窗口", "显示主窗口")
 		systray.AddSeparator()

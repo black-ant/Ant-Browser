@@ -63,9 +63,10 @@ def forbidden_mutable_user_data(names: set[str], target: str) -> list[str]:
         ):
             forbidden.append(name)
             continue
-        if target in {"darwin-arm64", "darwin-amd64"} and (
-            lower == "ant browser.app/contents/macos/data/"
-            or lower.startswith("ant browser.app/contents/macos/data/")
+        if target in {"darwin-arm64", "darwin-amd64"} and any(
+            lower == f"{app_root}/contents/macos/data/"
+            or lower.startswith(f"{app_root}/contents/macos/data/")
+            for app_root in ("ant browser.app", "maka browser.app")
         ):
             forbidden.append(name)
     return sorted(forbidden)

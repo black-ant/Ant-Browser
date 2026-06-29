@@ -243,11 +243,11 @@ async function cdpCallWebSocket(wsUrl, method, params = {}, label = "CDP") {
 
 async function cdpCall(debugPort, method, params = {}) {
   if (typeof WebSocket !== "function") {
-    throw new Error("当前 Node 版本不支持 WebSocket，无法通过 CDP 操作 Ant Browser");
+    throw new Error("当前 Node 版本不支持 WebSocket，无法通过 CDP 操作 Maka Browser");
   }
   const target = await selectCdpPageTarget(debugPort);
   if (!target) {
-    throw new Error("未找到 Ant Browser 可调试页面");
+    throw new Error("未找到 Maka Browser 可调试页面");
   }
 
   return cdpCallWebSocket(target.webSocketDebuggerUrl, method, params, "CDP");
@@ -255,7 +255,7 @@ async function cdpCall(debugPort, method, params = {}) {
 
 async function cdpBrowserCall(debugPort, method, params = {}) {
   if (typeof WebSocket !== "function") {
-    throw new Error("当前 Node 版本不支持 WebSocket，无法通过 CDP 操作 Ant Browser");
+    throw new Error("当前 Node 版本不支持 WebSocket，无法通过 CDP 操作 Maka Browser");
   }
   const versionResponse = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
   if (!versionResponse.ok) {
@@ -264,7 +264,7 @@ async function cdpBrowserCall(debugPort, method, params = {}) {
   const version = await versionResponse.json();
   const wsUrl = String(version.webSocketDebuggerUrl || "").trim();
   if (!wsUrl) {
-    throw new Error("未找到 Ant Browser 浏览器级调试地址");
+    throw new Error("未找到 Maka Browser 浏览器级调试地址");
   }
 
   return cdpCallWebSocket(wsUrl, method, params, "CDP Browser");
@@ -330,7 +330,7 @@ async function captureAntRuntimeSessionBundle(profileId, platformCode, captureSt
     captureStartedAt
   });
   if (!result?.sessionBundle) {
-    throw new Error("Ant Browser Runtime 未返回共享会话数据");
+    throw new Error("Maka Browser Runtime 未返回共享会话数据");
   }
   return result.sessionBundle;
 }
@@ -605,10 +605,10 @@ async function runAntLocalBridgeTask(state, task) {
 
   try {
     await reportLocalBridgeTask(state, task.id, "running", {
-      message: "本机 Agent 正在调用 Ant Browser"
+      message: "本机 Agent 正在调用 Maka Browser"
     });
     if (!(await checkAntRuntimeReachable())) {
-      throw new Error("Ant Browser Runtime 不可达");
+      throw new Error("Maka Browser Runtime 不可达");
     }
 
     const shop = await resolveShopForLocalBridgeTask(state, task.shopId);
@@ -637,8 +637,8 @@ async function runAntLocalBridgeTask(state, task) {
     }
     await reportLocalBridgeTask(state, task.id, "awaiting_user_input", {
       message: task.taskType === "open"
-        ? "Ant Browser 已打开店铺后台，正在确认页面状态"
-        : "Ant Browser 已打开登录页，请在本机完成登录或验证",
+        ? "Maka Browser 已打开店铺后台，正在确认页面状态"
+        : "Maka Browser 已打开登录页，请在本机完成登录或验证",
       result: {
         profileId,
         debugPort,
@@ -655,7 +655,7 @@ async function runAntLocalBridgeTask(state, task) {
       if (lastObservedUrl && lastObservedUrl !== lastReportedObservedUrl) {
         lastReportedObservedUrl = lastObservedUrl;
         await reportLocalBridgeTask(state, task.id, "awaiting_user_input", {
-          message: "Ant Browser 已打开登录页，请在本机完成登录或验证",
+          message: "Maka Browser 已打开登录页，请在本机完成登录或验证",
           result: {
             profileId,
             debugPort,
@@ -683,7 +683,7 @@ async function runAntLocalBridgeTask(state, task) {
             })
           : null;
         await reportLocalBridgeTask(state, task.id, "completed", {
-          message: task.taskType === "open" ? "Ant Browser 已进入目标后台" : "Ant Browser 已完成共享登录凭据更新",
+          message: task.taskType === "open" ? "Maka Browser 已进入目标后台" : "Maka Browser 已完成共享登录凭据更新",
           result: {
             profileId,
             debugPort,

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the macOS packaging plan for Ant Browser.
+This document defines the macOS packaging plan for Maka Browser.
 
 The goal is to turn the current codebase into a macOS build that can:
 
@@ -50,7 +50,10 @@ The repository now includes the first macOS writable-state implementation for ap
 
 ## Current Implementation Note
 
-The current initial macOS packaging scaffold intentionally places helper binaries and seed files under:
+The first Maka Browser bridge package intentionally keeps `Ant Browser.app` as
+the app-update archive root so existing Ant Browser clients can install it.
+Visible app metadata is Maka Browser. The scaffold places helper binaries and
+seed files under:
 
 - `Ant Browser.app/Contents/MacOS/bin`
 - `Ant Browser.app/Contents/MacOS/config.yaml`

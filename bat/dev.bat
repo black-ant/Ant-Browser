@@ -132,7 +132,7 @@ exit /b 0
 
 :run_stable
 echo ========================================
-echo   Ant Chrome - Dev Launcher
+echo   Maka Browser - Dev Launcher
 echo ========================================
 echo.
 echo Current workdir: %CD%
@@ -203,7 +203,7 @@ if not defined FRONTEND_NODE_MEMORY_POLL_MS set "FRONTEND_NODE_MEMORY_POLL_MS=30
 if not defined FRONTEND_DISABLE_HMR set "FRONTEND_DISABLE_HMR=0"
 
 echo ========================================
-echo   Ant Chrome - Dev Launcher
+echo   Maka Browser - Dev Launcher
 echo ========================================
 echo.
 echo Current workdir: %CD%

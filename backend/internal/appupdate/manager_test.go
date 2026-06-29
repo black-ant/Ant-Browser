@@ -123,7 +123,7 @@ func TestManagerDownloadResolvesRelativePackageURLFromManifestURL(t *testing.T) 
 	sum := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/updates/AntBrowser-1.2.0-windows-amd64.zip" {
+		if r.URL.Path != "/updates/MakaBrowser-1.2.0-windows-amd64.zip" {
 			http.NotFound(w, r)
 			return
 		}
@@ -144,7 +144,7 @@ func TestManagerDownloadResolvesRelativePackageURLFromManifestURL(t *testing.T) 
 				Packages: []Package{{
 					Target:      "windows-amd64",
 					PayloadType: PayloadTypeFull,
-					URL:         "AntBrowser-1.2.0-windows-amd64.zip",
+					URL:         "MakaBrowser-1.2.0-windows-amd64.zip",
 					SHA256:      sum,
 					Size:        int64(len(data)),
 				}},
@@ -156,7 +156,7 @@ func TestManagerDownloadResolvesRelativePackageURLFromManifestURL(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
 	}
-	wantPayloadURL := server.URL + "/updates/AntBrowser-1.2.0-windows-amd64.zip"
+	wantPayloadURL := server.URL + "/updates/MakaBrowser-1.2.0-windows-amd64.zip"
 	if state.PayloadURL != wantPayloadURL {
 		t.Fatalf("payload URL not resolved: got=%q want=%q", state.PayloadURL, wantPayloadURL)
 	}

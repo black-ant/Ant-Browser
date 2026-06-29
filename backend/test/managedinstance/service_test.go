@@ -134,7 +134,7 @@ func TestOpenManagedShopAllowsDetachedStateRootFingerprintCoreOnDarwin(t *testin
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	appRoot := filepath.Join(home, "Applications", "Ant Browser.app", "Contents", "MacOS")
+	appRoot := filepath.Join(home, "Applications", "Maka Browser.app", "Contents", "MacOS")
 	if err := os.MkdirAll(appRoot, 0o755); err != nil {
 		t.Fatalf("create app root: %v", err)
 	}

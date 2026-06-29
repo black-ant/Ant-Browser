@@ -31,6 +31,8 @@ on:
 
 jobs:
   build:
+    # Keep the legacy infrastructure label until every production runner has
+    # received the Maka alias. Product branding must not strand release jobs.
     runs-on: [self-hosted, windows, ant-browser-release]
     timeout-minutes: 180
     defaults:
@@ -93,9 +95,9 @@ jobs:
       - name: Verify expected artifacts
         run: |
           $files = @(
-            "publish\output\AntBrowser-Setup-$env:TARGET_VERSION.exe",
-            "publish\output\AntBrowser-$env:TARGET_VERSION-windows-amd64.zip",
-            "publish\output\AntBrowser-$env:TARGET_VERSION-windows-amd64.zip.sha256",
+            "publish\output\MakaBrowser-Setup-$env:TARGET_VERSION.exe",
+            "publish\output\MakaBrowser-$env:TARGET_VERSION-windows-amd64.zip",
+            "publish\output\MakaBrowser-$env:TARGET_VERSION-windows-amd64.zip.sha256",
             "publish\output\app-update-stable.json",
             "publish\output\app-update-stable.json.sha256"
           )
@@ -125,11 +127,11 @@ jobs:
       - name: Upload GitHub artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ant-browser-windows-${{ inputs.target_version }}
+          name: maka-browser-windows-${{ inputs.target_version }}
           path: |
-            publish/output/AntBrowser-Setup-${{ inputs.target_version }}.exe
-            publish/output/AntBrowser-${{ inputs.target_version }}-windows-amd64.zip
-            publish/output/AntBrowser-${{ inputs.target_version }}-windows-amd64.zip.sha256
+            publish/output/MakaBrowser-Setup-${{ inputs.target_version }}.exe
+            publish/output/MakaBrowser-${{ inputs.target_version }}-windows-amd64.zip
+            publish/output/MakaBrowser-${{ inputs.target_version }}-windows-amd64.zip.sha256
             publish/output/app-update-stable.json
             publish/output/app-update-stable.json.sha256
             publish/output/release-report.json

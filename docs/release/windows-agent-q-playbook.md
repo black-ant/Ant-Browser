@@ -14,7 +14,7 @@
 
 ## 固定仓库与分支
 
-Ant Browser 仓库：
+Maka Browser 仓库：
 
 ```text
 https://github.com/robbin810130/Ant-Browser.git
@@ -69,7 +69,7 @@ curl.exe -fsS http://192.168.210.169:18080/healthz
 
 小Q应该做：
 
-- 拉取最新 Ant Browser 分支。
+- 拉取最新 Maka Browser 分支。
 - 在 Windows 机器上打包。
 - 跑 Windows app-update e2e。
 - 安装真实客户端，登录页填服务端地址。
@@ -99,13 +99,13 @@ HEAD: b4c393d fix: preserve desktop server connection across updates
 - `1.1.0 -> 1.1.7` 真实客户端更新通过。
 - 更新后不手工修改 `server-connection.json`，可直接登录 `http://192.168.210.169:4174`。
 - `%ProgramData%\1688shop-agent\runtime\config\server-connection.json` 升级前后内容与 mtime 保持不变。
-- `%LOCALAPPDATA%\Programs\Ant Browser\runtime\config\server-connection.json` 从旧版升级场景下可以不存在；它只在新版 GUI 登录页执行 `SaveDesktopServerConnection` 后产生。
+- `%LOCALAPPDATA%\Programs\Maka Browser\runtime\config\server-connection.json` 从旧版升级场景下可以不存在；它只在新版 GUI 登录页执行 `SaveDesktopServerConnection` 后产生。
 
 以后验证高版本时，不允许只跑 harness 后收口，必须重复“真实客户端升级后不手工改配置直接登录”的场景。
 
 ## Windows 打包命令
 
-在 Ant Browser 仓库根目录执行：
+在 Maka Browser 仓库根目录执行：
 
 ```powershell
 bat\publish.bat W -Version <target-version>
@@ -114,9 +114,9 @@ bat\publish.bat W -Version <target-version>
 期望产物：
 
 ```text
-publish\output\AntBrowser-Setup-<target-version>.exe
-publish\output\AntBrowser-<target-version>-windows-amd64.zip
-publish\output\AntBrowser-<target-version>-windows-amd64.zip.sha256
+publish\output\MakaBrowser-Setup-<target-version>.exe
+publish\output\MakaBrowser-<target-version>-windows-amd64.zip
+publish\output\MakaBrowser-<target-version>-windows-amd64.zip.sha256
 publish\output\app-update-stable.json
 publish\output\app-update-stable.json.sha256
 ```
@@ -249,7 +249,7 @@ Get-ChildItem -Recurse "$env:ProgramData\1688shop-agent\runtime\config" -ErrorAc
 ```powershell
 $Paths = @(
   "$env:ProgramData\1688shop-agent\runtime\config\server-connection.json",
-  "$env:LOCALAPPDATA\Programs\Ant Browser\runtime\config\server-connection.json"
+  "$env:LOCALAPPDATA\Programs\Maka Browser\runtime\config\server-connection.json"
 )
 
 foreach ($p in $Paths) {
@@ -281,9 +281,9 @@ foreach ($p in $Paths) {
   app-update.json
   app-update-stable.json
   app-update-stable.json.sha256
-  AntBrowser-<target-version>-windows-amd64.zip
-  AntBrowser-<target-version>-windows-amd64.zip.sha256
-  AntBrowser-Setup-<target-version>.exe
+  MakaBrowser-<target-version>-windows-amd64.zip
+  MakaBrowser-<target-version>-windows-amd64.zip.sha256
+  MakaBrowser-Setup-<target-version>.exe
 ```
 
 稳定发布由 Vera / 服务器侧执行 promote：
@@ -300,15 +300,15 @@ JumpServer 的 SFTP subsystem 可能写入隔离文件系统。**SFTP stat 成�
 
 ```powershell
 curl.exe -fsSI http://192.168.210.169:18080/releases/windows/test/<target-version>/app-update-stable.json
-curl.exe -fsSI http://192.168.210.169:18080/releases/windows/test/<target-version>/AntBrowser-<target-version>-windows-amd64.zip
+curl.exe -fsSI http://192.168.210.169:18080/releases/windows/test/<target-version>/MakaBrowser-<target-version>-windows-amd64.zip
 ```
 
 promote 到 stable 后必须验证：
 
 ```powershell
 curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/app-update-stable.json
-curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/AntBrowser-<target-version>-windows-amd64.zip
-curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/AntBrowser-Setup-<target-version>.exe
+curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/MakaBrowser-<target-version>-windows-amd64.zip
+curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/MakaBrowser-Setup-<target-version>.exe
 ```
 
 只有 `HTTP/1.1 200 OK` 才算发布面可用。HTTP 404 必须打回重传，不允许继续真实客户端更新验证。
@@ -365,7 +365,7 @@ Manifest URL：
 
 ```text
 我会按 docs/release/windows-agent-q-playbook.md 执行。
-先拉取 Ant Browser 的 codex/windows-app-update-validation 分支，确认 HEAD，然后跑 Windows 打包和 e2e。
+先拉取 Maka Browser 的 codex/windows-app-update-validation 分支，确认 HEAD，然后跑 Windows 打包和 e2e。
 不会直接改 stable manifest，不会删除旧产物。
 ```
 
@@ -373,4 +373,4 @@ Manifest URL：
 
 - `docs/release/agent-operated-cicd.md`
 - `docs/desktop/release-handover-2026-05-28-remote-server.md`
-- `docs/release/windows-packaging-and-update-runbook.md`（Ant Browser 仓库）
+- `docs/release/windows-packaging-and-update-runbook.md`（Maka Browser 仓库）

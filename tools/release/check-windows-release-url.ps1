@@ -80,7 +80,7 @@ if ($packageRef -eq "") {
 }
 
 $packageUrl = Resolve-PackageUrl -BaseUrl $ManifestUrl -PackageUrl $packageRef
-$tempFile = Join-Path ([System.IO.Path]::GetTempPath()) ("ant-browser-release-{0}-{1}.zip" -f $Target, ([Guid]::NewGuid().ToString("N")))
+$tempFile = Join-Path ([System.IO.Path]::GetTempPath()) ("maka-browser-release-{0}-{1}.zip" -f $Target, ([Guid]::NewGuid().ToString("N")))
 
 try {
     Write-Host "[INFO] downloading package: $packageUrl"

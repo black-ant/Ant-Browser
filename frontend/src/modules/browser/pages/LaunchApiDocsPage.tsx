@@ -55,7 +55,7 @@ const DOC_OVERVIEW = `# 自动化接口文档（重构版）
 
 ## 运行前提
 
-- Ant Browser 应用已启动
+- Maka Browser 应用已启动
 - Launch 服务监听本机（地址见本页顶部）
 - 如启用了 API 认证，请准备好请求头 \`X-Ant-Api-Key: <your-api-key>\`
 - 如果你要用 \`key / keyword / tags\` 选择实例，需要先在实例配置里维护这些字段

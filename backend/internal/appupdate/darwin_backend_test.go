@@ -120,7 +120,7 @@ func TestDarwinBackendValidateInstallModeRejectsSymlinkInstallRoot(t *testing.T)
 }
 
 func TestDarwinBackendValidateInstallModeRejectsNonAppRoot(t *testing.T) {
-	layout := NewLayout(filepath.Join(t.TempDir(), "Ant Browser"), filepath.Join(t.TempDir(), "state"))
+	layout := NewLayout(filepath.Join(t.TempDir(), "Maka Browser"), filepath.Join(t.TempDir(), "state"))
 	if err := (DarwinBackend{}).ValidateInstallMode(layout); err == nil {
 		t.Fatal("expected non-.app install root to be rejected")
 	}
@@ -577,7 +577,7 @@ func TestDarwinBackendPostUpdateCheckAcceptsRenamedAppBundle(t *testing.T) {
 	root := t.TempDir()
 	applications := filepath.Join(root, "Applications")
 	installRoot := writeFakeDarwinBundle(t, applications)
-	renamedRoot := filepath.Join(applications, "Ant Browser Beta.app")
+	renamedRoot := filepath.Join(applications, "Maka Browser Beta.app")
 	if err := os.Rename(installRoot, renamedRoot); err != nil {
 		t.Fatalf("rename app bundle: %v", err)
 	}
@@ -708,7 +708,7 @@ func TestDarwinBackendPostUpdateCheckRejectsInstalledBundleMutableData(t *testin
 	root := t.TempDir()
 	applications := filepath.Join(root, "Applications")
 	installRoot := writeFakeDarwinBundle(t, applications)
-	renamedRoot := filepath.Join(applications, "Ant Browser Beta.app")
+	renamedRoot := filepath.Join(applications, "Maka Browser Beta.app")
 	if err := os.Rename(installRoot, renamedRoot); err != nil {
 		t.Fatalf("rename app bundle: %v", err)
 	}

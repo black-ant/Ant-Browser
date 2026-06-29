@@ -686,7 +686,7 @@ function New-WindowsAppUpdateArtifacts {
     $outputDir = Join-Path $repoRoot "publish/output"
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
-    $zipName = "AntBrowser-$script:Version-windows-amd64.zip"
+    $zipName = "MakaBrowser-$script:Version-windows-amd64.zip"
     $zipPath = Join-Path $outputDir $zipName
     $zipShaPath = "$zipPath.sha256"
     $manifestPath = Join-Path $outputDir "app-update-stable.json"
@@ -724,7 +724,7 @@ function New-WindowsAppUpdateArtifacts {
 
         $manifest = [ordered]@{
             schemaVersion = 1
-            product = "Ant Browser"
+            product = "Maka Browser"
             channel = "stable"
             version = $script:Version
             generatedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -817,7 +817,7 @@ function Publish-Linux {
 }
 
 try {
-    Write-Section "Ant Browser - 发布打包脚本"
+    Write-Section "Maka Browser - 发布打包脚本"
     Write-Host ""
     Write-Host "当前工作目录: $repoRoot"
     Write-Host ""
@@ -847,7 +847,7 @@ try {
     Write-Section "✓ 发布完成！"
     Write-Host ""
     if ($script:WindowsDone) {
-        Write-Host "Windows 安装包: publish\output\AntBrowser-Setup-$script:Version.exe"
+        Write-Host "Windows 安装包: publish\output\MakaBrowser-Setup-$script:Version.exe"
     }
     if ($script:LinuxDone) {
         Write-Host "Linux 产物目录: publish\output\"

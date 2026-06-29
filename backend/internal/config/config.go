@@ -274,7 +274,8 @@ func normalizeConfig(config *Config) {
 		config.Database.SQLite.Path = defaultConfig.Database.SQLite.Path
 	}
 
-	if strings.TrimSpace(config.App.Name) == "" {
+	switch strings.TrimSpace(config.App.Name) {
+	case "", "Ant Browser":
 		config.App.Name = defaultConfig.App.Name
 	}
 	if config.App.Window.Width <= 0 {
@@ -416,7 +417,7 @@ func DefaultConfig() *Config {
 			},
 		},
 		App: AppConfig{
-			Name: "Ant Browser",
+			Name: "Maka Browser",
 			Window: WindowConfig{
 				Width:     1750,
 				Height:    1000,

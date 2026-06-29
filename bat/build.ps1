@@ -179,7 +179,7 @@ function Enable-OptionalBuildProxy {
 
 try {
     Write-Host "========================================"
-    Write-Host "  Ant Browser - Build Script"
+    Write-Host "  Maka Browser - Build Script"
     Write-Host "========================================"
     Write-Host ""
     Write-Host "Current workdir: $repoRoot"

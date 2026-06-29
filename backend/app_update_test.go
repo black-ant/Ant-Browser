@@ -70,7 +70,7 @@ func TestRunAppUpdateCLIRejectsUnsupportedModeBeforePlatformWork(t *testing.T) {
 }
 
 func TestAppUpdateInstallRootForDarwinUsesAppBundleRoot(t *testing.T) {
-	bundleRoot := filepath.Join(t.TempDir(), "Applications", "Ant Browser.app")
+	bundleRoot := filepath.Join(t.TempDir(), "Applications", "Maka Browser.app")
 	exeRoot := filepath.Join(bundleRoot, "Contents", "MacOS")
 
 	got := appUpdateInstallRootForOS("darwin", exeRoot)
@@ -89,7 +89,7 @@ func TestAppUpdateInstallRootForDarwinKeepsNonBundleRoot(t *testing.T) {
 }
 
 func TestAppUpdateInstallRootForWindowsKeepsInstallRoot(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "Ant Browser", "bin")
+	root := filepath.Join(t.TempDir(), "Maka Browser", "bin")
 
 	got := appUpdateInstallRootForOS("windows", root)
 	if got != root {
@@ -101,10 +101,10 @@ func TestAppUpdateStateRootForWindowsUsesLocalAppDataOutsideInstallRoot(t *testi
 	localAppData := filepath.Join(t.TempDir(), "LocalAppData")
 	t.Setenv("LOCALAPPDATA", localAppData)
 
-	installRoot := filepath.Join(localAppData, "Programs", "Ant Browser")
+	installRoot := filepath.Join(localAppData, "Programs", "Maka Browser")
 	fallback := installRoot
 	got := appUpdateStateRootForOS("windows", installRoot, fallback)
-	want := filepath.Join(localAppData, "Ant Browser")
+	want := filepath.Join(localAppData, "Maka Browser")
 
 	if got != want {
 		t.Fatalf("unexpected app update state root: got=%s want=%s", got, want)
@@ -115,7 +115,7 @@ func TestAppUpdateStateRootForWindowsUsesLocalAppDataOutsideInstallRoot(t *testi
 }
 
 func TestAppUpdateStateRootFallsBackWhenWindowsStateWouldBeInsideInstallRoot(t *testing.T) {
-	installRoot := filepath.Join(t.TempDir(), "Ant Browser")
+	installRoot := filepath.Join(t.TempDir(), "Maka Browser")
 	t.Setenv("LOCALAPPDATA", installRoot)
 
 	fallback := filepath.Join(t.TempDir(), "state")

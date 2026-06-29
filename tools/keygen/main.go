@@ -11,7 +11,7 @@ import (
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	fmt.Println("=== Ant Browser 兑换码生成器 ===")
+	fmt.Println("=== Maka Browser 兑换码生成器 ===")
 	fmt.Println("生成 5 个有效兑换码 (每个可增加 10 额度):")
 	fmt.Println(strings.Repeat("-", 30))
 

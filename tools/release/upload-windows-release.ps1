@@ -103,9 +103,9 @@ try {
     )
     $sshBaseArgs = @("-i", $tempKey, "-p", $port) + $sshOptions
     $artifacts = @(
-        "AntBrowser-Setup-$Version.exe",
-        "AntBrowser-$Version-windows-amd64.zip",
-        "AntBrowser-$Version-windows-amd64.zip.sha256",
+        "MakaBrowser-Setup-$Version.exe",
+        "MakaBrowser-$Version-windows-amd64.zip",
+        "MakaBrowser-$Version-windows-amd64.zip.sha256",
         "app-update-stable.json",
         "app-update-stable.json.sha256",
         "release-report.json",
@@ -133,7 +133,7 @@ try {
         Invoke-Native -FilePath "scp" -Arguments $scpArgs
     }
 
-    $verifyRemote = "set -eu; cd '$remoteDir'; sha256sum AntBrowser-$Version-windows-amd64.zip app-update-stable.json > remote-sha256.txt; cat remote-sha256.txt"
+    $verifyRemote = "set -eu; cd '$remoteDir'; sha256sum MakaBrowser-$Version-windows-amd64.zip app-update-stable.json > remote-sha256.txt; cat remote-sha256.txt"
     Invoke-Native -FilePath "ssh" -Arguments ($sshBaseArgs + @($target, $verifyRemote))
 
     Write-Host "[OK] uploaded Windows release $Version to $remoteDir"

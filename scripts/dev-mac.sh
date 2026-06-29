@@ -214,7 +214,7 @@ fi
 export ANT_BROWSER_WORKSPACE_INSTALL_ROOT="${INSTALL_ROOT}"
 export ANT_BROWSER_DEBUG_STARTUP="${ANT_BROWSER_DEBUG_STARTUP:-1}"
 
-printf '== Ant Browser mac dev ==\n'
+printf '== Maka Browser mac dev ==\n'
 printf 'Repo root: %s\n' "${REPO_ROOT}"
 printf 'Mode: %s\n' "${DEV_MODE}"
 printf 'Workspace install root: %s\n' "${ANT_BROWSER_WORKSPACE_INSTALL_ROOT}"

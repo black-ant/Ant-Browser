@@ -33,7 +33,7 @@ browser: {}
 	if cfg.Database.SQLite.Path != "data/app.db" {
 		t.Fatalf("Database.SQLite.Path 未补齐: got=%q", cfg.Database.SQLite.Path)
 	}
-	if cfg.App.Name != "Ant Browser" {
+	if cfg.App.Name != "Maka Browser" {
 		t.Fatalf("App.Name 未补齐: got=%q", cfg.App.Name)
 	}
 	if cfg.App.MaxProfileLimit != GithubStarProfileTotal {
@@ -90,6 +90,29 @@ func TestReleaseAppUpdateManifestURLDefaultsEmpty(t *testing.T) {
 
 	if cfg.Release.AppUpdateManifestURL != "" {
 		t.Fatalf("Release.AppUpdateManifestURL 默认应为空: got=%q", cfg.Release.AppUpdateManifestURL)
+	}
+}
+
+func TestLoadMigratesLegacyAppName(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	legacyConfig := `
+app:
+  name: Ant Browser
+`
+	if err := os.WriteFile(configPath, []byte(legacyConfig), 0o644); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	if cfg.App.Name != "Maka Browser" {
+		t.Fatalf("legacy app name 未迁移: got=%q", cfg.App.Name)
 	}
 }
 

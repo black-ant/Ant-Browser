@@ -144,7 +144,7 @@ describe('workbench row state evidence', () => {
     expect(evidenceForWorkbenchRow(shop({
       lastOpenedAt: '2026-06-09T09:10:00.000Z',
       lastOpenFailureCode: 'LOCAL_BRIDGE_FAILED',
-      lastOpenFailureMessage: 'Ant Browser Runtime 不可达',
+      lastOpenFailureMessage: 'Maka Browser Runtime 不可达',
       lastOpenFailedAt: '2026-06-09T09:00:00.000Z',
     }), source).latestFailure).toBeNull()
   })
@@ -155,7 +155,7 @@ describe('workbench row state evidence', () => {
     expect(evidenceForWorkbenchRow(shop({
       lastOpenedAt: '2026-06-09T09:00:00.000Z',
       lastOpenFailureCode: 'LOCAL_BRIDGE_FAILED',
-      lastOpenFailureMessage: 'Ant Browser Runtime 不可达',
+      lastOpenFailureMessage: 'Maka Browser Runtime 不可达',
       lastOpenFailedAt: '2026-06-09T09:10:00.000Z',
     }), source).latestFailure?.failureCode).toBe('LOCAL_BRIDGE_FAILED')
   })

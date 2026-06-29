@@ -10,9 +10,9 @@ import (
 
 func TestWindowsBackendRejectsProgramFiles(t *testing.T) {
 	backend := WindowsBackend{}
-	layout := NewLayout(`C:\Program Files\Ant Browser`, t.TempDir())
+	layout := NewLayout(`C:\Program Files\Maka Browser`, t.TempDir())
 	if runtime.GOOS != "windows" {
-		layout = NewLayout(`/Program Files/Ant Browser`, t.TempDir())
+		layout = NewLayout(`/Program Files/Maka Browser`, t.TempDir())
 	}
 	if err := backend.ValidateInstallMode(layout); err == nil {
 		t.Fatal("expected Program Files install to be rejected")
@@ -21,7 +21,7 @@ func TestWindowsBackendRejectsProgramFiles(t *testing.T) {
 
 func TestWindowsBackendAllowsWritableUserInstall(t *testing.T) {
 	backend := WindowsBackend{}
-	layout := NewLayout(filepath.Join(t.TempDir(), "Ant Browser"), t.TempDir())
+	layout := NewLayout(filepath.Join(t.TempDir(), "Maka Browser"), t.TempDir())
 	if err := backend.ValidateInstallMode(layout); err != nil {
 		t.Fatalf("ValidateInstallMode returned error: %v", err)
 	}

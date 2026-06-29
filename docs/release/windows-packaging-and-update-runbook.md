@@ -15,14 +15,14 @@ Windows 智能体小Q执行发布验证时，先读：
 当前 Windows 线分两层：
 
 1. **安装包 / 首启稳定性**
-   - 生成 `publish/output/AntBrowser-Setup-<version>.exe`
+   - 生成 `publish/output/MakaBrowser-Setup-<version>.exe`
    - 安装后首启 Gate、runtime pointer repair、workspace host 检查正常
 2. **运行时更新**
    - 启动检查更新
    - `soft / required / manifest load fail` 三类场景可回归
 3. **应用本体自更新**
    - 生成 `publish/output/app-update-stable.json`
-   - 生成 `publish/output/AntBrowser-<version>-windows-amd64.zip`
+   - 生成 `publish/output/MakaBrowser-<version>-windows-amd64.zip`
    - 客户端内执行下载、hash 校验、staging、runner 替换与重启
 
 ## 当前边界
@@ -34,7 +34,9 @@ Windows 智能体小Q执行发布验证时，先读：
 - 更新失败在弹窗内展示完整错误
 - 应用本体自更新
 - 安装包级别的客户端下载、替换与重启
-- Windows 新安装默认使用 `%LOCALAPPDATA%\Programs\Ant Browser`
+- 首个 Maka Browser 桥接版本继续使用
+  `%LOCALAPPDATA%\Programs\Ant Browser` 和旧卸载注册表键，以保证现有
+  Ant Browser 用户原位升级；产品名称和发布产物名称已经切换为 Maka Browser
 
 结论：
 
@@ -88,7 +90,7 @@ bat\publish.bat W -Version 1.1.0
 5. 执行 `wails build`
 6. 组装 `publish/staging/`
 7. 调用 `publish/installer.nsi`
-8. 输出 `publish/output/AntBrowser-Setup-<version>.exe`
+8. 输出 `publish/output/MakaBrowser-Setup-<version>.exe`
 9. 生成应用本体更新 zip 与 manifest
 10. 运行 `tools/app-update/verify-app-update-package.py`
 11. 清理 `publish/staging/`
@@ -104,11 +106,11 @@ bat\publish.bat W -Version 1.1.0
    - `Windows 安装包生成成功`
    - `应用本体更新包生成成功`
 3. 产物存在：
-   - `publish/output/AntBrowser-Setup-<version>.exe`
+   - `publish/output/MakaBrowser-Setup-<version>.exe`
    - `publish/output/app-update-stable.json`
    - `publish/output/app-update-stable.json.sha256`
-   - `publish/output/AntBrowser-<version>-windows-amd64.zip`
-   - `publish/output/AntBrowser-<version>-windows-amd64.zip.sha256`
+   - `publish/output/MakaBrowser-<version>-windows-amd64.zip`
+   - `publish/output/MakaBrowser-<version>-windows-amd64.zip.sha256`
 
 ## Windows 应用本体自更新自动化门禁
 
@@ -126,8 +128,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\app-update\windows-app
 脚本会执行：
 
 1. 分别打包 baseline 与 target。
-2. 校验 target `AntBrowser-<version>-windows-amd64.zip` 与 `app-update-stable.json`。
-3. 静默安装 baseline 到 `%LOCALAPPDATA%\Programs\Ant Browser`。
+2. 校验 target `MakaBrowser-<version>-windows-amd64.zip` 与 `app-update-stable.json`。
+3. 静默安装 baseline 到 `%LOCALAPPDATA%\Programs\Maka Browser`。
 4. 使用 Windows 本地绝对路径配置 `DESKTOP_APP_UPDATE_MANIFEST_URL`。
 5. 通过临时 Go harness 调用 `Check -> Download -> Apply`。
 6. 显式设置 `WindowsBackend.CurrentExePath` 为已安装的 `ant-chrome.exe`，避免 `go run` 的临时程序被复制成 runner。
@@ -145,7 +147,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\app-update\windows-app
 默认测试目录：
 
 ```text
-C:\AntBrowserUpdateTest
+C:\MakaBrowserUpdateTest
 ```
 
 成功判定：
@@ -185,7 +187,7 @@ go version
 
 1. 安装程序可启动
 2. 安装流程可完成
-3. 新安装默认目录为 `%LOCALAPPDATA%\Programs\Ant Browser`
+3. 新安装默认目录为 `%LOCALAPPDATA%\Programs\Maka Browser`
 4. 安装目录存在：
    - `ant-chrome.exe`
    - `publish/runtime-manifest.json`
@@ -230,7 +232,7 @@ go version
 1. 更新完成后不手工修改任何 `server-connection.json`
 2. 重启客户端后可直接登录远端 `4174`
 3. `%ProgramData%\1688shop-agent\runtime\config\server-connection.json` 存在，且 `serverOrigin` 指向当前业务服务器
-4. `%LOCALAPPDATA%\Programs\Ant Browser\runtime\config\server-connection.json` 从旧版升级场景下可以不存在
+4. `%LOCALAPPDATA%\Programs\Maka Browser\runtime\config\server-connection.json` 从旧版升级场景下可以不存在
 5. 如果两个路径都存在，客户端使用最新 mtime 的有效配置
 
 采集命令：
@@ -238,7 +240,7 @@ go version
 ```powershell
 $Paths = @(
   "$env:ProgramData\1688shop-agent\runtime\config\server-connection.json",
-  "$env:LOCALAPPDATA\Programs\Ant Browser\runtime\config\server-connection.json"
+  "$env:LOCALAPPDATA\Programs\Maka Browser\runtime\config\server-connection.json"
 )
 
 foreach ($p in $Paths) {
@@ -325,14 +327,14 @@ server: http://192.168.210.169:4174
 
 ### 前置条件
 
-1. 新安装默认目录为 `%LOCALAPPDATA%\Programs\Ant Browser`
+1. 新安装默认目录为 `%LOCALAPPDATA%\Programs\Maka Browser`
 2. `publish/output/app-update-stable.json` 存在
-3. `publish/output/AntBrowser-<version>-windows-amd64.zip` 存在
+3. `publish/output/MakaBrowser-<version>-windows-amd64.zip` 存在
 4. manifest 中的 `sha256` 与 zip 文件一致
 5. 执行以下命令通过：
 
 ```powershell
-python3 tools/app-update/verify-app-update-package.py publish/output/app-update-stable.json publish/output/AntBrowser-<version>-windows-amd64.zip windows-amd64
+python3 tools/app-update/verify-app-update-package.py publish/output/app-update-stable.json publish/output/MakaBrowser-<version>-windows-amd64.zip windows-amd64
 ```
 
 ### A：soft app update success
@@ -393,15 +395,15 @@ test 通道必须验证：
 
 ```powershell
 curl.exe -fsSI http://192.168.210.169:18080/releases/windows/test/<target-version>/app-update-stable.json
-curl.exe -fsSI http://192.168.210.169:18080/releases/windows/test/<target-version>/AntBrowser-<target-version>-windows-amd64.zip
+curl.exe -fsSI http://192.168.210.169:18080/releases/windows/test/<target-version>/MakaBrowser-<target-version>-windows-amd64.zip
 ```
 
 stable 通道必须验证：
 
 ```powershell
 curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/app-update-stable.json
-curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/AntBrowser-<target-version>-windows-amd64.zip
-curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/AntBrowser-Setup-<target-version>.exe
+curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/MakaBrowser-<target-version>-windows-amd64.zip
+curl.exe -fsSI http://192.168.210.169:18080/releases/windows/stable/MakaBrowser-Setup-<target-version>.exe
 ```
 
 预期：
@@ -449,13 +451,13 @@ This phase supports full package updates only. Delta patching and release channe
 Supported:
 
 ```text
-~/Applications/Ant Browser.app
+~/Applications/Maka Browser.app
 ```
 
 Unsupported for automatic update:
 
 ```text
-/Applications/Ant Browser.app
+/Applications/Maka Browser.app
 /System/Applications/...
 ```
 
@@ -476,6 +478,10 @@ Ant Browser.app/
       bin/sing-box
 ```
 
+The legacy archive root is intentional for the first Maka Browser bridge
+release. The installed bundle may still be named `Maka Browser.app`; the
+updater copies the staged bundle contents into the current install root.
+
 The payload must not contain `data/`, `User Data/`, `.db`, `.sqlite`, or `.sqlite3` files.
 
 ### Package Verification
@@ -484,14 +490,14 @@ Run:
 
 ```bash
 VERSION="$(python3 -c 'import json; print(json.load(open("wails.json", encoding="utf-8"))["info"]["productVersion"])')"
-python3 tools/app-update/verify-app-update-package.py publish/output/app-update-stable.json "publish/output/AntBrowser-${VERSION}-darwin-arm64.zip" darwin-arm64
+python3 tools/app-update/verify-app-update-package.py publish/output/app-update-stable.json "publish/output/MakaBrowser-${VERSION}-darwin-arm64.zip" darwin-arm64
 ```
 
 or:
 
 ```bash
 VERSION="$(python3 -c 'import json; print(json.load(open("wails.json", encoding="utf-8"))["info"]["productVersion"])')"
-python3 tools/app-update/verify-app-update-package.py publish/output/app-update-stable.json "publish/output/AntBrowser-${VERSION}-darwin-amd64.zip" darwin-amd64
+python3 tools/app-update/verify-app-update-package.py publish/output/app-update-stable.json "publish/output/MakaBrowser-${VERSION}-darwin-amd64.zip" darwin-amd64
 ```
 
 Expected:
@@ -504,9 +510,9 @@ Expected:
 
 1. Local file manifest smoke test: PASS.
 2. HTTP manifest smoke test: PASS.
-3. Soft update from `~/Applications/Ant Browser.app`: covered by shared UI path and non-required prompt behavior; no separate manual pass in this phase.
-4. Required update from `~/Applications/Ant Browser.app`: PASS.
-5. Unsupported install at `/Applications/Ant Browser.app`: PASS by backend rejection regression.
+3. Soft update from `~/Applications/Maka Browser.app`: covered by shared UI path and non-required prompt behavior; no separate manual pass in this phase.
+4. Required update from `~/Applications/Maka Browser.app`: PASS.
+5. Unsupported install at `/Applications/Maka Browser.app`: PASS by backend rejection regression.
 6. Checksum mismatch: PASS by macOS target regression.
 7. Invalid `.app` payload: PASS by payload contract and tampered-stage regression.
 8. Replace failure rollback: PASS by Darwin backend rollback regression.
@@ -522,7 +528,7 @@ Latest real macOS manual regression:
 - Phase closeout: `docs/reports/2026-05-22-cross-platform-app-update-phase-closeout.md`
 - Baseline: `1.0.0`
 - Target: `1.1.0`
-- Install shape: user-writable `~/Applications/Ant Browser.app` style sandbox
+- Install shape: user-writable `~/Applications/Maka Browser.app` style sandbox
 - Manifest source: runtime config with local `file://` manifest
 - UI action: clicked `更新并重启`
 - State progression: `verifying -> succeeded -> idle`
@@ -554,10 +560,10 @@ Internal rollout checklist:
 1. Install to a user-writable location, preferably:
 
 ```text
-~/Applications/Ant Browser.app
+~/Applications/Maka Browser.app
 ```
 
-2. Keep `/Applications/Ant Browser.app` unsupported for automatic updates.
+2. Keep `/Applications/Maka Browser.app` unsupported for automatic updates.
 3. Point `DESKTOP_APP_UPDATE_MANIFEST_URL` or runtime config at the internal manifest.
 4. Run one update from the internal manifest and payload.
 5. Confirm the UI client version after relaunch.
@@ -634,8 +640,8 @@ manual operation.
 - [ ] XiaoQ runner is registered with `self-hosted`, `windows`, `ant-browser-release`.
 - [ ] `windows-release-preflight.ps1` passes on the runner.
 - [ ] `Windows Release Factory` workflow runs manually.
-- [ ] Workflow builds `AntBrowser-Setup-<version>.exe`.
-- [ ] Workflow builds `AntBrowser-<version>-windows-amd64.zip`.
+- [ ] Workflow builds `MakaBrowser-Setup-<version>.exe`.
+- [ ] Workflow builds `MakaBrowser-<version>-windows-amd64.zip`.
 - [ ] Workflow builds `app-update-stable.json`.
 - [ ] Workflow runs app-update e2e successfully.
 - [ ] Workflow uploads GitHub artifacts.

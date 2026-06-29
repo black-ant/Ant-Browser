@@ -67,7 +67,8 @@ def main() -> None:
     assert_contains(installer_text, 'File /r "${STAGINGDIR}\\apps\\*"', "publish/installer.nsi")
     assert_contains(installer_text, 'File /r "${STAGINGDIR}\\runtime\\*"', "publish/installer.nsi")
     assert_contains(installer_text, 'CreateDirectory "$INSTDIR\\data"', "publish/installer.nsi")
-    assert_contains(installer_text, '!define INSTALL_DIR     "$LOCALAPPDATA\\Programs\\Maka Browser"', "publish/installer.nsi")
+    assert_contains(installer_text, '!define PRODUCT_NAME    "Maka Browser"', "publish/installer.nsi")
+    assert_contains(installer_text, '!define INSTALL_DIR     "$LOCALAPPDATA\\Programs\\Ant Browser"', "publish/installer.nsi")
     assert_contains(installer_text, "RequestExecutionLevel user", "publish/installer.nsi")
     assert_contains(installer_text, 'InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"', "publish/installer.nsi")
 

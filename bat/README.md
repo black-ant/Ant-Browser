@@ -154,7 +154,7 @@ Windows 分支使用的项目路径：
 - publish\staging\
 
 输出：
-- publish\output\AntBrowser-Setup-<version>.exe
+- publish\output\MakaBrowser-Setup-<version>.exe
 ```
 
 说明：
@@ -191,7 +191,7 @@ DESKTOP_UPDATE_MANIFEST_URL -> 启动时更新清单地址，可为 file://、�
 Windows 产物：
 
 ```text
-publish\output\AntBrowser-Setup-<version>.exe
+publish\output\MakaBrowser-Setup-<version>.exe
 ```
 
 完整发布与真机回归步骤见：
@@ -205,19 +205,19 @@ publish\output\AntBrowser-Setup-<version>.exe
 默认只预览，不写数据库：
 
 ```powershell
-pwsh -File bat/recover-profiles.ps1 -AppRoot 'E:\software\Ant Browser'
+pwsh -File bat/recover-profiles.ps1 -AppRoot 'E:\software\Maka Browser'
 ```
 
 确认结果后再写回 `app.db`：
 
 ```powershell
-pwsh -File bat/recover-profiles.ps1 -AppRoot 'E:\software\Ant Browser' -Apply
+pwsh -File bat/recover-profiles.ps1 -AppRoot 'E:\software\Maka Browser' -Apply
 ```
 
 如果旧目录来自备份恢复，且怀疑存在跨内核残留状态，可同时为“风险目录”创建一份 `__repair_时间戳` 副本，再将新配置指向副本：
 
 ```powershell
-pwsh -File bat/recover-profiles.ps1 -AppRoot 'E:\software\Ant Browser' -Apply -RepairRisky
+pwsh -File bat/recover-profiles.ps1 -AppRoot 'E:\software\Maka Browser' -Apply -RepairRisky
 ```
 
 说明：
@@ -225,7 +225,7 @@ pwsh -File bat/recover-profiles.ps1 -AppRoot 'E:\software\Ant Browser' -Apply -R
 - 脚本会调用 `go run ./backend/cmd/profile-recover`
 - `-Apply` 模式会先在 `data\recovery-backups\` 下备份当前数据库文件
 - 默认不会删除旧目录，也不会主动清理登录态文件
-- 运行 `-Apply` 前应先关闭 Ant Browser，避免并发写库
+- 运行 `-Apply` 前应先关闭 Maka Browser，避免并发写库
 
 ## 备注
 

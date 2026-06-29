@@ -109,7 +109,7 @@ func TestSystemChromeExecutableDetectionForWindows(t *testing.T) {
 	if !isLikelySystemChromeExecutablePathForOS(`C:\Program Files\Google\Chrome\Application\chrome.exe`, "windows") {
 		t.Fatal("期望识别 Windows 系统 Chrome")
 	}
-	if isLikelySystemChromeExecutablePathForOS(`C:\Users\me\AppData\Local\Ant Browser\chrome\fingerprint\chrome.exe`, "windows") {
+	if isLikelySystemChromeExecutablePathForOS(`C:\Users\me\AppData\Local\Maka Browser\chrome\fingerprint\chrome.exe`, "windows") {
 		t.Fatal("随包指纹内核不应被识别为系统 Chrome")
 	}
 }

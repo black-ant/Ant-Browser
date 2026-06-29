@@ -3,7 +3,7 @@ database:
     sqlite:
         path: data/app.db
 app:
-    name: Ant Browser
+    name: Maka Browser
     window:
         width: 1750
         height: 1000

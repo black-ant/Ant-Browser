@@ -1,6 +1,6 @@
 # Windows Self-Hosted Runner Setup
 
-This machine builds and validates Ant Browser Windows releases. It replaces the
+This machine builds and validates Maka Browser Windows releases. It replaces the
 manual XiaoQ packaging loop with a repeatable GitHub Actions release path that
 can compile, package, smoke-check, and publish Windows artifacts from a
 controlled runner host.
@@ -112,8 +112,8 @@ a personal desktop account.
 
 The runner user must be able to:
 
-- Install Ant Browser to `%LOCALAPPDATA%\Programs\Ant Browser`
-- Write Ant Browser runtime data under `%LOCALAPPDATA%\Ant Browser`
+- Install Maka Browser to `%LOCALAPPDATA%\Programs\Maka Browser`
+- Write Maka Browser runtime data under `%LOCALAPPDATA%\Maka Browser`
 - Write workspace agent state under `%ProgramData%\1688shop-agent`
 - Stop stale release-test processes:
   - `ant-chrome.exe`
@@ -169,5 +169,5 @@ powershell -ExecutionPolicy Bypass -File tools\release\windows-release-preflight
 ```
 
 The preflight should verify toolchain availability, internal endpoint access,
-write permissions, and cleanup permissions for stale Ant Browser release-test
+write permissions, and cleanup permissions for stale Maka Browser release-test
 processes.

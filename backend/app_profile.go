@@ -48,7 +48,7 @@ func (a *App) FetchRemoteAuthorProfile(rawURL string, timeoutMs int) (map[string
 		return nil, fmt.Errorf("创建远程作者配置请求失败: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "AntBrowser/1.0 profile-fetch")
+	req.Header.Set("User-Agent", "MakaBrowser/1.0 profile-fetch")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
