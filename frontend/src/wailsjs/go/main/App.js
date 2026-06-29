@@ -226,6 +226,10 @@ export function BrowserSnapshotRestore(arg1, arg2) {
   return window['go']['main']['App']['BrowserSnapshotRestore'](arg1, arg2);
 }
 
+export function CaptureManagedSessionBundle(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CaptureManagedSessionBundle'](arg1, arg2, arg3);
+}
+
 export function CheckDesktopAppUpdate() {
   return window['go']['main']['App']['CheckDesktopAppUpdate']();
 }
@@ -274,10 +278,6 @@ export function FetchDesktopAuthProfile(arg1) {
   return window['go']['main']['App']['FetchDesktopAuthProfile'](arg1);
 }
 
-export function GetDesktopServerConnection() {
-  return window['go']['main']['App']['GetDesktopServerConnection']();
-}
-
 export function FetchDesktopSharedLoginBindSession(arg1, arg2) {
   return window['go']['main']['App']['FetchDesktopSharedLoginBindSession'](arg1, arg2);
 }
@@ -316,6 +316,10 @@ export function GetDesktopAppUpdateState() {
 
 export function GetDesktopEnvironmentStatus() {
   return window['go']['main']['App']['GetDesktopEnvironmentStatus']();
+}
+
+export function GetDesktopServerConnection() {
+  return window['go']['main']['App']['GetDesktopServerConnection']();
 }
 
 export function GetInterceptor() {

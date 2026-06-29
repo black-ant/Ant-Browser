@@ -38,6 +38,7 @@ export namespace appupdate {
 	}
 
 }
+
 export namespace authsession {
 
 	export class Session {
@@ -167,8 +168,6 @@ export namespace backend {
 	        this.configPath = source["configPath"];
 	    }
 	}
-
-
 	export class DesktopSharedLoginDetail {
 	    shopId: string;
 	    shopName: string;
@@ -1483,6 +1482,8 @@ export namespace workspace {
 	    profileExists: boolean;
 	    reclaimPending: boolean;
 	    coreReady: boolean;
+	    lastValidatedAt?: string;
+	    lastOpenedAt?: string;
 	    lastOpenFailureCode?: string;
 	    lastOpenFailureMessage?: string;
 	    lastOpenFailedAt?: string;
@@ -1504,6 +1505,8 @@ export namespace workspace {
 	        this.profileExists = source["profileExists"];
 	        this.reclaimPending = source["reclaimPending"];
 	        this.coreReady = source["coreReady"];
+	        this.lastValidatedAt = source["lastValidatedAt"];
+	        this.lastOpenedAt = source["lastOpenedAt"];
 	        this.lastOpenFailureCode = source["lastOpenFailureCode"];
 	        this.lastOpenFailureMessage = source["lastOpenFailureMessage"];
 	        this.lastOpenFailedAt = source["lastOpenFailedAt"];

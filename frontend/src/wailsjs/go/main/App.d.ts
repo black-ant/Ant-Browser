@@ -6,8 +6,8 @@ import {backup} from '../models';
 import {config} from '../models';
 import {browser} from '../models';
 import {backend} from '../models';
-import {logger} from '../models';
 import {workspace} from '../models';
+import {logger} from '../models';
 import {authsession} from '../models';
 import {launchcode} from '../models';
 
@@ -123,6 +123,8 @@ export function BrowserSnapshotList(arg1:string):Promise<Array<backend.SnapshotI
 
 export function BrowserSnapshotRestore(arg1:string,arg2:string):Promise<void>;
 
+export function CaptureManagedSessionBundle(arg1:string,arg2:string,arg3:string):Promise<workspace.SessionBundle>;
+
 export function CheckDesktopAppUpdate():Promise<appupdate.State>;
 
 export function CheckDesktopReleaseUpdate():Promise<release.UpdateState>;
@@ -147,8 +149,6 @@ export function ExportDesktopEnvironmentDiagnostics():Promise<string>;
 
 export function FetchDesktopAuthProfile(arg1:string):Promise<backend.DesktopAuthProfile>;
 
-export function GetDesktopServerConnection():Promise<backend.DesktopServerConnection>;
-
 export function FetchDesktopSharedLoginBindSession(arg1:string,arg2:string):Promise<backend.DesktopSharedLoginBindSession>;
 
 export function FetchRemoteAuthorProfile(arg1:string,arg2:number):Promise<Record<string, any>>;
@@ -168,6 +168,8 @@ export function GetDashboardStats():Promise<Record<string, any>>;
 export function GetDesktopAppUpdateState():Promise<appupdate.State>;
 
 export function GetDesktopEnvironmentStatus():Promise<release.CheckResult>;
+
+export function GetDesktopServerConnection():Promise<backend.DesktopServerConnection>;
 
 export function GetInterceptor():Promise<logger.MethodInterceptor>;
 
