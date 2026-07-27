@@ -31,6 +31,13 @@ func TestPermanentlyDeleteRemovesUserDataDirAndWritesAudit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(userDataDir, "Default", "Preferences"), []byte("{}"), 0644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
+	fingerprintCheckDir := filepath.Join(appRoot, "data", "fingerprint-check", profile.ProfileId)
+	if err := os.MkdirAll(fingerprintCheckDir, 0755); err != nil {
+		t.Fatalf("MkdirAll fingerprint check dir returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fingerprintCheckDir, "index.html"), []byte("<html></html>"), 0644); err != nil {
+		t.Fatalf("WriteFile fingerprint check page returned error: %v", err)
+	}
 
 	if err := manager.PermanentlyDelete(profile.ProfileId); err != nil {
 		t.Fatalf("PermanentlyDelete returned error: %v", err)
@@ -40,6 +47,9 @@ func TestPermanentlyDeleteRemovesUserDataDirAndWritesAudit(t *testing.T) {
 	}
 	if _, exists := dao.profiles[profile.ProfileId]; exists {
 		t.Fatalf("profile record still exists after permanent delete")
+	}
+	if _, err := os.Stat(fingerprintCheckDir); !os.IsNotExist(err) {
+		t.Fatalf("fingerprint check dir still exists after permanent delete: %v", err)
 	}
 
 	auditPath := filepath.Join(appRoot, "data", "logs", "profile-delete-audit.jsonl")

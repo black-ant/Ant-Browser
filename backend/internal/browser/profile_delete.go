@@ -42,6 +42,9 @@ func (m *Manager) Delete(profileId string) error {
 	delete(m.Profiles, profileId)
 	resolvedDir := m.ResolveUserDataDir(profile)
 	dataDirExists := pathExists(resolvedDir)
+	if err := m.deleteProfileFingerprintCheckDir(profile.ProfileId); err != nil {
+		log.Error("删除实例指纹检测页缓存失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
+	}
 	m.writeProfileDeleteAudit(log, profileDeleteAuditEntry{
 		Action:               "soft_delete",
 		ProfileID:            profile.ProfileId,
@@ -294,7 +297,39 @@ func (m *Manager) deleteProfileRelatedDataLocked(log *logger.Logger, profile *Pr
 			firstErr = err
 		}
 	}
+	if err := m.deleteProfileFingerprintCheckDir(profile.ProfileId); err != nil {
+		log.Error("删除实例指纹检测页缓存失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
 	return firstErr
+}
+
+func (m *Manager) deleteProfileFingerprintCheckDir(profileId string) error {
+	profileId = strings.TrimSpace(profileId)
+	if profileId == "" {
+		return nil
+	}
+	dataRoot, err := filepath.Abs(m.ResolveRelativePath("data"))
+	if err != nil {
+		return fmt.Errorf("解析数据根目录失败: %w", err)
+	}
+	fingerprintRoot := filepath.Join(dataRoot, "fingerprint-check")
+	target, err := filepath.Abs(filepath.Join(fingerprintRoot, safeProfilePathSegment(profileId)))
+	if err != nil {
+		return fmt.Errorf("解析指纹检测页缓存目录失败: %w", err)
+	}
+	dataRoot = filepath.Clean(dataRoot)
+	fingerprintRoot = filepath.Clean(fingerprintRoot)
+	target = filepath.Clean(target)
+	if samePath(target, fingerprintRoot) || samePath(target, dataRoot) || !isPathInside(target, fingerprintRoot) {
+		return nil
+	}
+	if err := os.RemoveAll(target); err != nil {
+		return fmt.Errorf("删除指纹检测页缓存目录失败: %w", err)
+	}
+	return nil
 }
 
 func (m *Manager) deleteProfileSnapshotDir(profileId string) error {
@@ -349,6 +384,25 @@ func (m *Manager) deleteProfileUserDataDir(userDataDir string) error {
 		return fmt.Errorf("删除实例数据目录失败: %w", err)
 	}
 	return nil
+}
+
+func safeProfilePathSegment(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	var builder strings.Builder
+	for _, char := range value {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '-' || char == '_' {
+			builder.WriteRune(char)
+		} else {
+			builder.WriteByte('_')
+		}
+	}
+	if builder.Len() == 0 {
+		return "unknown"
+	}
+	return builder.String()
 }
 
 func samePath(a string, b string) bool {
