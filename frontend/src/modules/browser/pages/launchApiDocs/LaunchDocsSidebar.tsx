@@ -18,9 +18,6 @@ export function LaunchDocsSidebar({
         <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
           文档目录
         </p>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-muted)]">
-          按功能浏览章节。
-        </p>
       </div>
 
       <nav className="space-y-4">
