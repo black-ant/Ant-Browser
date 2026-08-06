@@ -191,6 +191,17 @@ SELECT s.profile_id, s.extension_id, s.enabled, s.created_at, s.updated_at
 FROM src.browser_profile_extensions s
 WHERE NOT EXISTS (
   SELECT 1 FROM browser_profile_extensions t WHERE t.profile_id = s.profile_id AND t.extension_id = s.extension_id
+				)`,
+		},
+		{
+			name: "browser_profile_extension_runtime",
+			insertAll: `INSERT INTO browser_profile_extension_runtime (profile_id, extension_id, runtime_extension_id, install_mode, installed_version, package_hash, status, backup_path, last_verified_at, last_error, created_at, updated_at)
+SELECT profile_id, extension_id, runtime_extension_id, install_mode, installed_version, package_hash, status, backup_path, last_verified_at, last_error, created_at, updated_at FROM src.browser_profile_extension_runtime`,
+			insertSafe: `INSERT INTO browser_profile_extension_runtime (profile_id, extension_id, runtime_extension_id, install_mode, installed_version, package_hash, status, backup_path, last_verified_at, last_error, created_at, updated_at)
+SELECT s.profile_id, s.extension_id, s.runtime_extension_id, s.install_mode, s.installed_version, s.package_hash, s.status, s.backup_path, s.last_verified_at, s.last_error, s.created_at, s.updated_at
+FROM src.browser_profile_extension_runtime s
+WHERE NOT EXISTS (
+  SELECT 1 FROM browser_profile_extension_runtime t WHERE t.profile_id = s.profile_id AND t.extension_id = s.extension_id
 )`,
 		},
 		{
@@ -268,6 +279,55 @@ WHERE NOT EXISTS (
 				}
 			}
 		}
+		if item.name == "browser_extensions" {
+			var hasIconDataURL bool
+			var hasInstallMode bool
+			var hasPackagePath bool
+			var hasPackageHash bool
+			hasIconDataURL, err = backupSrcColumnExists(tx, item.name, "icon_data_url")
+			if err != nil {
+				return err
+			}
+			hasInstallMode, err = backupSrcColumnExists(tx, item.name, "install_mode")
+			if err != nil {
+				return err
+			}
+			hasPackagePath, err = backupSrcColumnExists(tx, item.name, "package_path")
+			if err != nil {
+				return err
+			}
+			hasPackageHash, err = backupSrcColumnExists(tx, item.name, "package_hash")
+			if err != nil {
+				return err
+			}
+			iconExpression := `''`
+			if hasIconDataURL {
+				iconExpression = `COALESCE(icon_data_url,'')`
+			}
+			installModeExpression := `'persistent'`
+			if hasInstallMode {
+				installModeExpression = `COALESCE(install_mode,'persistent')`
+			}
+			packagePathExpression := `''`
+			if hasPackagePath {
+				packagePathExpression = `COALESCE(package_path,'')`
+			}
+			packageHashExpression := `''`
+			if hasPackageHash {
+				packageHashExpression = `COALESCE(package_hash,'')`
+			}
+			if resetFirst {
+				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, installed_at, updated_at)
+SELECT extension_id, name, version, description, %s, manifest_json, source_url, install_dir, %s, %s, %s, enabled, installed_at, updated_at FROM src.browser_extensions`, iconExpression, installModeExpression, packagePathExpression, packageHashExpression)
+			} else {
+				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, installed_at, updated_at)
+SELECT s.extension_id, s.name, s.version, s.description, %s, s.manifest_json, s.source_url, s.install_dir, %s, %s, %s, s.enabled, s.installed_at, s.updated_at
+FROM src.browser_extensions s
+WHERE NOT EXISTS (
+  SELECT 1 FROM browser_extensions t WHERE t.extension_id = s.extension_id
+)`, qualifyBackupExpression(iconExpression, "s"), qualifyBackupExpression(installModeExpression, "s"), qualifyBackupExpression(packagePathExpression, "s"), qualifyBackupExpression(packageHashExpression, "s"))
+			}
+		}
 		res, err := tx.Exec(sqlText)
 		if err != nil {
 			return fmt.Errorf("导入数据表失败(%s): %w", item.name, err)
@@ -284,4 +344,14 @@ WHERE NOT EXISTS (
 	}
 
 	return tx.Commit()
+}
+
+func qualifyBackupExpression(expression string, tableAlias string) string {
+	if strings.TrimSpace(expression) == `''` {
+		return expression
+	}
+	for _, columnName := range []string{"icon_data_url", "install_mode", "package_path", "package_hash"} {
+		expression = strings.ReplaceAll(expression, columnName, tableAlias+"."+columnName)
+	}
+	return expression
 }

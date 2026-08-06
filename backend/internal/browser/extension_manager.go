@@ -153,7 +153,10 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 
 	resolvedID := NormalizeExtensionID(extensionID)
 	if resolvedID == "" {
-		resolvedID = extensionIDFromManifest(manifestData)
+		resolvedID = extensionIDFromCRX(data)
+		if resolvedID == "" {
+			resolvedID = extensionIDFromManifest(manifestData)
+		}
 	}
 	if resolvedID == "" {
 		return Extension{}, fmt.Errorf("无法识别插件 ID")
@@ -162,6 +165,16 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 	installDir := filepath.Join(m.ResolveRelativePath(filepath.Join("data", extensionsRootDir)), resolvedID)
 	if err := replaceExtensionDirFromZip(zipData, installDir); err != nil {
 		return Extension{}, err
+	}
+	installMode := ExtensionInstallModeCommandline
+	packagePath := ""
+	packageHash := ""
+	if isCRXExtensionPackage(data) {
+		packagePath, packageHash, err = m.storeExtensionPackage(resolvedID, data)
+		if err != nil {
+			return Extension{}, err
+		}
+		installMode = ExtensionInstallModePersistent
 	}
 
 	localeMessages := readExtensionLocaleMessagesFromZip(zipData, manifest)
@@ -175,6 +188,9 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 		ManifestJSON: manifestJSON,
 		SourceURL:    strings.TrimSpace(sourceURL),
 		InstallDir:   installDir,
+		InstallMode:  installMode,
+		PackagePath:  packagePath,
+		PackageHash:  packageHash,
 		Enabled:      true,
 	}
 	if m.ExtensionDAO != nil {
@@ -230,6 +246,7 @@ func (m *Manager) InstallExtensionDirectory(sourceDir string) (Extension, error)
 		ManifestJSON: string(manifestData),
 		SourceURL:    normalizedDir,
 		InstallDir:   installDir,
+		InstallMode:  ExtensionInstallModeCommandline,
 		Enabled:      true,
 	}
 	if m.ExtensionDAO != nil {
@@ -253,6 +270,9 @@ func (m *Manager) EnabledExtensionDirs() []string {
 	}
 	dirs := make([]string, 0, len(items))
 	for _, item := range items {
+		if normalizeExtensionInstallMode(item.InstallMode) != ExtensionInstallModeCommandline {
+			continue
+		}
 		dir := strings.TrimSpace(item.InstallDir)
 		if dir == "" {
 			continue
@@ -278,6 +298,9 @@ func (m *Manager) EnabledExtensionDirsForProfile(profileID string) []string {
 	}
 	dirs := make([]string, 0, len(items))
 	for _, item := range items {
+		if normalizeExtensionInstallMode(item.InstallMode) != ExtensionInstallModeCommandline {
+			continue
+		}
 		dir := strings.TrimSpace(item.InstallDir)
 		if dir != "" {
 			if _, err := os.Stat(filepath.Join(dir, "manifest.json")); err == nil {

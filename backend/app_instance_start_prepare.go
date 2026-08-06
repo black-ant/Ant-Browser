@@ -129,6 +129,11 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	if err != nil {
 		return nil, err
 	}
+	extensionDirs, err := a.browserMgr.PrepareProfileExtensions(profile, chromeBinaryPath, userDataDir)
+	if err != nil {
+		profile.LastError = err.Error()
+		return nil, err
+	}
 
 	effectiveProxy, acquiredProxyBridge, releaseProxyBridge, err := a.resolveBrowserStartProxy(input, profile)
 	if err != nil {
@@ -139,7 +144,6 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	maxStartAttempts := browserStartAttemptCount()
 	totalReadyTimeout := time.Duration(maxStartAttempts) * startReadyTimeout
 	restoreLastSession := profileRestoreLastSession(profile, a.config)
-	extensionDirs := a.browserMgr.EnabledExtensionDirsForProfile(input.ProfileID)
 	fingerprintExpectedArgs := combineFingerprintExpectedArgs(fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs)
 	defaultStartURLs := a.resolveFingerprintCheckStartURLsForExpectedArgsAndProfile(profile.ProfileId, fingerprintExpectedArgs, profile, mergeStartURLs(browserDefaultStartURLs(a.config), bookmarkStartURLs(bookmarks)))
 	startURLs := a.resolveFingerprintCheckStartURLsForExpectedArgsAndProfile(profile.ProfileId, fingerprintExpectedArgs, profile, input.StartURLs)
@@ -317,7 +321,6 @@ func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy st
 	}
 
 	if extensionArg := strings.Join(normalizeNonEmptyStrings(extensionDirs), ","); extensionArg != "" {
-		args = append(args, fmt.Sprintf("--disable-extensions-except=%s", extensionArg))
 		args = append(args, fmt.Sprintf("--load-extension=%s", extensionArg))
 	}
 

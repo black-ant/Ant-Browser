@@ -283,6 +283,12 @@ func (m *Manager) deleteProfileRelatedDataLocked(log *logger.Logger, profile *Pr
 				firstErr = err
 			}
 		}
+		if err := m.ExtensionDAO.DeleteProfileExtensionRuntimeForProfile(profile.ProfileId); err != nil {
+			log.Error("删除实例插件运行态失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 	userDataDir := m.ResolveUserDataDir(profile)
 	if err := m.deleteProfileUserDataDir(userDataDir); err != nil {

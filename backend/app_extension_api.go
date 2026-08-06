@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -271,6 +272,9 @@ func (a *App) BrowserExtensionInstallLocalDirectory() (BrowserExtension, error) 
 }
 
 func (a *App) BrowserExtensionSetEnabled(extensionID string, enabled bool) (BrowserExtension, error) {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+
 	if a.browserMgr == nil || a.browserMgr.ExtensionDAO == nil {
 		return BrowserExtension{}, fmt.Errorf("插件管理器未初始化")
 	}
@@ -280,6 +284,12 @@ func (a *App) BrowserExtensionSetEnabled(extensionID string, enabled bool) (Brow
 	}
 	if err := a.browserMgr.ExtensionDAO.SetEnabled(extensionID, enabled); err != nil {
 		return BrowserExtension{}, err
+	}
+	if !enabled {
+		if err := a.browserMgr.RemoveExtensionFromStoppedProfiles(extensionID); err != nil {
+			_ = a.browserMgr.ExtensionDAO.SetEnabled(extensionID, true)
+			return BrowserExtension{}, err
+		}
 	}
 	return a.browserMgr.ExtensionDAO.Get(extensionID)
 }
@@ -302,13 +312,149 @@ func (a *App) BrowserExtensionDelete(extensionID string) error {
 	if _, err := a.resolveBrowserExtensionInstallDir(extension.InstallDir); err != nil {
 		return err
 	}
-	if err := a.browserMgr.ExtensionDAO.Delete(extensionID); err != nil {
+	if err := a.browserMgr.RemoveExtensionFromStoppedProfiles(extensionID); err != nil {
 		return err
 	}
-	if err := a.removeBrowserExtensionInstallDir(extension.InstallDir); err != nil {
+	deletionStage, err := a.stageBrowserExtensionDeletion(extension)
+	if err != nil {
 		return err
+	}
+	if err := a.browserMgr.ExtensionDAO.Delete(extensionID); err != nil {
+		if restoreErr := deletionStage.restore(); restoreErr != nil {
+			return fmt.Errorf("删除插件记录失败：%w；物理文件恢复失败：%v", err, restoreErr)
+		}
+		return err
+	}
+	if err := deletionStage.cleanup(); err != nil {
+		return fmt.Errorf("插件记录已删除，但清理删除暂存失败：%w", err)
 	}
 	return nil
+}
+
+type browserExtensionDeletionEntry struct {
+	originalPath string
+	stagedPath   string
+}
+
+type browserExtensionDeletionStage struct {
+	root    string
+	entries []browserExtensionDeletionEntry
+}
+
+func (a *App) stageBrowserExtensionDeletion(extension BrowserExtension) (*browserExtensionDeletionStage, error) {
+	installDir, err := a.resolveBrowserExtensionInstallDir(extension.InstallDir)
+	if err != nil {
+		return nil, err
+	}
+	packagePaths, err := a.browserMgr.ExtensionPackagePaths(extension)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, 1+len(packagePaths))
+	if installDir != "" {
+		paths = append(paths, installDir)
+	}
+	paths = append(paths, packagePaths...)
+
+	uniquePaths := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "" {
+			continue
+		}
+		duplicate := false
+		for _, existingPath := range uniquePaths {
+			if strings.EqualFold(existingPath, path) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			uniquePaths = append(uniquePaths, path)
+		}
+	}
+
+	stage := &browserExtensionDeletionStage{}
+	for _, path := range uniquePaths {
+		if _, err := os.Lstat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("读取插件删除路径失败：%w", err)
+		}
+	}
+	if len(uniquePaths) == 0 {
+		return stage, nil
+	}
+
+	stage.root = a.resolveAppPath(filepath.ToSlash(filepath.Join("data", "extensions", ".delete-staging", fmt.Sprintf("extension-%d", time.Now().UnixNano()))))
+	if err := os.MkdirAll(stage.root, 0o755); err != nil {
+		return nil, fmt.Errorf("创建插件删除暂存目录失败：%w", err)
+	}
+	for index, path := range uniquePaths {
+		if _, err := os.Lstat(path); os.IsNotExist(err) {
+			continue
+		}
+		stagedPath := filepath.Join(stage.root, fmt.Sprintf("%03d-%s", index, filepath.Base(path)))
+		if err := os.Rename(path, stagedPath); err != nil {
+			restoreErr := stage.restore()
+			if restoreErr != nil {
+				return nil, fmt.Errorf("暂存插件删除文件失败：%w；恢复失败：%v", err, restoreErr)
+			}
+			return nil, fmt.Errorf("暂存插件删除文件失败：%w", err)
+		}
+		stage.entries = append(stage.entries, browserExtensionDeletionEntry{originalPath: path, stagedPath: stagedPath})
+	}
+	return stage, nil
+}
+
+func (s *browserExtensionDeletionStage) restore() error {
+	if s == nil {
+		return nil
+	}
+	var firstErr error
+	for index := len(s.entries) - 1; index >= 0; index-- {
+		entry := s.entries[index]
+		if _, err := os.Lstat(entry.stagedPath); err != nil {
+			if !os.IsNotExist(err) && firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if _, err := os.Lstat(entry.originalPath); err == nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("恢复目标已存在：%s", entry.originalPath)
+			}
+			continue
+		} else if !os.IsNotExist(err) {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(entry.originalPath), 0o755); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if err := os.Rename(entry.stagedPath, entry.originalPath); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr == nil && s.root != "" {
+		if err := os.RemoveAll(s.root); err != nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (s *browserExtensionDeletionStage) cleanup() error {
+	if s == nil || s.root == "" {
+		return nil
+	}
+	return os.RemoveAll(s.root)
 }
 
 func (a *App) resolveBrowserExtensionInstallDir(installDir string) (string, error) {
@@ -331,17 +477,6 @@ func (a *App) resolveBrowserExtensionInstallDir(installDir string) (string, erro
 		return "", fmt.Errorf("拒绝删除插件根目录外的路径: %s", installDir)
 	}
 	return target, nil
-}
-
-func (a *App) removeBrowserExtensionInstallDir(installDir string) error {
-	target, err := a.resolveBrowserExtensionInstallDir(installDir)
-	if err != nil || target == "" {
-		return err
-	}
-	if err := os.RemoveAll(target); err != nil {
-		return fmt.Errorf("删除插件目录失败: %w", err)
-	}
-	return nil
 }
 
 func (a *App) BrowserProfileExtensionGet(profileID string) (BrowserProfileExtensionSettings, error) {

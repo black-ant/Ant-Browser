@@ -218,6 +218,32 @@ var migrations = []migration{
 			`ALTER TABLE browser_profiles ADD COLUMN memory_limit_mb INTEGER NOT NULL DEFAULT 0`,
 		},
 	},
+	{
+		version: 15,
+		desc:    "插件包持久安装与实例运行态",
+		stmts: []string{
+			`ALTER TABLE browser_extensions ADD COLUMN install_mode TEXT NOT NULL DEFAULT 'persistent'`,
+			`ALTER TABLE browser_extensions ADD COLUMN package_path TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_extensions ADD COLUMN package_hash TEXT NOT NULL DEFAULT ''`,
+			`CREATE TABLE IF NOT EXISTS browser_profile_extension_runtime (
+				profile_id           TEXT NOT NULL,
+				extension_id         TEXT NOT NULL,
+				runtime_extension_id TEXT NOT NULL DEFAULT '',
+				install_mode         TEXT NOT NULL DEFAULT 'persistent',
+				installed_version    TEXT NOT NULL DEFAULT '',
+				package_hash         TEXT NOT NULL DEFAULT '',
+				status               TEXT NOT NULL DEFAULT '',
+				backup_path          TEXT NOT NULL DEFAULT '',
+				last_verified_at     TEXT NOT NULL DEFAULT '',
+				last_error           TEXT NOT NULL DEFAULT '',
+				created_at           TEXT NOT NULL DEFAULT '',
+				updated_at           TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (profile_id, extension_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_profile_extension_runtime_profile ON browser_profile_extension_runtime(profile_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_profile_extension_runtime_extension ON browser_profile_extension_runtime(extension_id)`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

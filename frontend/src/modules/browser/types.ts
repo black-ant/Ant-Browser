@@ -347,6 +347,9 @@ export interface BrowserExtension {
   manifestJson: string
   sourceUrl: string
   installDir: string
+  installMode: string
+  packagePath: string
+  packageHash: string
   enabled: boolean
   installedAt: string
   updatedAt: string
