@@ -1253,7 +1253,11 @@ export namespace browser {
 	    manifestJson: string;
 	    sourceUrl: string;
 	    installDir: string;
+	    installMode: string;
+	    packagePath: string;
+	    packageHash: string;
 	    enabled: boolean;
+	    defaultInstall: boolean;
 	    installedAt: string;
 	    updatedAt: string;
 	
@@ -1271,7 +1275,11 @@ export namespace browser {
 	        this.manifestJson = source["manifestJson"];
 	        this.sourceUrl = source["sourceUrl"];
 	        this.installDir = source["installDir"];
+	        this.installMode = source["installMode"];
+	        this.packagePath = source["packagePath"];
+	        this.packageHash = source["packageHash"];
 	        this.enabled = source["enabled"];
+	        this.defaultInstall = source["defaultInstall"];
 	        this.installedAt = source["installedAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }

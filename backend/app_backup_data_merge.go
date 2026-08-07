@@ -162,10 +162,10 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_extensions",
-			insertAll: `INSERT INTO browser_extensions (extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, installed_at, updated_at)
-SELECT extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, installed_at, updated_at FROM src.browser_extensions`,
-			insertSafe: `INSERT INTO browser_extensions (extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, installed_at, updated_at)
-SELECT s.extension_id, s.name, s.version, s.description, s.manifest_json, s.source_url, s.install_dir, s.enabled, s.installed_at, s.updated_at
+			insertAll: `INSERT INTO browser_extensions (extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, default_install, installed_at, updated_at)
+SELECT extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, COALESCE(default_install, 0), installed_at, updated_at FROM src.browser_extensions`,
+			insertSafe: `INSERT INTO browser_extensions (extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, default_install, installed_at, updated_at)
+SELECT s.extension_id, s.name, s.version, s.description, s.manifest_json, s.source_url, s.install_dir, s.enabled, COALESCE(s.default_install, 0), s.installed_at, s.updated_at
 FROM src.browser_extensions s
 WHERE NOT EXISTS (
   SELECT 1 FROM browser_extensions t WHERE t.extension_id = s.extension_id
@@ -284,6 +284,7 @@ WHERE NOT EXISTS (
 			var hasInstallMode bool
 			var hasPackagePath bool
 			var hasPackageHash bool
+			var hasDefaultInstall bool
 			hasIconDataURL, err = backupSrcColumnExists(tx, item.name, "icon_data_url")
 			if err != nil {
 				return err
@@ -297,6 +298,10 @@ WHERE NOT EXISTS (
 				return err
 			}
 			hasPackageHash, err = backupSrcColumnExists(tx, item.name, "package_hash")
+			if err != nil {
+				return err
+			}
+			hasDefaultInstall, err = backupSrcColumnExists(tx, item.name, "default_install")
 			if err != nil {
 				return err
 			}
@@ -316,16 +321,20 @@ WHERE NOT EXISTS (
 			if hasPackageHash {
 				packageHashExpression = `COALESCE(package_hash,'')`
 			}
+			defaultInstallExpression := `0`
+			if hasDefaultInstall {
+				defaultInstallExpression = `COALESCE(default_install, 0)`
+			}
 			if resetFirst {
-				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, installed_at, updated_at)
-SELECT extension_id, name, version, description, %s, manifest_json, source_url, install_dir, %s, %s, %s, enabled, installed_at, updated_at FROM src.browser_extensions`, iconExpression, installModeExpression, packagePathExpression, packageHashExpression)
+				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at)
+SELECT extension_id, name, version, description, %s, manifest_json, source_url, install_dir, %s, %s, %s, enabled, %s, installed_at, updated_at FROM src.browser_extensions`, iconExpression, installModeExpression, packagePathExpression, packageHashExpression, defaultInstallExpression)
 			} else {
-				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, installed_at, updated_at)
-SELECT s.extension_id, s.name, s.version, s.description, %s, s.manifest_json, s.source_url, s.install_dir, %s, %s, %s, s.enabled, s.installed_at, s.updated_at
+				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at)
+SELECT s.extension_id, s.name, s.version, s.description, %s, s.manifest_json, s.source_url, s.install_dir, %s, %s, %s, s.enabled, %s, s.installed_at, s.updated_at
 FROM src.browser_extensions s
 WHERE NOT EXISTS (
   SELECT 1 FROM browser_extensions t WHERE t.extension_id = s.extension_id
-)`, qualifyBackupExpression(iconExpression, "s"), qualifyBackupExpression(installModeExpression, "s"), qualifyBackupExpression(packagePathExpression, "s"), qualifyBackupExpression(packageHashExpression, "s"))
+)`, qualifyBackupExpression(iconExpression, "s"), qualifyBackupExpression(installModeExpression, "s"), qualifyBackupExpression(packagePathExpression, "s"), qualifyBackupExpression(packageHashExpression, "s"), qualifyBackupExpression(defaultInstallExpression, "s"))
 			}
 		}
 		res, err := tx.Exec(sqlText)
@@ -350,7 +359,7 @@ func qualifyBackupExpression(expression string, tableAlias string) string {
 	if strings.TrimSpace(expression) == `''` {
 		return expression
 	}
-	for _, columnName := range []string{"icon_data_url", "install_mode", "package_path", "package_hash"} {
+	for _, columnName := range []string{"icon_data_url", "install_mode", "package_path", "package_hash", "default_install"} {
 		expression = strings.ReplaceAll(expression, columnName, tableAlias+"."+columnName)
 	}
 	return expression

@@ -55,3 +55,11 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 	<-waitResult
 	return "", fmt.Errorf("等待浏览器完成插件安装超时")
 }
+
+func (m *Manager) cleanupManagedExternalExtensionRegistry() error {
+	return nil
+}
+
+func ensurePersistentExternalExtensionRegistry(runtimeID string, packagePath string, version string) error {
+	return nil
+}

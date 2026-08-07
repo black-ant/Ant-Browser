@@ -30,6 +30,7 @@ function normalizeExtension(payload: any): BrowserExtension {
     packagePath: String(payload?.packagePath || ''),
     packageHash: String(payload?.packageHash || ''),
     enabled: payload?.enabled !== false,
+    defaultInstall: payload?.defaultInstall === true,
     installedAt: String(payload?.installedAt || ''),
     updatedAt: String(payload?.updatedAt || ''),
   }
@@ -173,6 +174,14 @@ export async function setBrowserExtensionEnabled(extensionId: string, enabled: b
     return normalizeExtension(await bindings.BrowserExtensionSetEnabled(extensionId, enabled))
   }
   throw new Error('当前环境不支持插件状态切换')
+}
+
+export async function setBrowserExtensionDefaultInstall(extensionId: string, enabled: boolean): Promise<BrowserExtension> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserExtensionSetDefaultInstall) {
+    return normalizeExtension(await bindings.BrowserExtensionSetDefaultInstall(extensionId, enabled))
+  }
+  throw new Error('当前环境不支持插件默认安装设置')
 }
 
 export async function deleteBrowserExtension(extensionId: string): Promise<void> {

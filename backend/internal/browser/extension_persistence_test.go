@@ -3,8 +3,11 @@ package browser
 import (
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/database"
+	"archive/zip"
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,6 +24,201 @@ func TestPersistentExtensionArtifactMatchesVersionedDirectory(t *testing.T) {
 	}
 	if !persistentExtensionArtifactMatches(userDataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.2.3") {
 		t.Fatal("persistentExtensionArtifactMatches = false, want true for Chromium version directory suffix")
+	}
+	if got := persistentExtensionArtifactPath(userDataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.2.3"); got != manifestDir {
+		t.Fatalf("persistentExtensionArtifactPath = %q, want %q", got, manifestDir)
+	}
+}
+
+func TestPersistentExtensionCodePathUsesChromiumVersionDirectory(t *testing.T) {
+	userDataDir := t.TempDir()
+	want := filepath.Join(userDataDir, "Default", "Extensions", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.2.3_0")
+	if got := persistentExtensionCodePath(userDataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.2.3"); got != want {
+		t.Fatalf("persistentExtensionCodePath = %q, want %q", got, want)
+	}
+}
+
+func TestInstallExtensionPackageIntoProfileWritesProfileScopedCode(t *testing.T) {
+	userDataDir := t.TempDir()
+	packagePath := filepath.Join(t.TempDir(), "test.crx")
+	const version = "1.2.3"
+	publicKey := []byte("test-public-key")
+	extensionID := extensionIDFromPublicKey(publicKey)
+
+	var archive bytes.Buffer
+	zipWriter := zip.NewWriter(&archive)
+	manifestWriter, err := zipWriter.Create("manifest.json")
+	if err != nil {
+		t.Fatalf("Create manifest returned error: %v", err)
+	}
+	if _, err := manifestWriter.Write([]byte(`{"name":"Test","version":"1.2.3"}`)); err != nil {
+		t.Fatalf("Write manifest returned error: %v", err)
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("Close archive returned error: %v", err)
+	}
+	signature := []byte("test-signature")
+	packageData := make([]byte, 16+len(publicKey)+len(signature))
+	copy(packageData[:4], []byte("Cr24"))
+	binary.LittleEndian.PutUint32(packageData[4:8], 2)
+	binary.LittleEndian.PutUint32(packageData[8:12], uint32(len(publicKey)))
+	binary.LittleEndian.PutUint32(packageData[12:16], uint32(len(signature)))
+	copy(packageData[16:], publicKey)
+	copy(packageData[16+len(publicKey):], signature)
+	packageData = append(packageData, archive.Bytes()...)
+	if err := os.WriteFile(packagePath, packageData, 0o644); err != nil {
+		t.Fatalf("WriteFile package returned error: %v", err)
+	}
+
+	runtimeID, err := installExtensionPackageIntoProfile(userDataDir, packagePath, Extension{
+		ExtensionID: extensionID,
+		Name:        "Test",
+		Version:     version,
+	})
+	if err != nil {
+		t.Fatalf("installExtensionPackageIntoProfile returned error: %v", err)
+	}
+	if runtimeID != extensionID {
+		t.Fatalf("runtime ID = %q, want %q", runtimeID, extensionID)
+	}
+	targetPath := persistentExtensionCodePath(userDataDir, runtimeID, version)
+	manifestData, err := os.ReadFile(filepath.Join(targetPath, "manifest.json"))
+	if err != nil {
+		t.Fatalf("Read installed manifest returned error: %v", err)
+	}
+	var installedManifest map[string]any
+	if err := json.Unmarshal(manifestData, &installedManifest); err != nil {
+		t.Fatalf("Unmarshal installed manifest returned error: %v", err)
+	}
+	if installedManifest["name"] != "Test" || installedManifest["version"] != version || installedManifest["key"] == nil {
+		t.Fatalf("installed manifest = %s", manifestData)
+	}
+	if !persistentExtensionArtifactMatches(userDataDir, runtimeID, version) {
+		t.Fatal("persistentExtensionArtifactMatches = false after profile-scoped installation")
+	}
+}
+
+func TestProfileExtensionRegistrationUsesChromeRelativePathAndClearsMAC(t *testing.T) {
+	userDataDir := t.TempDir()
+	runtimeID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	version := "1.2.3"
+	codePath := persistentExtensionCodePath(userDataDir, runtimeID, version)
+	if err := os.MkdirAll(codePath, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(codePath, "manifest.json"), []byte(`{"name":"Test","version":"1.2.3"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	root := profileExtensionJSON{
+		"extensions": profileExtensionJSON{
+			"settings": profileExtensionJSON{
+				runtimeID: profileExtensionJSON{
+					"location": 8,
+					"path":     `E:\\shared\\extension`,
+				},
+			},
+		},
+		"protection": profileExtensionJSON{
+			"macs": profileExtensionJSON{
+				"extensions": profileExtensionJSON{
+					"settings":                profileExtensionJSON{runtimeID: "old-mac"},
+					"settings_encrypted_hash": profileExtensionJSON{runtimeID: "old-hash"},
+				},
+			},
+		},
+	}
+	if err := writeProfileJSON(filepath.Join(userDataDir, "Default", "Secure Preferences"), root); err != nil {
+		t.Fatalf("writeProfileJSON returned error: %v", err)
+	}
+
+	if err := ensureProfileScopedExtensionRegistration(userDataDir, codePath, runtimeID, ""); err != nil {
+		t.Fatalf("ensureProfileScopedExtensionRegistration returned error: %v", err)
+	}
+	storedRoot, err := readProfileJSON(filepath.Join(userDataDir, "Default", "Secure Preferences"), false)
+	if err != nil {
+		t.Fatalf("readProfileJSON returned error: %v", err)
+	}
+	storedSetting := storedRoot["extensions"].(map[string]any)["settings"].(map[string]any)[runtimeID].(map[string]any)
+	if storedSetting["location"] != float64(1) {
+		t.Fatalf("location = %#v, want 1", storedSetting["location"])
+	}
+	expectedPath, err := profileExtensionRelativePath(userDataDir, codePath)
+	if err != nil {
+		t.Fatalf("profileExtensionRelativePath returned error: %v", err)
+	}
+	if storedSetting["path"] != expectedPath {
+		t.Fatalf("path = %#v, want %q", storedSetting["path"], expectedPath)
+	}
+	macs := storedRoot["protection"].(map[string]any)["macs"].(map[string]any)["extensions"].(map[string]any)
+	if _, exists := macs["settings"].(map[string]any)[runtimeID]; exists {
+		t.Fatal("old settings MAC was not removed")
+	}
+	if _, exists := macs["settings_encrypted_hash"].(map[string]any)[runtimeID]; exists {
+		t.Fatal("old encrypted settings hash was not removed")
+	}
+	if !profileExtensionSettingMatches(userDataDir, runtimeID, version) {
+		t.Fatal("profileExtensionSettingMatches = false for a valid profile registration")
+	}
+	storedSetting["location"] = float64(3)
+	storedSetting["path"] = expectedPath
+	if err := writeProfileJSON(filepath.Join(userDataDir, "Default", "Secure Preferences"), storedRoot); err != nil {
+		t.Fatalf("writeProfileJSON external registration returned error: %v", err)
+	}
+	if !profileExtensionSettingMatches(userDataDir, runtimeID, version) {
+		t.Fatal("profileExtensionSettingMatches = false for a valid external profile registration")
+	}
+	if err := ensureProfileExtensionRegistration(userDataDir, codePath, runtimeID, ""); err != nil {
+		t.Fatalf("ensureProfileExtensionRegistration returned error: %v", err)
+	}
+	storedRoot, err = readProfileJSON(filepath.Join(userDataDir, "Default", "Secure Preferences"), false)
+	if err != nil {
+		t.Fatalf("readProfileJSON external registration returned error: %v", err)
+	}
+	storedSetting = storedRoot["extensions"].(map[string]any)["settings"].(map[string]any)[runtimeID].(map[string]any)
+	if storedSetting["location"] != float64(3) {
+		t.Fatalf("external registration location = %#v, want 3", storedSetting["location"])
+	}
+
+	storedSetting["path"] = `wrong\\path`
+	if err := writeProfileJSON(filepath.Join(userDataDir, "Default", "Secure Preferences"), storedRoot); err != nil {
+		t.Fatalf("writeProfileJSON wrong path returned error: %v", err)
+	}
+	if profileExtensionSettingMatches(userDataDir, runtimeID, version) {
+		t.Fatal("profileExtensionSettingMatches = true for a wrong profile path")
+	}
+}
+
+func TestCleanupProfileExtensionRuntimeKeepsWorkflowStorageAndRemovesRegistration(t *testing.T) {
+	userDataDir := t.TempDir()
+	runtimeID := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	codePath := persistentExtensionCodePath(userDataDir, runtimeID, "1.0.0")
+	workflowPath := filepath.Join(userDataDir, "Default", "Local Extension Settings", runtimeID, "workflow.json")
+	if err := os.MkdirAll(codePath, 0o755); err != nil {
+		t.Fatalf("MkdirAll code returned error: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(workflowPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll workflow returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(codePath, "manifest.json"), []byte(`{"name":"Test","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile manifest returned error: %v", err)
+	}
+	if err := os.WriteFile(workflowPath, []byte("workflow"), 0o644); err != nil {
+		t.Fatalf("WriteFile workflow returned error: %v", err)
+	}
+	if err := ensureProfileScopedExtensionRegistration(userDataDir, codePath, runtimeID, ""); err != nil {
+		t.Fatalf("ensureProfileScopedExtensionRegistration returned error: %v", err)
+	}
+	if err := cleanupProfileExtensionRuntime(userDataDir, runtimeID); err != nil {
+		t.Fatalf("cleanupProfileExtensionRuntime returned error: %v", err)
+	}
+	if _, err := os.Stat(codePath); !os.IsNotExist(err) {
+		t.Fatalf("code path still exists, stat error = %v", err)
+	}
+	if _, err := os.Stat(workflowPath); err != nil {
+		t.Fatalf("workflow storage was removed: %v", err)
+	}
+	if profileExtensionSettingMatches(userDataDir, runtimeID, "1.0.0") {
+		t.Fatal("profile extension registration still matches after cleanup")
 	}
 }
 
@@ -204,7 +402,7 @@ func appendCRX3Varint(data []byte, value uint64) []byte {
 	return append(data, byte(value))
 }
 
-func TestLegacyDirectorySourceRemainsCommandline(t *testing.T) {
+func TestLegacyDirectorySourceUsesPersistentInstallMode(t *testing.T) {
 	appRoot := t.TempDir()
 	directorySource := filepath.Join(appRoot, "source-extension")
 	if err := os.MkdirAll(directorySource, 0o755); err != nil {
@@ -232,8 +430,8 @@ func TestLegacyDirectorySourceRemainsCommandline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
-	if stored.InstallMode != ExtensionInstallModeCommandline {
-		t.Fatalf("legacy InstallMode = %q, want commandline", stored.InstallMode)
+	if stored.InstallMode != ExtensionInstallModePersistent {
+		t.Fatalf("legacy InstallMode = %q, want persistent", stored.InstallMode)
 	}
 }
 

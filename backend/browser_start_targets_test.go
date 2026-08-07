@@ -22,7 +22,7 @@ func TestBuildBrowserLaunchTargetsRestoresSessionThenDefersStartPages(t *testing
 }
 
 func TestBuildBrowserLaunchArgsAddsRestoreLastSessionWhenEnabled(t *testing.T) {
-	args := buildBrowserLaunchArgs("profile-dir", 9222, "direct://", nil, nil, nil, nil, nil, true)
+	args := buildBrowserLaunchArgs("profile-dir", 9222, "direct://", nil, nil, nil, nil, true)
 	if !slices.Contains(args, "--restore-last-session") {
 		t.Fatalf("args = %#v, want --restore-last-session", args)
 	}
@@ -30,7 +30,7 @@ func TestBuildBrowserLaunchArgsAddsRestoreLastSessionWhenEnabled(t *testing.T) {
 
 func TestBuildBrowserLaunchArgsOmitsRestoreLastSessionWhenDisabled(t *testing.T) {
 	sanitizedProfileArgs, _ := sanitizeManagedLaunchArgs([]string{"--restore-last-session"})
-	args := buildBrowserLaunchArgs("profile-dir", 9222, "direct://", nil, nil, sanitizedProfileArgs, nil, nil, false)
+	args := buildBrowserLaunchArgs("profile-dir", 9222, "direct://", nil, sanitizedProfileArgs, nil, nil, false)
 	if slices.Contains(args, "--restore-last-session") {
 		t.Fatalf("args = %#v, want --restore-last-session omitted when disabled", args)
 	}

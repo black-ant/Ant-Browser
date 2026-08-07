@@ -3,7 +3,6 @@ package browser
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 )
@@ -11,10 +10,12 @@ import (
 type ExtensionDAO interface {
 	List() ([]Extension, error)
 	ListEnabled() ([]Extension, error)
+	ListDefaultInstall() ([]Extension, error)
 	ListByIDs(extensionIDs []string) ([]Extension, error)
 	Get(extensionID string) (Extension, error)
 	Upsert(extension Extension) error
 	SetEnabled(extensionID string, enabled bool) error
+	SetDefaultInstall(extensionID string, enabled bool) error
 	Delete(extensionID string) error
 	GetProfileSettings(profileID string) (ProfileExtensionSettings, error)
 	SetProfileSettings(profileID string, extensionIDs []string, configured bool) (ProfileExtensionSettings, error)
@@ -42,6 +43,10 @@ func (d *SQLiteExtensionDAO) ListEnabled() ([]Extension, error) {
 	return d.listWhere("WHERE enabled = ?", []any{1})
 }
 
+func (d *SQLiteExtensionDAO) ListDefaultInstall() ([]Extension, error) {
+	return d.listWhere("WHERE enabled = 1 AND default_install = 1", nil)
+}
+
 func (d *SQLiteExtensionDAO) ListByIDs(extensionIDs []string) ([]Extension, error) {
 	ids := normalizeExtensionIDs(extensionIDs)
 	if len(ids) == 0 {
@@ -58,7 +63,7 @@ func (d *SQLiteExtensionDAO) ListByIDs(extensionIDs []string) ([]Extension, erro
 
 func (d *SQLiteExtensionDAO) Get(extensionID string) (Extension, error) {
 	row := d.db.QueryRow(`
-		SELECT extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, installed_at, updated_at
+		SELECT extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at
 		FROM browser_extensions WHERE extension_id = ?`, strings.TrimSpace(extensionID))
 	return scanExtension(row)
 }
@@ -70,8 +75,8 @@ func (d *SQLiteExtensionDAO) Upsert(extension Extension) error {
 	}
 	extension.UpdatedAt = now
 	_, err := d.db.Exec(`
-		INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, installed_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(extension_id) DO UPDATE SET
 		  name = excluded.name,
 		  version = excluded.version,
@@ -97,6 +102,7 @@ func (d *SQLiteExtensionDAO) Upsert(extension Extension) error {
 		extension.PackagePath,
 		extension.PackageHash,
 		boolToInt(extension.Enabled),
+		boolToInt(extension.DefaultInstall),
 		extension.InstalledAt,
 		extension.UpdatedAt,
 	)
@@ -113,6 +119,20 @@ func (d *SQLiteExtensionDAO) SetEnabled(extensionID string, enabled bool) error 
 	)
 	if err != nil {
 		return fmt.Errorf("更新插件状态失败: %w", err)
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (d *SQLiteExtensionDAO) SetDefaultInstall(extensionID string, enabled bool) error {
+	result, err := d.db.Exec(
+		`UPDATE browser_extensions SET default_install = ?, updated_at = ? WHERE extension_id = ?`,
+		boolToInt(enabled), time.Now().Format(time.RFC3339), strings.TrimSpace(extensionID),
+	)
+	if err != nil {
+		return fmt.Errorf("更新插件默认安装状态失败: %w", err)
 	}
 	if rows, _ := result.RowsAffected(); rows == 0 {
 		return sql.ErrNoRows
@@ -164,7 +184,10 @@ func (d *SQLiteExtensionDAO) SetProfileSettings(profileID string, extensionIDs [
 	if profileID == "" {
 		return ProfileExtensionSettings{}, fmt.Errorf("实例 ID 不能为空")
 	}
-	ids := normalizeExtensionIDs(extensionIDs)
+	ids := []string{}
+	if configured {
+		ids = normalizeExtensionIDs(extensionIDs)
+	}
 	now := time.Now().Format(time.RFC3339)
 	tx, err := d.db.Begin()
 	if err != nil {
@@ -293,7 +316,7 @@ func (d *SQLiteExtensionDAO) DeleteProfileExtensionRuntimeForProfile(profileID s
 
 func (d *SQLiteExtensionDAO) listWhere(where string, args []any) ([]Extension, error) {
 	query := `
-		SELECT extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, installed_at, updated_at
+		SELECT extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at
 		FROM browser_extensions ` + where + ` ORDER BY installed_at DESC, name ASC`
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
@@ -319,6 +342,7 @@ type extensionScanner interface {
 func scanExtension(scanner extensionScanner) (Extension, error) {
 	var extension Extension
 	var enabled int
+	var defaultInstall int
 	if err := scanner.Scan(
 		&extension.ExtensionID,
 		&extension.Name,
@@ -332,18 +356,15 @@ func scanExtension(scanner extensionScanner) (Extension, error) {
 		&extension.PackagePath,
 		&extension.PackageHash,
 		&enabled,
+		&defaultInstall,
 		&extension.InstalledAt,
 		&extension.UpdatedAt,
 	); err != nil {
 		return Extension{}, err
 	}
 	extension.Enabled = enabled != 0
+	extension.DefaultInstall = defaultInstall != 0
 	extension.InstallMode = normalizeExtensionInstallMode(extension.InstallMode)
-	if extension.InstallMode == ExtensionInstallModePersistent && extension.PackagePath == "" {
-		if sourceInfo, sourceErr := os.Stat(strings.TrimSpace(extension.SourceURL)); sourceErr == nil && sourceInfo.IsDir() {
-			extension.InstallMode = ExtensionInstallModeCommandline
-		}
-	}
 	return extension, nil
 }
 
@@ -370,9 +391,7 @@ func scanProfileExtensionRuntime(scanner extensionScanner) (ProfileExtensionRunt
 }
 
 func normalizeExtensionInstallMode(value string) string {
-	if strings.EqualFold(strings.TrimSpace(value), ExtensionInstallModeCommandline) {
-		return ExtensionInstallModeCommandline
-	}
+	_ = value
 	return ExtensionInstallModePersistent
 }
 

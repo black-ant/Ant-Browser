@@ -244,6 +244,21 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_browser_profile_extension_runtime_extension ON browser_profile_extension_runtime(extension_id)`,
 		},
 	},
+	{
+		version: 16,
+		desc:    "插件默认安装策略",
+		stmts: []string{
+			`ALTER TABLE browser_extensions ADD COLUMN default_install INTEGER NOT NULL DEFAULT 0`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_extensions_default_install ON browser_extensions(default_install)`,
+		},
+	},
+	{
+		version: 17,
+		desc:    "清理历史插件默认安装误标",
+		stmts: []string{
+			`UPDATE browser_extensions SET default_install = 0`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

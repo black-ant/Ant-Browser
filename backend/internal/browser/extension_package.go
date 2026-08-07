@@ -163,7 +163,40 @@ func crxPublicKey(data []byte) []byte {
 	}
 }
 
+func crxPublicKeys(data []byte) [][]byte {
+	if len(data) < 8 || !isCRXExtensionPackage(data) {
+		return nil
+	}
+	version := binary.LittleEndian.Uint32(data[4:8])
+	if version == 2 {
+		publicKey := crxPublicKey(data)
+		if len(publicKey) == 0 {
+			return nil
+		}
+		return [][]byte{publicKey}
+	}
+	if version != 3 || len(data) < 12 {
+		return nil
+	}
+	headerLength := binary.LittleEndian.Uint32(data[8:12])
+	headerStart := uint64(12)
+	headerEnd := headerStart + uint64(headerLength)
+	if headerEnd > uint64(len(data)) {
+		return nil
+	}
+	return crx3PublicKeysFromHeader(data[headerStart:headerEnd])
+}
+
 func crx3PublicKeyFromHeader(header []byte) []byte {
+	keys := crx3PublicKeysFromHeader(header)
+	if len(keys) == 0 {
+		return nil
+	}
+	return keys[0]
+}
+
+func crx3PublicKeysFromHeader(header []byte) [][]byte {
+	keys := make([][]byte, 0)
 	for offset := 0; offset < len(header); {
 		fieldNumber, wireType, nextOffset, ok := readCRX3FieldTag(header, offset)
 		if !ok {
@@ -185,7 +218,7 @@ func crx3PublicKeyFromHeader(header []byte) []byte {
 			value := header[valueOffset : valueOffset+int(valueLength)]
 			if fieldNumber == 2 || fieldNumber == 3 {
 				if publicKey := crx3ProofPublicKey(value); len(publicKey) > 0 {
-					return publicKey
+					keys = append(keys, publicKey)
 				}
 			}
 			offset = valueOffset + int(valueLength)
@@ -195,10 +228,10 @@ func crx3PublicKeyFromHeader(header []byte) []byte {
 			return nil
 		}
 		if offset > len(header) {
-			return nil
+			return keys
 		}
 	}
-	return nil
+	return keys
 }
 
 func crx3ProofPublicKey(proof []byte) []byte {

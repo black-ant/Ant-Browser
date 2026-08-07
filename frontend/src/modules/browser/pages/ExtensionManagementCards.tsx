@@ -225,15 +225,16 @@ export function ExtensionInstallCard({
 export interface InstalledExtensionsListProps {
   items: BrowserExtension[]
   busyId: string
-  busyAction: 'toggle' | 'delete' | ''
+  busyAction: 'toggle' | 'delete' | 'default' | ''
   updatingId: string
   onRestrictProfiles: (item: BrowserExtension) => void
+  onDefaultInstallToggle: (item: BrowserExtension) => void
   onUpdate: (item: BrowserExtension) => void
   onToggle: (item: BrowserExtension) => void
   onDelete: (item: BrowserExtension) => void
 }
 
-export function InstalledExtensionsList({ items, busyId, busyAction, updatingId, onRestrictProfiles, onUpdate, onToggle, onDelete }: InstalledExtensionsListProps) {
+export function InstalledExtensionsList({ items, busyId, busyAction, updatingId, onRestrictProfiles, onDefaultInstallToggle, onUpdate, onToggle, onDelete }: InstalledExtensionsListProps) {
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
@@ -248,6 +249,7 @@ export function InstalledExtensionsList({ items, busyId, busyAction, updatingId,
             busyAction={busyId === item.extensionId ? busyAction : ''}
             updating={updatingId === item.extensionId}
             onRestrictProfiles={onRestrictProfiles}
+            onDefaultInstallToggle={onDefaultInstallToggle}
             onUpdate={onUpdate}
             onToggle={onToggle}
             onDelete={onDelete}
@@ -267,15 +269,16 @@ export function InstalledExtensionsList({ items, busyId, busyAction, updatingId,
 export interface InstalledExtensionCardProps {
   item: BrowserExtension
   busy: boolean
-  busyAction: 'toggle' | 'delete' | ''
+  busyAction: 'toggle' | 'delete' | 'default' | ''
   updating: boolean
   onRestrictProfiles: (item: BrowserExtension) => void
+  onDefaultInstallToggle: (item: BrowserExtension) => void
   onUpdate: (item: BrowserExtension) => void
   onToggle: (item: BrowserExtension) => void
   onDelete: (item: BrowserExtension) => void
 }
 
-export function InstalledExtensionCard({ item, busy, busyAction, updating, onRestrictProfiles, onUpdate, onToggle, onDelete }: InstalledExtensionCardProps) {
+export function InstalledExtensionCard({ item, busy, busyAction, updating, onRestrictProfiles, onDefaultInstallToggle, onUpdate, onToggle, onDelete }: InstalledExtensionCardProps) {
   const meta = getExtensionManifestMeta(item)
   const storeUrl = extensionStoreURL(item)
   const actionButtonClass = 'min-w-[72px] will-change-transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]'
@@ -296,11 +299,18 @@ export function InstalledExtensionCard({ item, busy, busyAction, updating, onRes
               <Badge variant={item.enabled ? 'success' : 'error'} size="sm" dot>
                 {item.enabled ? '已启用' : '已停用'}
               </Badge>
-              <Badge variant={item.installMode === 'commandline' ? 'warning' : 'info'} size="sm">
-                {item.installMode === 'commandline' ? '开发目录' : '生产持久'}
-              </Badge>
               {item.version ? <span className="text-xs text-[var(--color-text-muted)]">v{item.version}</span> : null}
               {meta.manifestVersion ? <span className="text-xs text-[var(--color-text-muted)]">MV{meta.manifestVersion}</span> : null}
+              <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={item.defaultInstall}
+                  disabled={busy}
+                  onChange={() => onDefaultInstallToggle(item)}
+                  className="h-3.5 w-3.5 rounded accent-[var(--color-accent)]"
+                />
+                默认安装
+              </label>
             </div>
             {item.description ? <div className="mt-1 line-clamp-2 text-sm text-[var(--color-text-secondary)]">{item.description}</div> : null}
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--color-text-muted)]">
@@ -328,7 +338,7 @@ export function InstalledExtensionCard({ item, busy, busyAction, updating, onRes
           ) : null}
           <Button type="button" size="sm" variant="secondary" onClick={() => onRestrictProfiles(item)} className="min-w-[96px] will-change-transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]">
             <Users className="h-4 w-4" />
-            限制实例
+            设置实例
           </Button>
           <Button type="button" size="sm" variant="secondary" onClick={() => onUpdate(item)} disabled={updating} className={actionButtonClass}>
             <RotateCw className={`h-4 w-4 ${updating ? 'animate-spin' : ''}`} />

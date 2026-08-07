@@ -242,6 +242,10 @@ export function BrowserExtensionOpenManualDownloadDir() {
   return window['go']['main']['App']['BrowserExtensionOpenManualDownloadDir']();
 }
 
+export function BrowserExtensionSetDefaultInstall(arg1, arg2) {
+  return window['go']['main']['App']['BrowserExtensionSetDefaultInstall'](arg1, arg2);
+}
+
 export function BrowserExtensionSetEnabled(arg1, arg2) {
   return window['go']['main']['App']['BrowserExtensionSetEnabled'](arg1, arg2);
 }

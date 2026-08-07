@@ -43,7 +43,12 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = restoreRegistry() }()
+	keepRegistry := false
+	defer func() {
+		if !keepRegistry {
+			_ = restoreRegistry()
+		}
+	}()
 
 	command := exec.Command(
 		chromeBinaryPath,
@@ -67,6 +72,7 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 		if installedRuntimeID, findErr := findInstalledRuntimeExtensionID(userDataDir, extension); findErr == nil && installedRuntimeID != "" {
 			terminateExtensionInstallerProcess(command)
 			<-waitResult
+			keepRegistry = true
 			return installedRuntimeID, nil
 		}
 		select {
@@ -75,6 +81,7 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 				return "", fmt.Errorf("浏览器安装插件进程失败: %w", processErr)
 			}
 			if installedRuntimeID, findErr := findInstalledRuntimeExtensionID(userDataDir, extension); findErr == nil && installedRuntimeID != "" {
+				keepRegistry = true
 				return installedRuntimeID, nil
 			}
 			return "", fmt.Errorf("浏览器安装进程结束，但未发现持久插件目录")
@@ -86,6 +93,55 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 	terminateExtensionInstallerProcess(command)
 	<-waitResult
 	return "", fmt.Errorf("等待浏览器完成插件安装超时")
+}
+
+func ensurePersistentExternalExtensionRegistry(runtimeID string, packagePath string, version string) error {
+	externalExtensionInstallMutex.Lock()
+	defer externalExtensionInstallMutex.Unlock()
+	return ensureExternalExtensionRegistry(runtimeID, packagePath, version)
+}
+
+func ensureExternalExtensionRegistry(runtimeID string, packagePath string, version string) error {
+	runtimeID = NormalizeExtensionID(runtimeID)
+	packagePath = strings.TrimSpace(packagePath)
+	version = strings.TrimSpace(version)
+	if runtimeID == "" || packagePath == "" || version == "" {
+		return fmt.Errorf("external extension registration arguments are incomplete")
+	}
+
+	keyPath := filepath.Join(externalExtensionRegistryRoot, runtimeID)
+	key, err := registry.OpenKey(registry.CURRENT_USER, keyPath, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err == registry.ErrNotExist {
+		key, _, err = registry.CreateKey(registry.CURRENT_USER, keyPath, registry.QUERY_VALUE|registry.SET_VALUE)
+	}
+	if err != nil {
+		return fmt.Errorf("open persistent external extension registration: %w", err)
+	}
+	defer key.Close()
+
+	existingPath, pathExists, err := readExternalExtensionValue(key, "path")
+	if err != nil {
+		return fmt.Errorf("read persistent external extension registration: %w", err)
+	}
+	if pathExists && !sameExternalExtensionPath(existingPath, packagePath) {
+		return fmt.Errorf("external extension id is already registered to another path: %s", runtimeID)
+	}
+	if err := key.SetStringValue("path", packagePath); err != nil {
+		return fmt.Errorf("write external extension path: %w", err)
+	}
+	if err := key.SetStringValue("version", version); err != nil {
+		return fmt.Errorf("write external extension version: %w", err)
+	}
+	return nil
+}
+
+func sameExternalExtensionPath(left string, right string) bool {
+	left = filepath.Clean(strings.TrimSpace(left))
+	right = filepath.Clean(strings.TrimSpace(right))
+	if left == "" || right == "" {
+		return false
+	}
+	return strings.EqualFold(left, right)
 }
 
 func registerExternalExtension(runtimeID string, packagePath string, version string) (func() error, error) {
@@ -105,6 +161,10 @@ func registerExternalExtension(runtimeID string, packagePath string, version str
 		return nil, fmt.Errorf("读取外部插件注册表项失败: %w", err)
 	}
 
+	if state.pathExists && !sameExternalExtensionPath(state.previousPath, packagePath) {
+		_ = restoreExternalExtensionRegistry(state)
+		return nil, fmt.Errorf("external extension id is already registered to another path: %s", runtimeID)
+	}
 	key, _, err = registry.CreateKey(registry.CURRENT_USER, keyPath, registry.SET_VALUE)
 	if err != nil {
 		_ = restoreExternalExtensionRegistry(state)
@@ -162,4 +222,69 @@ func restoreExternalExtensionRegistry(state externalExtensionRegistryState) erro
 		firstErr = err
 	}
 	return firstErr
+}
+
+func (m *Manager) cleanupManagedExternalExtensionRegistry() error {
+	if m == nil {
+		return nil
+	}
+	managedRoot, err := filepath.Abs(m.ResolveRelativePath(filepath.Join("data", extensionsRootDir)))
+	if err != nil {
+		return fmt.Errorf("解析插件管理目录失败: %w", err)
+	}
+	managedRoot = filepath.Clean(managedRoot)
+	rootKey, err := registry.OpenKey(registry.CURRENT_USER, externalExtensionRegistryRoot, registry.READ)
+	if err == registry.ErrNotExist {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("读取旧插件注册表失败: %w", err)
+	}
+	defer rootKey.Close()
+	keyNames, err := rootKey.ReadSubKeyNames(-1)
+	if err != nil {
+		return fmt.Errorf("枚举旧插件注册表失败: %w", err)
+	}
+	for _, keyName := range keyNames {
+		key, openErr := registry.OpenKey(rootKey, keyName, registry.QUERY_VALUE)
+		if openErr != nil {
+			if openErr == registry.ErrNotExist {
+				continue
+			}
+			return fmt.Errorf("读取旧插件注册表项失败（%s）: %w", keyName, openErr)
+		}
+		pathValue, _, valueErr := key.GetStringValue("path")
+		_ = key.Close()
+		if valueErr == registry.ErrNotExist {
+			continue
+		}
+		if valueErr != nil {
+			return fmt.Errorf("读取旧插件路径失败（%s）: %w", keyName, valueErr)
+		}
+		if !isPathWithinRoot(managedRoot, pathValue) {
+			continue
+		}
+		keyPath := externalExtensionRegistryRoot + `\` + keyName
+		if deleteErr := registry.DeleteKey(registry.CURRENT_USER, keyPath); deleteErr != nil && deleteErr != registry.ErrNotExist {
+			return fmt.Errorf("清理旧插件注册表项失败（%s）: %w", keyName, deleteErr)
+		}
+	}
+	return nil
+}
+
+func isPathWithinRoot(rootPath string, targetPath string) bool {
+	rootPath = filepath.Clean(strings.TrimSpace(rootPath))
+	targetPath = strings.TrimSpace(targetPath)
+	if rootPath == "" || targetPath == "" {
+		return false
+	}
+	absoluteTarget, err := filepath.Abs(targetPath)
+	if err != nil {
+		return false
+	}
+	relativePath, err := filepath.Rel(rootPath, filepath.Clean(absoluteTarget))
+	if err != nil || relativePath == "." || relativePath == ".." {
+		return false
+	}
+	return !strings.HasPrefix(relativePath, ".."+string(filepath.Separator))
 }

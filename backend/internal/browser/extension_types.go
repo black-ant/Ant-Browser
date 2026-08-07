@@ -10,20 +10,21 @@ const (
 )
 
 type Extension struct {
-	ExtensionID  string `json:"extensionId"`
-	Name         string `json:"name"`
-	Version      string `json:"version"`
-	Description  string `json:"description"`
-	IconDataURL  string `json:"iconDataUrl"`
-	ManifestJSON string `json:"manifestJson"`
-	SourceURL    string `json:"sourceUrl"`
-	InstallDir   string `json:"installDir"`
-	InstallMode  string `json:"installMode"`
-	PackagePath  string `json:"packagePath"`
-	PackageHash  string `json:"packageHash"`
-	Enabled      bool   `json:"enabled"`
-	InstalledAt  string `json:"installedAt"`
-	UpdatedAt    string `json:"updatedAt"`
+	ExtensionID    string `json:"extensionId"`
+	Name           string `json:"name"`
+	Version        string `json:"version"`
+	Description    string `json:"description"`
+	IconDataURL    string `json:"iconDataUrl"`
+	ManifestJSON   string `json:"manifestJson"`
+	SourceURL      string `json:"sourceUrl"`
+	InstallDir     string `json:"installDir"`
+	InstallMode    string `json:"installMode"`
+	PackagePath    string `json:"packagePath"`
+	PackageHash    string `json:"packageHash"`
+	Enabled        bool   `json:"enabled"`
+	DefaultInstall bool   `json:"defaultInstall"`
+	InstalledAt    string `json:"installedAt"`
+	UpdatedAt      string `json:"updatedAt"`
 }
 
 type ExtensionLookupResult struct {

@@ -166,7 +166,7 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 	if err := replaceExtensionDirFromZip(zipData, installDir); err != nil {
 		return Extension{}, err
 	}
-	installMode := ExtensionInstallModeCommandline
+	installMode := ExtensionInstallModePersistent
 	packagePath := ""
 	packageHash := ""
 	if isCRXExtensionPackage(data) {
@@ -246,7 +246,7 @@ func (m *Manager) InstallExtensionDirectory(sourceDir string) (Extension, error)
 		ManifestJSON: string(manifestData),
 		SourceURL:    normalizedDir,
 		InstallDir:   installDir,
-		InstallMode:  ExtensionInstallModeCommandline,
+		InstallMode:  ExtensionInstallModePersistent,
 		Enabled:      true,
 	}
 	if m.ExtensionDAO != nil {
@@ -261,52 +261,9 @@ func (m *Manager) InstallExtensionDirectory(sourceDir string) (Extension, error)
 }
 
 func (m *Manager) EnabledExtensionDirs() []string {
-	if m == nil || m.ExtensionDAO == nil {
-		return nil
-	}
-	items, err := m.ExtensionDAO.ListEnabled()
-	if err != nil {
-		return nil
-	}
-	dirs := make([]string, 0, len(items))
-	for _, item := range items {
-		if normalizeExtensionInstallMode(item.InstallMode) != ExtensionInstallModeCommandline {
-			continue
-		}
-		dir := strings.TrimSpace(item.InstallDir)
-		if dir == "" {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(dir, "manifest.json")); err == nil {
-			dirs = append(dirs, dir)
-		}
-	}
-	return dirs
+	return nil
 }
 
 func (m *Manager) EnabledExtensionDirsForProfile(profileID string) []string {
-	if m == nil || m.ExtensionDAO == nil {
-		return nil
-	}
-	settings, err := m.ExtensionDAO.GetProfileSettings(profileID)
-	if err != nil || !settings.Configured {
-		return m.EnabledExtensionDirs()
-	}
-	items, err := m.ExtensionDAO.ListByIDs(settings.ExtensionIDs)
-	if err != nil {
-		return nil
-	}
-	dirs := make([]string, 0, len(items))
-	for _, item := range items {
-		if normalizeExtensionInstallMode(item.InstallMode) != ExtensionInstallModeCommandline {
-			continue
-		}
-		dir := strings.TrimSpace(item.InstallDir)
-		if dir != "" {
-			if _, err := os.Stat(filepath.Join(dir, "manifest.json")); err == nil {
-				dirs = append(dirs, dir)
-			}
-		}
-	}
-	return dirs
+	return nil
 }

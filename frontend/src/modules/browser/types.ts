@@ -351,6 +351,7 @@ export interface BrowserExtension {
   packagePath: string
   packageHash: string
   enabled: boolean
+  defaultInstall: boolean
   installedAt: string
   updatedAt: string
 }

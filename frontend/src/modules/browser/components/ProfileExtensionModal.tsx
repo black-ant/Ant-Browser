@@ -49,7 +49,7 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
     setSaving(true)
     try {
       await saveBrowserProfileExtensionSettings(profile.profileId, selectedIds, configured)
-      toast.success('实例插件配置已保存')
+      toast.success('实例插件配置已保存，下次启动时写入')
       onClose()
     } catch (error: any) {
       toast.error(error?.message || '保存实例插件配置失败')
@@ -73,7 +73,7 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
     >
       <div className="space-y-3">
         <label className="flex items-center justify-between rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-3 py-2">
-          <span className="text-sm text-[var(--color-text-primary)]">单独配置此实例</span>
+          <span className="text-sm text-[var(--color-text-primary)]">手动设置本实例</span>
           <input
             type="checkbox"
             checked={configured}
@@ -84,7 +84,7 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
 
         {!configured ? (
           <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
-            当前实例继承全局已启用插件。打开单独配置后，只加载下方勾选的插件。
+            当前实例继承“默认安装”插件。打开手动设置后，只写入下方勾选的插件。
           </div>
         ) : null}
 

@@ -13,6 +13,7 @@ import {
   lookupBrowserExtension,
   openBrowserExtensionManualDownloadDir,
   setBrowserExtensionEnabled,
+  setBrowserExtensionDefaultInstall,
   type BrowserExtensionManualDownloadFile,
   type BrowserExtensionManualInstallGuide,
 } from '../api/extensions'
@@ -32,7 +33,7 @@ export function ExtensionManagementPage() {
   const [importing, setImporting] = useState<'none' | 'file' | 'directory'>('none')
   const [updatingId, setUpdatingId] = useState('')
   const [busyId, setBusyId] = useState('')
-  const [busyAction, setBusyAction] = useState<'toggle' | 'delete' | ''>('')
+  const [busyAction, setBusyAction] = useState<'toggle' | 'delete' | 'default' | ''>('')
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
   const [useProxy, setUseProxy] = useState(false)
   const [selectedProxyId, setSelectedProxyId] = useState('')
@@ -391,6 +392,21 @@ export function ExtensionManagementPage() {
     }
   }
 
+  const handleDefaultInstallToggle = async (item: BrowserExtension) => {
+    setBusyId(item.extensionId)
+    setBusyAction('default')
+    try {
+      const updated = await setBrowserExtensionDefaultInstall(item.extensionId, !item.defaultInstall)
+      setItems((current) => current.map((entry) => entry.extensionId === updated.extensionId ? updated : entry))
+      toast.success(updated.defaultInstall ? '已开启默认安装，未单独配置的实例下次启动会安装' : '已关闭默认安装，未单独配置的实例下次启动会移除')
+    } catch (error: any) {
+      toast.error(error?.message || '更新默认安装状态失败')
+    } finally {
+      setBusyId('')
+      setBusyAction('')
+    }
+  }
+
   const handlePickHistory = (record: ExtensionHistoryRecord) => {
     setQuery(record.extensionId || record.query)
     setLookup(null)
@@ -526,6 +542,7 @@ export function ExtensionManagementPage() {
         busyAction={busyAction}
         updatingId={updatingId}
         onRestrictProfiles={setLimitExtension}
+        onDefaultInstallToggle={(target) => void handleDefaultInstallToggle(target)}
         onUpdate={(target) => void handleUpdateExtension(target)}
         onToggle={(target) => void handleToggle(target)}
         onDelete={(target) => void handleDelete(target)}

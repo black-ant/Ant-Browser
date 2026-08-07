@@ -25,8 +25,8 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
   const [saving, setSaving] = useState(false)
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
-  const enabledExtensionIds = useMemo(
-    () => allExtensions.filter((item) => item.enabled).map((item) => item.extensionId),
+  const defaultExtensionIds = useMemo(
+    () => allExtensions.filter((item) => item.enabled && item.defaultInstall).map((item) => item.extensionId),
     [allExtensions],
   )
   const groupNameMap = useMemo(() => {
@@ -92,7 +92,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
       setSelectedIds(profileItems
         .filter((profile) => {
           const settings = settingsMap[profile.profileId]
-          return settings?.configured ? settings.extensionIds.includes(extension.extensionId) : extension.enabled
+          return settings?.configured ? settings.extensionIds.includes(extension.extensionId) : extension.defaultInstall
         })
         .map((profile) => profile.profileId))
     }).catch((error: any) => {
@@ -125,7 +125,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
       const selected = new Set(selectedIds)
       const saveTasks = profiles.map((profile) => {
         const current = settingsByProfile[profile.profileId]
-        const baseIds = current?.configured ? current.extensionIds : enabledExtensionIds
+        const baseIds = current?.configured ? current.extensionIds : defaultExtensionIds
         const nextIds = selected.has(profile.profileId)
           ? Array.from(new Set([...baseIds, extension.extensionId]))
           : baseIds.filter((extensionId) => extensionId !== extension.extensionId)
@@ -136,7 +136,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
       }).filter((task): task is Promise<BrowserProfileExtensionSettings> => task !== null)
 
       if (saveTasks.length > 0) await Promise.all(saveTasks)
-      toast.success('实例限制已保存')
+      toast.success('实例插件设置已保存，下次启动时写入')
       onClose()
     } catch (error: any) {
       toast.error(error?.message || '保存实例限制失败')
@@ -149,7 +149,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
     <Modal
       open={open}
       onClose={onClose}
-      title={extension ? `限制实例：${extension.name || extension.extensionId}` : '限制实例'}
+      title={extension ? `设置实例：${extension.name || extension.extensionId}` : '设置实例'}
       width="680px"
       footer={(
         <>
@@ -163,7 +163,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
       ) : (
         <div className="space-y-3">
           <div className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-            勾选的实例会加载此插件；未勾选的实例会排除此插件。
+            勾选的实例会写入此插件；未勾选的实例会按默认安装状态或本实例的其他设置处理。
           </div>
           <div className="max-h-[420px] space-y-3 overflow-auto pr-1">
             {profileGroups.map((group) => {
@@ -195,7 +195,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
                           <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
                             <span>{profile.profileName || profile.profileId}</span>
                             {profile.running ? <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs text-green-700">运行中</span> : null}
-                            {settingsByProfile[profile.profileId]?.configured ? <span className="rounded bg-[var(--color-bg-muted)] px-1.5 py-0.5 text-xs font-normal text-[var(--color-text-muted)]">已单独配置</span> : null}
+                            {settingsByProfile[profile.profileId]?.configured ? <span className="rounded bg-[var(--color-bg-muted)] px-1.5 py-0.5 text-xs font-normal text-[var(--color-text-muted)]">手动设置</span> : null}
                           </div>
                           <div className="mt-1 break-all font-mono text-xs text-[var(--color-text-muted)]">{profile.profileId}</div>
                         </div>

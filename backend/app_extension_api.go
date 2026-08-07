@@ -294,6 +294,22 @@ func (a *App) BrowserExtensionSetEnabled(extensionID string, enabled bool) (Brow
 	return a.browserMgr.ExtensionDAO.Get(extensionID)
 }
 
+func (a *App) BrowserExtensionSetDefaultInstall(extensionID string, enabled bool) (BrowserExtension, error) {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+
+	if a.browserMgr == nil || a.browserMgr.ExtensionDAO == nil {
+		return BrowserExtension{}, fmt.Errorf("插件管理器未初始化")
+	}
+	extensionID = strings.TrimSpace(extensionID)
+	if extensionID == "" {
+		return BrowserExtension{}, fmt.Errorf("插件 ID 不能为空")
+	}
+	if err := a.browserMgr.ExtensionDAO.SetDefaultInstall(extensionID, enabled); err != nil {
+		return BrowserExtension{}, err
+	}
+	return a.browserMgr.ExtensionDAO.Get(extensionID)
+}
 func (a *App) BrowserExtensionDelete(extensionID string) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
