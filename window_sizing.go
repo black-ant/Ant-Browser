@@ -1,10 +1,8 @@
 package main
 
 const (
-	startupWindowScaleNumerator   = 3
-	startupWindowScaleDenominator = 4
-	startupMinScaleNumerator      = 3
-	startupMinScaleDenominator    = 4
+	startupMinScaleNumerator   = 3
+	startupMinScaleDenominator = 4
 )
 
 type desktopWorkArea struct {
@@ -27,8 +25,8 @@ func resolveStartupWindowBounds(configBounds startupWindowBounds) startupWindowB
 func fitStartupWindowBounds(configBounds startupWindowBounds, screenArea desktopWorkArea, hasScreenArea bool) startupWindowBounds {
 	resolvedBounds := sanitizeStartupWindowBounds(configBounds)
 	if hasScreenArea && screenArea.Width > 0 && screenArea.Height > 0 {
-		resolvedBounds.Width = scaleDesktopDimension(screenArea.Width)
-		resolvedBounds.Height = scaleDesktopDimension(screenArea.Height)
+		resolvedBounds.Width = clampStartupDimension(resolvedBounds.Width, screenArea.Width)
+		resolvedBounds.Height = clampStartupDimension(resolvedBounds.Height, screenArea.Height)
 	}
 
 	resolvedBounds.MinWidth = fitStartupMinimumDimension(resolvedBounds.MinWidth, resolvedBounds.Width)
@@ -53,15 +51,11 @@ func sanitizeStartupWindowBounds(bounds startupWindowBounds) startupWindowBounds
 	return bounds
 }
 
-func scaleDesktopDimension(value int) int {
-	if value <= 0 {
-		return 1
+func clampStartupDimension(value int, maximum int) int {
+	if maximum > 0 && value > maximum {
+		return maximum
 	}
-	result := value * startupWindowScaleNumerator / startupWindowScaleDenominator
-	if result <= 0 {
-		return 1
-	}
-	return result
+	return value
 }
 
 func fitStartupMinimumDimension(configMinimum int, resolvedDimension int) int {

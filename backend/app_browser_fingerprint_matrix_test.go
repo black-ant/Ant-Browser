@@ -30,6 +30,85 @@ func TestBuildBrowserFingerprintLaunchPlanMergesMultipleDisableSpoofingArgs(t *t
 	assertArgsContain(t, plan.launchArgs, "--disable-spoofing=canvas,audio,font,clientrects")
 }
 
+func TestBuildBrowserFingerprintLaunchPlanDisablesCrossPlatformFontSpoofing(t *testing.T) {
+	plan := buildBrowserFingerprintLaunchPlanForHost("profile-a", []string{
+		"--fingerprint=123",
+		"--fingerprint-platform=macos",
+	}, "148.0.7778.215", "windows")
+
+	assertArgsContain(t, plan.launchArgs, "--disable-spoofing=font")
+	assertRowsContainStatus(t, plan.rows, "跨平台字体渲染", "injected")
+}
+
+func TestBuildBrowserFingerprintLaunchPlanMergesCrossPlatformFontSpoofing(t *testing.T) {
+	plan := buildBrowserFingerprintLaunchPlanForHost("profile-a", []string{
+		"--fingerprint=123",
+		"--fingerprint-platform=macos",
+		"--disable-spoofing=canvas",
+	}, "148.0.7778.215", "windows")
+
+	assertArgsContain(t, plan.launchArgs, "--disable-spoofing=canvas,font")
+}
+
+func TestBuildBrowserFingerprintLaunchPlanKeepsFontSpoofingOnNativePlatform(t *testing.T) {
+	plan := buildBrowserFingerprintLaunchPlanForHost("profile-a", []string{
+		"--fingerprint=123",
+		"--fingerprint-platform=windows",
+	}, "148.0.7778.215", "windows")
+
+	assertArgsDoNotContainKey(t, plan.launchArgs, "--disable-spoofing")
+	assertRowsDoNotContainCapability(t, plan.rows, "跨平台字体渲染")
+}
+
+func TestBuildBrowserFingerprintLaunchPlanCoversAllHostAndTargetPlatforms(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		target   string
+		wantFont bool
+	}{
+		{name: "windows native", host: "windows", target: "windows", wantFont: false},
+		{name: "windows to macos", host: "windows", target: "macos", wantFont: true},
+		{name: "windows to linux", host: "windows", target: "linux", wantFont: true},
+		{name: "macos native", host: "darwin", target: "mac", wantFont: false},
+		{name: "macos to windows", host: "darwin", target: "windows", wantFont: true},
+		{name: "macos to linux", host: "darwin", target: "linux", wantFont: true},
+		{name: "linux native", host: "linux", target: "linux", wantFont: false},
+		{name: "linux to windows", host: "linux", target: "windows", wantFont: true},
+		{name: "linux to macos", host: "linux", target: "macos", wantFont: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := buildBrowserFingerprintLaunchPlanForHost("profile-a", []string{
+				"--fingerprint=123",
+				"--fingerprint-platform=" + test.target,
+			}, "148.0.7778.215", test.host)
+
+			if test.wantFont {
+				assertArgsContain(t, plan.launchArgs, "--disable-spoofing=font")
+				assertRowsContainStatus(t, plan.rows, "跨平台字体渲染", "injected")
+				return
+			}
+			assertArgsDoNotContainKey(t, plan.launchArgs, "--disable-spoofing")
+			assertRowsDoNotContainCapability(t, plan.rows, "跨平台字体渲染")
+		})
+	}
+}
+
+func TestBuildBrowserFingerprintLaunchPlanDoesNotDuplicateExistingFontSpoofingOverride(t *testing.T) {
+	plan := buildBrowserFingerprintLaunchPlanForHost("profile-a", []string{
+		"--fingerprint=123",
+		"--fingerprint-platform=linux",
+		"--disable-spoofing=canvas,font",
+	}, "148.0.7778.215", "windows")
+
+	assertArgsContain(t, plan.launchArgs, "--disable-spoofing=canvas,font")
+	if countArgsWithKey(plan.launchArgs, "--disable-spoofing") != 1 {
+		t.Fatalf("launch args contain duplicate --disable-spoofing values: %#v", plan.launchArgs)
+	}
+}
+
 func TestBuildBrowserFingerprintLaunchPlanChrome143KeepsGPUArgs(t *testing.T) {
 	plan := buildBrowserFingerprintLaunchPlan("profile-a", []string{
 		"--fingerprint=123",
@@ -174,6 +253,16 @@ func assertArgsDoNotContainKey(t *testing.T, args []string, key string) {
 	}
 }
 
+func countArgsWithKey(args []string, key string) int {
+	count := 0
+	for _, arg := range args {
+		if browserFingerprintArgKey(arg) == key {
+			count++
+		}
+	}
+	return count
+}
+
 func assertRowsContainStatus(t *testing.T, rows []BrowserFingerprintCapabilityRow, capability string, status string) {
 	t.Helper()
 	for _, row := range rows {
@@ -182,4 +271,13 @@ func assertRowsContainStatus(t *testing.T, rows []BrowserFingerprintCapabilityRo
 		}
 	}
 	t.Fatalf("rows %#v do not contain capability %q with status %q", rows, capability, status)
+}
+
+func assertRowsDoNotContainCapability(t *testing.T, rows []BrowserFingerprintCapabilityRow, capability string) {
+	t.Helper()
+	for _, row := range rows {
+		if row.Capability == capability {
+			t.Fatalf("rows %#v contain capability %q", rows, capability)
+		}
+	}
 }

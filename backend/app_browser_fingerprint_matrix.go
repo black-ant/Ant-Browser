@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode"
@@ -174,9 +175,14 @@ func (a *App) resolveBrowserCoreForFingerprintReport(coreId string) (BrowserCore
 }
 
 func buildBrowserFingerprintLaunchPlan(profileId string, rawArgs []string, chromeVersion string) browserFingerprintLaunchPlan {
+	return buildBrowserFingerprintLaunchPlanForHost(profileId, rawArgs, chromeVersion, runtime.GOOS)
+}
+
+func buildBrowserFingerprintLaunchPlanForHost(profileId string, rawArgs []string, chromeVersion string, hostPlatform string) browserFingerprintLaunchPlan {
 	profileId = strings.TrimSpace(profileId)
 	originalArgs := normalizeNonEmptyStrings(rawArgs)
 	args := normalizeBrowserLanguageArgs(originalArgs)
+	hostPlatform = normalizeFingerprintPlatform(hostPlatform)
 	major := parseChromeMajor(chromeVersion)
 	versionStatus := fingerprintVersionStatus(chromeVersion)
 	chrome144Plus := major >= fingerprintChrome144Major
@@ -420,11 +426,81 @@ func buildBrowserFingerprintLaunchPlan(profileId string, rawArgs []string, chrom
 		if disableSpoofingIndex >= 0 {
 			plan.launchArgs[disableSpoofingIndex] = runtimeArg
 		} else {
+			disableSpoofingIndex = len(plan.launchArgs)
 			plan.launchArgs = append(plan.launchArgs, runtimeArg)
 		}
 	}
 
+	targetPlatform, targetPlatformArg := fingerprintPlatformFromArgs(args)
+	if targetPlatform != "" && hostPlatform != "" && targetPlatform != hostPlatform && !hasStringValue(disableSpoofingValues, "font") {
+		disableSpoofingValues = appendUniqueStringValues(disableSpoofingValues, "font")
+		runtimeArg := "--disable-spoofing=" + strings.Join(disableSpoofingValues, ",")
+		if disableSpoofingIndex >= 0 {
+			plan.launchArgs[disableSpoofingIndex] = runtimeArg
+		} else {
+			disableSpoofingIndex = len(plan.launchArgs)
+			plan.launchArgs = append(plan.launchArgs, runtimeArg)
+		}
+		plan.rows = append(plan.rows, BrowserFingerprintCapabilityRow{
+			Capability: "跨平台字体渲染",
+			Status:     "injected",
+			InputArg:   targetPlatformArg,
+			RuntimeArg: runtimeArg,
+			Action:     "后端补齐",
+			Note:       fmt.Sprintf("目标平台 %s 与宿主平台 %s 不同；关闭字体伪装并使用宿主真实字体，避免日文、中文、韩文缺字", targetPlatform, hostPlatform),
+		})
+	}
+
+	if disableSpoofingIndex >= 0 {
+		updateDisableSpoofingRows(&plan, plan.launchArgs[disableSpoofingIndex])
+	}
+
 	return plan
+}
+
+func fingerprintPlatformFromArgs(args []string) (string, string) {
+	platformArg := browserArgWithKey(args, "--fingerprint-platform")
+	if platformArg == "" {
+		return "", ""
+	}
+	separator := strings.Index(platformArg, "=")
+	if separator < 0 {
+		return "", platformArg
+	}
+	return normalizeFingerprintPlatform(platformArg[separator+1:]), platformArg
+}
+
+func normalizeFingerprintPlatform(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "windows", "win":
+		return "windows"
+	case "darwin", "mac", "macos":
+		return "macos"
+	case "linux":
+		return "linux"
+	default:
+		return ""
+	}
+}
+
+func hasStringValue(values []string, want string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(want)) {
+			return true
+		}
+	}
+	return false
+}
+
+func updateDisableSpoofingRows(plan *browserFingerprintLaunchPlan, runtimeArg string) {
+	if plan == nil {
+		return
+	}
+	for index := range plan.rows {
+		if plan.rows[index].Capability == "排除伪装" {
+			plan.rows[index].RuntimeArg = runtimeArg
+		}
+	}
 }
 
 func appendLanguageCompletionRows(plan *browserFingerprintLaunchPlan, originalArgs []string, normalizedArgs []string) {

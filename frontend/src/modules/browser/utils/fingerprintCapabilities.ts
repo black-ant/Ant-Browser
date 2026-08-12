@@ -62,7 +62,7 @@ export const FINGERPRINT_CAPABILITIES: FingerprintCapabilityItem[] = [
     id: 'fonts-clientrects',
     name: '字体 / ClientRects',
     mode: 'configurable',
-    coverage: 'ClientRects 噪声已实测生效；字体列表独立参数本地 Chrom-144 实测无效，不再作为运行参数传递',
+    coverage: 'ClientRects 噪声已实测生效；跨平台画像自动使用宿主真实字体，避免日文、中文、韩文缺字；字体列表独立参数本地 Chrom-144 实测无效，不再作为运行参数传递',
     args: ['--fingerprinting-client-rects-noise', '--disable-spoofing=font,clientrects'],
   },
   {
