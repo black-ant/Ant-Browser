@@ -132,7 +132,7 @@ func toStringMap(input interface{}) map[string]interface{} {
 
 func getMapString(m map[string]interface{}, key string) string {
 	v, ok := m[key]
-	if !ok {
+	if !ok || v == nil {
 		return ""
 	}
 	switch s := v.(type) {
