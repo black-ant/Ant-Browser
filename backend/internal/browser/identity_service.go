@@ -39,6 +39,20 @@ func (s *IdentityService) SetGeoResolver(r identity.GeoResolver) {
 	s.resolver = r
 }
 
+// IdentityForProfile 返回该 profile 的结构化身份:优先读库,其次从 fingerprint_args 反解。
+func (s *IdentityService) IdentityForProfile(profileID string, args []string) (identity.Identity, bool) {
+	if id, ok, err := s.store.Load(profileID); err == nil && ok {
+		return id, true
+	}
+	if len(args) > 0 {
+		derived := identity.FromLaunchArgs(args)
+		if derived.FingerprintHash() != "" {
+			return derived, true
+		}
+	}
+	return identity.Identity{}, false
+}
+
 // GenerateUnique 采样并重采,产出一套跨环境唯一的基础身份(尚未对齐代理地理)。
 func (s *IdentityService) GenerateUnique() (identity.Identity, error) {
 	s.mu.Lock()
@@ -46,6 +60,46 @@ func (s *IdentityService) GenerateUnique() (identity.Identity, error) {
 	return identity.GenerateUnique(s.store, func() identity.Identity {
 		return s.pool.NewIdentity(s.rng)
 	}, 100)
+}
+
+// ResolveExitIPGeo 用注入的离线 GeoIP 解析器解析代理出口 IP 的地理;
+// 未注入解析器(无 mmdb)或解析失败时返回 ok=false,调用方据此优雅降级为不对齐。
+func (s *IdentityService) ResolveExitIPGeo(exitIP string) (identity.GeoInfo, bool) {
+	s.mu.Lock()
+	r := s.resolver
+	s.mu.Unlock()
+	if r == nil {
+		return identity.GeoInfo{}, false
+	}
+	geo, err := r.Resolve(exitIP)
+	if err != nil {
+		return identity.GeoInfo{}, false
+	}
+	return geo, true
+}
+
+// AlignProfileToGeo 用给定地理信息对齐 profile 的身份(时区/语言/locale/坐标),
+// 存库并刷新 FingerprintArgs。profile 尚无身份时先生成一套再对齐。
+func (s *IdentityService) AlignProfileToGeo(profile *Profile, geo identity.GeoInfo) error {
+	if profile == nil {
+		return nil
+	}
+	id, ok := s.IdentityForProfile(profile.ProfileId, profile.FingerprintArgs)
+	if !ok {
+		var err error
+		if id, err = s.GenerateUnique(); err != nil {
+			return err
+		}
+	}
+	aligned := identity.AlignToProxyGeo(id, geo)
+	s.mu.Lock()
+	err := s.store.Save(profile.ProfileId, aligned)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	profile.FingerprintArgs = aligned.LaunchArgs()
+	return nil
 }
 
 // AssignToProfile 为 profile 分配结构化身份并写入 FingerprintArgs:

@@ -66,6 +66,7 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 		stableDebugPort, readyErr := waitBrowserDebugPortStable(plan.assignedDebugPort, plan.userDataDir, plan.startReadyTimeout, plan.startStableWindow, monitor)
 		if readyErr == nil {
 			a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, stableDebugPort, true, "")
+			a.applyIdentityCDPOverrides(input.ProfileID, profile, stableDebugPort)
 			if plan.acquiredProxyBridge.valid() {
 				a.bindProfileProxyBridge(input.ProfileID, plan.acquiredProxyBridge)
 				plan.releaseProxyBridge = false

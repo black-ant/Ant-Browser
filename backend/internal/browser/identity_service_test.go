@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"ant-chrome/backend/internal/database"
+	"ant-chrome/backend/internal/identity"
 )
 
 func newTestIdentityService(t *testing.T) *IdentityService {
@@ -56,6 +57,24 @@ func TestIdentityServiceAssignsUniqueFingerprint(t *testing.T) {
 	seed2, _ := argValue(p2.FingerprintArgs, "--fingerprint=")
 	if seed1 == seed2 {
 		t.Fatal("expected different seeds for different profiles")
+	}
+}
+
+// 按代理地理对齐后,时区/语言应更新为目标国家(自洽)。
+func TestIdentityServiceAlignProfileToGeo(t *testing.T) {
+	svc := newTestIdentityService(t)
+	p := &Profile{ProfileId: "p1"}
+	if err := svc.AssignToProfile(p); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if err := svc.AlignProfileToGeo(p, identity.GeoInfo{CountryCode: "JP", Latitude: 35.68, Longitude: 139.69}); err != nil {
+		t.Fatalf("align: %v", err)
+	}
+	if tz, _ := argValue(p.FingerprintArgs, "--timezone="); tz != "Asia/Tokyo" {
+		t.Fatalf("expected Asia/Tokyo after align, got %q", tz)
+	}
+	if lang, _ := argValue(p.FingerprintArgs, "--accept-lang="); !strings.HasPrefix(lang, "ja-JP") {
+		t.Fatalf("expected ja-JP accept-lang after align, got %q", lang)
 	}
 }
 
