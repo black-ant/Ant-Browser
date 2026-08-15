@@ -60,6 +60,23 @@ func TestIdentityServiceAssignsUniqueFingerprint(t *testing.T) {
 	}
 }
 
+// 回归:新建环境即使已预填静态默认 flag,Regenerate 也必须产出全新池身份
+// （带非零 seed 与完整维度),而不是把默认 flag 反解成 seed=0 的身份。
+func TestRegenerateProducesFreshIdentityIgnoringExistingArgs(t *testing.T) {
+	svc := newTestIdentityService(t)
+	p := &Profile{ProfileId: "p1", FingerprintArgs: []string{"--fingerprint-platform=windows", "--fingerprint-brand=Chrome"}}
+	if err := svc.Regenerate(p); err != nil {
+		t.Fatalf("regenerate: %v", err)
+	}
+	seed, ok := argValue(p.FingerprintArgs, "--fingerprint=")
+	if !ok || seed == "" || seed == "0" {
+		t.Fatalf("expected a fresh non-zero seed, got %q in %v", seed, p.FingerprintArgs)
+	}
+	if _, ok := argValue(p.FingerprintArgs, "--window-size="); !ok {
+		t.Fatalf("expected a full pool identity (window-size present), got %v", p.FingerprintArgs)
+	}
+}
+
 // 按代理地理对齐后,时区/语言应更新为目标国家(自洽)。
 func TestIdentityServiceAlignProfileToGeo(t *testing.T) {
 	svc := newTestIdentityService(t)

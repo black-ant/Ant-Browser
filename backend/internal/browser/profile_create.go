@@ -69,7 +69,9 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 		)
 	}
 	if len(input.FingerprintArgs) == 0 && m.IdentityService != nil {
-		if err := m.IdentityService.AssignToProfile(profile); err != nil {
+		// 新建环境:强制从真机池采样一套全新的唯一自洽身份(不能走反解分支,
+		// 否则会把上面填入的静态默认 flag 当作“老环境”反解成 seed=0 的身份)。
+		if err := m.IdentityService.Regenerate(profile); err != nil {
 			log.Warn("自动生成自洽指纹身份失败，回退默认指纹", logger.F("profile_id", profileId), logger.F("error", err.Error()))
 		}
 	}
