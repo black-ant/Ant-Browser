@@ -36,13 +36,18 @@ interface GitHubReleaseResponse {
   assets?: GitHubReleaseAsset[]
 }
 
-const archiveSuffixes = ['.zip', '.tar.xz', '.txz', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar']
+// .dmg 是 macOS 内核镜像;后端已支持挂载解包(download_core_dmg_darwin.go),
+// 因此纳入可识别归档后缀,darwin 才能选中 *_macos.dmg。
+const archiveSuffixes = ['.zip', '.tar.xz', '.txz', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar', '.dmg']
 
 function normalizePlatform(value: string | undefined): CoreDownloadPlatform {
   const text = (value || '').trim().toLowerCase()
+  // 必须先判 darwin/mac,再判 win:Wails Environment() 在 macOS 返回 GOOS="darwin",
+  // 而 "darwin" 恰好包含子串 "win",若先判 win 会把 macOS 误判成 Windows,
+  // 导致下载到 Windows 内核包(实测的错误根因)。
+  if (text.includes('darwin') || text.includes('mac')) return 'darwin'
   if (text.includes('win')) return 'windows'
   if (text.includes('linux')) return 'linux'
-  if (text.includes('darwin') || text.includes('mac')) return 'darwin'
   return ''
 }
 
@@ -110,12 +115,15 @@ function scoreAsset(asset: GitHubReleaseAsset, target: CoreDownloadTarget): numb
     if (!hasAny(name, ['macos', 'darwin'])) return -1
     if (hasAny(name, ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64']) && !matchesArch(name, target.arch)) return -1
     score += 100
+    // macOS 发行版通常只提供 .dmg;后端已支持挂载解包,优先选它。
+    if (name.endsWith('.dmg')) score += 20
   }
 
   return score
 }
 
-function pickReleaseAsset(assets: GitHubReleaseAsset[], target: CoreDownloadTarget): GitHubReleaseAsset | null {
+// 导出以便单元验证:给定资产列表与目标平台/架构,选出最合适的下载资产。
+export function pickReleaseAsset(assets: GitHubReleaseAsset[], target: CoreDownloadTarget): GitHubReleaseAsset | null {
   return assets
     .map(asset => ({ asset, score: scoreAsset(asset, target) }))
     .filter(item => item.score >= 0)

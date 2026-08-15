@@ -2,6 +2,7 @@ package browser
 
 import (
 	"ant-chrome/backend/internal/logger"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,9 +69,12 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 			logger.F("proxy_id", strings.TrimSpace(input.ProxyId)),
 		)
 	}
-	if len(input.FingerprintArgs) == 0 && m.IdentityService != nil {
-		// 新建环境:强制从真机池采样一套全新的唯一自洽身份(不能走反解分支,
-		// 否则会把上面填入的静态默认 flag 当作“老环境”反解成 seed=0 的身份)。
+	if m.IdentityService != nil && !hasExplicitFingerprintSeed(input.FingerprintArgs) {
+		// 新建环境:只要调用方没有显式指定 --fingerprint=<seed>(GUI 新建仅提交无种子的
+		// 静态默认模板参数,如 --fingerprint-brand / --fingerprint-platform),就强制从真机池
+		// 采样一套全新的唯一自洽身份,保证“每创建一个环境都是独立不重复且自洽”的核心要求。
+		// 不能走反解分支,否则会把静态默认 flag 当作“老环境”反解成 seed=0 的身份。
+		// 显式带 seed 的调用(Launch API 指定指纹 / 复现场景)则被尊重,不覆盖。
 		if err := m.IdentityService.Regenerate(profile); err != nil {
 			log.Warn("自动生成自洽指纹身份失败，回退默认指纹", logger.F("profile_id", profileId), logger.F("error", err.Error()))
 		}
@@ -82,6 +86,24 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 	}
 	m.ensureProfileLaunchCode(profile)
 	return profile, nil
+}
+
+// hasExplicitFingerprintSeed 判断调用方是否显式提供了具体指纹种子(--fingerprint=<非零数字>)。
+// 注意与 --fingerprint-brand= / --fingerprint-platform= 等模板 flag 区分:它们前缀是
+// "--fingerprint-",不会被 "--fingerprint=" 命中。GUI 新建只提交这类无种子模板,应视为
+// “未指定”从而触发唯一身份生成;而显式带 seed 的调用应被尊重。
+func hasExplicitFingerprintSeed(args []string) bool {
+	for _, a := range args {
+		v := strings.TrimSpace(a)
+		if !strings.HasPrefix(v, "--fingerprint=") {
+			continue
+		}
+		raw := strings.TrimSpace(strings.TrimPrefix(v, "--fingerprint="))
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) ensureProfileLaunchCode(profile *Profile) {
