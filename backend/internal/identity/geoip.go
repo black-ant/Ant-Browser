@@ -5,12 +5,14 @@ import (
 	"net"
 
 	"github.com/oschwald/maxminddb-golang"
+	"github.com/ringsaturn/tzf"
 )
 
 // MMDBResolver 用 MaxMind GeoLite2 / DB-IP 格式的离线 .mmdb 实现 GeoResolver。
 // 数据文件为构建期产物(见 specs 的 research.md R1),运行期只读离线。
 type MMDBResolver struct {
 	db *maxminddb.Reader
+	tz tzf.F // 经纬度 -> IANA 时区(离线),用于 mmdb 缺时区时补齐(如 DB-IP 免费版)
 }
 
 // OpenMMDBResolver 打开 .mmdb 文件;文件不存在或损坏时返回错误(调用方据此优雅降级为不对齐)。
@@ -19,7 +21,12 @@ func OpenMMDBResolver(path string) (*MMDBResolver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("identity: 打开 GeoIP 库失败 %q: %w", path, err)
 	}
-	return &MMDBResolver{db: r}, nil
+	res := &MMDBResolver{db: r}
+	// 经纬度->时区(离线);失败则退回国家兜底表。
+	if f, ferr := tzf.NewDefaultFinder(); ferr == nil {
+		res.tz = f
+	}
+	return res, nil
 }
 
 // Close 关闭底层文件。
@@ -63,12 +70,16 @@ func (m *MMDBResolver) Resolve(ip string) (GeoInfo, error) {
 	if acc <= 0 {
 		acc = 50 // 缺省定位精度(米)
 	}
+	tz := rec.Location.TimeZone
+	if tz == "" && m.tz != nil && (rec.Location.Latitude != 0 || rec.Location.Longitude != 0) {
+		tz = m.tz.GetTimezoneName(rec.Location.Longitude, rec.Location.Latitude)
+	}
 	return GeoInfo{
 		CountryCode: rec.Country.ISOCode,
 		City:        rec.City.Names["en"],
 		Latitude:    rec.Location.Latitude,
 		Longitude:   rec.Location.Longitude,
-		Timezone:    rec.Location.TimeZone,
+		Timezone:    tz,
 		Accuracy:    acc,
 	}, nil
 }

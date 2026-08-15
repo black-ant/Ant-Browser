@@ -1,6 +1,6 @@
 module ant-chrome
 
-go 1.22.0
+go 1.25.0
 
 require (
 	github.com/energye/systray v1.0.3
@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/metacubex/mihomo v1.19.20
 	github.com/oschwald/maxminddb-golang v1.13.1
+	github.com/ringsaturn/tzf v1.2.5
 	github.com/ulikunitz/xz v0.5.15
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/net v0.35.0
@@ -43,7 +44,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.4.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/josharian/native v1.1.0 // indirect
@@ -104,12 +105,16 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/ringsaturn/orb v0.15.0 // indirect
+	github.com/ringsaturn/tzf-dist v0.0.2026-c-fix1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/samber/lo v1.52.0 // indirect
 	github.com/sina-ghaderi/poly1305 v0.0.0-20220724002748-c5926b03988b // indirect
 	github.com/sina-ghaderi/rabaead v0.0.0-20220730151906-ab6e06b96e8c // indirect
 	github.com/sina-ghaderi/rabbitio v0.0.0-20220730151941-9ce26f4f872e // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
+	github.com/tidwall/geoindex v1.7.0 // indirect
+	github.com/tidwall/rtree v1.10.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
@@ -125,11 +130,11 @@ require (
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e // indirect
 	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.30.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	lukechampine.com/uint128 v1.2.0 // indirect
 	modernc.org/cc/v3 v3.40.0 // indirect
