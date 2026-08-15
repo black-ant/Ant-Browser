@@ -409,6 +409,15 @@ export async function validateBrowserProfileFingerprint(profileId: string): Prom
   return null
 }
 
+// 按代理出口地理对齐身份(离线 GeoIP,含精确时区+坐标)。
+export async function alignBrowserProfileFingerprintToProxy(profileId: string): Promise<BrowserProfile | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfileAlignFingerprintToProxy) {
+    return (await bindings.BrowserProfileAlignFingerprintToProxy(profileId)) || null
+  }
+  return null
+}
+
 // 省内存模式开关(对复杂电商/视频站无损)。
 export async function getMemorySaver(): Promise<boolean> {
   const bindings: any = await getBindings()

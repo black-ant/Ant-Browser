@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
-import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Textarea, toast } from '../../../shared/components'
+import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Switch, Textarea, toast } from '../../../shared/components'
 import type { BrowserCore, BrowserFingerprintCapabilityReport, BrowserFingerprintCapabilityRow, BrowserFingerprintCheckResult, BrowserProfileInput, BrowserProxy, BrowserGroup, ProxyLocationResolveResult } from '../types'
-import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, regenerateBrowserProfileFingerprint, updateBrowserProfile, validateBrowserProfileFingerprint, validateProxyConfig, type FingerprintValidationResult } from '../api'
+import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, alignBrowserProfileFingerprintToProxy, getMemorySaver, regenerateBrowserProfileFingerprint, setMemorySaver as applyMemorySaver, updateBrowserProfile, validateBrowserProfileFingerprint, validateProxyConfig, type FingerprintValidationResult } from '../api'
 import { FingerprintPanel } from '../components/FingerprintPanel'
 import { applyLocaleToFingerprintArgs, validateFingerprintArgs, withAdaptiveDefaultWindowSize } from '../utils/fingerprintSerializer'
 import { TagInput } from '../components/TagInput'
@@ -268,6 +268,10 @@ export function BrowserEditPage() {
   const [locationResult, setLocationResult] = useState<ProxyLocationResolveResult | null>(null)
   const [fpValidation, setFpValidation] = useState<FingerprintValidationResult | null>(null)
   const [fpBusy, setFpBusy] = useState(false)
+  const [memorySaver, setMemorySaverState] = useState(false)
+  useEffect(() => {
+    getMemorySaver().then(setMemorySaverState).catch(() => {})
+  }, [])
   const [fingerprintChecking, setFingerprintChecking] = useState(false)
   const [fingerprintPageOpening, setFingerprintPageOpening] = useState(false)
   const [fingerprintCheckResult, setFingerprintCheckResult] = useState<BrowserFingerprintCheckResult | null>(null)
@@ -489,6 +493,33 @@ export function BrowserEditPage() {
       toast.error((error as Error)?.message || '重新生成失败')
     } finally {
       setFpBusy(false)
+    }
+  }
+
+  const handleAlignToProxy = async () => {
+    if (isCreate || !id) return
+    setFpBusy(true)
+    try {
+      const profile = await alignBrowserProfileFingerprintToProxy(id)
+      if (profile?.fingerprintArgs) {
+        handleChange('fingerprintArgs', profile.fingerprintArgs)
+      }
+      setFpValidation(await validateBrowserProfileFingerprint(id))
+      toast.success('已按代理出口地理对齐(离线 GeoIP)')
+    } catch (error: unknown) {
+      toast.error((error as Error)?.message || '对齐失败')
+    } finally {
+      setFpBusy(false)
+    }
+  }
+
+  const toggleMemorySaver = async (next: boolean) => {
+    setMemorySaverState(next)
+    try {
+      await applyMemorySaver(next)
+      toast.success(next ? '已开启省内存模式(下次启动实例生效)' : '已关闭省内存模式')
+    } catch (error: unknown) {
+      toast.error((error as Error)?.message || '设置失败')
     }
   }
 
@@ -764,6 +795,9 @@ export function BrowserEditPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
             <Button onClick={handleRegenerateFingerprint} disabled={fpBusy}>重新生成唯一身份</Button>
             <Button onClick={handleValidateFingerprint} disabled={fpBusy}>校验一致性</Button>
+            {formData.proxyId && formData.proxyId !== '__direct__' && (
+              <Button onClick={handleAlignToProxy} disabled={fpBusy}>按代理对齐(离线)</Button>
+            )}
             {fpValidation && (
               <span
                 style={{
@@ -781,6 +815,12 @@ export function BrowserEditPage() {
             )}
           </div>
         )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Switch checked={memorySaver} onChange={toggleMemorySaver} />
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            省内存模式(全局,对复杂电商/视频站无损;多开时更省资源,下次启动实例生效)
+          </span>
+        </div>
         <FingerprintPanel
           value={formData.fingerprintArgs}
           onChange={args => handleChange('fingerprintArgs', args)}

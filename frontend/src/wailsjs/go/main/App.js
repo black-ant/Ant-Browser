@@ -298,6 +298,10 @@ export function BrowserInstanceStop(arg1) {
   return window['go']['main']['App']['BrowserInstanceStop'](arg1);
 }
 
+export function BrowserProfileAlignFingerprintToProxy(arg1) {
+  return window['go']['main']['App']['BrowserProfileAlignFingerprintToProxy'](arg1);
+}
+
 export function BrowserProfileBatchRemoveTags(arg1, arg2) {
   return window['go']['main']['App']['BrowserProfileBatchRemoveTags'](arg1, arg2);
 }
