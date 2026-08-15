@@ -218,6 +218,26 @@ var migrations = []migration{
 			`ALTER TABLE browser_profiles ADD COLUMN memory_limit_mb INTEGER NOT NULL DEFAULT 0`,
 		},
 	},
+	{
+		version: 15,
+		desc:    "新增结构化指纹身份表与唯一性登记(自洽引擎)",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_identities (
+				profile_id         TEXT PRIMARY KEY,
+				identity_json      TEXT NOT NULL DEFAULT '{}',
+				fingerprint_hash   TEXT NOT NULL DEFAULT '',
+				seed               INTEGER NOT NULL DEFAULT 0,
+				coherence_status   TEXT NOT NULL DEFAULT '',
+				proxy_geo_snapshot TEXT NOT NULL DEFAULT '',
+				created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+			// 部分唯一索引:仅对非空/非零值强制唯一,避免占位行互相冲突,
+			// 同时硬保障真实身份的 fingerprint_hash 与 seed 跨环境不重复。
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_browser_identities_fp_hash ON browser_identities(fingerprint_hash) WHERE fingerprint_hash != ''`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_browser_identities_seed ON browser_identities(seed) WHERE seed != 0`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,
