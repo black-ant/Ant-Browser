@@ -1,0 +1,46 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#0B3B45"/>
+    </linearGradient>
+    <linearGradient id="zg" x1="360" y1="360" x2="664" y2="664" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A5F3FC"/>
+      <stop offset="0.55" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="512" cy="500" r="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="rounded"><rect x="0" y="0" width="1024" height="1024" rx="228" ry="228"/></clipPath>
+  </defs>
+  <g clip-path="url(#rounded)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <rect width="1024" height="1024" fill="url(#glow)"/>
+
+    <!-- 指纹纹路:同心弧线,低透明度,营造指纹/防关联意象 -->
+    <g fill="none" stroke="#22D3EE" stroke-linecap="round">
+      <g opacity="0.14" stroke-width="12">
+        <circle cx="512" cy="506" r="132"/>
+        <circle cx="512" cy="506" r="192"/>
+        <circle cx="512" cy="506" r="252"/>
+        <circle cx="512" cy="506" r="312"/>
+        <circle cx="512" cy="506" r="372"/>
+      </g>
+      <!-- 亮一点的部分弧,增加指纹涡旋感 -->
+      <g opacity="0.30" stroke-width="12">
+        <path d="M 512 194 A 312 312 0 0 1 824 506"/>
+        <path d="M 512 818 A 312 312 0 0 1 200 506"/>
+        <path d="M 620 258 A 252 252 0 0 1 764 506"/>
+      </g>
+    </g>
+
+    <!-- 主体字母 Z:粗体、高对比,小尺寸下仍清晰主导 -->
+    <g stroke="url(#zg)" stroke-width="92" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M 360 384 H 664"/>
+      <path d="M 360 628 H 664"/>
+      <path d="M 636 384 L 388 628"/>
+    </g>
+  </g>
+</svg>

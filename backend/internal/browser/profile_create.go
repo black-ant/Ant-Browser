@@ -11,10 +11,27 @@ import (
 
 // Create 创建配置
 func (m *Manager) Create(input ProfileInput) (*Profile, error) {
-	log := logger.New("Browser")
 	m.InitData()
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
+
+	profile, err := m.createProfileLocked(input)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.SaveProfiles(); err != nil {
+		return nil, err
+	}
+	m.ensureProfileLaunchCode(profile)
+	return profile, nil
+}
+
+// createProfileLocked 构建并登记一个新环境(含唯一自洽身份),但不做持久化、不分配启动码。
+// 调用方必须已持有 m.Mutex,并在合适时机自行调用 SaveProfiles / ensureProfileLaunchCode。
+// 供 Create(单个:建后即存)与 CreateBatch(批量:循环建、末尾统一 SaveProfiles)复用,
+// 避免批量时对每个环境都全量重写(SaveProfiles 会 upsert 全部 profile,N 次即 O(N²))。
+func (m *Manager) createProfileLocked(input ProfileInput) (*Profile, error) {
+	log := logger.New("Browser")
 
 	now := time.Now().Format(time.RFC3339)
 	profileId := uuid.NewString()
@@ -81,10 +98,6 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 	}
 	m.Profiles[profileId] = profile
 	log.Info("浏览器配置创建", logger.F("profile_id", profileId), logger.F("profile_name", input.ProfileName))
-	if err := m.SaveProfiles(); err != nil {
-		return nil, err
-	}
-	m.ensureProfileLaunchCode(profile)
 	return profile, nil
 }
 

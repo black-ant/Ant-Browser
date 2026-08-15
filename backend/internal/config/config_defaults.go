@@ -243,7 +243,7 @@ func DefaultConfig() *Config {
 			},
 		},
 		App: AppConfig{
-			Name: "Ant Browser",
+			Name: "ZwBrowser",
 			Window: WindowConfig{
 				Width:     1750,
 				Height:    1000,

@@ -138,16 +138,16 @@ APP_BINARY_NAME="ant-chrome"
 APP_ICON_NAME="ant-browser"
 APP_DESKTOP_ID="ant-browser.desktop"
 APPSTREAM_ID="ant-browser"
-APP_NAME="Ant Browser"
+APP_NAME="ZwBrowser"
 APP_SUMMARY="Multi-profile browser launcher with proxy-pool management"
-APP_MAINTAINER="Ant Chrome Team"
+APP_MAINTAINER="ZwBrowser Team"
 APP_MAINTAINER_EMAIL="contact@antblack.dev"
 APP_HOMEPAGE="https://github.com/black-ant/Ant-Browser"
 BUILD_DATE_UTC="$(date -u +%F)"
 ICON_SIZES=(16 24 32 48 64 128 256 512)
 
 echo "========================================"
-echo "  Ant Browser Linux Publish"
+echo "  ZwBrowser Linux Publish"
 echo "========================================"
 echo "Target : $TARGET"
 echo "Version: $VERSION"
@@ -291,7 +291,7 @@ cat > "$METAINFO_ROOT/${APP_PACKAGE_NAME}.metainfo.xml" <<EOF
     <binary>${APP_BINARY_NAME}</binary>
   </provides>
   <description>
-    <p>Ant Browser manages isolated browser profiles, proxy binding, and local environment configuration for multi-account workflows.</p>
+    <p>ZwBrowser manages isolated browser profiles, proxy binding, and local environment configuration for multi-account workflows.</p>
     <p>The Debian package installs a launcher, theme icons, and runtime helpers for standard Linux desktop environments.</p>
   </description>
   <categories>
@@ -330,7 +330,7 @@ Installed-Size: ${INSTALLED_SIZE_KB}
 Depends: libc6 (>= 2.31), libgtk-3-0, libglib2.0-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37
 Description: ${APP_NAME} desktop app
  Multi-profile browser launcher with proxy-pool management.
- Ant Browser manages isolated browser profiles, proxy binding, and
+ ZwBrowser manages isolated browser profiles, proxy binding, and
  local environment configuration for multi-account workflows.
 EOF
 

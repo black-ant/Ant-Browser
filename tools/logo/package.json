@@ -1,0 +1,10 @@
+{
+  "name": "zwbrowser-logo-tools",
+  "private": true,
+  "type": "module",
+  "description": "从 build/appicon.svg 生成 ZwBrowser 全部图标资源(PNG/ICO)。用法: npm i && node gen-icons.mjs",
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "png-to-ico": "^2.1.8"
+  }
+}

@@ -1,16 +1,16 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "Ant Browser",
-  "outputfilename": "ant-chrome",
+  "name": "ZwBrowser",
+  "outputfilename": "zwbrowser",
   "frontend:install": "npm install && npm run ensure:native",
   "frontend:build": "npm run build:clean",
   "author": {
-    "name": "Ant Chrome Team",
-    "email": "contact@antblack.de"
+    "name": "ZwBrowser Team",
+    "email": ""
   },
   "info": {
-    "companyName": "Ant Chrome",
-    "productName": "Ant Browser",
+    "companyName": "ZwBrowser",
+    "productName": "ZwBrowser",
     "productVersion": "1.5.0",
     "copyright": "Copyright © 2026",
     "comments": "面向多账号隔离、代理绑定和本地环境管理的桌面浏览器工具"

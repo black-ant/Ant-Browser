@@ -89,7 +89,7 @@ build_frontend() {
 
 run_stable() {
   echo "========================================"
-  echo "  Ant Chrome - Dev Launcher"
+  echo "  ZwBrowser - Dev Launcher"
   echo "========================================"
   echo
   echo "Current workdir: $ROOT_DIR"
@@ -117,7 +117,7 @@ run_live() {
   trap 'if [[ -n "$frontend_pid" ]] && kill -0 "$frontend_pid" >/dev/null 2>&1; then kill "$frontend_pid" >/dev/null 2>&1 || true; fi' EXIT
 
   echo "========================================"
-  echo "  Ant Chrome - Dev Launcher"
+  echo "  ZwBrowser - Dev Launcher"
   echo "========================================"
   echo
   echo "Current workdir: $ROOT_DIR"

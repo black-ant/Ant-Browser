@@ -173,6 +173,8 @@ export function BrowserProfileCopyWithOptions(arg1:string,arg2:string,arg3:brows
 
 export function BrowserProfileCreate(arg1:browser.ProfileInput):Promise<browser.Profile>;
 
+export function BrowserProfileCreateBatch(arg1:string,arg2:number,arg3:number,arg4:browser.ProfileInput):Promise<Array<browser.Profile>>;
+
 export function BrowserProfileDelete(arg1:string):Promise<void>;
 
 export function BrowserProfileExtensionGet(arg1:string):Promise<browser.ProfileExtensionSettings>;

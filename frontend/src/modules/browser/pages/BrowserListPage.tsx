@@ -1,8 +1,9 @@
 ﻿import { useState } from 'react'
 import { toast } from '../../../shared/components'
-import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProxy } from '../types'
+import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfileInput, BrowserProxy } from '../types'
 import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
 import { BatchToolbar } from '../components/BrowserListWidgets'
+import { BatchCreateModal } from '../components/BatchCreateModal'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
 import { BrowserBackupModal } from '../components/BrowserBackupModal'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
@@ -18,6 +19,7 @@ import { useBrowserProfileActions } from './browserList/useBrowserProfileActions
 import { warmupProfileProxyBeforeStart } from '../utils/proxyWarmup'
 import {
   copyBrowserProfile,
+  createBrowserProfileBatch,
   deleteBrowserProfile,
   exportBrowserProfilePackage,
   fetchBrowserProfileTrash,
@@ -48,6 +50,8 @@ export function BrowserListPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
+  const [batchCreateOpen, setBatchCreateOpen] = useState(false)
+  const [batchCreating, setBatchCreating] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
   const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [backupLoadingMode, setBackupLoadingMode] = useState<BackupLoadingMode>('none')
@@ -518,6 +522,32 @@ export function BrowserListPage() {
   }
 
 
+  const handleBatchCreate = async (prefix: string, count: number, startIndex: number) => {
+    setBatchCreating(true)
+    try {
+      const template: BrowserProfileInput = {
+        profileName: '',
+        userDataDir: '',
+        coreId: '',
+        fingerprintArgs: [],
+        proxyId: directProxyID,
+        proxyConfig: '',
+        memoryLimitMb: 0,
+        launchArgs: [],
+        tags: [],
+        keywords: [],
+      }
+      const created = await createBrowserProfileBatch(prefix, count, startIndex, template)
+      toast.success(`已批量创建 ${created.length} 个环境`)
+      setBatchCreateOpen(false)
+      await loadProfiles()
+    } catch (error: any) {
+      toast.error(error?.message || '批量创建失败')
+    } finally {
+      setBatchCreating(false)
+    }
+  }
+
   return (
     <div className="overflow-auto p-5 space-y-5 animate-fade-in h-full">
       <BrowserListHeader
@@ -538,6 +568,7 @@ export function BrowserListPage() {
         onOpenTrash={openTrashModal}
         onImportProfiles={handleImportProfiles}
         onOpenBackup={() => setBackupModalOpen(true)}
+        onOpenBatchCreate={() => setBatchCreateOpen(true)}
         importingProfiles={profilePackageBusy}
         onViewModeChange={setViewMode}
       />
@@ -568,6 +599,13 @@ export function BrowserListPage() {
         onExportFull={() => { void handleExportFullBackup() }}
         onImportMerge={() => { void handleImportFullBackup(false) }}
         onImportReset={() => { void handleImportFullBackup(true) }}
+      />
+
+      <BatchCreateModal
+        open={batchCreateOpen}
+        loading={batchCreating}
+        onClose={() => setBatchCreateOpen(false)}
+        onSubmit={(prefix, count, startIndex) => { void handleBatchCreate(prefix, count, startIndex) }}
       />
 
       <BrowserProfilesPanel

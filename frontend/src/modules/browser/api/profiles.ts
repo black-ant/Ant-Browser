@@ -193,6 +193,29 @@ export async function createBrowserProfile(input: BrowserProfileInput): Promise<
   return profile
 }
 
+export async function createBrowserProfileBatch(
+  prefix: string,
+  count: number,
+  startIndex: number,
+  template: BrowserProfileInput,
+): Promise<BrowserProfile[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfileCreateBatch) {
+    return (await bindings.BrowserProfileCreateBatch(prefix, count, startIndex, template)) || []
+  }
+
+  // mock 回退:循环单个创建,名称按 prefix-编号(3 位)。
+  const created: BrowserProfile[] = []
+  for (let i = 0; i < count; i += 1) {
+    const name = `${prefix}-${String(startIndex + i).padStart(3, '0')}`
+    const profile = await createBrowserProfile({ ...template, profileName: name, fingerprintArgs: [] })
+    if (profile) {
+      created.push(profile)
+    }
+  }
+  return created
+}
+
 export async function updateBrowserProfile(profileId: string, input: BrowserProfileInput): Promise<BrowserProfile | null> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProfileUpdate) {

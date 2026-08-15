@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Archive, CheckCircle, ChevronRight, ChevronUp, Edit2, LayoutGrid, List, Play, Plus, RefreshCw, Sliders, Star, Trash2, Upload, XCircle } from 'lucide-react'
+import { Archive, CheckCircle, ChevronRight, ChevronUp, Edit2, Layers, LayoutGrid, List, Play, Plus, RefreshCw, Sliders, Star, Trash2, Upload, XCircle } from 'lucide-react'
 
 import { Button, Card, FormItem, Input, Modal, Switch, Table, Textarea } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
@@ -28,6 +28,7 @@ interface BrowserListHeaderProps {
   onOpenTrash: () => void
   onImportProfiles: () => void
   onOpenBackup: () => void
+  onOpenBatchCreate: () => void
   importingProfiles?: boolean
   onViewModeChange: (next: BrowserViewMode) => void
 }
@@ -50,6 +51,7 @@ export function BrowserListHeader({
   onOpenTrash,
   onImportProfiles,
   onOpenBackup,
+  onOpenBatchCreate,
   importingProfiles = false,
   onViewModeChange,
 }: BrowserListHeaderProps) {
@@ -119,6 +121,9 @@ export function BrowserListHeader({
             </button>
           </div>
           <span className="w-px h-4 bg-[var(--color-border-muted)] mx-1 self-center"></span>
+          <Button variant="secondary" size="sm" onClick={onOpenBatchCreate}>
+            <Layers className="w-4 h-4" />批量新建
+          </Button>
           <Link to="/browser/edit/new">
             <Button size="sm">
               <Play className="w-4 h-4" />新建配置

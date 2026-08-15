@@ -82,7 +82,7 @@ func FetchIPHealthInfo(
 		return meta, fmt.Errorf("创建 IP 健康检测请求失败（source=%s）: %w", source, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "AntChrome/1.0")
+	req.Header.Set("User-Agent", "ZwBrowser/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {

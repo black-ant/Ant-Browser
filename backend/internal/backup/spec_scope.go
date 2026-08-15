@@ -163,7 +163,7 @@ func BuildManifest(scope Scope, appName, appVersion string, createdAt time.Time)
 	}
 	name := strings.TrimSpace(appName)
 	if name == "" {
-		name = "Ant Browser"
+		name = "ZwBrowser"
 	}
 	version := strings.TrimSpace(appVersion)
 	if version == "" {

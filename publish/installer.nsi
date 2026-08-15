@@ -1,4 +1,4 @@
-﻿; Ant Browser NSIS Installer Script
+﻿; ZwBrowser NSIS Installer Script
 ; Usage: makensis /DVERSION=1.4.0 /DSTAGINGDIR=C:\path\to\staging installer.nsi
 
 Unicode True
@@ -10,11 +10,11 @@ Unicode True
   !define STAGINGDIR "..\publish\staging"
 !endif
 
-!define PRODUCT_NAME    "Ant Browser"
+!define PRODUCT_NAME    "ZwBrowser"
 !define PRODUCT_EXE     "ant-chrome.exe"
 !define PRODUCT_ICON    "AntBrowser.ico"
 !define UNINSTALL_KEY   "Software\Microsoft\Windows\CurrentVersion\Uninstall\AntBrowser"
-!define INSTALL_DIR     "$PROGRAMFILES64\Ant Browser"
+!define INSTALL_DIR     "$PROGRAMFILES64\ZwBrowser"
 !define POWERSHELL_EXE  "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
 
 !include "MUI2.nsh"
@@ -158,7 +158,7 @@ Function WarnInstallDir
   Return
 
 warn_dir:
-  MessageBox MB_ICONEXCLAMATION|MB_OKCANCEL|MB_DEFBUTTON2 "不建议安装到 C 盘、Program Files 或其他受权限保护的目录。$\r$\n$\r$\nAnt Browser 会在安装目录写入 data、浏览器实例和运行时文件；普通权限运行时可能写入失败，导致再次启动闪退或浏览器实例启动失败。$\r$\n$\r$\n建议改为非 C 盘可写目录，例如 D:\software\Ant Browser 或 E:\software\Ant Browser。$\r$\n$\r$\n点击“确定”继续安装到当前目录，点击“取消”返回修改安装路径。" IDOK continue_install IDCANCEL cancel_install
+  MessageBox MB_ICONEXCLAMATION|MB_OKCANCEL|MB_DEFBUTTON2 "不建议安装到 C 盘、Program Files 或其他受权限保护的目录。$\r$\n$\r$\nZwBrowser 会在安装目录写入 data、浏览器实例和运行时文件；普通权限运行时可能写入失败，导致再次启动闪退或浏览器实例启动失败。$\r$\n$\r$\n建议改为非 C 盘可写目录，例如 D:\software\ZwBrowser 或 E:\software\ZwBrowser。$\r$\n$\r$\n点击“确定”继续安装到当前目录，点击“取消”返回修改安装路径。" IDOK continue_install IDCANCEL cancel_install
 
 continue_install:
   Return
@@ -182,7 +182,7 @@ RequestExecutionLevel admin
 !define MUI_UNICON "..\build\windows\icon.ico"
 
 !insertmacro MUI_PAGE_WELCOME
-!define MUI_DIRECTORYPAGE_TEXT_TOP "请选择 Ant Browser 的安装目录。建议安装到非 C 盘的可写目录，例如 D:\software\Ant Browser 或 E:\software\Ant Browser；不要安装到 C 盘、Program Files 或其他受权限保护的目录。"
+!define MUI_DIRECTORYPAGE_TEXT_TOP "请选择 ZwBrowser 的安装目录。建议安装到非 C 盘的可写目录，例如 D:\software\ZwBrowser 或 E:\software\ZwBrowser；不要安装到 C 盘、Program Files 或其他受权限保护的目录。"
 !define MUI_DIRECTORYPAGE_TEXT_DESTINATION "安装目录（建议非 C 盘）"
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE WarnInstallDir
 !insertmacro MUI_PAGE_DIRECTORY
@@ -190,7 +190,7 @@ RequestExecutionLevel admin
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "Launch Ant Browser"
+!define MUI_FINISHPAGE_RUN_TEXT "Launch ZwBrowser"
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -198,7 +198,7 @@ RequestExecutionLevel admin
 
 !insertmacro MUI_LANGUAGE "SimpChinese"
 
-Section "Ant Browser (required)" SecMain
+Section "ZwBrowser (required)" SecMain
   SectionIn RO
   Call CloseInstalledProcesses
   SetOutPath "$INSTDIR"
@@ -218,7 +218,7 @@ Section "Ant Browser (required)" SecMain
   CreateDirectory "$INSTDIR\data"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName"     "${PRODUCT_NAME}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion"  "${VERSION}"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher"       "Ant Chrome Team"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher"       "ZwBrowser Team"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon"     "$INSTDIR\${PRODUCT_ICON}"
@@ -242,7 +242,7 @@ Section /o "Desktop Shortcut" SecDesktop
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}    "Ant Browser main program and default config (required)"
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}    "ZwBrowser main program and default config (required)"
   !insertmacro MUI_DESCRIPTION_TEXT ${SecRuntime} "xray and sing-box proxy tools (vless/vmess/hysteria2)"
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Create a shortcut on the desktop"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END

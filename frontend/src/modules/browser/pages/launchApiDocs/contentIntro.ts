@@ -121,9 +121,9 @@ export const DOC_SKILL_USAGE = `# SKILL 使用说明
 
 ## 先准备好 3 个前提
 
-1. Ant Browser 和 OpenClaw 在同一台机器上
-2. Ant Browser 的 LaunchServer 可访问，默认是 \`http://127.0.0.1:19876\`
-3. OpenClaw 已安装 \`ant-chrome-openclaw\` skill，并且已有指向 Ant Browser 的远程 CDP 浏览器配置
+1. ZwBrowser 和 OpenClaw 在同一台机器上
+2. ZwBrowser 的 LaunchServer 可访问，默认是 \`http://127.0.0.1:19876\`
+3. OpenClaw 已安装 \`ant-chrome-openclaw\` skill，并且已有指向 ZwBrowser 的远程 CDP 浏览器配置
 
 ## 安装 Skill
 
@@ -161,7 +161,7 @@ bash skills/ant-chrome-openclaw/scripts/install_ant_chrome_openclaw.sh \\
   --set-default-profile
 \`\`\`
 
-如果 Ant Browser 开了 API Key，安装时补上对应参数即可。
+如果 ZwBrowser 开了 API Key，安装时补上对应参数即可。
 
 ## 在对话里怎么触发
 
@@ -210,11 +210,11 @@ bash skills/ant-chrome-openclaw/scripts/install_ant_chrome_openclaw.sh \\
 
 ## 稳定使用规则
 
-- 先在 Ant Browser 前端里把实例、代理、标签和内核配置好
+- 先在 ZwBrowser 前端里把实例、代理、标签和内核配置好
 - 优先提供精确标识，推荐顺序是 \`launchCode\`、\`profileId\`、\`profileName\`
 - 只有在 \`debugReady=true\` 且 \`cdpUrl\` 非空时才接管
 - 如果 selector 命中多个实例，不要自动选，先返回结果给用户确认
-- \`browser stop\` 只是断开 OpenClaw 接管，不等于关闭 Ant Browser 实例
+- \`browser stop\` 只是断开 OpenClaw 接管，不等于关闭 ZwBrowser 实例
 - 当前统一 CDP 入口一次只指向一个活动实例，切换前先看 \`GET /api/runtime/active\`
 
 ## 最小排查顺序

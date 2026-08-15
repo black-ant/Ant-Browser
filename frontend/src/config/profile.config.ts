@@ -1,5 +1,4 @@
 import { projectConfig } from './projectBase.config'
-import { PROJECT_GITHUB_URL } from './links'
 
 export type ProfileIconKey =
   | 'book-open'
@@ -66,57 +65,27 @@ export const profilePageConfig: ProfilePageLocalConfig = {
     timeoutMs: 1000,
   },
   defaultAuthor: {
-    name: '志字辈小蚂蚁',
-    initial: '志',
-    title: '全栈开发工程师',
-    bio: '热爱开源，专注于 Web 和桌面应用开发。致力于打造优雅、高效的开发工具和框架。',
-    location: '中国',
-    joinDate: '2020',
-    email: 'contact@antblack.dev',
-    website: 'http://blog.antblack.de',
-    github: 'https://github.com/black-ant',
-    skills: ['Go', 'React', 'TypeScript', 'Wails', 'Node.js', 'Docker'],
-    channels: [
-      {
-        name: '掘金',
-        description: '技术文章与开发记录',
-        detail: 'juejin.cn',
-        href: 'https://juejin.cn/user/3790771822007822',
-        icon: 'book-open',
-      },
-      {
-        name: '个人博客',
-        description: '独立站文章与项目归档',
-        detail: 'blog.antblack.de',
-        href: 'http://blog.antblack.de',
-        icon: 'globe',
-      },
-      {
-        name: '公众号',
-        description: '微信搜索后即可关注',
-        detail: '整理中',
-        icon: 'message-square',
-      },
-    ],
+    // 占位个人信息:请替换为你的真实信息。留空的字段(email/website/github/location)与
+    // 空的 channels 都不会显示,因此“没有的链接不写”即留空即可。
+    name: '你的名字',
+    initial: 'Z',
+    title: '你的头衔 / 角色',
+    bio: '在这里写一句话个人简介。(编辑 frontend/src/config/profile.config.ts 即可修改本页全部内容)',
+    location: '',
+    joinDate: '2026',
+    email: '',
+    website: '',
+    github: '',
+    skills: ['Go', 'React', 'TypeScript'],
+    channels: [],
   },
   project: {
     name: projectConfig.name,
     introBadge: projectConfig.name,
-    introText: '是一个面向多账号隔离、代理绑定和本地环境管理的桌面浏览器工具。',
-    techStack: ['Wails', 'React', 'TypeScript'],
-    description: '项目当前聚焦浏览器实例隔离、代理池配置、浏览器内核管理、标签检索和快捷启动等核心能力，适合跨境电商、社媒运营、本地测试以及需要统一管理浏览器环境的团队场景。',
-    actions: [
-      {
-        label: '查看源码',
-        href: PROJECT_GITHUB_URL,
-        icon: 'github',
-      },
-      {
-        label: '下载发布版',
-        href: `${PROJECT_GITHUB_URL}/releases`,
-        icon: 'globe',
-      },
-    ],
+    introText: '是一款专业指纹浏览器:为每个环境生成独立、唯一、自洽的指纹,并与代理地理自动对齐,适合多账号与跨境业务。',
+    techStack: ['Wails', 'Go', 'React', 'TypeScript'],
+    description: 'ZwBrowser 聚焦浏览器环境隔离、指纹自洽、代理池与地理对齐、批量环境创建与快捷启动,帮助多账号运营与本地测试统一管理浏览器环境。',
+    actions: [],
   },
 }
 
