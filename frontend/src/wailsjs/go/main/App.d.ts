@@ -5,6 +5,7 @@ import {backend} from '../models';
 import {backup} from '../models';
 import {config} from '../models';
 import {browser} from '../models';
+import {identity} from '../models';
 import {proxy} from '../models';
 import {logger} from '../models';
 import {launchcode} from '../models';
@@ -136,6 +137,8 @@ export function BrowserGetAllTags():Promise<Array<string>>;
 
 export function BrowserGetCookies(arg1:string):Promise<Array<backend.CookieInfo>>;
 
+export function BrowserGetMemorySaver():Promise<boolean>;
+
 export function BrowserInstanceGetTabs(arg1:string):Promise<Array<browser.Tab>>;
 
 export function BrowserInstanceOpenFingerprintCheck(arg1:string):Promise<browser.Profile>;
@@ -192,6 +195,8 @@ export function BrowserProfilePermanentlyDelete(arg1:string):Promise<void>;
 
 export function BrowserProfileRegenerateCode(arg1:string):Promise<string>;
 
+export function BrowserProfileRegenerateFingerprint(arg1:string):Promise<browser.Profile>;
+
 export function BrowserProfileRestore(arg1:string):Promise<browser.Profile>;
 
 export function BrowserProfileSetCode(arg1:string,arg2:string):Promise<string>;
@@ -203,6 +208,8 @@ export function BrowserProfileTrashCleanup():Promise<void>;
 export function BrowserProfileTrashList():Promise<Array<browser.Profile>>;
 
 export function BrowserProfileUpdate(arg1:string,arg2:browser.ProfileInput):Promise<browser.Profile>;
+
+export function BrowserProfileValidateFingerprint(arg1:string):Promise<identity.ValidationResult>;
 
 export function BrowserProxyBatchCheckIPHealth(arg1:Array<string>,arg2:number):Promise<Array<backend.ProxyIPHealthResult>>;
 
@@ -243,6 +250,8 @@ export function BrowserProxyWarmupBridge(arg1:string):Promise<backend.ProxyBridg
 export function BrowserProxyWarmupBridgeWithConfig(arg1:string,arg2:string):Promise<backend.ProxyBridgeWarmupResult>;
 
 export function BrowserRenameTag(arg1:string,arg2:string):Promise<void>;
+
+export function BrowserSetMemorySaver(arg1:boolean):Promise<void>;
 
 export function BrowserSnapshotCreate(arg1:string,arg2:string):Promise<backend.SnapshotInfo>;
 

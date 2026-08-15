@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
 import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Textarea, toast } from '../../../shared/components'
 import type { BrowserCore, BrowserFingerprintCapabilityReport, BrowserFingerprintCapabilityRow, BrowserFingerprintCheckResult, BrowserProfileInput, BrowserProxy, BrowserGroup, ProxyLocationResolveResult } from '../types'
-import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, updateBrowserProfile, validateProxyConfig } from '../api'
+import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, regenerateBrowserProfileFingerprint, updateBrowserProfile, validateBrowserProfileFingerprint, validateProxyConfig, type FingerprintValidationResult } from '../api'
 import { FingerprintPanel } from '../components/FingerprintPanel'
 import { applyLocaleToFingerprintArgs, validateFingerprintArgs, withAdaptiveDefaultWindowSize } from '../utils/fingerprintSerializer'
 import { TagInput } from '../components/TagInput'
@@ -266,6 +266,8 @@ export function BrowserEditPage() {
   const [saveError, setSaveError] = useState('')
   const [locationResolving, setLocationResolving] = useState(false)
   const [locationResult, setLocationResult] = useState<ProxyLocationResolveResult | null>(null)
+  const [fpValidation, setFpValidation] = useState<FingerprintValidationResult | null>(null)
+  const [fpBusy, setFpBusy] = useState(false)
   const [fingerprintChecking, setFingerprintChecking] = useState(false)
   const [fingerprintPageOpening, setFingerprintPageOpening] = useState(false)
   const [fingerprintCheckResult, setFingerprintCheckResult] = useState<BrowserFingerprintCheckResult | null>(null)
@@ -455,6 +457,38 @@ export function BrowserEditPage() {
       toast.error((error as Error)?.message || '代理定位失败')
     } finally {
       setLocationResolving(false)
+    }
+  }
+
+  const handleValidateFingerprint = async () => {
+    if (isCreate || !id) return
+    setFpBusy(true)
+    try {
+      setFpValidation(await validateBrowserProfileFingerprint(id))
+    } catch (error: unknown) {
+      toast.error((error as Error)?.message || '校验失败')
+    } finally {
+      setFpBusy(false)
+    }
+  }
+
+  const handleRegenerateFingerprint = async () => {
+    if (isCreate || !id) {
+      toast.error('请先保存实例后再重新生成身份')
+      return
+    }
+    setFpBusy(true)
+    try {
+      const profile = await regenerateBrowserProfileFingerprint(id)
+      if (profile?.fingerprintArgs) {
+        handleChange('fingerprintArgs', profile.fingerprintArgs)
+      }
+      setFpValidation(await validateBrowserProfileFingerprint(id))
+      toast.success('已重新生成唯一自洽指纹身份')
+    } catch (error: unknown) {
+      toast.error((error as Error)?.message || '重新生成失败')
+    } finally {
+      setFpBusy(false)
     }
   }
 
@@ -726,6 +760,27 @@ export function BrowserEditPage() {
           </>
         )}
       >
+        {!isCreate && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <Button onClick={handleRegenerateFingerprint} disabled={fpBusy}>重新生成唯一身份</Button>
+            <Button onClick={handleValidateFingerprint} disabled={fpBusy}>校验一致性</Button>
+            {fpValidation && (
+              <span
+                style={{
+                  fontSize: 12,
+                  padding: '2px 10px',
+                  borderRadius: 12,
+                  background: fpValidation.ok ? 'rgba(34,197,94,0.15)' : 'rgba(234,179,8,0.15)',
+                  color: fpValidation.ok ? '#16a34a' : '#b45309',
+                }}
+              >
+                {fpValidation.ok
+                  ? '✓ 指纹自洽'
+                  : `⚠ ${fpValidation.issues.length} 项：${fpValidation.issues.map(i => i.message).join('；')}`}
+              </span>
+            )}
+          </div>
+        )}
         <FingerprintPanel
           value={formData.fingerprintArgs}
           onChange={args => handleChange('fingerprintArgs', args)}

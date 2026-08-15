@@ -376,3 +376,51 @@ export async function renameBrowserTag(oldName: string, newName: string): Promis
   }
   return true
 }
+
+// ── 指纹自洽引擎 ──
+
+export interface FingerprintValidationIssue {
+  field: string
+  message: string
+  severity: string
+  fixable: boolean
+}
+
+export interface FingerprintValidationResult {
+  ok: boolean
+  issues: FingerprintValidationIssue[]
+}
+
+// 为实例重新生成一套唯一自洽指纹身份。
+export async function regenerateBrowserProfileFingerprint(profileId: string): Promise<BrowserProfile | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfileRegenerateFingerprint) {
+    return (await bindings.BrowserProfileRegenerateFingerprint(profileId)) || null
+  }
+  return null
+}
+
+// 校验实例指纹身份的自洽性。
+export async function validateBrowserProfileFingerprint(profileId: string): Promise<FingerprintValidationResult | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfileValidateFingerprint) {
+    return (await bindings.BrowserProfileValidateFingerprint(profileId)) || null
+  }
+  return null
+}
+
+// 省内存模式开关(对复杂电商/视频站无损)。
+export async function getMemorySaver(): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserGetMemorySaver) {
+    return (await bindings.BrowserGetMemorySaver()) || false
+  }
+  return false
+}
+
+export async function setMemorySaver(enabled: boolean): Promise<void> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserSetMemorySaver) {
+    await bindings.BrowserSetMemorySaver(enabled)
+  }
+}

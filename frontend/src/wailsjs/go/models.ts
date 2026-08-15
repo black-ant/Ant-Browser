@@ -1690,6 +1690,61 @@ export namespace config {
 
 }
 
+export namespace identity {
+	
+	export class Issue {
+	    field: string;
+	    message: string;
+	    severity: string;
+	    fixable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Issue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.field = source["field"];
+	        this.message = source["message"];
+	        this.severity = source["severity"];
+	        this.fixable = source["fixable"];
+	    }
+	}
+	export class ValidationResult {
+	    ok: boolean;
+	    issues: Issue[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ValidationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.issues = this.convertValues(source["issues"], Issue);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace launchcode {
 	
 	export class LaunchRequestParams {

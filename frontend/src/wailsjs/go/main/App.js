@@ -254,6 +254,10 @@ export function BrowserGetCookies(arg1) {
   return window['go']['main']['App']['BrowserGetCookies'](arg1);
 }
 
+export function BrowserGetMemorySaver() {
+  return window['go']['main']['App']['BrowserGetMemorySaver']();
+}
+
 export function BrowserInstanceGetTabs(arg1) {
   return window['go']['main']['App']['BrowserInstanceGetTabs'](arg1);
 }
@@ -366,6 +370,10 @@ export function BrowserProfileRegenerateCode(arg1) {
   return window['go']['main']['App']['BrowserProfileRegenerateCode'](arg1);
 }
 
+export function BrowserProfileRegenerateFingerprint(arg1) {
+  return window['go']['main']['App']['BrowserProfileRegenerateFingerprint'](arg1);
+}
+
 export function BrowserProfileRestore(arg1) {
   return window['go']['main']['App']['BrowserProfileRestore'](arg1);
 }
@@ -388,6 +396,10 @@ export function BrowserProfileTrashList() {
 
 export function BrowserProfileUpdate(arg1, arg2) {
   return window['go']['main']['App']['BrowserProfileUpdate'](arg1, arg2);
+}
+
+export function BrowserProfileValidateFingerprint(arg1) {
+  return window['go']['main']['App']['BrowserProfileValidateFingerprint'](arg1);
 }
 
 export function BrowserProxyBatchCheckIPHealth(arg1, arg2) {
@@ -468,6 +480,10 @@ export function BrowserProxyWarmupBridgeWithConfig(arg1, arg2) {
 
 export function BrowserRenameTag(arg1, arg2) {
   return window['go']['main']['App']['BrowserRenameTag'](arg1, arg2);
+}
+
+export function BrowserSetMemorySaver(arg1) {
+  return window['go']['main']['App']['BrowserSetMemorySaver'](arg1);
 }
 
 export function BrowserSnapshotCreate(arg1, arg2) {

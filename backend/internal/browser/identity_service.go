@@ -62,6 +62,26 @@ func (s *IdentityService) GenerateUnique() (identity.Identity, error) {
 	}, 100)
 }
 
+// Regenerate 强制为 profile 重新生成一套唯一身份(忽略已有身份),存库并刷新 FingerprintArgs。
+// 用于前端“重新生成指纹”。
+func (s *IdentityService) Regenerate(profile *Profile) error {
+	if profile == nil {
+		return nil
+	}
+	id, err := s.GenerateUnique()
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	err = s.store.Save(profile.ProfileId, id)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	profile.FingerprintArgs = id.LaunchArgs()
+	return nil
+}
+
 // ResolveExitIPGeo 用注入的离线 GeoIP 解析器解析代理出口 IP 的地理;
 // 未注入解析器(无 mmdb)或解析失败时返回 ok=false,调用方据此优雅降级为不对齐。
 func (s *IdentityService) ResolveExitIPGeo(exitIP string) (identity.GeoInfo, bool) {
