@@ -27,15 +27,20 @@ require_cmd() {
 
 is_tcp_port_busy() {
   local port="$1"
-  ss -ltn "( sport = :$port )" | tail -n +2 | grep -q .
+  # 跨平台端口占用检测:macOS 用 lsof,Linux 用 ss;都没有则保守认为未占用。
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+  elif command -v ss >/dev/null 2>&1; then
+    ss -ltn "( sport = :$port )" | tail -n +2 | grep -q .
+  else
+    return 1
+  fi
 }
 
 resolve_wails_devserver() {
   local start_port="${WAILS_DEVSERVER_PORT:-34115}"
   local host="${WAILS_DEVSERVER_HOST:-127.0.0.1}"
   local port="$start_port"
-
-  require_cmd ss
 
   while is_tcp_port_busy "$port"; do
     port=$((port + 1))
