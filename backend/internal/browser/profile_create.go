@@ -68,6 +68,11 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 			logger.F("proxy_id", strings.TrimSpace(input.ProxyId)),
 		)
 	}
+	if len(input.FingerprintArgs) == 0 && m.IdentityService != nil {
+		if err := m.IdentityService.AssignToProfile(profile); err != nil {
+			log.Warn("自动生成自洽指纹身份失败，回退默认指纹", logger.F("profile_id", profileId), logger.F("error", err.Error()))
+		}
+	}
 	m.Profiles[profileId] = profile
 	log.Info("浏览器配置创建", logger.F("profile_id", profileId), logger.F("profile_name", input.ProfileName))
 	if err := m.SaveProfiles(); err != nil {

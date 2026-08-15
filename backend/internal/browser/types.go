@@ -157,6 +157,9 @@ type Manager struct {
 	BookmarkDAO  BookmarkDAO
 	GroupDAO     GroupDAO
 	ExtensionDAO ExtensionDAO
+
+	// 指纹自洽引擎服务(注入后,创建环境时自动生成唯一自洽身份)
+	IdentityService *IdentityService
 }
 
 // XrayBridge Xray 桥接进程
