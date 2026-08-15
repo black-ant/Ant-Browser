@@ -54,6 +54,8 @@ prepare_env() {
   require_cmd node
   require_cmd npm
   require_cmd go
+  # 确保 `go install` 安装的 wails 可被找到(GOPATH/bin 常未加入 PATH)。
+  export PATH="$PATH:$(go env GOPATH)/bin"
   require_cmd wails
 
   if [[ -n "${DEV_PROXY_URL:-}" ]]; then
