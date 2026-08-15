@@ -163,6 +163,10 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		return nil, startErr
 	}
 
+	if a.config != nil && a.config.Browser.MemorySaverEnabled {
+		sanitizedExtraLaunchArgs = append(sanitizedExtraLaunchArgs, browser.MemorySaverArgs()...)
+	}
+
 	return &browserStartPlan{
 		profile:              profile,
 		chromeBinaryPath:     chromeBinaryPath,

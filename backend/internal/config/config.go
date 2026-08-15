@@ -109,6 +109,7 @@ type BrowserConfig struct {
 	DefaultStartURLs       []string               `yaml:"default_start_urls"`
 	LightStartEnabled      *bool                  `yaml:"light_start_enabled,omitempty"`
 	RestoreLastSession     bool                   `yaml:"restore_last_session"`
+	MemorySaverEnabled     bool                   `yaml:"memory_saver,omitempty"`
 	StartReadyTimeoutMs    int                    `yaml:"start_ready_timeout_ms,omitempty"`
 	StartStableWindowMs    int                    `yaml:"start_stable_window_ms,omitempty"`
 	DefaultBookmarks       []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
