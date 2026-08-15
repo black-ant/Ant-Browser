@@ -6,6 +6,7 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/database"
+	"ant-chrome/backend/internal/identity"
 	"ant-chrome/backend/internal/launchcode"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
@@ -134,6 +135,10 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	a.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(conn)
 	if idSvc, err := browser.NewIdentityService(conn); err == nil {
 		a.browserMgr.IdentityService = idSvc
+		// 若离线 GeoIP 库存在,启用代理地理对齐;缺库则优雅降级为不对齐。
+		if res, err := identity.OpenMMDBResolver(a.resolveAppPath("data/geoip/dbip-city-lite.mmdb")); err == nil {
+			idSvc.SetGeoResolver(res)
+		}
 	}
 
 	a.migrateToSQLite()
