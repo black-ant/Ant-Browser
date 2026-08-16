@@ -310,19 +310,21 @@ func run(opts options) (*recoveryReport, error) {
 				return nil, fmt.Errorf("profile dao not initialized in apply mode")
 			}
 			p := &browser.Profile{
-				ProfileId:       profileID,
-				ProfileName:     profileName,
-				UserDataDir:     registeredUserDataDir,
-				CoreId:          selectedCore.CoreID,
-				FingerprintArgs: append([]string{}, cfg.Browser.DefaultFingerprintArgs...),
-				ProxyId:         "",
-				ProxyConfig:     "",
-				LaunchArgs:      append([]string{}, cfg.Browser.DefaultLaunchArgs...),
-				Tags:            []string{"恢复"},
-				Keywords:        []string{},
-				GroupId:         "",
-				CreatedAt:       now.Format(time.RFC3339),
-				UpdatedAt:       now.Format(time.RFC3339),
+				ProfileId:            profileID,
+				ProfileName:          profileName,
+				UserDataDir:          registeredUserDataDir,
+				CoreId:               selectedCore.CoreID,
+				FingerprintArgs:      append([]string{}, cfg.Browser.DefaultFingerprintArgs...),
+				ProxyId:              "",
+				ProxyConfig:          "",
+				LaunchArgs:           append([]string{}, cfg.Browser.DefaultLaunchArgs...),
+				Tags:                 []string{"恢复"},
+				Keywords:             []string{},
+				GroupId:              "",
+				LiveKeepAliveEnabled: true,
+				MuteAudio:            true,
+				CreatedAt:            now.Format(time.RFC3339),
+				UpdatedAt:            now.Format(time.RFC3339),
 			}
 			if err := profileDAO.Upsert(p); err != nil {
 				item.Action = "error"

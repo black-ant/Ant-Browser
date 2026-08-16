@@ -3,6 +3,7 @@ package browser
 import (
 	"testing"
 
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/database"
 	_ "modernc.org/sqlite"
 )
@@ -70,5 +71,44 @@ func TestProfileLiveColumnsLegacyRowDefaults(t *testing.T) {
 	}
 	if !got.LiveKeepAliveEnabled || !got.MuteAudio {
 		t.Fatalf("历史行应回退默认开: keepalive=%v mute=%v", got.LiveKeepAliveEnabled, got.MuteAudio)
+	}
+}
+
+// 复制实例(Manager.Copy 真实路径)必须继承源实例的保活/静音设置,
+// 而不是回退成 Profile{} 的 zero value(=false/false,反转了"默认开"的要求)。
+// 覆盖开/关两种取值,确保是"继承"而非硬编码常量。
+func TestCopyProfileInheritsLiveKeepAliveAndMuteAudio(t *testing.T) {
+	cases := []struct {
+		name      string
+		keepAlive bool
+		muteAudio bool
+	}{
+		{"both_on_default", true, true},
+		{"both_off", false, false},
+		{"mixed", true, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manager := NewManager(&config.Config{}, t.TempDir())
+			src := &Profile{
+				ProfileId:            "src",
+				ProfileName:          "源实例",
+				LiveKeepAliveEnabled: tc.keepAlive,
+				MuteAudio:            tc.muteAudio,
+			}
+			manager.Profiles[src.ProfileId] = src
+
+			copied, err := manager.Copy(src.ProfileId, "")
+			if err != nil {
+				t.Fatalf("Copy: %v", err)
+			}
+			if copied.LiveKeepAliveEnabled != tc.keepAlive {
+				t.Fatalf("LiveKeepAliveEnabled = %v, want %v", copied.LiveKeepAliveEnabled, tc.keepAlive)
+			}
+			if copied.MuteAudio != tc.muteAudio {
+				t.Fatalf("MuteAudio = %v, want %v", copied.MuteAudio, tc.muteAudio)
+			}
+		})
 	}
 }

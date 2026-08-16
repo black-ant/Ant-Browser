@@ -138,22 +138,24 @@ func (a *App) migrateToSQLite() {
 					coreId = ""
 				}
 				p := &browser.Profile{
-					ProfileId:          pc.ProfileId,
-					ProfileName:        pc.ProfileName,
-					UserDataDir:        pc.UserDataDir,
-					CoreId:             coreId,
-					FingerprintArgs:    pc.FingerprintArgs,
-					ProxyId:            pc.ProxyId,
-					ProxyConfig:        pc.ProxyConfig,
-					ProxyBindSourceID:  pc.ProxyBindSourceID,
-					ProxyBindSourceURL: pc.ProxyBindSourceURL,
-					ProxyBindName:      pc.ProxyBindName,
-					ProxyBindUpdatedAt: pc.ProxyBindUpdatedAt,
-					LaunchArgs:         pc.LaunchArgs,
-					Tags:               pc.Tags,
-					Keywords:           pc.Keywords,
-					CreatedAt:          pc.CreatedAt,
-					UpdatedAt:          pc.UpdatedAt,
+					ProfileId:            pc.ProfileId,
+					ProfileName:          pc.ProfileName,
+					UserDataDir:          pc.UserDataDir,
+					CoreId:               coreId,
+					FingerprintArgs:      pc.FingerprintArgs,
+					ProxyId:              pc.ProxyId,
+					ProxyConfig:          pc.ProxyConfig,
+					ProxyBindSourceID:    pc.ProxyBindSourceID,
+					ProxyBindSourceURL:   pc.ProxyBindSourceURL,
+					ProxyBindName:        pc.ProxyBindName,
+					ProxyBindUpdatedAt:   pc.ProxyBindUpdatedAt,
+					LaunchArgs:           pc.LaunchArgs,
+					Tags:                 pc.Tags,
+					Keywords:             pc.Keywords,
+					LiveKeepAliveEnabled: true,
+					MuteAudio:            true,
+					CreatedAt:            pc.CreatedAt,
+					UpdatedAt:            pc.UpdatedAt,
 				}
 				if err := a.browserMgr.ProfileDAO.Upsert(p); err != nil {
 					log.Error("实例迁移失败", logger.F("profile_id", pc.ProfileId), logger.F("error", err))
@@ -163,17 +165,19 @@ func (a *App) migrateToSQLite() {
 		} else {
 			log.Info("实例表为空，自动创建默认实例")
 			defaultProfile := &browser.Profile{
-				ProfileId:       generateUUID(),
-				ProfileName:     "默认实例",
-				UserDataDir:     "default",
-				CoreId:          "",
-				FingerprintArgs: a.config.Browser.DefaultFingerprintArgs,
-				LaunchArgs:      a.config.Browser.DefaultLaunchArgs,
-				Tags:            []string{"默认"},
-				ProxyId:         "__direct__",
-				ProxyConfig:     "direct://",
-				CreatedAt:       time.Now().Format(time.RFC3339),
-				UpdatedAt:       time.Now().Format(time.RFC3339),
+				ProfileId:            generateUUID(),
+				ProfileName:          "默认实例",
+				UserDataDir:          "default",
+				CoreId:               "",
+				FingerprintArgs:      a.config.Browser.DefaultFingerprintArgs,
+				LaunchArgs:           a.config.Browser.DefaultLaunchArgs,
+				Tags:                 []string{"默认"},
+				ProxyId:              "__direct__",
+				ProxyConfig:          "direct://",
+				LiveKeepAliveEnabled: true,
+				MuteAudio:            true,
+				CreatedAt:            time.Now().Format(time.RFC3339),
+				UpdatedAt:            time.Now().Format(time.RFC3339),
 			}
 			if err := a.browserMgr.ProfileDAO.Upsert(defaultProfile); err != nil {
 				log.Error("自动创建默认实例失败", logger.F("error", err))
