@@ -50,6 +50,12 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 	profile.Tags = input.Tags
 	profile.Keywords = append([]string{}, input.Keywords...)
 	profile.GroupId = buildProfileGroupID(input.GroupId)
+	if input.LiveKeepAliveEnabled != nil {
+		profile.LiveKeepAliveEnabled = *input.LiveKeepAliveEnabled
+	}
+	if input.MuteAudio != nil {
+		profile.MuteAudio = *input.MuteAudio
+	}
 	profile.UpdatedAt = time.Now().Format(time.RFC3339)
 
 	log.Info("浏览器配置更新", logger.F("profile_id", profileId), logger.F("profile_name", input.ProfileName))

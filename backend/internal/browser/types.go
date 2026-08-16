@@ -9,52 +9,57 @@ import (
 
 // Profile 浏览器配置文件
 type Profile struct {
-	ProfileId          string   `json:"profileId"`
-	ProfileName        string   `json:"profileName"`
-	UserDataDir        string   `json:"userDataDir"`
-	CoreId             string   `json:"coreId"`
-	RestoreLastSession string   `json:"restoreLastSession"`
-	FingerprintArgs    []string `json:"fingerprintArgs"`
-	ProxyId            string   `json:"proxyId"`
-	ProxyConfig        string   `json:"proxyConfig"`
-	ProxyBindSourceID  string   `json:"proxyBindSourceId"`
-	ProxyBindSourceURL string   `json:"proxyBindSourceUrl"`
-	ProxyBindName      string   `json:"proxyBindName"`
-	ProxyBindUpdatedAt string   `json:"proxyBindUpdatedAt"`
-	MemoryLimitMB      int      `json:"memoryLimitMb"`
-	LaunchArgs         []string `json:"launchArgs"`
-	LastLaunchArgs     []string `json:"lastLaunchArgs"`
-	Tags               []string `json:"tags"`
-	Keywords           []string `json:"keywords"`
-	GroupId            string   `json:"groupId"` // 所属分组ID
-	LaunchCode         string   `json:"launchCode"`
-	Running            bool     `json:"running"`
-	DebugPort          int      `json:"debugPort"`
-	DebugReady         bool     `json:"debugReady"`
-	Pid                int      `json:"pid"`
-	RuntimeWarning     string   `json:"runtimeWarning"`
-	LastError          string   `json:"lastError"`
-	CreatedAt          string   `json:"createdAt"`
-	UpdatedAt          string   `json:"updatedAt"`
-	DeletedAt          string   `json:"deletedAt"`
-	LastStartAt        string   `json:"lastStartAt"`
-	LastStopAt         string   `json:"lastStopAt"`
+	ProfileId            string   `json:"profileId"`
+	ProfileName          string   `json:"profileName"`
+	UserDataDir          string   `json:"userDataDir"`
+	CoreId               string   `json:"coreId"`
+	RestoreLastSession   string   `json:"restoreLastSession"`
+	FingerprintArgs      []string `json:"fingerprintArgs"`
+	ProxyId              string   `json:"proxyId"`
+	ProxyConfig          string   `json:"proxyConfig"`
+	ProxyBindSourceID    string   `json:"proxyBindSourceId"`
+	ProxyBindSourceURL   string   `json:"proxyBindSourceUrl"`
+	ProxyBindName        string   `json:"proxyBindName"`
+	ProxyBindUpdatedAt   string   `json:"proxyBindUpdatedAt"`
+	MemoryLimitMB        int      `json:"memoryLimitMb"`
+	LaunchArgs           []string `json:"launchArgs"`
+	LastLaunchArgs       []string `json:"lastLaunchArgs"`
+	Tags                 []string `json:"tags"`
+	Keywords             []string `json:"keywords"`
+	GroupId              string   `json:"groupId"`              // 所属分组ID
+	LiveKeepAliveEnabled bool     `json:"liveKeepaliveEnabled"` // 直播保活开关,默认开
+	MuteAudio            bool     `json:"muteAudio"`            // 硬静音(--mute-audio),默认开
+	LaunchCode           string   `json:"launchCode"`
+	Running              bool     `json:"running"`
+	DebugPort            int      `json:"debugPort"`
+	DebugReady           bool     `json:"debugReady"`
+	Pid                  int      `json:"pid"`
+	RuntimeWarning       string   `json:"runtimeWarning"`
+	LastError            string   `json:"lastError"`
+	CreatedAt            string   `json:"createdAt"`
+	UpdatedAt            string   `json:"updatedAt"`
+	DeletedAt            string   `json:"deletedAt"`
+	LastStartAt          string   `json:"lastStartAt"`
+	LastStopAt           string   `json:"lastStopAt"`
 }
 
 // ProfileInput 创建/更新配置文件的输入
 type ProfileInput struct {
-	ProfileName        string   `json:"profileName"`
-	UserDataDir        string   `json:"userDataDir"`
-	CoreId             string   `json:"coreId"`
-	RestoreLastSession string   `json:"restoreLastSession"`
-	FingerprintArgs    []string `json:"fingerprintArgs"`
-	ProxyId            string   `json:"proxyId"`
-	ProxyConfig        string   `json:"proxyConfig"`
-	MemoryLimitMB      int      `json:"memoryLimitMb"`
-	LaunchArgs         []string `json:"launchArgs"`
-	Tags               []string `json:"tags"`
-	Keywords           []string `json:"keywords"`
-	GroupId            string   `json:"groupId"` // 所属分组ID
+	ProfileName          string   `json:"profileName"`
+	UserDataDir          string   `json:"userDataDir"`
+	CoreId               string   `json:"coreId"`
+	RestoreLastSession   string   `json:"restoreLastSession"`
+	FingerprintArgs      []string `json:"fingerprintArgs"`
+	ProxyId              string   `json:"proxyId"`
+	ProxyConfig          string   `json:"proxyConfig"`
+	MemoryLimitMB        int      `json:"memoryLimitMb"`
+	LaunchArgs           []string `json:"launchArgs"`
+	Tags                 []string `json:"tags"`
+	Keywords             []string `json:"keywords"`
+	GroupId              string   `json:"groupId"`                        // 所属分组ID
+	LiveKeepAliveEnabled *bool    `json:"liveKeepaliveEnabled,omitempty"` // nil=不改/取默认(开)
+	MuteAudio            *bool    `json:"muteAudio,omitempty"`            // nil=不改/取默认(开)
+	IdentityPlatform     string   `json:"identityPlatform,omitempty"`     // 仅批量创建用:限定身份平台(""=全部),不落库
 }
 
 // ProfileCopyOptions 复制实例时的附加选项。

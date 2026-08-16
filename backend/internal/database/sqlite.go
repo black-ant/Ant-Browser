@@ -238,6 +238,14 @@ var migrations = []migration{
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_browser_identities_seed ON browser_identities(seed) WHERE seed != 0`,
 		},
 	},
+	{
+		version: 16,
+		desc:    "实例表添加直播保活与静音开关(默认开)",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN live_keepalive_enabled INTEGER NOT NULL DEFAULT 1`,
+			`ALTER TABLE browser_profiles ADD COLUMN mute_audio INTEGER NOT NULL DEFAULT 1`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,
