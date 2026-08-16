@@ -293,6 +293,10 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 		source.CreatedAt = now
 		source.UpdatedAt = now
 		source.DeletedAt = ""
+		// 导入=本机新环境:直播保活/静音默认开。旧版导出的包不含这两个 JSON 键,会解码为
+		// false → 反转"默认开"约束(导入的环境静音/保活都关,正好触发多开抢声卡),故在此强制默认开。
+		source.LiveKeepAliveEnabled = true
+		source.MuteAudio = true
 		if warning := a.applyImportedProfileProxyByName(&source); warning != "" {
 			warnings = append(warnings, fmt.Sprintf("实例「%s」%s", source.ProfileName, warning))
 		}
