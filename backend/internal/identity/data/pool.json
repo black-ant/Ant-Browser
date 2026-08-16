@@ -9557,27 +9557,6 @@
   {
     "platform": "windows",
     "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 24,
-    "deviceMemory": 8,
-    "screen": {
-      "width": 1280,
-      "height": 720,
-      "dpr": 1.5,
-      "colorDepth": 32
-    },
-    "windowSize": "1280,672",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
     "brandVersion": "147.0.0.0",
     "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
     "hardwareConcurrency": 3,
@@ -11004,27 +10983,6 @@
     "weight": 1
   },
   {
-    "platform": "windows",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 12,
-    "deviceMemory": 16,
-    "screen": {
-      "width": 1536,
-      "height": 864,
-      "dpr": 2.5,
-      "colorDepth": 32
-    },
-    "windowSize": "1536,816",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
     "platform": "macos",
     "platformVersion": "",
     "brandVersion": "147.0.0.0",
@@ -12109,27 +12067,6 @@
       "colorDepth": 24
     },
     "windowSize": "1920,997",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 8,
-    "deviceMemory": 8,
-    "screen": {
-      "width": 1536,
-      "height": 864,
-      "dpr": 2.5,
-      "colorDepth": 32
-    },
-    "windowSize": "1536,816",
     "languages": [
       "en-US"
     ],
@@ -13894,27 +13831,6 @@
       "colorDepth": 32
     },
     "windowSize": "1466,788",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 4,
-    "deviceMemory": 16,
-    "screen": {
-      "width": 1536,
-      "height": 864,
-      "dpr": 2.5,
-      "colorDepth": 32
-    },
-    "windowSize": "1536,816",
     "languages": [
       "en-US"
     ],
@@ -17138,27 +17054,6 @@
   {
     "platform": "windows",
     "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 24,
-    "deviceMemory": 8,
-    "screen": {
-      "width": 1536,
-      "height": 960,
-      "dpr": 1.25,
-      "colorDepth": 32
-    },
-    "windowSize": "1536,912",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
     "brandVersion": "147.0.0.0",
     "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
     "hardwareConcurrency": 12,
@@ -19595,27 +19490,6 @@
   {
     "platform": "windows",
     "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 4,
-    "deviceMemory": 8,
-    "screen": {
-      "width": 1280,
-      "height": 720,
-      "dpr": 1.5,
-      "colorDepth": 32
-    },
-    "windowSize": "1280,672",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
     "brandVersion": "147.0.0.0",
     "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
     "hardwareConcurrency": 6,
@@ -19732,27 +19606,6 @@
       "colorDepth": 32
     },
     "windowSize": "1646,1030",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "macos",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 14,
-    "deviceMemory": 32,
-    "screen": {
-      "width": 1512,
-      "height": 982,
-      "dpr": 2,
-      "colorDepth": 30
-    },
-    "windowSize": "1512,949",
     "languages": [
       "en-US"
     ],
@@ -20328,27 +20181,6 @@
     "weight": 1
   },
   {
-    "platform": "macos",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 14,
-    "deviceMemory": 32,
-    "screen": {
-      "width": 2560,
-      "height": 1440,
-      "dpr": 2,
-      "colorDepth": 30
-    },
-    "windowSize": "2560,1317",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
     "platform": "windows",
     "platformVersion": "",
     "brandVersion": "147.0.0.0",
@@ -20635,27 +20467,6 @@
       "colorDepth": 24
     },
     "windowSize": "2560,1410",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 8,
-    "deviceMemory": 32,
-    "screen": {
-      "width": 1280,
-      "height": 720,
-      "dpr": 1.5,
-      "colorDepth": 32
-    },
-    "windowSize": "1280,672",
     "languages": [
       "en-US"
     ],
@@ -23281,27 +23092,6 @@
       "colorDepth": 32
     },
     "windowSize": "1114,585",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 4,
-    "deviceMemory": 32,
-    "screen": {
-      "width": 1536,
-      "height": 960,
-      "dpr": 1.25,
-      "colorDepth": 32
-    },
-    "windowSize": "1536,912",
     "languages": [
       "en-US"
     ],
@@ -27405,27 +27195,6 @@
     "weight": 1
   },
   {
-    "platform": "macos",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 12,
-    "deviceMemory": 32,
-    "screen": {
-      "width": 2560,
-      "height": 1440,
-      "dpr": 2,
-      "colorDepth": 30
-    },
-    "windowSize": "2560,1317",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
     "platform": "windows",
     "platformVersion": "",
     "brandVersion": "147.0.0.0",
@@ -29990,27 +29759,6 @@
   {
     "platform": "windows",
     "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 12,
-    "deviceMemory": 8,
-    "screen": {
-      "width": 1280,
-      "height": 720,
-      "dpr": 1.5,
-      "colorDepth": 32
-    },
-    "windowSize": "1280,672",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "windows",
-    "platformVersion": "",
     "brandVersion": "147.0.0.0",
     "uaFull": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
     "hardwareConcurrency": 4,
@@ -30589,27 +30337,6 @@
       "colorDepth": 30
     },
     "windowSize": "1280,800",
-    "languages": [
-      "en-US"
-    ],
-    "locale": "en-US",
-    "timezone": "America/New_York",
-    "weight": 1
-  },
-  {
-    "platform": "macos",
-    "platformVersion": "",
-    "brandVersion": "149.0.0.0",
-    "uaFull": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "hardwareConcurrency": 12,
-    "deviceMemory": 16,
-    "screen": {
-      "width": 1512,
-      "height": 982,
-      "dpr": 2,
-      "colorDepth": 30
-    },
-    "windowSize": "1512,949",
     "languages": [
       "en-US"
     ],

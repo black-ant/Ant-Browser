@@ -12,6 +12,8 @@ import (
 //     (0=允许全部,1=无痕下拦第三方,3=拦全部第三方;实测启动 flag 无效,必须落到该 pref)。
 //   - profile.exit_type = "Normal" / exited_cleanly = true : 去掉"Chrome 未正常关闭/恢复上次页面"气泡。
 //   - browser.check_default_browser = false : 去掉"设为默认浏览器"提示(与 --no-default-browser-check 双保险)。
+//   - 删除 browser.window_placement / app_window_placement : 否则 Chrome 会用上次保存的(常为最大化)
+//     窗口状态覆盖命令行 --window-size,导致窗口开成真机工作区大小、指纹检测 Window Size 对不上。
 // 仅在实例未运行(启动前)调用,读改写合并,用 UseNumber 保留数字类型,避免破坏 Preferences 其他字段。
 func ensureLaunchPreferences(userDataDir string) {
 	if userDataDir == "" {
@@ -45,6 +47,10 @@ func ensureLaunchPreferences(userDataDir string) {
 		browser = map[string]interface{}{}
 	}
 	browser["check_default_browser"] = false
+	// 删除持久化窗口位置/尺寸:让每次启动都回退到命令行 --window-size(否则上次最大化状态会覆盖它)。
+	// 非指纹参数,删除安全;修复"指纹检测 Window Size 与身份不一致"。
+	delete(browser, "window_placement")
+	delete(browser, "app_window_placement")
 	prefs["browser"] = browser
 
 	if out, err := json.Marshal(prefs); err == nil {
