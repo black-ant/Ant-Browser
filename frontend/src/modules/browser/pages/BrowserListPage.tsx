@@ -25,6 +25,7 @@ import {
   fetchBrowserProfileTrash,
   importBrowserProfilePackage,
   permanentlyDeleteBrowserProfile,
+  permanentlyDeleteAllBrowserProfiles,
   restoreBrowserProfile,
   startBrowserInstance,
   stopBrowserInstance,
@@ -91,6 +92,7 @@ export function BrowserListPage() {
   const [trashLoading, setTrashLoading] = useState(false)
   const [restoringId, setRestoringId] = useState('')
   const [permanentlyDeletingId, setPermanentlyDeletingId] = useState('')
+  const [emptyingTrash, setEmptyingTrash] = useState(false)
   const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ open: boolean; profile: BrowserProfile | null }>({
     open: false,
     profile: null,
@@ -436,6 +438,19 @@ export function BrowserListPage() {
     }
   }
 
+  const handleEmptyTrash = async () => {
+    setEmptyingTrash(true)
+    try {
+      const count = await permanentlyDeleteAllBrowserProfiles()
+      toast.success(`已彻底删除回收站 ${count} 个实例`)
+      await loadTrashProfiles()
+    } catch (error: any) {
+      toast.error(error?.message || '清空回收站失败')
+    } finally {
+      setEmptyingTrash(false)
+    }
+  }
+
   const openBatchDeleteConfirm = () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
@@ -737,6 +752,8 @@ export function BrowserListPage() {
         onOpenPermanentDelete={(profile) => setPermanentDeleteConfirm({ open: true, profile })}
         onClosePermanentDelete={() => setPermanentDeleteConfirm({ open: false, profile: null })}
         onConfirmPermanentDelete={() => { void handleConfirmPermanentDelete() }}
+        onEmptyTrash={() => { void handleEmptyTrash() }}
+        emptyingTrash={emptyingTrash}
         opError={opError}
         onCloseOpError={() => setOpError('')}
       />

@@ -28,6 +28,7 @@ interface TableProps<T> {
   className?: string
   maxHeight?: string  // 表格最大高度，默认 'calc(100vh - 320px)'
   stickyHeader?: boolean  // 是否固定表头，默认 true
+  size?: 'default' | 'compact'  // 行密度，compact 时行高更小，默认 'default'
   onSort?: (sorterResult: SorterResult) => void // 排序变化回调
   sortColumn?: string // 当前排序的列
   sortOrder?: SortOrder // 当前排序方式
@@ -43,10 +44,15 @@ export function Table<T extends Record<string, any>>({
   className,
   maxHeight = 'calc(100vh - 320px)',
   stickyHeader = true,
+  size = 'default',
   onSort,
   sortColumn,
   sortOrder,
 }: TableProps<T>) {
+  const headerCellPadding = size === 'compact' ? 'px-3 py-2' : 'px-4 py-3'
+  const bodyCellPadding = size === 'compact' ? 'px-3 py-1.5' : 'px-4 py-3.5'
+  // 紧凑模式:单元格内容不换行(长文本由各列自带的 truncate 截断),避免因换行撑高行。
+  const bodyCellNowrap = size === 'compact'
   const getRowKey = (record: T, index: number): string => {
     if (typeof rowKey === 'function') {
       return rowKey(record)
@@ -110,7 +116,8 @@ export function Table<T extends Record<string, any>>({
               <th
                 key={col.key}
                 className={clsx(
-                  'px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)]',
+                  headerCellPadding,
+                  'text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)]',
                   col.align === 'center' && 'text-center',
                   col.align === 'right' && 'text-right',
                   !col.align && 'text-left',
@@ -155,7 +162,9 @@ export function Table<T extends Record<string, any>>({
                   <td
                     key={col.key}
                     className={clsx(
-                      'px-4 py-3.5 text-sm text-[var(--color-text-secondary)]',
+                      bodyCellPadding,
+                      'text-sm text-[var(--color-text-secondary)]',
+                      bodyCellNowrap && 'whitespace-nowrap',
                       col.align === 'center' && 'text-center',
                       col.align === 'right' && 'text-right'
                     )}

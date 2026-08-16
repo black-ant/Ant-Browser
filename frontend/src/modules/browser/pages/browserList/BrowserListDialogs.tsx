@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { XCircle } from 'lucide-react'
-import { Button, Modal } from '../../../../shared/components'
+import { Button, Modal, ConfirmModal } from '../../../../shared/components'
 import { BrowserProfileCopyForm } from '../../components/BrowserProfileCopyForm'
 import { KeywordsModal } from '../../components/KeywordsModal'
 import type { BrowserProfile, BrowserProfileCopyOptions } from '../../types'
@@ -39,6 +40,8 @@ interface BrowserListDialogsProps {
   onOpenPermanentDelete: (profile: BrowserProfile) => void
   onClosePermanentDelete: () => void
   onConfirmPermanentDelete: () => void
+  onEmptyTrash: () => void
+  emptyingTrash: boolean
   opError: string
   onCloseOpError: () => void
 }
@@ -77,9 +80,12 @@ export function BrowserListDialogs({
   onOpenPermanentDelete,
   onClosePermanentDelete,
   onConfirmPermanentDelete,
+  onEmptyTrash,
+  emptyingTrash,
   opError,
   onCloseOpError,
 }: BrowserListDialogsProps) {
+  const [emptyConfirmOpen, setEmptyConfirmOpen] = useState(false)
   const formatTime = (value?: string) => {
     if (!value) return '-'
     const date = new Date(value)
@@ -183,7 +189,23 @@ export function BrowserListDialogs({
         onClose={onCloseTrash}
         title="实例回收站"
         width="720px"
-        footer={<Button variant="secondary" onClick={onCloseTrash}>关闭</Button>}
+        footer={
+          <div className="flex w-full items-center justify-between gap-2">
+            {trashProfiles.length > 0 ? (
+              <Button
+                variant="danger"
+                onClick={() => setEmptyConfirmOpen(true)}
+                loading={emptyingTrash}
+                disabled={!!permanentlyDeletingId || !!restoringId}
+              >
+                全部彻底删除（{trashProfiles.length}）
+              </Button>
+            ) : (
+              <span />
+            )}
+            <Button variant="secondary" onClick={onCloseTrash}>关闭</Button>
+          </div>
+        }
       >
         {trashLoading ? (
           <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">加载中...</div>
@@ -235,6 +257,16 @@ export function BrowserListDialogs({
           </div>
         )}
       </Modal>
+
+      <ConfirmModal
+        open={emptyConfirmOpen}
+        onClose={() => setEmptyConfirmOpen(false)}
+        onConfirm={() => { setEmptyConfirmOpen(false); onEmptyTrash() }}
+        title="清空回收站"
+        content={`确定彻底删除回收站内全部 ${trashProfiles.length} 个实例？将删除它们的配置、浏览器数据、快照、快捷码与插件绑定,删除后不可恢复。`}
+        confirmText="全部彻底删除"
+        danger
+      />
 
       <Modal
         open={permanentDeleteConfirm.open}

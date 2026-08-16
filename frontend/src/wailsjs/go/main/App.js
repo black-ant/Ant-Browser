@@ -374,6 +374,10 @@ export function BrowserProfilePermanentlyDelete(arg1) {
   return window['go']['main']['App']['BrowserProfilePermanentlyDelete'](arg1);
 }
 
+export function BrowserProfilePermanentlyDeleteAll() {
+  return window['go']['main']['App']['BrowserProfilePermanentlyDeleteAll']();
+}
+
 export function BrowserProfileRegenerateCode(arg1) {
   return window['go']['main']['App']['BrowserProfileRegenerateCode'](arg1);
 }
@@ -576,6 +580,34 @@ export function GetProxyCheckSettings() {
 
 export function GetRunningInstances() {
   return window['go']['main']['App']['GetRunningInstances']();
+}
+
+export function IdentityPoolCreate(arg1) {
+  return window['go']['main']['App']['IdentityPoolCreate'](arg1);
+}
+
+export function IdentityPoolDelete(arg1) {
+  return window['go']['main']['App']['IdentityPoolDelete'](arg1);
+}
+
+export function IdentityPoolList() {
+  return window['go']['main']['App']['IdentityPoolList']();
+}
+
+export function IdentityPoolRestoreDefaults() {
+  return window['go']['main']['App']['IdentityPoolRestoreDefaults']();
+}
+
+export function IdentityPoolUpdate(arg1, arg2) {
+  return window['go']['main']['App']['IdentityPoolUpdate'](arg1, arg2);
+}
+
+export function IdentityPoolValidate(arg1) {
+  return window['go']['main']['App']['IdentityPoolValidate'](arg1);
+}
+
+export function IdentityPoolValidateAll() {
+  return window['go']['main']['App']['IdentityPoolValidateAll']();
 }
 
 export function InstallAutomationRuntime() {

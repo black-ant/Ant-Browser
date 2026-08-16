@@ -276,6 +276,15 @@ export async function permanentlyDeleteBrowserProfile(profileId: string): Promis
   return true
 }
 
+// permanentlyDeleteAllBrowserProfiles 清空回收站,返回删除数量
+export async function permanentlyDeleteAllBrowserProfiles(): Promise<number> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfilePermanentlyDeleteAll) {
+    return (await bindings.BrowserProfilePermanentlyDeleteAll()) || 0
+  }
+  return 0
+}
+
 export async function cleanupBrowserProfileTrash(): Promise<boolean> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProfileTrashCleanup) {

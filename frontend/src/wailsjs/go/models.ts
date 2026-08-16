@@ -692,6 +692,78 @@ export namespace backend {
 	        this.sameSite = source["sameSite"];
 	    }
 	}
+	export class IdentityPoolProblem {
+	    id: string;
+	    uaFull: string;
+	    platform: string;
+	    issues: identity.Issue[];
+	
+	    static createFrom(source: any = {}) {
+	        return new IdentityPoolProblem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.uaFull = source["uaFull"];
+	        this.platform = source["platform"];
+	        this.issues = this.convertValues(source["issues"], identity.Issue);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class IdentityPoolValidateAllReport {
+	    total: number;
+	    okCount: number;
+	    badCount: number;
+	    problems: IdentityPoolProblem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new IdentityPoolValidateAllReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.okCount = source["okCount"];
+	        this.badCount = source["badCount"];
+	        this.problems = this.convertValues(source["problems"], IdentityPoolProblem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ProfilePackageExportResult {
 	    cancelled: boolean;
 	    zipPath: string;
@@ -1710,6 +1782,79 @@ export namespace identity {
 	        this.fixable = source["fixable"];
 	    }
 	}
+	export class Screen {
+	    width: number;
+	    height: number;
+	    dpr: number;
+	    colorDepth: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Screen(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.dpr = source["dpr"];
+	        this.colorDepth = source["colorDepth"];
+	    }
+	}
+	export class PoolRecord {
+	    id?: string;
+	    platform: string;
+	    platformVersion: string;
+	    brandVersion: string;
+	    uaFull: string;
+	    hardwareConcurrency: number;
+	    deviceMemory: number;
+	    screen: Screen;
+	    windowSize: string;
+	    languages: string[];
+	    locale: string;
+	    timezone: string;
+	    weight: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PoolRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.platform = source["platform"];
+	        this.platformVersion = source["platformVersion"];
+	        this.brandVersion = source["brandVersion"];
+	        this.uaFull = source["uaFull"];
+	        this.hardwareConcurrency = source["hardwareConcurrency"];
+	        this.deviceMemory = source["deviceMemory"];
+	        this.screen = this.convertValues(source["screen"], Screen);
+	        this.windowSize = source["windowSize"];
+	        this.languages = source["languages"];
+	        this.locale = source["locale"];
+	        this.timezone = source["timezone"];
+	        this.weight = source["weight"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class ValidationResult {
 	    ok: boolean;
 	    issues: Issue[];

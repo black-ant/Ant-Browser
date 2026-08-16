@@ -197,6 +197,8 @@ export function BrowserProfilePackageImport():Promise<backend.ProfilePackageImpo
 
 export function BrowserProfilePermanentlyDelete(arg1:string):Promise<void>;
 
+export function BrowserProfilePermanentlyDeleteAll():Promise<number>;
+
 export function BrowserProfileRegenerateCode(arg1:string):Promise<string>;
 
 export function BrowserProfileRegenerateFingerprint(arg1:string):Promise<browser.Profile>;
@@ -298,6 +300,20 @@ export function GetMemoryStats():Promise<Record<string, any>>;
 export function GetProxyCheckSettings():Promise<config.ProxyCheckConfig>;
 
 export function GetRunningInstances():Promise<Array<browser.Profile>>;
+
+export function IdentityPoolCreate(arg1:identity.PoolRecord):Promise<identity.PoolRecord>;
+
+export function IdentityPoolDelete(arg1:string):Promise<void>;
+
+export function IdentityPoolList():Promise<Array<identity.PoolRecord>>;
+
+export function IdentityPoolRestoreDefaults():Promise<void>;
+
+export function IdentityPoolUpdate(arg1:string,arg2:identity.PoolRecord):Promise<identity.PoolRecord>;
+
+export function IdentityPoolValidate(arg1:identity.PoolRecord):Promise<identity.ValidationResult>;
+
+export function IdentityPoolValidateAll():Promise<backend.IdentityPoolValidateAllReport>;
 
 export function InstallAutomationRuntime():Promise<Record<string, any>>;
 

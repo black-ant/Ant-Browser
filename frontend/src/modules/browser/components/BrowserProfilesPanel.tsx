@@ -469,8 +469,8 @@ export function BrowserProfilesPanel({
       title: '实例名称',
       width: 320,
       render: (value, record) => (
-        <div className="flex min-w-[260px] items-center gap-2 whitespace-nowrap">
-          <Link className="block min-w-0 truncate text-[var(--color-accent)] text-sm font-medium hover:underline" to={`/browser/detail/${record.profileId}`} title={String(value || '')}>
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <Link className="block min-w-0 max-w-[220px] truncate text-[var(--color-accent)] text-sm font-medium hover:underline" to={`/browser/detail/${record.profileId}`} title={String(value || '')}>
             {value}
           </Link>
           {record.tags && record.tags.length > 0 && (
@@ -485,16 +485,20 @@ export function BrowserProfilesPanel({
     {
       key: 'running',
       title: '状态',
-      width: 100,
+      width: 132,
       render: (_, record) => {
         const status = getProfileStatus(record)
-        return <Badge variant={status.variant} dot>{status.label}</Badge>
+        return <Badge variant={status.variant} size="sm" dot dotClassName="w-1.5 h-1.5 shrink-0" className="whitespace-nowrap">{status.label}</Badge>
       },
     },
     {
       key: 'coreId',
       title: '核心',
-      render: (_, record) => <span className="text-xs">{getProfileCoreLabel(record)}</span>,
+      width: 160,
+      render: (_, record) => {
+        const label = getProfileCoreLabel(record)
+        return <span className="block max-w-[150px] truncate text-xs" title={label}>{label}</span>
+      },
     },
     {
       key: 'proxyId',
@@ -519,7 +523,11 @@ export function BrowserProfilesPanel({
     {
       key: 'updatedAt',
       title: '上次更新',
-      render: formatTime,
+      width: 160,
+      render: (value) => {
+        const text = formatTime(value)
+        return <span className="block max-w-[150px] truncate text-xs" title={text}>{text}</span>
+      },
     },
     {
       key: 'actions',
@@ -575,6 +583,7 @@ export function BrowserProfilesPanel({
             columns={columns}
             data={profiles}
             rowKey="profileId"
+            size="compact"
           />
         ) : (
           <div className="flex flex-wrap gap-4 min-h-[500px] p-4 items-start content-start">
