@@ -2,6 +2,7 @@ package browser
 
 import (
 	"database/sql"
+	"fmt"
 	"math/rand"
 	"strings"
 	"sync"
@@ -65,6 +66,24 @@ func (s *IdentityService) GenerateUnique() (identity.Identity, error) {
 	}, 100)
 }
 
+// GenerateUniqueForPlatform 与 GenerateUnique 相同,但仅从指定平台的真机模板采样。
+// platform 为空则等价 GenerateUnique(全平台)。目标平台无模板时返回错误。
+func (s *IdentityService) GenerateUniqueForPlatform(platform string) (identity.Identity, error) {
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return s.GenerateUnique()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pool := s.poolStore.Pool().Filter(func(r identity.PoolRecord) bool { return r.Platform == platform })
+	if pool.Len() == 0 {
+		return identity.Identity{}, fmt.Errorf("身份池中没有平台 %q 的模板", platform)
+	}
+	return identity.GenerateUnique(s.store, func() identity.Identity {
+		return pool.NewIdentity(s.rng)
+	}, 100)
+}
+
 // —— 身份池(模板)管理:编辑只影响之后新建的环境,不改已有环境 ——
 
 // PoolRecords 返回身份池全部记录(副本)。
@@ -94,13 +113,17 @@ func (s *IdentityService) ValidatePoolRecord(rec identity.PoolRecord) identity.V
 	return identity.ValidatePoolRecord(rec)
 }
 
-// Regenerate 强制为 profile 重新生成一套唯一身份(忽略已有身份),存库并刷新 FingerprintArgs。
-// 用于前端“重新生成指纹”。
+// Regenerate 全平台重生成(等价 RegenerateForPlatform(profile, ""))。用于前端“重新生成指纹”。
 func (s *IdentityService) Regenerate(profile *Profile) error {
+	return s.RegenerateForPlatform(profile, "")
+}
+
+// RegenerateForPlatform 强制为 profile 生成一套唯一身份(可限定平台),存库并刷新 FingerprintArgs。
+func (s *IdentityService) RegenerateForPlatform(profile *Profile, platform string) error {
 	if profile == nil {
 		return nil
 	}
-	id, err := s.GenerateUnique()
+	id, err := s.GenerateUniqueForPlatform(platform)
 	if err != nil {
 		return err
 	}

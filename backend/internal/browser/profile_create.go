@@ -94,7 +94,7 @@ func (m *Manager) createProfileLocked(input ProfileInput) (*Profile, error) {
 		// 采样一套全新的唯一自洽身份,保证“每创建一个环境都是独立不重复且自洽”的核心要求。
 		// 不能走反解分支,否则会把静态默认 flag 当作“老环境”反解成 seed=0 的身份。
 		// 显式带 seed 的调用(Launch API 指定指纹 / 复现场景)则被尊重,不覆盖。
-		if err := m.IdentityService.Regenerate(profile); err != nil {
+		if err := m.IdentityService.RegenerateForPlatform(profile, input.IdentityPlatform); err != nil {
 			log.Warn("自动生成自洽指纹身份失败，回退默认指纹", logger.F("profile_id", profileId), logger.F("error", err.Error()))
 		} else {
 			// 直连(无代理)实例:出口即真机本地 IP,把人设对齐到本地国家(默认 CN),

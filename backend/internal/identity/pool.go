@@ -75,6 +75,18 @@ func (p *Pool) Len() int { return len(p.records) }
 // Records 返回池中所有记录(只读用途)。
 func (p *Pool) Records() []PoolRecord { return p.records }
 
+// Filter 返回只含满足 pred 的记录的新采样池(重算加权 total)。用于按平台等维度限定采样域;
+// 唯一性登记仍由上层全局强制,过滤只改"从哪些真机模板里采"。
+func (p *Pool) Filter(pred func(PoolRecord) bool) *Pool {
+	filtered := make([]PoolRecord, 0, len(p.records))
+	for _, r := range p.records {
+		if pred(r) {
+			filtered = append(filtered, r)
+		}
+	}
+	return NewPool(filtered)
+}
+
 // Sample 按权重从池中采样一条记录。
 func (p *Pool) Sample(r *rand.Rand) PoolRecord {
 	if p.total <= 0 {

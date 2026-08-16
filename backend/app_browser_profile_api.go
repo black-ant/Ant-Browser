@@ -43,9 +43,10 @@ func (a *App) BrowserProfileCreate(input BrowserProfileInput) (*BrowserProfile, 
 
 // BrowserProfileCreateBatch 批量创建配置:名称为 prefix-编号(3位,从 startIndex 起,默认 1),
 // 每个环境都会分配一套独立、唯一、自洽的指纹身份(与单个"新建配置"一致)。
+// platform 限定本批身份采样的平台(如 "macos"/"windows"),空字符串="全部平台"。
 // template 提供代理/内核/省内存等公共设置;其指纹参数会被忽略以保证各环境不同。
-func (a *App) BrowserProfileCreateBatch(prefix string, count int, startIndex int, template BrowserProfileInput) ([]*BrowserProfile, error) {
-	return a.browserMgr.CreateBatch(prefix, count, startIndex, template)
+func (a *App) BrowserProfileCreateBatch(prefix string, count int, startIndex int, platform string, template BrowserProfileInput) ([]*BrowserProfile, error) {
+	return a.browserMgr.CreateBatch(prefix, count, startIndex, platform, template)
 }
 
 func (a *App) BrowserProfileUpdate(profileId string, input BrowserProfileInput) (*BrowserProfile, error) {
