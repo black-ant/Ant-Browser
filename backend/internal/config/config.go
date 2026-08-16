@@ -103,28 +103,30 @@ type BrowserBookmark struct {
 }
 
 type BrowserConfig struct {
-	UserDataRoot           string                 `yaml:"user_data_root"`
-	LocalCountry           string                 `yaml:"local_country,omitempty"` // 直连(无代理)时按此国家默认地理对齐人设(ISO alpha-2,默认 CN)
-	DefaultFingerprintArgs []string               `yaml:"default_fingerprint_args"`
-	DefaultLaunchArgs      []string               `yaml:"default_launch_args"`
-	DefaultStartURLs       []string               `yaml:"default_start_urls"`
-	LightStartEnabled      *bool                  `yaml:"light_start_enabled,omitempty"`
-	RestoreLastSession     bool                   `yaml:"restore_last_session"`
-	MemorySaverEnabled     bool                   `yaml:"memory_saver,omitempty"`
-	StartReadyTimeoutMs    int                    `yaml:"start_ready_timeout_ms,omitempty"`
-	StartStableWindowMs    int                    `yaml:"start_stable_window_ms,omitempty"`
-	DefaultBookmarks       []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
-	Cores                  []BrowserCore          `yaml:"cores,omitempty"`
-	Proxies                []BrowserProxy         `yaml:"proxies,omitempty"`
-	Profiles               []BrowserProfileConfig `yaml:"profiles,omitempty"`
-	ChromeBinaryPath       string                 `yaml:"chrome_binary_path,omitempty"`
-	ClashBinaryPath        string                 `yaml:"clash_binary_path,omitempty"`
-	XrayBinaryPath         string                 `yaml:"xray_binary_path,omitempty"`
-	SingBoxBinaryPath      string                 `yaml:"singbox_binary_path,omitempty"`
-	CoreRoot               string                 `yaml:"core_root,omitempty"`
-	DefaultCoreId          string                 `yaml:"default_core_id,omitempty"`
-	DefaultConnectorType   string                 `yaml:"default_connector_type,omitempty"`
-	Environments           []BrowserEnvironment   `yaml:"environments,omitempty"`
+	UserDataRoot            string                 `yaml:"user_data_root"`
+	LocalCountry            string                 `yaml:"local_country,omitempty"` // 直连(无代理)时按此国家默认地理对齐人设(ISO alpha-2,默认 CN)
+	DefaultFingerprintArgs  []string               `yaml:"default_fingerprint_args"`
+	DefaultLaunchArgs       []string               `yaml:"default_launch_args"`
+	DefaultStartURLs        []string               `yaml:"default_start_urls"`
+	LightStartEnabled       *bool                  `yaml:"light_start_enabled,omitempty"`
+	RestoreLastSession      bool                   `yaml:"restore_last_session"`
+	MemorySaverEnabled      bool                   `yaml:"memory_saver,omitempty"`
+	LiveKeepAliveEnabled    *bool                  `yaml:"live_keepalive_enabled,omitempty"`     // 直播/视频防挂机:定时向运行中的实例注入可信输入(nil=默认开)
+	LiveKeepAliveIntervalMs int                    `yaml:"live_keepalive_interval_ms,omitempty"` // 保活间隔毫秒(默认 75000,应小于抖音"长时间无操作"阈值)
+	StartReadyTimeoutMs     int                    `yaml:"start_ready_timeout_ms,omitempty"`
+	StartStableWindowMs     int                    `yaml:"start_stable_window_ms,omitempty"`
+	DefaultBookmarks        []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
+	Cores                   []BrowserCore          `yaml:"cores,omitempty"`
+	Proxies                 []BrowserProxy         `yaml:"proxies,omitempty"`
+	Profiles                []BrowserProfileConfig `yaml:"profiles,omitempty"`
+	ChromeBinaryPath        string                 `yaml:"chrome_binary_path,omitempty"`
+	ClashBinaryPath         string                 `yaml:"clash_binary_path,omitempty"`
+	XrayBinaryPath          string                 `yaml:"xray_binary_path,omitempty"`
+	SingBoxBinaryPath       string                 `yaml:"singbox_binary_path,omitempty"`
+	CoreRoot                string                 `yaml:"core_root,omitempty"`
+	DefaultCoreId           string                 `yaml:"default_core_id,omitempty"`
+	DefaultConnectorType    string                 `yaml:"default_connector_type,omitempty"`
+	Environments            []BrowserEnvironment   `yaml:"environments,omitempty"`
 }
 
 type BrowserCore struct {

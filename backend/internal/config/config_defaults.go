@@ -123,6 +123,9 @@ func normalizeConfig(config *Config) {
 	if strings.TrimSpace(config.Browser.LocalCountry) == "" {
 		config.Browser.LocalCountry = defaultConfig.Browser.LocalCountry
 	}
+	if config.Browser.LiveKeepAliveIntervalMs <= 0 {
+		config.Browser.LiveKeepAliveIntervalMs = 75000 // 直播保活默认 75s
+	}
 	if len(config.Browser.DefaultFingerprintArgs) == 0 {
 		config.Browser.DefaultFingerprintArgs = append([]string{}, defaultConfig.Browser.DefaultFingerprintArgs...)
 	} else if isLegacyMinimalDefaultFingerprintArgs(config.Browser.DefaultFingerprintArgs) {

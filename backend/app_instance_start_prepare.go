@@ -312,6 +312,11 @@ func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy st
 		fmt.Sprintf("--remote-debugging-port=%d", debugPort),
 		"--disable-session-crashed-bubble", // 去掉"恢复上次页面"气泡
 		"--no-default-browser-check",       // 去掉"设为默认浏览器"提示
+		// 多开/直播:窗口互相遮挡或非前台时,Chromium 默认降级为隐藏/节流 → 视频暂停、定时器变慢。
+		// 下面三个让被遮挡/非前台窗口保持活跃(行为类 flag,不改指纹面),配合"直播保活"防挂机。
+		"--disable-backgrounding-occluded-windows",
+		"--disable-renderer-backgrounding",
+		"--disable-background-timer-throttling",
 	}
 	if restoreLastSession {
 		args = append(args, "--restore-last-session")

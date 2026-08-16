@@ -150,6 +150,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	a.autoDetectCores()
 	a.loadProxies()
 	a.reconcileProfileProxyBindings()
+	a.startLiveKeepAlive() // 直播/视频防挂机:定时注入可信输入,防止抖音等"长时间无操作已暂停"
 }
 
 func (a *App) startupInitLaunchCode(log *logger.Logger) {
