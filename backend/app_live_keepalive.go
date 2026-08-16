@@ -9,14 +9,21 @@ import (
 
 // 直播/视频「防挂机」保活。
 //
-// 背景:抖音等直播/视频网页有自己的**挂机检测**——一段时间(约 2–3 分钟)没有真实
-// 鼠标/键盘活动,就暂停播放"节能"并弹「长时间无操作,已暂停播放」。这不是浏览器后台
-// 节流,是页面级 JS 在监听真实用户输入。多开养号时会被逐个暂停。
+// 背景:抖音等直播/视频网页有自己的挂机检测——一段时间(约 2–3 分钟)没有真实鼠标/键盘
+// 活动,就暂停播放并弹「长时间无操作,已暂停播放」。多开养号时会被逐个暂停。
 //
 // 方案:定时用 CDP `Input.dispatchMouseEvent`(mouseMoved)向每个运行中的实例注入一次
-// **可信输入**(isTrusted=true,与真人无法区分,不能用页面 JS 的 dispatchEvent),重置挂机
-// 计时器。配合启动参数(禁用后台/遮挡节流)一起,解决多开直播被暂停的问题。注入的是
-// mouseMoved,不会点击、不动真实 OS 光标,对页面无副作用。
+// 可信输入(isTrusted=true,与真人无法区分,不能用页面 JS 的 dispatchEvent),重置挂机计时器。
+//
+// 反检测:间隔不是固定值(固定周期本身就是机器人特征),而是每个实例在 [min,max](默认
+// 60–90s)内**独立随机**、彼此**错峰**——避免"同一账号固定 75s 一跳"被单站识别,也避免
+// "100 个账号同一毫秒一起动"被养号风控按同源关联。坐标同样带随机抖动;mouseMoved 不点击、
+// 不动真实 OS 光标、对页面无副作用。
+
+const (
+	keepAliveTickResolution = 5 * time.Second // 调度粒度;间隔在 60–90s 量级,5s 足够
+	keepAliveFloorMs        = 15000           // 间隔下限,避免过于频繁
+)
 
 // liveKeepAliveEnabledResolved 解析开关:未配置(nil)默认开启。
 func (a *App) liveKeepAliveEnabledResolved() bool {
@@ -29,19 +36,47 @@ func (a *App) liveKeepAliveEnabledResolved() bool {
 	return true
 }
 
-// liveKeepAliveInterval 保活间隔:默认 75s,下限 15s(避免过于频繁)。
-func (a *App) liveKeepAliveInterval() time.Duration {
-	ms := 75000
-	if a != nil && a.config != nil && a.config.Browser.LiveKeepAliveIntervalMs > 0 {
-		ms = a.config.Browser.LiveKeepAliveIntervalMs
+// keepAliveBoundsMs 返回随机间隔的下/上界(ms)。
+// 若显式设置 live_keepalive_interval_ms>0 → 固定间隔(min==max);否则用 min/max(默认 60000–90000)。
+func (a *App) keepAliveBoundsMs() (int, int) {
+	minMs, maxMs := 60000, 90000
+	if a != nil && a.config != nil {
+		b := a.config.Browser
+		if b.LiveKeepAliveIntervalMs > 0 { // 固定间隔覆盖
+			f := b.LiveKeepAliveIntervalMs
+			if f < keepAliveFloorMs {
+				f = keepAliveFloorMs
+			}
+			return f, f
+		}
+		if b.LiveKeepAliveIntervalMinMs > 0 {
+			minMs = b.LiveKeepAliveIntervalMinMs
+		}
+		if b.LiveKeepAliveIntervalMaxMs > 0 {
+			maxMs = b.LiveKeepAliveIntervalMaxMs
+		}
 	}
-	if ms < 15000 {
-		ms = 15000
+	if minMs < keepAliveFloorMs {
+		minMs = keepAliveFloorMs
+	}
+	if maxMs < minMs {
+		maxMs = minMs
+	}
+	return minMs, maxMs
+}
+
+// randKeepAliveDelay 返回一次 [min,max] 内的随机间隔。
+func (a *App) randKeepAliveDelay() time.Duration {
+	minMs, maxMs := a.keepAliveBoundsMs()
+	ms := minMs
+	if span := maxMs - minMs; span > 0 {
+		ms += rand.Intn(span + 1)
 	}
 	return time.Duration(ms) * time.Millisecond
 }
 
 // startLiveKeepAlive 启动后台保活循环(每次启动调用一次)。随 app 上下文取消而退出。
+// 单 goroutine 维护每实例的下次触发时间,无需加锁。
 func (a *App) startLiveKeepAlive() {
 	if a == nil {
 		return
@@ -51,41 +86,65 @@ func (a *App) startLiveKeepAlive() {
 	if a.ctx != nil {
 		done = a.ctx.Done()
 	}
+	next := map[string]time.Time{} // profileId -> 下次触发时间
 	go func() {
-		ticker := time.NewTicker(a.liveKeepAliveInterval())
+		ticker := time.NewTicker(keepAliveTickResolution)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-done:
 				return
-			case <-ticker.C:
-				if a.liveKeepAliveEnabledResolved() {
-					a.tickLiveKeepAlive(log)
+			case now := <-ticker.C:
+				if !a.liveKeepAliveEnabledResolved() {
+					continue
 				}
+				a.runKeepAliveDue(log, next, now)
 			}
 		}
 	}()
 }
 
-// tickLiveKeepAlive 给所有 DebugReady 的运行中实例各注入一次可信鼠标移动。
-// 停止/异常实例(连接失败)自动跳过,不影响其他实例。
-func (a *App) tickLiveKeepAlive(log *logger.Logger) {
+// runKeepAliveDue 对到期的运行中实例注入一次可信输入,并为其安排下一次随机时间。
+// 实例首次出现时给一个 [0,max) 的随机首触发 → 各实例天然错峰。
+func (a *App) runKeepAliveDue(log *logger.Logger, next map[string]time.Time, now time.Time) {
 	if a.browserMgr == nil {
 		return
 	}
+	live := map[string]struct{}{}
 	for _, p := range a.browserMgr.List() {
 		if !p.Running || !p.DebugReady || p.DebugPort <= 0 {
 			continue
 		}
-		// 轻微抖动坐标,更接近真人;mouseMoved 不点击、不干扰页面。
-		x := 40 + rand.Intn(220)
-		y := 40 + rand.Intn(160)
-		if _, err := cdpCall(p.DebugPort, "Input.dispatchMouseEvent", map[string]any{
-			"type": "mouseMoved",
-			"x":    x,
-			"y":    y,
-		}); err != nil {
-			log.Debug("保活注入跳过", logger.F("profile", p.ProfileId), logger.F("port", p.DebugPort), logger.F("error", err.Error()))
+		live[p.ProfileId] = struct{}{}
+		t, ok := next[p.ProfileId]
+		if !ok {
+			_, maxMs := a.keepAliveBoundsMs()
+			next[p.ProfileId] = now.Add(time.Duration(rand.Intn(maxMs+1)) * time.Millisecond)
+			continue
 		}
+		if now.Before(t) {
+			continue
+		}
+		a.injectKeepAlive(log, p.ProfileId, p.DebugPort)
+		next[p.ProfileId] = now.Add(a.randKeepAliveDelay())
+	}
+	// 清理已停止实例的调度,避免 map 泄漏
+	for id := range next {
+		if _, ok := live[id]; !ok {
+			delete(next, id)
+		}
+	}
+}
+
+// injectKeepAlive 向单个实例注入一次带随机坐标的可信鼠标移动。失败(实例停止/异常)静默跳过。
+func (a *App) injectKeepAlive(log *logger.Logger, profileID string, debugPort int) {
+	x := 40 + rand.Intn(220)
+	y := 40 + rand.Intn(160)
+	if _, err := cdpCall(debugPort, "Input.dispatchMouseEvent", map[string]any{
+		"type": "mouseMoved",
+		"x":    x,
+		"y":    y,
+	}); err != nil {
+		log.Debug("保活注入跳过", logger.F("profile", profileID), logger.F("port", debugPort), logger.F("error", err.Error()))
 	}
 }
