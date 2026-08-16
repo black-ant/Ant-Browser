@@ -123,6 +123,14 @@ func (a *App) resolveBrowserStartProfile(input browserStartInput) (*BrowserProfi
 	return profile, true, nil
 }
 
+// muteAudioLaunchArgs 返回该实例是否需要注入静音参数(硬静音,取消需重启)。
+func muteAudioLaunchArgs(profile *BrowserProfile) []string {
+	if profile != nil && profile.MuteAudio {
+		return []string{"--mute-audio"}
+	}
+	return nil
+}
+
 func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserProfile) (*browserStartPlan, error) {
 	bookmarks := a.BookmarkList()
 	sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, fingerprintLaunchArgs, chromeBinaryPath, userDataDir, err := a.prepareBrowserLaunchContext(input, profile, bookmarks)
@@ -166,6 +174,10 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	if a.config != nil && a.config.Browser.MemorySaverEnabled {
 		sanitizedExtraLaunchArgs = append(sanitizedExtraLaunchArgs, browser.MemorySaverArgs()...)
 	}
+
+	// 直播养号:默认硬静音,避免多开时上百路音频抢占声卡。--mute-audio 是启动参数,
+	// 取消静音需重启该实例(前端「取消静音并重启」)。
+	sanitizedExtraLaunchArgs = append(sanitizedExtraLaunchArgs, muteAudioLaunchArgs(profile)...)
 
 	return &browserStartPlan{
 		profile:              profile,
