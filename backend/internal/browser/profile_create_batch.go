@@ -36,6 +36,12 @@ func (m *Manager) CreateBatch(prefix string, count, startIndex int, platform str
 	if startIndex <= 0 {
 		startIndex = 1
 	}
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	switch platform {
+	case "", "windows", "macos":
+	default:
+		return nil, fmt.Errorf("不支持的身份平台: %q(仅支持 windows / macos,或留空表示全部)", platform)
+	}
 
 	m.InitData()
 	m.Mutex.Lock()

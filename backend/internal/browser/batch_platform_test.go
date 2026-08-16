@@ -1,9 +1,13 @@
 package browser
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"ant-chrome/backend/internal/config"
+	"ant-chrome/backend/internal/identity"
 )
 
 // 组一个仅含 IdentityService 的最小场景,批量生成后校验平台一致且不重复。
@@ -78,5 +82,84 @@ func TestCreateBatchThreadsPlatformIntoProfiles(t *testing.T) {
 	}
 	if len(createdAny) != 3 {
 		t.Fatalf("expected 3 profiles, got %d", len(createdAny))
+	}
+}
+
+// 不支持的平台参数(如 "linux")必须在建任何环境之前就被拒绝——不允许静默用回退身份"成功"。
+func TestCreateBatchRejectsInvalidPlatform(t *testing.T) {
+	manager := NewManager(&config.Config{}, t.TempDir())
+	manager.IdentityService = newTestIdentityService(t)
+
+	created, err := manager.CreateBatch("bad", 3, 1, "linux", ProfileInput{})
+	if err == nil {
+		t.Fatal("expected error for unsupported platform \"linux\", got nil")
+	}
+	if len(created) != 0 {
+		t.Fatalf("expected no profiles created on validation failure, got %d", len(created))
+	}
+	if len(manager.Profiles) != 0 {
+		t.Fatalf("expected no profiles registered in manager, got %d", len(manager.Profiles))
+	}
+}
+
+// 平台参数大小写应被归一化(如 "MacOS" -> "macos")后再校验/采样,而不是被当作非法值拒绝
+// 或原样透传导致池过滤匹配不到任何记录。
+func TestCreateBatchNormalizesPlatformCase(t *testing.T) {
+	manager := NewManager(&config.Config{}, t.TempDir())
+	manager.IdentityService = newTestIdentityService(t)
+
+	created, err := manager.CreateBatch("mixedcase", 1, 1, "MacOS", ProfileInput{})
+	if err != nil {
+		t.Fatalf("expected \"MacOS\" to normalize to \"macos\" and succeed, got error: %v", err)
+	}
+	if len(created) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(created))
+	}
+	if val, ok := argValue(created[0].FingerprintArgs, "--fingerprint-platform="); !ok || val != "macos" {
+		t.Fatalf("expected --fingerprint-platform=macos, got %v", created[0].FingerprintArgs)
+	}
+}
+
+// 指定平台的池为空时(如身份池 overlay 只含 windows,却请求 macos 批量创建),必须整批硬失败,
+// 不能静默回退成非唯一(未入 browser_identities 去重库)且平台不符(宿主 windows)的默认指纹。
+// 这正是 review 发现的 bug:createProfileLocked 原来只 log.Warn 并 return (profile, nil)。
+func TestCreateBatchHardFailsWhenPlatformPoolEmpty(t *testing.T) {
+	recs := []identity.PoolRecord{
+		{
+			ID: "win1", Platform: "windows", PlatformVersion: "10.0", BrandVersion: "147.0.0.0",
+			UAFull:              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+			HardwareConcurrency: 12, DeviceMemory: 32,
+			Screen:     identity.Screen{Width: 1536, Height: 864, DevicePixelRatio: 1.25, ColorDepth: 32},
+			WindowSize: "1536,816", Languages: []string{"en-US"}, Locale: "en-US", Timezone: "America/New_York", Weight: 1,
+		},
+		{
+			ID: "win2", Platform: "windows", PlatformVersion: "10.0", BrandVersion: "147.0.0.0",
+			UAFull:              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+			HardwareConcurrency: 8, DeviceMemory: 16,
+			Screen:     identity.Screen{Width: 1920, Height: 1080, DevicePixelRatio: 1, ColorDepth: 24},
+			WindowSize: "1920,1040", Languages: []string{"en-US"}, Locale: "en-US", Timezone: "America/New_York", Weight: 1,
+		},
+	}
+	data, err := json.MarshalIndent(recs, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal pool fixture: %v", err)
+	}
+	overlay := filepath.Join(t.TempDir(), "pool.json")
+	if err := os.WriteFile(overlay, data, 0o644); err != nil {
+		t.Fatalf("write pool fixture: %v", err)
+	}
+
+	manager := NewManager(&config.Config{}, t.TempDir())
+	manager.IdentityService = newTestIdentityServiceWithOverlay(t, overlay)
+
+	created, err := manager.CreateBatch("empty", 2, 1, "macos", ProfileInput{})
+	if err == nil {
+		t.Fatalf("expected error when macos pool is empty, got silent success with %d profiles", len(created))
+	}
+	if len(created) != 0 {
+		t.Fatalf("expected no profiles created on hard-fail, got %d", len(created))
+	}
+	if len(manager.Profiles) != 0 {
+		t.Fatalf("expected no fallback profiles registered in manager, got %d", len(manager.Profiles))
 	}
 }

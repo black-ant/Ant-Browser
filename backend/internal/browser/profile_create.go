@@ -2,6 +2,7 @@ package browser
 
 import (
 	"ant-chrome/backend/internal/logger"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -95,6 +96,11 @@ func (m *Manager) createProfileLocked(input ProfileInput) (*Profile, error) {
 		// 不能走反解分支,否则会把静态默认 flag 当作“老环境”反解成 seed=0 的身份。
 		// 显式带 seed 的调用(Launch API 指定指纹 / 复现场景)则被尊重,不覆盖。
 		if err := m.IdentityService.RegenerateForPlatform(profile, input.IdentityPlatform); err != nil {
+			if strings.TrimSpace(input.IdentityPlatform) != "" {
+				// 指定了平台却生成失败(如该平台池为空):必须硬失败——不能回退到静态默认指纹,
+				// 否则会既不唯一(未入去重库)又平台不符(回退成宿主 windows)。
+				return nil, fmt.Errorf("生成 %s 平台唯一身份失败: %w", input.IdentityPlatform, err)
+			}
 			log.Warn("自动生成自洽指纹身份失败，回退默认指纹", logger.F("profile_id", profileId), logger.F("error", err.Error()))
 		} else {
 			// 直连(无代理)实例:出口即真机本地 IP,把人设对齐到本地国家(默认 CN),
