@@ -54,14 +54,18 @@ export function GroupOpsModal({ open, profileIds, onClose, onDone }: GroupOpsMod
       await updateGroup(groupId, { groupName: name, parentId: '', sortOrder: 0 })
       setEditingId(null)
       await load()
+      onDone()
     } catch (e: any) { toast.error(e?.message || '重命名失败') } finally { setBusy(false) }
   }
 
   const remove = async (groupId: string) => {
+    const name = groups.find((g) => g.groupId === groupId)?.groupName ?? ''
+    if (!window.confirm(`确定删除分组「${name}」?其下环境将移动到未分组/父级。`)) return
     setBusy(true)
     try {
       await deleteGroup(groupId)
       await load()
+      onDone()
     } catch (e: any) { toast.error(e?.message || '删除失败') } finally { setBusy(false) }
   }
 
