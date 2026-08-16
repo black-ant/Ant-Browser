@@ -26,7 +26,6 @@ interface BrowserProfilesPanelProps {
   proxies: BrowserProxy[]
   selectedIds: Set<string>
   allTags: string[]
-  onReloadProfiles: () => void
   resolveProfileCore: (profile: BrowserProfile) => BrowserCore | null
   getProfileCoreLabel: (profile: BrowserProfile) => string
   getProfileStatus: (profile: BrowserProfile) => ProfileStatus
@@ -290,7 +289,6 @@ function BrowserProfileCard({
   allTags,
   onToggleSelect,
   onRefreshProfiles,
-  onReloadProfiles,
   onStart,
   onStop,
   onRestart,
@@ -311,7 +309,6 @@ function BrowserProfileCard({
   allTags: string[]
   onToggleSelect: (profileId: string) => void
   onRefreshProfiles: () => void
-  onReloadProfiles: () => void
   onStart: (profileId: string) => void
   onStop: (profileId: string) => void
   onRestart: (profileId: string) => void
@@ -343,7 +340,7 @@ function BrowserProfileCard({
               tags={profile.tags}
               profileId={profile.profileId}
               allTags={allTags}
-              onChanged={onReloadProfiles}
+              onChanged={onRefreshProfiles}
             />
           </div>
 
@@ -416,7 +413,6 @@ export function BrowserProfilesPanel({
   proxies,
   selectedIds,
   allTags,
-  onReloadProfiles,
   resolveProfileCore,
   getProfileCoreLabel,
   getProfileStatus,
@@ -487,7 +483,7 @@ export function BrowserProfilesPanel({
             tags={record.tags}
             profileId={record.profileId}
             allTags={allTags}
-            onChanged={onReloadProfiles}
+            onChanged={onRefreshProfiles}
           />
         </div>
       ),
@@ -611,7 +607,6 @@ export function BrowserProfilesPanel({
                   allTags={allTags}
                   onToggleSelect={onToggleSelect}
                   onRefreshProfiles={onRefreshProfiles}
-                  onReloadProfiles={onReloadProfiles}
                   onStart={onStart}
                   onStop={onStop}
                   onRestart={onRestart}
