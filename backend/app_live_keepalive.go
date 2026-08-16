@@ -104,6 +104,12 @@ func (a *App) startLiveKeepAlive() {
 	}()
 }
 
+// keepAliveShouldInject 判定某运行中实例本轮是否应注入保活:必须运行中、调试就绪、
+// 有端口,且该实例保活开关为开。
+func keepAliveShouldInject(running, ready bool, debugPort int, enabled bool) bool {
+	return running && ready && debugPort > 0 && enabled
+}
+
 // runKeepAliveDue 对到期的运行中实例注入一次可信输入,并为其安排下一次随机时间。
 // 实例首次出现时给一个 [0,max) 的随机首触发 → 各实例天然错峰。
 func (a *App) runKeepAliveDue(log *logger.Logger, next map[string]time.Time, now time.Time) {
@@ -112,7 +118,7 @@ func (a *App) runKeepAliveDue(log *logger.Logger, next map[string]time.Time, now
 	}
 	live := map[string]struct{}{}
 	for _, p := range a.browserMgr.List() {
-		if !p.Running || !p.DebugReady || p.DebugPort <= 0 {
+		if !keepAliveShouldInject(p.Running, p.DebugReady, p.DebugPort, p.LiveKeepAliveEnabled) {
 			continue
 		}
 		live[p.ProfileId] = struct{}{}
