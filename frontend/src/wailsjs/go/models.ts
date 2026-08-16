@@ -1453,6 +1453,8 @@ export namespace browser {
 	    tags: string[];
 	    keywords: string[];
 	    groupId: string;
+	    liveKeepaliveEnabled: boolean;
+	    muteAudio: boolean;
 	    launchCode: string;
 	    running: boolean;
 	    debugPort: number;
@@ -1490,6 +1492,8 @@ export namespace browser {
 	        this.tags = source["tags"];
 	        this.keywords = source["keywords"];
 	        this.groupId = source["groupId"];
+	        this.liveKeepaliveEnabled = source["liveKeepaliveEnabled"];
+	        this.muteAudio = source["muteAudio"];
 	        this.launchCode = source["launchCode"];
 	        this.running = source["running"];
 	        this.debugPort = source["debugPort"];
@@ -1549,6 +1553,9 @@ export namespace browser {
 	    tags: string[];
 	    keywords: string[];
 	    groupId: string;
+	    liveKeepaliveEnabled?: boolean;
+	    muteAudio?: boolean;
+	    identityPlatform?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProfileInput(source);
@@ -1568,6 +1575,9 @@ export namespace browser {
 	        this.tags = source["tags"];
 	        this.keywords = source["keywords"];
 	        this.groupId = source["groupId"];
+	        this.liveKeepaliveEnabled = source["liveKeepaliveEnabled"];
+	        this.muteAudio = source["muteAudio"];
+	        this.identityPlatform = source["identityPlatform"];
 	    }
 	}
 	export class Settings {
