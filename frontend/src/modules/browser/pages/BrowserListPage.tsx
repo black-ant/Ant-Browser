@@ -537,7 +537,14 @@ export function BrowserListPage() {
   }
 
 
-  const handleBatchCreate = async (prefix: string, count: number, startIndex: number) => {
+  const handleBatchCreate = async (
+    prefix: string,
+    count: number,
+    startIndex: number,
+    platform: string,
+    liveKeepaliveEnabled: boolean,
+    muteAudio: boolean,
+  ) => {
     setBatchCreating(true)
     try {
       const template: BrowserProfileInput = {
@@ -551,8 +558,10 @@ export function BrowserListPage() {
         launchArgs: [],
         tags: [],
         keywords: [],
+        liveKeepaliveEnabled,
+        muteAudio,
       }
-      const created = await createBrowserProfileBatch(prefix, count, startIndex, template)
+      const created = await createBrowserProfileBatch(prefix, count, startIndex, platform, template)
       toast.success(`已批量创建 ${created.length} 个环境`)
       setBatchCreateOpen(false)
       await loadProfiles()
@@ -620,7 +629,9 @@ export function BrowserListPage() {
         open={batchCreateOpen}
         loading={batchCreating}
         onClose={() => setBatchCreateOpen(false)}
-        onSubmit={(prefix, count, startIndex) => { void handleBatchCreate(prefix, count, startIndex) }}
+        onSubmit={(prefix, count, startIndex, platform, liveKeepaliveEnabled, muteAudio) => {
+          void handleBatchCreate(prefix, count, startIndex, platform, liveKeepaliveEnabled, muteAudio)
+        }}
       />
 
       <BrowserProfilesPanel

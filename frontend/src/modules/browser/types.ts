@@ -44,6 +44,8 @@ export interface BrowserProfileInput {
   tags: string[]
   keywords: string[]
   groupId?: string
+  liveKeepaliveEnabled?: boolean
+  muteAudio?: boolean
 }
 
 export interface BrowserFingerprintRuntimeInfo {

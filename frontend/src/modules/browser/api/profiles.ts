@@ -197,11 +197,12 @@ export async function createBrowserProfileBatch(
   prefix: string,
   count: number,
   startIndex: number,
+  platform: string,
   template: BrowserProfileInput,
 ): Promise<BrowserProfile[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProfileCreateBatch) {
-    return (await bindings.BrowserProfileCreateBatch(prefix, count, startIndex, template)) || []
+    return (await bindings.BrowserProfileCreateBatch(prefix, count, startIndex, platform, template)) || []
   }
 
   // mock 回退:循环单个创建,名称按 prefix-编号(3 位)。

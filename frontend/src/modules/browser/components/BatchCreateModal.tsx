@@ -4,11 +4,20 @@ import { Button, FormItem, Input, Modal } from '../../../shared/components'
 
 const MAX_BATCH = 200
 
+type IdentityPlatform = '' | 'windows' | 'macos'
+
 interface BatchCreateModalProps {
   open: boolean
   loading: boolean
   onClose: () => void
-  onSubmit: (prefix: string, count: number, startIndex: number) => void
+  onSubmit: (
+    prefix: string,
+    count: number,
+    startIndex: number,
+    platform: string,
+    liveKeepaliveEnabled: boolean,
+    muteAudio: boolean,
+  ) => void
 }
 
 const pad3 = (n: number) => String(n).padStart(3, '0')
@@ -17,6 +26,9 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
   const [prefix, setPrefix] = useState('env')
   const [count, setCount] = useState(10)
   const [startIndex, setStartIndex] = useState(1)
+  const [platform, setPlatform] = useState<IdentityPlatform>('')
+  const [liveKeepalive, setLiveKeepalive] = useState(true)
+  const [muteAudio, setMuteAudio] = useState(true)
 
   const trimmedPrefix = prefix.trim()
   const safeCount = Math.min(Math.max(1, Math.floor(count) || 0), MAX_BATCH)
@@ -40,7 +52,11 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={loading}>取消</Button>
-          <Button onClick={() => onSubmit(trimmedPrefix, safeCount, safeStart)} loading={loading} disabled={!canSubmit}>
+          <Button
+            onClick={() => onSubmit(trimmedPrefix, safeCount, safeStart, platform, liveKeepalive, muteAudio)}
+            loading={loading}
+            disabled={!canSubmit}
+          >
             创建 {safeCount} 个
           </Button>
         </>
@@ -69,6 +85,30 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
             />
           </FormItem>
         </div>
+
+        <FormItem label="身份平台" hint="选定后本批全部生成该平台身份;任何情况都不重复">
+          <select
+            value={platform}
+            onChange={(event) => setPlatform(event.target.value as IdentityPlatform)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-input)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+          >
+            <option value="">全部平台</option>
+            <option value="windows">Windows</option>
+            <option value="macos">macOS</option>
+          </select>
+        </FormItem>
+
+        <div className="flex items-center gap-6">
+          <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 accent-[var(--color-accent)]" checked={liveKeepalive} onChange={(e) => setLiveKeepalive(e.target.checked)} />
+            开启直播保活
+          </label>
+          <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 accent-[var(--color-accent)]" checked={muteAudio} onChange={(e) => setMuteAudio(e.target.checked)} />
+            默认静音
+          </label>
+        </div>
+
         <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-secondary)] px-3 py-2 text-sm">
           <div className="mb-1 text-[var(--color-text-muted)]">名称预览(编号 3 位)</div>
           <div className="font-mono text-[var(--color-text-primary)]">{preview || '请输入前缀'}</div>
