@@ -5,6 +5,7 @@ import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } f
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BatchCreateModal } from '../components/BatchCreateModal'
 import { BatchTagModal } from '../components/BatchTagModal'
+import { GroupOpsModal } from '../components/GroupOpsModal'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
 import { BrowserBackupModal } from '../components/BrowserBackupModal'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
@@ -55,6 +56,7 @@ export function BrowserListPage() {
   const [batchCreateOpen, setBatchCreateOpen] = useState(false)
   const [batchCreating, setBatchCreating] = useState(false)
   const [tagModalOpen, setTagModalOpen] = useState(false)
+  const [groupModalOpen, setGroupModalOpen] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
   const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [backupLoadingMode, setBackupLoadingMode] = useState<BackupLoadingMode>('none')
@@ -153,6 +155,7 @@ export function BrowserListPage() {
     mergeProfileState,
     updateProxiesState,
     loadProfiles,
+    loadGroups,
   } = useBrowserListData({ loadCores })
   const {
     runningCount,
@@ -610,6 +613,7 @@ export function BrowserListPage() {
         onBatchExport={handleBatchExport}
         onOpenBackup={() => setBackupModalOpen(true)}
         onOpenTags={() => setTagModalOpen(true)}
+        onOpenGroups={() => setGroupModalOpen(true)}
         onBatchDelete={openBatchDeleteConfirm}
         batchLoading={batchLoading}
         exporting={profilePackageBusy}
@@ -623,6 +627,17 @@ export function BrowserListPage() {
         onDone={() => {
           setTagModalOpen(false)
           void loadProfiles()
+        }}
+      />
+
+      <GroupOpsModal
+        open={groupModalOpen}
+        profileIds={Array.from(selectedIds)}
+        onClose={() => setGroupModalOpen(false)}
+        onDone={() => {
+          setGroupModalOpen(false)
+          void loadProfiles()
+          void loadGroups()
         }}
       />
 

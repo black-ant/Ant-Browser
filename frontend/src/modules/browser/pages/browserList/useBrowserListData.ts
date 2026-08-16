@@ -157,5 +157,6 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
     mergeProfileState,
     updateProxiesState,
     loadProfiles,
+    loadGroups,
   }
 }
