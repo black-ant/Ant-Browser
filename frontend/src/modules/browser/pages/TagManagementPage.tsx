@@ -64,7 +64,7 @@ function TagPanel({ tags, selected, profilesByTag, totalCount, onSelect, onCreat
           <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto py-2 min-h-0">
         <button
           onClick={() => onSelect(null)}
           className={`w-full text-left px-4 py-2 text-sm flex items-center justify-between transition-colors ${selected === null
@@ -329,7 +329,7 @@ export function TagManagementPage() {
       />
 
       {/* 右侧内容区 */}
-      <div className="flex-1 flex flex-col overflow-hidden pl-5 gap-4">
+      <div className="flex-1 flex flex-col overflow-hidden pl-5 gap-4 min-h-0">
         {/* 批量操作栏 */}
         <ActionBar
           selectedCount={selectedIds.size}
@@ -339,8 +339,12 @@ export function TagManagementPage() {
           onClear={() => setSelectedIds(new Set())}
         />
 
+        <div className="text-xs text-[var(--color-text-muted)]">
+          共 {displayProfiles.length} 个实例 · 已选 {selectedIds.size}
+        </div>
+
         {/* 实例表格 */}
-        <Card padding="none" className="flex-1 overflow-hidden">
+        <Card padding="none" className="flex-1 overflow-hidden min-h-0">
           <div className="overflow-auto h-full">
             <table className="min-w-full">
               <thead className="sticky top-0 z-10">
