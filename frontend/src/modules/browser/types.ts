@@ -17,6 +17,8 @@
   tags: string[]
   keywords: string[]
   groupId?: string
+  liveKeepaliveEnabled?: boolean
+  muteAudio?: boolean
   running: boolean
   debugPort: number
   debugReady: boolean

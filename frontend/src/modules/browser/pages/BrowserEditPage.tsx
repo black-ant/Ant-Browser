@@ -253,6 +253,8 @@ export function BrowserEditPage() {
     keywords: [],
     groupId: '',
   })
+  const [liveKeepalive, setLiveKeepalive] = useState(true)
+  const [muteAudio, setMuteAudio] = useState(true)
   const [cores, setCores] = useState<BrowserCore[]>([])
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
   const [groups, setGroups] = useState<BrowserGroup[]>([])
@@ -307,6 +309,8 @@ export function BrowserEditPage() {
           fingerprintArgs: withAdaptiveDefaultWindowSize(settings.defaultFingerprintArgs || []),
         }))
         setLaunchArgsText(resolvedDefaultLaunchArgs.join('\n'))
+        setLiveKeepalive(true)
+        setMuteAudio(true)
         return
       }
       const list = await fetchBrowserProfiles()
@@ -334,6 +338,8 @@ export function BrowserEditPage() {
         groupId: current.groupId || '',
       })
       setLaunchArgsText(currentLaunchArgs.join('\n'))
+      setLiveKeepalive(current.liveKeepaliveEnabled ?? true)
+      setMuteAudio(current.muteAudio ?? true)
     }
     loadData()
   }, [id, isCreate])
@@ -402,6 +408,8 @@ export function BrowserEditPage() {
       proxyConfig: resolvedProxyConfig,
       memoryLimitMb: Math.max(0, Math.floor(Number(formData.memoryLimitMb) || 0)),
       launchArgs: normalizeLaunchArgs(launchArgsText.split('\n')),
+      liveKeepaliveEnabled: liveKeepalive,
+      muteAudio: muteAudio,
     }
     const fingerprintValidation = validateFingerprintArgs(payload.fingerprintArgs)
     if (!fingerprintValidation.valid) {
@@ -679,6 +687,17 @@ export function BrowserEditPage() {
               className="w-full"
             />
           </FormItem>
+          <div className="rounded-lg border border-[var(--color-border-default)] p-3 space-y-2">
+            <div className="text-sm font-medium text-[var(--color-text-secondary)]">直播养号</div>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+              <input type="checkbox" className="w-4 h-4 accent-[var(--color-accent)]" checked={liveKeepalive} onChange={(e) => { setLiveKeepalive(e.target.checked); setIsDirty(true) }} />
+              开启直播保活(防"长时间无操作已暂停")
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+              <input type="checkbox" className="w-4 h-4 accent-[var(--color-accent)]" checked={muteAudio} onChange={(e) => { setMuteAudio(e.target.checked); setIsDirty(true) }} />
+              静音(取消静音需重启该实例)
+            </label>
+          </div>
         </div>
       </Card>
 
