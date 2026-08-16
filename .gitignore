@@ -57,8 +57,9 @@ chrome/*
 publish/staging/
 publish/output/
 
-# Internal docs / scratch files
-docs/
+# Internal docs / scratch files (但跟踪 superpowers 规格/计划交付物)
+docs/*
+!docs/superpowers/
 DEPLOYMENT_GUIDE.md
 plan.md
 pic/
