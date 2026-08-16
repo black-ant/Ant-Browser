@@ -47,7 +47,7 @@ func ResolveUserDataDir(appPathResolver func(string) string, userDataRoot string
 func ResolveExistingPath(appPathResolver func(string) string, inputPath string, emptyMessage string) (string, error) {
 	inputPath = strings.TrimSpace(inputPath)
 	if inputPath == "" {
-		return "", fmt.Errorf(emptyMessage)
+		return "", fmt.Errorf("%s", emptyMessage)
 	}
 	if filepath.IsAbs(inputPath) {
 		return inputPath, nil

@@ -3,6 +3,7 @@ package browser
 import (
 	"database/sql"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,23 +13,24 @@ import (
 // IdentityService 把指纹自洽引擎(池采样 + 唯一性登记 + 序列化)封装成实例管理器可用的服务。
 // 在创建环境时为其生成唯一自洽的结构化身份并落库,同时把身份序列化为 fingerprint_args。
 type IdentityService struct {
-	pool     *identity.Pool
-	store    *identity.SQLiteStore
-	resolver identity.GeoResolver // 可选;接入离线 GeoIP mmdb 后用于代理地理对齐
-	mu       sync.Mutex
-	rng      *rand.Rand
+	poolStore *identity.PoolStore // 运行时可编辑的身份池(overlay + 内嵌回退)
+	store     *identity.SQLiteStore
+	resolver  identity.GeoResolver // 可选;接入离线 GeoIP mmdb 后用于代理地理对齐
+	mu        sync.Mutex
+	rng       *rand.Rand
 }
 
-// NewIdentityService 用数据库连接创建服务,载入内嵌指纹池。
-func NewIdentityService(db *sql.DB) (*IdentityService, error) {
-	pool, err := identity.LoadEmbeddedPool()
+// NewIdentityService 用数据库连接创建服务;poolOverlayPath 为可写身份池文件路径
+// (空字符串=纯内存内嵌池,不落盘,用于测试)。
+func NewIdentityService(db *sql.DB, poolOverlayPath string) (*IdentityService, error) {
+	ps, err := identity.NewPoolStore(poolOverlayPath)
 	if err != nil {
 		return nil, err
 	}
 	return &IdentityService{
-		pool:  pool,
-		store: identity.NewSQLiteStore(db),
-		rng:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		poolStore: ps,
+		store:     identity.NewSQLiteStore(db),
+		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}, nil
 }
 
@@ -57,9 +59,39 @@ func (s *IdentityService) IdentityForProfile(profileID string, args []string) (i
 func (s *IdentityService) GenerateUnique() (identity.Identity, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	pool := s.poolStore.Pool() // 采样当前(可能已被编辑的)池快照
 	return identity.GenerateUnique(s.store, func() identity.Identity {
-		return s.pool.NewIdentity(s.rng)
+		return pool.NewIdentity(s.rng)
 	}, 100)
+}
+
+// —— 身份池(模板)管理:编辑只影响之后新建的环境,不改已有环境 ——
+
+// PoolRecords 返回身份池全部记录(副本)。
+func (s *IdentityService) PoolRecords() []identity.PoolRecord { return s.poolStore.Records() }
+
+// PoolCount 返回身份池记录数。
+func (s *IdentityService) PoolCount() int { return s.poolStore.Count() }
+
+// AddPoolRecord 新增一条身份池模板(自动赋 ID)。
+func (s *IdentityService) AddPoolRecord(rec identity.PoolRecord) (identity.PoolRecord, error) {
+	return s.poolStore.Add(rec)
+}
+
+// UpdatePoolRecord 按 ID 更新一条身份池模板。
+func (s *IdentityService) UpdatePoolRecord(id string, rec identity.PoolRecord) (identity.PoolRecord, error) {
+	return s.poolStore.Update(id, rec)
+}
+
+// DeletePoolRecord 按 ID 删除一条身份池模板。
+func (s *IdentityService) DeletePoolRecord(id string) error { return s.poolStore.Delete(id) }
+
+// RestorePoolDefaults 把身份池恢复为内嵌默认。
+func (s *IdentityService) RestorePoolDefaults() error { return s.poolStore.RestoreDefaults() }
+
+// ValidatePoolRecord 校验一条身份池模板的自洽性。
+func (s *IdentityService) ValidatePoolRecord(rec identity.PoolRecord) identity.ValidationResult {
+	return identity.ValidatePoolRecord(rec)
 }
 
 // Regenerate 强制为 profile 重新生成一套唯一身份(忽略已有身份),存库并刷新 FingerprintArgs。
@@ -112,6 +144,32 @@ func (s *IdentityService) AlignProfileToGeo(profile *Profile, geo identity.GeoIn
 		}
 	}
 	aligned := identity.AlignToProxyGeo(id, geo)
+	s.mu.Lock()
+	err := s.store.Save(profile.ProfileId, aligned)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	profile.FingerprintArgs = aligned.LaunchArgs()
+	return nil
+}
+
+// AlignProfileToCountry 用指定国家默认地区设置对齐 profile 身份(时区/语言/locale),
+// 保留 seed 等设备指纹字段;存库并刷新 FingerprintArgs。用于直连(无代理)场景:
+// 出口即真机本地 IP,应把人设对齐到本地国家(如 CN),避免地理与 IP 矛盾被平台风控判废。
+// profile 尚无身份时先生成一套再对齐。countryCode 未收录时不改动地区字段。
+func (s *IdentityService) AlignProfileToCountry(profile *Profile, countryCode string) error {
+	if profile == nil || strings.TrimSpace(countryCode) == "" {
+		return nil
+	}
+	id, ok := s.IdentityForProfile(profile.ProfileId, profile.FingerprintArgs)
+	if !ok {
+		var err error
+		if id, err = s.GenerateUnique(); err != nil {
+			return err
+		}
+	}
+	aligned := identity.AlignToCountry(id, countryCode)
 	s.mu.Lock()
 	err := s.store.Save(profile.ProfileId, aligned)
 	s.mu.Unlock()

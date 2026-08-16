@@ -10,7 +10,10 @@ import (
 	"sync"
 )
 
-const appStateDirName = "ant-browser"
+const appStateDirName = "ZwBrowser"
+
+// legacyStateDirName 旧版状态目录名;启动时若存在会原子迁移到 appStateDirName。
+const legacyStateDirName = "ant-browser"
 
 type roots struct {
 	installRoot string
@@ -56,6 +59,48 @@ func resolveForOS(appRoot, p, goos string) string {
 		base = root.stateRoot
 	}
 	return filepath.Join(base, p)
+}
+
+// MigrateLegacyStateRoot 把旧版状态目录(legacyStateDirName,如 ant-browser)整体迁移到
+// 当前名(appStateDirName,如 ZwBrowser)。仅当:启用 detached、新目录不存在、旧目录存在时,
+// 执行一次同盘原子 os.Rename;幂等(新目录已存在则跳过)。所有存储路径均相对状态根,迁移后自动生效。
+// 必须在 EnsureWritableLayout(会创建新目录)之前调用,否则新目录先被建出来会导致迁移跳过。
+// 返回 (是否发生迁移, error);迁移失败非致命(旧目录仍在,不会丢数据)。
+func MigrateLegacyStateRoot(appRoot string) (bool, error) {
+	return migrateLegacyStateRootForOS(appRoot, goruntime.GOOS)
+}
+
+func migrateLegacyStateRootForOS(appRoot, goos string) (bool, error) {
+	root := detectForOS(appRoot, goos)
+	if !root.detached || strings.TrimSpace(root.stateRoot) == "" {
+		return false, nil
+	}
+	newRoot := root.stateRoot
+	parent := filepath.Dir(newRoot)
+	if strings.TrimSpace(parent) == "" {
+		return false, nil
+	}
+	legacyRoot := filepath.Join(parent, legacyStateDirName)
+	if legacyRoot == newRoot {
+		return false, nil
+	}
+	// 新目录已存在(即已迁移或本就是新装)→ 不覆盖。
+	if _, err := os.Stat(newRoot); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	// 旧目录不存在或不是目录 → 无需迁移。
+	if info, err := os.Stat(legacyRoot); err != nil || !info.IsDir() {
+		return false, nil
+	}
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		return false, err
+	}
+	if err := os.Rename(legacyRoot, newRoot); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // EnsureWritableLayout 为需要 detached 状态目录的已安装应用准备首启所需的可写目录，
@@ -195,7 +240,7 @@ func isMacAppBundleRoot(dir string) bool {
 }
 
 func dirWritable(dir string) bool {
-	file, err := os.CreateTemp(dir, ".ant-browser-write-test-*")
+	file, err := os.CreateTemp(dir, ".zwbrowser-write-test-*")
 	if err != nil {
 		return false
 	}

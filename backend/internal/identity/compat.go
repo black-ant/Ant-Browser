@@ -27,6 +27,8 @@ func FromLaunchArgs(args []string) Identity {
 			id.BrowserBrand = val
 		case "--fingerprint-brand-version":
 			id.BrandVersion = val
+		case "--user-agent":
+			id.UAFull = val
 		case "--fingerprint-hardware-concurrency":
 			if n, err := strconv.Atoi(val); err == nil {
 				id.HardwareConcurrency = n

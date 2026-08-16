@@ -27,6 +27,13 @@ func (i Identity) LaunchArgs() []string {
 	if i.BrandVersion != "" {
 		args = append(args, "--fingerprint-brand-version="+i.BrandVersion)
 	}
+	// UA 字符串必须与 brand-version(Client Hints)同版本,否则 navigator.userAgent
+	// 用的是内核真实版本、而 Sec-CH-UA 是身份版本,两者矛盾易被检测。下发完整 UA 覆盖
+	// 内核默认 UA,使所有服务端可采集的版本面(UA / Sec-CH-UA / fullVersionList /
+	// uaFullVersion)统一到身份版本 —— 实现"版本多样性且自洽"。
+	if i.UAFull != "" {
+		args = append(args, "--user-agent="+i.UAFull)
+	}
 	if i.HardwareConcurrency > 0 {
 		args = append(args, fmt.Sprintf("--fingerprint-hardware-concurrency=%d", i.HardwareConcurrency))
 	}

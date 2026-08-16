@@ -49,6 +49,35 @@ var countryDefaults = map[string]countryDefault{
 	"ID": {"Asia/Jakarta", "id-ID", []string{"id-ID", "id", "en"}},
 }
 
+// CountryDefault 返回指定国家码的默认地区设置(时区/locale/语言),ok=false 表示未收录。
+// 供直连(无代理)场景按本地地理对齐使用。
+func CountryDefault(countryCode string) (timezone, locale string, languages []string, ok bool) {
+	def, known := countryDefaults[countryCode]
+	if !known {
+		return "", "", nil, false
+	}
+	return def.Timezone, def.Locale, append([]string(nil), def.Languages...), true
+}
+
+// AlignToCountry 返回一份把 时区/语言/locale 对齐到指定国家默认设置后的身份副本。
+// 用于直连(无代理、出口即真机本地 IP)场景:此时没有代理出口地理可对齐,
+// 应按本地国家(如 CN)对齐,避免“中国 IP + 纽约时区 + 英文”这类被平台风控判废的矛盾。
+// 与 AlignToProxyGeo 不同:不改地理坐标(直连不伪造精确定位,且定位需用户授权),
+// 平台/UA/硬件/屏幕/seed 等非地理字段一律保持不变(设备指纹稳定)。
+// countryCode 未收录时原样返回,不破坏已有自洽。
+func AlignToCountry(id Identity, countryCode string) Identity {
+	def, known := countryDefaults[countryCode]
+	if !known {
+		return id
+	}
+	out := id
+	out.Timezone = def.Timezone
+	out.Locale = def.Locale
+	out.Languages = append([]string(nil), def.Languages...)
+	out.ProxyGeoSnapshot = countryCode
+	return out
+}
+
 // AlignToProxyGeo 返回一份把 时区/语言/locale/地理坐标 对齐到代理出口地理后的身份副本。
 // 非地理字段(平台/UA/硬件/屏幕/seed 等)保持不变。
 func AlignToProxyGeo(id Identity, geo GeoInfo) Identity {

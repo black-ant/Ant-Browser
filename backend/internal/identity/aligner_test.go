@@ -38,6 +38,51 @@ func TestAlignFallsBackToCountryTableWhenTimezoneMissing(t *testing.T) {
 	}
 }
 
+// 直连(无代理)按本地国家对齐:时区/语言/locale 应变为该国默认,
+// 但设备指纹字段(seed / 平台 / UA / 硬件)必须保持不变,地理坐标不改。
+func TestAlignToCountryOverridesLocaleKeepsDevice(t *testing.T) {
+	id := sampleIdentity() // windows / America/New_York / en-US
+	id.Seed = 1326051714
+	id.Geo = Geo{Latitude: 40.71, Longitude: -74.0, Accuracy: 50}
+
+	out := AlignToCountry(id, "CN")
+
+	if out.Timezone != "Asia/Shanghai" {
+		t.Errorf("timezone not aligned to CN: %q", out.Timezone)
+	}
+	if out.Locale != "zh-CN" {
+		t.Errorf("locale not aligned to CN: %q", out.Locale)
+	}
+	if len(out.Languages) == 0 || out.Languages[0] != "zh-CN" {
+		t.Errorf("languages not aligned to CN: %v", out.Languages)
+	}
+	// 设备指纹稳定:seed / 平台 / UA / 硬件不变。
+	if out.Seed != id.Seed || out.Platform != id.Platform || out.UAFull != id.UAFull || out.HardwareConcurrency != id.HardwareConcurrency {
+		t.Error("device fingerprint fields must be preserved on country align")
+	}
+	// 直连不伪造精确定位:坐标保持不变。
+	if out.Geo.Latitude != id.Geo.Latitude || out.Geo.Longitude != id.Geo.Longitude {
+		t.Errorf("country align must not change geo coords: %+v", out.Geo)
+	}
+	// 序列化后的 flag 应反映中文环境。
+	args := out.LaunchArgs()
+	if !hasArg(args, "--timezone=Asia/Shanghai") {
+		t.Errorf("timezone flag not aligned: %v", args)
+	}
+	if !hasArgPrefix(args, "--accept-lang=zh-CN") {
+		t.Errorf("accept-lang not aligned to zh-CN: %v", args)
+	}
+}
+
+// 未收录的国家码应原样返回,不破坏已有自洽。
+func TestAlignToCountryUnknownIsNoop(t *testing.T) {
+	id := sampleIdentity()
+	out := AlignToCountry(id, "ZZ")
+	if out.Timezone != id.Timezone || out.Locale != id.Locale {
+		t.Errorf("unknown country must be no-op, got tz=%q locale=%q", out.Timezone, out.Locale)
+	}
+}
+
 // 对齐后序列化的 flag 中,时区与 accept-language 应与代理国家一致。
 func TestAlignReflectedInLaunchArgs(t *testing.T) {
 	id := sampleIdentity()

@@ -67,6 +67,11 @@ func (a *App) BrowserProfilePermanentlyDelete(profileId string) error {
 	return a.browserMgr.PermanentlyDelete(profileId)
 }
 
+// BrowserProfilePermanentlyDeleteAll 清空回收站:一键彻底删除全部回收站实例,返回删除数量
+func (a *App) BrowserProfilePermanentlyDeleteAll() (int, error) {
+	return a.browserMgr.PermanentlyDeleteAll()
+}
+
 // BrowserProfileTrashCleanup 清理超过保留期的回收站实例
 func (a *App) BrowserProfileTrashCleanup() error { return a.browserMgr.CleanupExpiredTrash() }
 

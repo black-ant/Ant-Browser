@@ -94,6 +94,10 @@ func (m *Manager) createProfileLocked(input ProfileInput) (*Profile, error) {
 		// 显式带 seed 的调用(Launch API 指定指纹 / 复现场景)则被尊重,不覆盖。
 		if err := m.IdentityService.Regenerate(profile); err != nil {
 			log.Warn("自动生成自洽指纹身份失败，回退默认指纹", logger.F("profile_id", profileId), logger.F("error", err.Error()))
+		} else {
+			// 直连(无代理)实例:出口即真机本地 IP,把人设对齐到本地国家(默认 CN),
+			// 避免“本地 IP + 境外时区/语言”被平台风控判废(如抖音过一会掉登录)。
+			m.alignDirectProfileToLocalGeo(profile)
 		}
 	}
 	m.Profiles[profileId] = profile

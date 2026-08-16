@@ -77,6 +77,81 @@ func Validate(id Identity) ValidationResult {
 	return ValidationResult{OK: ok, Issues: issues}
 }
 
+// ValidatePoolRecord 校验一条身份池模板的自洽性(比 Validate 更贴合模板:不查 seed/geo,
+// 但强制 UA 版本 == brandVersion 版本,防止 UA 与 Client Hints 版本矛盾)。
+func ValidatePoolRecord(rec PoolRecord) ValidationResult {
+	var issues []Issue
+	add := func(field, msg, sev string, fixable bool) {
+		issues = append(issues, Issue{Field: field, Message: msg, Severity: sev, Fixable: fixable})
+	}
+
+	switch rec.Platform {
+	case "windows", "macos", "linux":
+	default:
+		add("platform", "平台取值非法(应为 windows/macos/linux)", SeverityError, false)
+	}
+
+	if strings.TrimSpace(rec.UAFull) == "" {
+		add("uaFull", "缺少 User-Agent", SeverityError, false)
+	} else {
+		if !uaMatchesPlatform(rec.Platform, rec.UAFull) {
+			add("ua", "User-Agent 与平台不一致", SeverityError, false)
+		}
+		// UA 里的 Chrome 主版本必须与 brandVersion(Client Hints)主版本一致。
+		uaMajor := chromeMajorFromUA(rec.UAFull)
+		brandMajor := majorVersion(rec.BrandVersion)
+		if uaMajor != "" && brandMajor != "" && uaMajor != brandMajor {
+			add("brandVersion", "UA 版本("+uaMajor+")与品牌版本("+brandMajor+")不一致,会被 UA↔Client Hints 交叉检测", SeverityError, false)
+		}
+	}
+
+	if strings.TrimSpace(rec.BrandVersion) == "" {
+		add("brandVersion", "缺少品牌版本", SeverityError, false)
+	}
+	if rec.Screen.Width <= 0 || rec.Screen.Height <= 0 {
+		add("screen", "屏幕尺寸非法", SeverityError, false)
+	}
+	if rec.HardwareConcurrency <= 0 {
+		add("hardwareConcurrency", "CPU 核心数应大于 0", SeverityError, false)
+	}
+	if len(rec.Languages) == 0 {
+		add("languages", "缺少语言列表", SeverityWarning, false)
+	}
+	if strings.TrimSpace(rec.Locale) == "" {
+		add("locale", "缺少 locale", SeverityWarning, false)
+	}
+	if rec.Weight <= 0 {
+		add("weight", "权重为 0,该记录永远不会被采样", SeverityWarning, false)
+	}
+
+	ok := true
+	for _, is := range issues {
+		if is.Severity == SeverityError {
+			ok = false
+			break
+		}
+	}
+	return ValidationResult{OK: ok, Issues: issues}
+}
+
+// chromeMajorFromUA 从 UA 字符串抽取 Chrome 主版本号(如 "…Chrome/145.0.0.0…" → "145")。
+func chromeMajorFromUA(ua string) string {
+	i := strings.Index(ua, "Chrome/")
+	if i < 0 {
+		return ""
+	}
+	return majorVersion(ua[i+len("Chrome/"):])
+}
+
+// majorVersion 取版本串的主版本号("145.0.0.0" → "145")。
+func majorVersion(v string) string {
+	v = strings.TrimSpace(v)
+	if i := strings.IndexByte(v, '.'); i >= 0 {
+		return v[:i]
+	}
+	return v
+}
+
 // uaMatchesPlatform 判断 UA 是否包含与平台一致的 OS 标记。
 func uaMatchesPlatform(platform, ua string) bool {
 	switch platform {

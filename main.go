@@ -150,6 +150,13 @@ func main() {
 	if startupDebugEnabled {
 		log.Printf("应用根目录: %s (dev=%v)", appRoot, isDevMode)
 	}
+	// 必须先迁移旧状态目录(ant-browser→ZwBrowser),再准备布局:
+	// EnsureRuntimeLayout 会创建新目录,若先建出来会导致迁移误判为“已存在”而跳过。
+	if migrated, err := backend.MigrateRuntimeStateRoot(appRoot); err != nil {
+		log.Printf("迁移旧状态目录失败(旧目录仍在,未丢数据): %v", err)
+	} else if migrated {
+		log.Printf("已将旧状态目录 ant-browser 迁移为 ZwBrowser")
+	}
 	if err := backend.EnsureRuntimeLayout(appRoot); err != nil {
 		log.Printf("准备用户数据目录失败: %v", err)
 	}

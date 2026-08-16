@@ -470,7 +470,7 @@ const fingerprintCheckHTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ant 指纹检测</title>
+  <title>Zw 指纹检测</title>
   <style>
     :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", "WenQuanYi Micro Hei", sans-serif; }
     body { margin: 0; background: #f6f7f9; color: #111827; }
@@ -526,7 +526,7 @@ const fingerprintCheckHTML = `<!doctype html>
 <main>
   <header>
     <div>
-      <h1 id="pageTitle">Ant 指纹检测</h1>
+      <h1 id="pageTitle">Zw 指纹检测</h1>
       <div class="meta" id="meta">正在检测当前浏览器真实指纹...</div>
     </div>
     <div class="actions">
@@ -556,7 +556,7 @@ var FINGERPRINT_AUTO_REFRESH_MS = 60 * 60 * 1000;
 var FINGERPRINT_AUTO_REFRESH_CHECK_MS = 60 * 1000;
 var currentUILang = latestContext && latestContext.uiLanguage === 'en' ? 'en' : 'zh';
 var UI_ZH = {
-  'Ant Fingerprint Check': 'Ant 指纹检测',
+  'Zw Fingerprint Check': 'Zw 指纹检测',
   'Checking current browser fingerprint...': '正在检测当前浏览器真实指纹...',
   'Reset Baseline': '重建基线',
   'Save Before': '保存修改前快照',
@@ -757,8 +757,8 @@ function setNodeText(id, text) {
 }
 function applyStaticText() {
   document.documentElement.lang = currentUILang === 'en' ? 'en' : 'zh-CN';
-  document.title = uiText('Ant Fingerprint Check');
-  setNodeText('pageTitle', 'Ant Fingerprint Check');
+  document.title = uiText('Zw Fingerprint Check');
+  setNodeText('pageTitle', 'Zw Fingerprint Check');
   if (!latestReport) setNodeText('meta', 'Checking current browser fingerprint...');
   setNodeText('resetBaselineBtn', 'Reset Baseline');
   setNodeText('saveBeforeBtn', 'Save Before');
@@ -796,7 +796,7 @@ function canvasHash() {
     ctx.textBaseline = 'top';
     ctx.font = '16px Arial';
     ctx.fillStyle = '#f60'; ctx.fillRect(4, 4, 150, 36);
-    ctx.fillStyle = '#069'; ctx.fillText('Ant fingerprint check', 9, 12);
+    ctx.fillStyle = '#069'; ctx.fillText('Zw fingerprint check', 9, 12);
     ctx.strokeStyle = 'rgba(120,60,200,.85)'; ctx.beginPath(); ctx.arc(210, 44, 30, 0, Math.PI * 2); ctx.stroke();
     return hashString(canvas.toDataURL());
   }, '');
@@ -820,7 +820,7 @@ function clientRectsHash() {
   return safe(function () {
     var node = document.createElement('div');
     node.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:180px;font:13px Arial;line-height:17px;';
-    node.textContent = 'Ant fingerprint client rects check';
+    node.textContent = 'Zw fingerprint client rects check';
     document.body.appendChild(node);
     var rects = Array.prototype.map.call(node.getClientRects(), function (r) {
       return [r.x, r.y, r.width, r.height].map(function (v) { return Number(v).toFixed(3); }).join(':');

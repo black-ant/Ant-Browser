@@ -227,6 +227,8 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 		profile.LastError = startErr.Error()
 		return nil, nil, nil, "", "", startErr
 	}
+	// 启动前调整 Preferences:允许所有 Cookie、去掉"恢复上次页面"与"设为默认浏览器"提示。
+	ensureLaunchPreferences(userDataDir)
 
 	fingerprintLaunchArgs := a.buildBrowserFingerprintCapabilityReport(input.ProfileID, profile.CoreId, profile.FingerprintArgs).LaunchArgs
 	fingerprintExpectedArgs := combineFingerprintExpectedArgs(fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs)
@@ -308,7 +310,8 @@ func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy st
 	args := []string{
 		fmt.Sprintf("--user-data-dir=%s", userDataDir),
 		fmt.Sprintf("--remote-debugging-port=%d", debugPort),
-		"--disable-session-crashed-bubble",
+		"--disable-session-crashed-bubble", // 去掉"恢复上次页面"气泡
+		"--no-default-browser-check",       // 去掉"设为默认浏览器"提示
 	}
 	if restoreLastSession {
 		args = append(args, "--restore-last-session")

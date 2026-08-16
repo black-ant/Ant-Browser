@@ -126,6 +126,23 @@ func (m *Manager) Restore(profileId string) (*Profile, error) {
 	return profile, nil
 }
 
+// PermanentlyDeleteAll 清空回收站:彻底删除全部已软删除的实例。返回成功删除数量与首个错误。
+func (m *Manager) PermanentlyDeleteAll() (int, error) {
+	deleted := m.ListDeleted()
+	count := 0
+	var firstErr error
+	for _, p := range deleted {
+		if err := m.PermanentlyDelete(p.ProfileId); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		count++
+	}
+	return count, firstErr
+}
+
 // PermanentlyDelete 从回收站彻底删除实例及其关联数据
 func (m *Manager) PermanentlyDelete(profileId string) error {
 	log := logger.New("Browser")

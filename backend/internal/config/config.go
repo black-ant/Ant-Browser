@@ -104,6 +104,7 @@ type BrowserBookmark struct {
 
 type BrowserConfig struct {
 	UserDataRoot           string                 `yaml:"user_data_root"`
+	LocalCountry           string                 `yaml:"local_country,omitempty"` // 直连(无代理)时按此国家默认地理对齐人设(ISO alpha-2,默认 CN)
 	DefaultFingerprintArgs []string               `yaml:"default_fingerprint_args"`
 	DefaultLaunchArgs      []string               `yaml:"default_launch_args"`
 	DefaultStartURLs       []string               `yaml:"default_start_urls"`

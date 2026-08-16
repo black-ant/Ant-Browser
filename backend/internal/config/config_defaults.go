@@ -53,6 +53,10 @@ func normalizeConfig(config *Config) {
 	if strings.TrimSpace(config.App.Name) == "" {
 		config.App.Name = defaultConfig.App.Name
 	}
+	// 改名迁移:历史配置里持久化的旧产品名统一迁移为当前名(窗口标题取此值)
+	if strings.TrimSpace(config.App.Name) == "Ant Browser" {
+		config.App.Name = defaultConfig.App.Name
+	}
 	if config.App.Window.Width <= 0 {
 		config.App.Window.Width = defaultConfig.App.Window.Width
 	}
@@ -115,6 +119,9 @@ func normalizeConfig(config *Config) {
 
 	if strings.TrimSpace(config.Browser.UserDataRoot) == "" {
 		config.Browser.UserDataRoot = defaultConfig.Browser.UserDataRoot
+	}
+	if strings.TrimSpace(config.Browser.LocalCountry) == "" {
+		config.Browser.LocalCountry = defaultConfig.Browser.LocalCountry
 	}
 	if len(config.Browser.DefaultFingerprintArgs) == 0 {
 		config.Browser.DefaultFingerprintArgs = append([]string{}, defaultConfig.Browser.DefaultFingerprintArgs...)
@@ -257,6 +264,7 @@ func DefaultConfig() *Config {
 		},
 		Browser: BrowserConfig{
 			UserDataRoot:           "data",
+			LocalCountry:           "CN",
 			DefaultFingerprintArgs: defaultFingerprintArgsForOS(goruntime.GOOS),
 			DefaultLaunchArgs:      []string{"--disable-sync", "--no-first-run"},
 			DefaultStartURLs:       DefaultBrowserStartURLs(),

@@ -20,7 +20,7 @@ func newTestIdentityService(t *testing.T) *IdentityService {
 	if err := db.Migrate(); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	svc, err := NewIdentityService(db.GetConn())
+	svc, err := NewIdentityService(db.GetConn(), "")
 	if err != nil {
 		t.Fatalf("NewIdentityService: %v", err)
 	}

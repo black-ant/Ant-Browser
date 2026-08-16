@@ -2,10 +2,45 @@ package browser
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"ant-chrome/backend/internal/identity"
+	"ant-chrome/backend/internal/logger"
 )
+
+// isDirectProfile 判断实例是否为“直连”(无代理):出口即真机本地 IP。
+func isDirectProfile(p *Profile) bool {
+	if p == nil {
+		return false
+	}
+	pid := strings.TrimSpace(p.ProxyId)
+	if pid != "" && pid != directProxyID {
+		return false
+	}
+	pc := strings.TrimSpace(p.ProxyConfig)
+	return pc == "" || strings.EqualFold(pc, "direct://")
+}
+
+// alignDirectProfileToLocalGeo 若实例为直连(无代理),把身份对齐到本地国家
+// (config.local_country,默认 CN),保留 seed。直连出口即真机本地 IP,人设须与之一致,
+// 否则平台风控会因“地理(时区/语言)与 IP 国别矛盾”周期性判废登录会话(表现为“过一会掉登录”)。
+func (m *Manager) alignDirectProfileToLocalGeo(p *Profile) {
+	if m.IdentityService == nil || !isDirectProfile(p) {
+		return
+	}
+	country := strings.TrimSpace(m.Config.Browser.LocalCountry)
+	if country == "" {
+		country = "CN"
+	}
+	if err := m.IdentityService.AlignProfileToCountry(p, country); err != nil {
+		logger.New("Browser").Warn("直连本地地理对齐失败",
+			logger.F("profile_id", p.ProfileId),
+			logger.F("country", country),
+			logger.F("error", err.Error()),
+		)
+	}
+}
 
 // RegenerateFingerprint 为实例重新生成一套唯一自洽身份并持久化。
 func (m *Manager) RegenerateFingerprint(profileId string) (*Profile, error) {
@@ -22,6 +57,8 @@ func (m *Manager) RegenerateFingerprint(profileId string) (*Profile, error) {
 	if err := m.IdentityService.Regenerate(p); err != nil {
 		return nil, err
 	}
+	// 直连实例:重生成后按本地国家对齐人设,保持与真机 IP 地理一致。
+	m.alignDirectProfileToLocalGeo(p)
 	p.UpdatedAt = time.Now().Format(time.RFC3339)
 	if err := m.SaveProfiles(); err != nil {
 		return nil, err

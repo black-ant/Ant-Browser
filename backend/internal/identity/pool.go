@@ -16,6 +16,7 @@ var poolJSON []byte
 // PoolRecord 是一条真机指纹模板,采样时整条取出以保证内部自洽。
 // locale/timezone 为默认值(直连时使用),绑定代理后会被地理对齐覆盖。
 type PoolRecord struct {
+	ID                  string   `json:"id,omitempty"` // 运行时可编辑池的稳定标识;内嵌默认池不含,首次物化时赋值。采样不使用。
 	Platform            string   `json:"platform"`
 	PlatformVersion     string   `json:"platformVersion"`
 	BrandVersion        string   `json:"brandVersion"`
@@ -36,8 +37,8 @@ type Pool struct {
 	total   int
 }
 
-// LoadEmbeddedPool 载入内嵌指纹池。
-func LoadEmbeddedPool() (*Pool, error) {
+// EmbeddedPoolRecords 解析并返回内嵌默认指纹池的记录副本(用于"恢复默认"与首次物化)。
+func EmbeddedPoolRecords() ([]PoolRecord, error) {
 	var recs []PoolRecord
 	if err := json.Unmarshal(poolJSON, &recs); err != nil {
 		return nil, fmt.Errorf("identity: 解析内嵌指纹池失败: %w", err)
@@ -45,13 +46,27 @@ func LoadEmbeddedPool() (*Pool, error) {
 	if len(recs) == 0 {
 		return nil, fmt.Errorf("identity: 内嵌指纹池为空")
 	}
+	return recs, nil
+}
+
+// NewPool 用给定记录构建采样池,重算加权采样所需的 total(Weight<=0 的记录不计入)。
+func NewPool(records []PoolRecord) *Pool {
 	total := 0
-	for _, r := range recs {
+	for _, r := range records {
 		if r.Weight > 0 {
 			total += r.Weight
 		}
 	}
-	return &Pool{records: recs, total: total}, nil
+	return &Pool{records: records, total: total}
+}
+
+// LoadEmbeddedPool 载入内嵌指纹池。
+func LoadEmbeddedPool() (*Pool, error) {
+	recs, err := EmbeddedPoolRecords()
+	if err != nil {
+		return nil, err
+	}
+	return NewPool(recs), nil
 }
 
 // Len 返回池中记录数。

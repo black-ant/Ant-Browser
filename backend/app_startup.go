@@ -133,7 +133,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	a.browserMgr.BookmarkDAO = browser.NewSQLiteBookmarkDAO(conn)
 	a.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(conn)
 	a.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(conn)
-	if idSvc, err := browser.NewIdentityService(conn); err == nil {
+	if idSvc, err := browser.NewIdentityService(conn, a.resolveAppPath("data/identity_pool.json")); err == nil {
 		a.browserMgr.IdentityService = idSvc
 		// 若离线 GeoIP 库存在,启用代理地理对齐;缺库则优雅降级为不对齐。
 		if res, err := identity.OpenMMDBResolver(a.resolveAppPath("data/geoip/dbip-city-lite.mmdb")); err == nil {
