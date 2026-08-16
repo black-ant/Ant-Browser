@@ -10,6 +10,7 @@ import type { BrowserCore, BrowserProfile, BrowserProxy, ProxySpeedTestResult } 
 import { browserProxyTestSpeed, testProxyConnectivity } from '../api'
 import type { BrowserViewMode } from './BrowserListLayout'
 import { KeywordInlineRow, LaunchCodeCell } from './BrowserListWidgets'
+import { TagInlineCell } from './TagInlineCell'
 
 type ProfileStatusVariant = 'default' | 'success' | 'error' | 'warning' | 'info'
 
@@ -24,6 +25,8 @@ interface BrowserProfilesPanelProps {
   profiles: BrowserProfile[]
   proxies: BrowserProxy[]
   selectedIds: Set<string>
+  allTags: string[]
+  onReloadProfiles: () => void
   resolveProfileCore: (profile: BrowserProfile) => BrowserCore | null
   getProfileCoreLabel: (profile: BrowserProfile) => string
   getProfileStatus: (profile: BrowserProfile) => ProfileStatus
@@ -284,8 +287,10 @@ function BrowserProfileCard({
   isStarting,
   isStopping,
   isBusy,
+  allTags,
   onToggleSelect,
   onRefreshProfiles,
+  onReloadProfiles,
   onStart,
   onStop,
   onRestart,
@@ -303,8 +308,10 @@ function BrowserProfileCard({
   isStarting: boolean
   isStopping: boolean
   isBusy: boolean
+  allTags: string[]
   onToggleSelect: (profileId: string) => void
   onRefreshProfiles: () => void
+  onReloadProfiles: () => void
   onStart: (profileId: string) => void
   onStop: (profileId: string) => void
   onRestart: (profileId: string) => void
@@ -332,11 +339,12 @@ function BrowserProfileCard({
             <Link className="text-[var(--color-accent)] font-medium text-sm hover:text-[var(--color-accent)] transition-colors truncate max-w-[200px]" to={`/browser/detail/${profile.profileId}`}>
               {profile.profileName}
             </Link>
-            {profile.tags && profile.tags.length > 0 && (
-              <div className="flex gap-1 ml-1">
-                {profile.tags.map(tag => <Badge variant="default" key={tag}>{tag}</Badge>)}
-              </div>
-            )}
+            <TagInlineCell
+              tags={profile.tags}
+              profileId={profile.profileId}
+              allTags={allTags}
+              onChanged={onReloadProfiles}
+            />
           </div>
 
           <Badge variant={status.variant} dot dotClassName="w-2 h-2 shrink-0">
@@ -407,6 +415,8 @@ export function BrowserProfilesPanel({
   profiles,
   proxies,
   selectedIds,
+  allTags,
+  onReloadProfiles,
   resolveProfileCore,
   getProfileCoreLabel,
   getProfileStatus,
@@ -473,12 +483,12 @@ export function BrowserProfilesPanel({
           <Link className="block min-w-0 max-w-[220px] truncate text-[var(--color-accent)] text-sm font-medium hover:underline" to={`/browser/detail/${record.profileId}`} title={String(value || '')}>
             {value}
           </Link>
-          {record.tags && record.tags.length > 0 && (
-            <div className="flex shrink-0 gap-1 overflow-hidden">
-              {record.tags.slice(0, 2).map(tag => <Badge variant="default" key={tag}>{tag}</Badge>)}
-              {record.tags.length > 2 && <Badge variant="default">+{record.tags.length - 2}</Badge>}
-            </div>
-          )}
+          <TagInlineCell
+            tags={record.tags}
+            profileId={record.profileId}
+            allTags={allTags}
+            onChanged={onReloadProfiles}
+          />
         </div>
       ),
     },
@@ -598,8 +608,10 @@ export function BrowserProfilesPanel({
                   isStarting={isProfileStarting(profile.profileId)}
                   isStopping={isProfileStopping(profile.profileId)}
                   isBusy={isProfileBusy(profile.profileId)}
+                  allTags={allTags}
                   onToggleSelect={onToggleSelect}
                   onRefreshProfiles={onRefreshProfiles}
+                  onReloadProfiles={onReloadProfiles}
                   onStart={onStart}
                   onStop={onStop}
                   onRestart={onRestart}

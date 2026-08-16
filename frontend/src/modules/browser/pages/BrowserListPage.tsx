@@ -640,6 +640,8 @@ export function BrowserListPage() {
         profiles={filteredProfiles}
         proxies={proxies}
         selectedIds={selectedIds}
+        allTags={allTags}
+        onReloadProfiles={loadProfiles}
         resolveProfileCore={resolveProfileCore}
         getProfileCoreLabel={getProfileCoreLabel}
         getProfileStatus={getProfileStatus}
