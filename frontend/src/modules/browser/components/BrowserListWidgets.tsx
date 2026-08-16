@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Archive, ChevronDown, ChevronUp, Copy, Download, Pencil, Play, RefreshCw, Square, Trash2 } from 'lucide-react'
+import { Archive, ChevronDown, ChevronUp, Copy, Download, Pencil, Play, RefreshCw, Square, Tag, Trash2 } from 'lucide-react'
 
 import { Button, toast } from '../../../shared/components'
 import { regenerateBrowserProfileCode, setBrowserProfileCode } from '../api'
@@ -13,6 +13,7 @@ interface BatchToolbarProps {
   onBatchStop: () => void
   onBatchExport: () => void
   onOpenBackup: () => void
+  onOpenTags: () => void
   onBatchDelete: () => void
   batchLoading: boolean
   exporting?: boolean
@@ -27,6 +28,7 @@ export function BatchToolbar({
   onBatchStop,
   onBatchExport,
   onOpenBackup,
+  onOpenTags,
   onBatchDelete,
   batchLoading,
   exporting = false,
@@ -44,6 +46,9 @@ export function BatchToolbar({
         </Button>
         <Button size="sm" variant="secondary" onClick={onBatchStop} loading={batchLoading} title="批量停止">
           <Square className="w-3.5 h-3.5" />停止
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onOpenTags} title="批量加/删标签">
+          <Tag className="w-3.5 h-3.5" />标签
         </Button>
         <Button size="sm" variant="secondary" onClick={onBatchExport} loading={exporting} title="导出实例">
           <Download className="w-3.5 h-3.5" />导出

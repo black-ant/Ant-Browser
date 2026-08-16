@@ -4,6 +4,7 @@ import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfileInput, Br
 import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BatchCreateModal } from '../components/BatchCreateModal'
+import { BatchTagModal } from '../components/BatchTagModal'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
 import { BrowserBackupModal } from '../components/BrowserBackupModal'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
@@ -53,6 +54,7 @@ export function BrowserListPage() {
   const [batchLoading, setBatchLoading] = useState(false)
   const [batchCreateOpen, setBatchCreateOpen] = useState(false)
   const [batchCreating, setBatchCreating] = useState(false)
+  const [tagModalOpen, setTagModalOpen] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
   const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [backupLoadingMode, setBackupLoadingMode] = useState<BackupLoadingMode>('none')
@@ -607,9 +609,21 @@ export function BrowserListPage() {
         onBatchStop={handleBatchStop}
         onBatchExport={handleBatchExport}
         onOpenBackup={() => setBackupModalOpen(true)}
+        onOpenTags={() => setTagModalOpen(true)}
         onBatchDelete={openBatchDeleteConfirm}
         batchLoading={batchLoading}
         exporting={profilePackageBusy}
+      />
+
+      <BatchTagModal
+        open={tagModalOpen}
+        profileIds={Array.from(selectedIds)}
+        allTags={allTags}
+        onClose={() => setTagModalOpen(false)}
+        onDone={() => {
+          setTagModalOpen(false)
+          void loadProfiles()
+        }}
       />
 
       <BrowserBackupModal
