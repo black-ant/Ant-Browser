@@ -46,10 +46,10 @@ func TestEnsureFingerprintCheckPageURL(t *testing.T) {
 		t.Fatalf("read generated page error = %v", err)
 	}
 	text := string(content)
-	if !strings.Contains(text, "Ant 指纹检测") || !strings.Contains(text, "指纹项") || !strings.Contains(text, "期望来源") || !strings.Contains(text, "结果") {
+	if !strings.Contains(text, "Zw 指纹检测") || !strings.Contains(text, "指纹项") || !strings.Contains(text, "期望来源") || !strings.Contains(text, "结果") {
 		t.Fatalf("generated page missing default Chinese content")
 	}
-	if !strings.Contains(text, "Ant Fingerprint Check") || !strings.Contains(text, "Fingerprint Check") || !strings.Contains(text, "Reset Baseline") {
+	if !strings.Contains(text, "Zw Fingerprint Check") || !strings.Contains(text, "Fingerprint Check") || !strings.Contains(text, "Reset Baseline") {
 		t.Fatalf("generated page missing English fallback content")
 	}
 	if !strings.Contains(text, "\"Microsoft YaHei\"") || !strings.Contains(text, "\"Noto Sans SC\"") || !strings.Contains(text, "\"WenQuanYi Micro Hei\"") {
