@@ -56,12 +56,17 @@ export function IdentityPoolPage() {
   )
 
   const filtered = useMemo(() => {
-    const kw = search.trim().toLowerCase()
+    // User-Agent 模糊搜索:空格分隔多关键词,全部命中才算匹配(如 "mac 146")。
+    // 时区/语言是创建环境时按出口 IP 自动对齐的,不参与池内搜索。
+    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
     const ver = version.trim()
     return records.filter(r => {
       if (platform && r.platform !== platform) return false
       if (ver && major(r.brandVersion) !== ver) return false
-      if (kw && !(`${r.uaFull} ${r.platform} ${r.locale} ${r.timezone}`.toLowerCase().includes(kw))) return false
+      if (terms.length) {
+        const ua = (r.uaFull || '').toLowerCase()
+        if (!terms.every(t => ua.includes(t))) return false
+      }
       return true
     })
   }, [records, search, platform, version])
@@ -146,8 +151,12 @@ export function IdentityPoolPage() {
     { key: 'hardwareConcurrency', title: '硬件', width: 90, render: (_v, r) => <span className="text-xs">{r.hardwareConcurrency}核/{r.deviceMemory}G</span> },
     { key: 'screen', title: '屏幕', width: 110, render: (_v, r) => <span className="text-xs">{r.screen.width}×{r.screen.height}</span> },
     {
-      key: 'timezone', title: '语言/时区', width: 170,
-      render: (_v, r) => <span className="block max-w-[160px] truncate text-xs" title={`${r.locale} · ${r.timezone}`}>{r.locale} · {r.timezone}</span>,
+      key: 'timezone', title: '时区/语言', width: 110,
+      render: () => (
+        <span className="text-xs text-[var(--color-text-muted)]" title="创建环境时按出口 IP 自动对齐:直连=本地国家,绑代理=代理所在地区">
+          跟随出口 IP
+        </span>
+      ),
     },
     { key: 'weight', title: '权重', width: 64, render: v => <span className="text-xs">{v}</span> },
     {
@@ -167,7 +176,7 @@ export function IdentityPoolPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">身份池管理</h1>
-          <p className="text-xs text-[var(--color-text-muted)]">共 {records.length} 条真机指纹模板 · 新建/批量环境时从中加权采样</p>
+          <p className="text-xs text-[var(--color-text-muted)]">共 {records.length} 条真机设备模板(UA/硬件/屏幕)· 新建/批量环境时从中加权采样</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => void handleValidateAll()} loading={checkingAll}><ShieldCheck className="mr-1 h-3.5 w-3.5" />检查全部</Button>
@@ -176,11 +185,11 @@ export function IdentityPoolPage() {
         </div>
       </div>
 
-      <Alert type="info" message="编辑身份池只影响之后新建/批量创建的环境;已有环境的指纹已固化,不受影响。" />
+      <Alert type="info" message="身份池只提供设备指纹(UA/硬件/屏幕);时区/语言/Locale 在创建环境时按出口 IP 自动对齐:直连=本地国家,绑代理=代理所在地区。编辑只影响之后新建的环境,已有环境指纹已固化。" />
 
       <Card padding="none">
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border-muted)] p-3">
-          <Input className="w-64" placeholder="搜索 UA / 平台 / locale / 时区" value={search} onChange={e => setSearch(e.target.value)} />
+          <Input className="w-72" placeholder="模糊搜索 User-Agent,空格分隔多关键词" value={search} onChange={e => setSearch(e.target.value)} />
           <Select className="w-36" options={platformOptions} value={platform} onChange={e => setPlatform(e.target.value)} />
           <Input className="w-32" placeholder="主版本 如147" value={version} onChange={e => setVersion(e.target.value)} />
           <span className="ml-auto text-xs text-[var(--color-text-muted)]">筛选出 {filtered.length} 条</span>

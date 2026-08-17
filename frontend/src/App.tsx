@@ -140,6 +140,8 @@ function CloseConfirmModal() {
 
   useEffect(() => {
     let cancelled = false;
+    // 浏览器预览(无 Wails runtime)时 Environment() 会同步抛错,跳过平台探测。
+    if (!(window as any).runtime) return;
 
     Environment()
       .then((info) => {

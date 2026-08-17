@@ -23,14 +23,11 @@ interface Props {
 
 export function IdentityEditModal({ open, record, saving, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<IdentityPoolRecord>(emptyIdentityRecord())
-  const [langs, setLangs] = useState('en-US,en')
   const [validation, setValidation] = useState<IdentityValidationResult | null>(null)
 
   useEffect(() => {
     if (!open) return
-    const base = record ? { ...record } : emptyIdentityRecord()
-    setForm(base)
-    setLangs((base.languages || []).join(','))
+    setForm(record ? { ...record } : emptyIdentityRecord())
     setValidation(null)
   }, [open, record])
 
@@ -39,10 +36,8 @@ export function IdentityEditModal({ open, record, saving, onClose, onSubmit }: P
     setForm(prev => ({ ...prev, screen: { ...prev.screen, ...patch } }))
 
   const handleSubmit = async () => {
-    const rec: IdentityPoolRecord = {
-      ...form,
-      languages: langs.split(',').map(s => s.trim()).filter(Boolean),
-    }
+    // 时区/语言/Locale 不在此编辑:保留记录原值(仅作占位),创建环境时按出口 IP 自动覆盖。
+    const rec: IdentityPoolRecord = { ...form }
     const res = await validateIdentity(rec)
     if (res && !res.ok) {
       setValidation(res) // 有 error 级问题 → 阻止保存,展示问题
@@ -98,15 +93,9 @@ export function IdentityEditModal({ open, record, saving, onClose, onSubmit }: P
         <FormItem label="权重" hint="加权采样概率;0 = 永不采样">
           <Input type="number" value={form.weight} onChange={e => set({ weight: Number(e.target.value) })} />
         </FormItem>
-        <FormItem label="语言(逗号分隔)" className="col-span-2">
-          <Input value={langs} onChange={e => setLangs(e.target.value)} placeholder="en-US,en" />
-        </FormItem>
-        <FormItem label="Locale">
-          <Input value={form.locale} onChange={e => set({ locale: e.target.value })} placeholder="en-US" />
-        </FormItem>
-        <FormItem label="时区">
-          <Input value={form.timezone} onChange={e => set({ timezone: e.target.value })} placeholder="America/New_York" />
-        </FormItem>
+        <div className="col-span-2 rounded-lg bg-[var(--color-bg-muted)] px-3 py-2 text-xs text-[var(--color-text-muted)]">
+          时区 / 语言 / Locale 不在此配置:创建环境时按出口 IP 自动对齐(直连=本地国家,绑代理=代理所在地区)。
+        </div>
       </div>
       {validation && !validation.ok && (
         <div className="mt-3 rounded-lg border border-[var(--color-error)]/30 bg-[var(--color-error)]/10 p-2.5 text-xs">

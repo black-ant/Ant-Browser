@@ -38,7 +38,13 @@ func (a *App) BrowserProfileSetKeywords(profileId string, keywords []string) (*B
 }
 
 func (a *App) BrowserProfileCreate(input BrowserProfileInput) (*BrowserProfile, error) {
-	return a.browserMgr.Create(input)
+	profile, err := a.browserMgr.Create(input)
+	if err != nil {
+		return nil, err
+	}
+	// 挂代理的新环境:自动按代理出口 IP 对齐时区/语言/坐标(直连已在创建时对齐本地国家)。
+	a.autoAlignProfilesToProxyGeo([]*BrowserProfile{profile})
+	return profile, nil
 }
 
 // BrowserProfileCreateBatch 批量创建配置:名称为 prefix-编号(3位,从 startIndex 起,默认 1),
@@ -46,11 +52,40 @@ func (a *App) BrowserProfileCreate(input BrowserProfileInput) (*BrowserProfile, 
 // platform 限定本批身份采样的平台(如 "macos"/"windows"),空字符串="全部平台"。
 // template 提供代理/内核/省内存等公共设置;其指纹参数会被忽略以保证各环境不同。
 func (a *App) BrowserProfileCreateBatch(prefix string, count int, startIndex int, platform string, template BrowserProfileInput) ([]*BrowserProfile, error) {
-	return a.browserMgr.CreateBatch(prefix, count, startIndex, platform, template)
+	created, err := a.browserMgr.CreateBatch(prefix, count, startIndex, platform, template)
+	// 中途失败也对齐已建成的部分;同一代理只探测一次出口 IP,批内所有环境共享该结果。
+	a.autoAlignProfilesToProxyGeo(created)
+	return created, err
 }
 
 func (a *App) BrowserProfileUpdate(profileId string, input BrowserProfileInput) (*BrowserProfile, error) {
-	return a.browserMgr.Update(profileId, input)
+	prevProxyId, prevProxyConfig, hadPrev := a.browserMgr.ProfileProxyBinding(profileId)
+	profile, err := a.browserMgr.Update(profileId, input)
+	if err != nil {
+		return nil, err
+	}
+	// 换绑代理后自动重对齐人设地理:换成代理 → 按新代理出口 IP;换回直连 → 按本地国家。
+	if hadPrev && (prevProxyId != profile.ProxyId || prevProxyConfig != profile.ProxyConfig) {
+		if isDirectProxyBinding(profile.ProxyId, profile.ProxyConfig) {
+			if _, alignErr := a.browserMgr.AlignFingerprintToLocalCountry(profileId); alignErr != nil {
+				logger.New("Fingerprint").Warn("换绑直连后本地地理对齐失败",
+					logger.F("profile_id", profileId), logger.F("error", alignErr.Error()))
+			}
+		} else {
+			a.autoAlignProfilesToProxyGeo([]*BrowserProfile{profile})
+		}
+	}
+	return profile, nil
+}
+
+// isDirectProxyBinding 判断代理绑定是否为直连(与 internal/browser 的直连判定同口径)。
+func isDirectProxyBinding(proxyId, proxyConfig string) bool {
+	pid := strings.TrimSpace(proxyId)
+	if pid != "" && !strings.EqualFold(pid, "__direct__") {
+		return false
+	}
+	pc := strings.TrimSpace(proxyConfig)
+	return pc == "" || strings.EqualFold(pc, "direct://")
 }
 
 func (a *App) BrowserProfileDelete(profileId string) error { return a.browserMgr.Delete(profileId) }
