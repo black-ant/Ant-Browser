@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
 import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Switch, Textarea, toast } from '../../../shared/components'
@@ -268,6 +268,9 @@ export function BrowserEditPage() {
   const [saveError, setSaveError] = useState('')
   const [locationResolving, setLocationResolving] = useState(false)
   const [locationResult, setLocationResult] = useState<ProxyLocationResolveResult | null>(null)
+  // 最近一次已按其地区填充过表单的代理 ID(含初始加载值):避免打开页面就探测、
+  // 避免同一选择重复探测;A→B→A 时 A≠ref 会重新解析,恢复 A 的地区参数。
+  const lastAutoLocProxyRef = useRef<string>('')
   const [fpValidation, setFpValidation] = useState<FingerprintValidationResult | null>(null)
   const [fpBusy, setFpBusy] = useState(false)
   const [memorySaver, setMemorySaverState] = useState(false)
@@ -301,6 +304,7 @@ export function BrowserEditPage() {
       if (isCreate) {
         const resolved = resolvePoolProxySelection('', '', proxyList)
         setProxyMode('pool')
+        lastAutoLocProxyRef.current = resolved.proxyId || directProxyID
         setFormData((prev) => ({
           ...prev,
           proxyId: resolved.proxyId || directProxyID,
@@ -322,6 +326,7 @@ export function BrowserEditPage() {
         : current.coreId
       const resolvedProxy = resolvePoolProxySelection(current.proxyId || '', current.proxyConfig || '', proxyList)
       setProxyMode(resolvedProxy.mode)
+      lastAutoLocProxyRef.current = resolvedProxy.proxyId
       setFormData({
         profileName: current.profileName,
         userDataDir: current.userDataDir,
@@ -448,29 +453,51 @@ export function BrowserEditPage() {
     if (isDirty) { setLeaveConfirm(true) } else { navigate('/browser/list') }
   }
 
-  const handleApplyProxyLocation = async () => {
-    if (proxyMode !== 'pool' || !formData.proxyId || formData.proxyId === directProxyID) {
-      toast.error('请选择代理池中的非直连节点')
-      return
-    }
+  // 解析代理出口地区并把 语言/时区 写入表单指纹参数(手动按钮与选代理自动联动共用)。
+  const resolveAndApplyProxyLocation = useCallback(async (proxyId: string) => {
     setLocationResolving(true)
     setLocationResult(null)
     try {
-      const result = await browserProxyResolveLocation(formData.proxyId)
+      const result = await browserProxyResolveLocation(proxyId)
       setLocationResult(result)
       if (!result.ok || !result.lang || !result.timezone) {
         toast.error(result.error || '无法根据代理 IP 匹配定位')
         return
       }
-      const nextArgs = applyLocaleToFingerprintArgs(formData.fingerprintArgs, result.lang, result.timezone)
-      handleChange('fingerprintArgs', nextArgs)
-      toast.success(`已设置 ${result.lang} / ${result.timezone}`)
+      setIsDirty(true)
+      setFormData(prev => ({
+        ...prev,
+        fingerprintArgs: applyLocaleToFingerprintArgs(prev.fingerprintArgs, result.lang, result.timezone),
+      }))
+      toast.success(`已按代理地区设置 ${result.lang} / ${result.timezone}`)
     } catch (error: unknown) {
       toast.error((error as Error)?.message || '代理定位失败')
     } finally {
       setLocationResolving(false)
     }
+  }, [])
+
+  const handleApplyProxyLocation = async () => {
+    if (proxyMode !== 'pool' || !formData.proxyId || formData.proxyId === directProxyID) {
+      toast.error('请选择代理池中的非直连节点')
+      return
+    }
+    lastAutoLocProxyRef.current = formData.proxyId
+    await resolveAndApplyProxyLocation(formData.proxyId)
   }
+
+  // 更换/新选代理后,自动按代理出口地区切换表单里的语言/时区(防抖 600ms,快速切换只解析最终选择)。
+  // 直连不联动:保存时后端会按本地国家对齐。保存时后端还会对换绑做兜底对齐,此处联动让用户即时可见。
+  useEffect(() => {
+    if (proxyMode !== 'pool') return
+    const pid = (formData.proxyId || '').trim()
+    if (!pid || pid === directProxyID || pid === lastAutoLocProxyRef.current) return
+    const timer = setTimeout(() => {
+      lastAutoLocProxyRef.current = pid
+      void resolveAndApplyProxyLocation(pid)
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [proxyMode, formData.proxyId, resolveAndApplyProxyLocation])
 
   const handleValidateFingerprint = async () => {
     if (isCreate || !id) return

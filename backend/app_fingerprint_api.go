@@ -54,6 +54,11 @@ func (a *App) autoAlignProfilesToProxyGeo(profiles []*BrowserProfile) {
 		}
 		proxyId := strings.TrimSpace(p.ProxyId)
 		if proxyId == "" || strings.EqualFold(proxyId, "__direct__") {
+			// 自定义代理配置(无代理池 ID)无法按 ID 探测出口 IP,暂不支持自动对齐。
+			if pc := strings.TrimSpace(p.ProxyConfig); proxyId == "" && pc != "" && !strings.EqualFold(pc, "direct://") {
+				log.Warn("自定义代理配置暂不支持自动地理对齐(请改用代理池条目)",
+					logger.F("profile_id", p.ProfileId))
+			}
 			continue
 		}
 		groups[proxyId] = append(groups[proxyId], p.ProfileId)
