@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/json"
 	"math/rand"
 	"time"
 
@@ -142,15 +143,60 @@ func (a *App) runKeepAliveDue(log *logger.Logger, next map[string]time.Time, now
 	}
 }
 
-// injectKeepAlive 向单个实例注入一次带随机坐标的可信鼠标移动。失败(实例停止/异常)静默跳过。
+// injectKeepAlive 向该实例的**所有** page 标签各注入一次带随机坐标的可信鼠标移动。
+// 抖音等挂机检测是逐标签(每个页面自己的 JS 空闲计时器),只喂第一个标签会漏掉其他标签
+// (包括可能正在放直播的那个),故遍历全部 page target 逐个注入;CDP 合成输入对后台标签同样送达。
+// 某个标签失败(崩溃/正在导航)静默跳过,不影响其他标签。
 func (a *App) injectKeepAlive(log *logger.Logger, profileID string, debugPort int) {
-	x := 40 + rand.Intn(220)
-	y := 40 + rand.Intn(160)
-	if _, err := cdpCall(debugPort, "Input.dispatchMouseEvent", map[string]any{
-		"type": "mouseMoved",
-		"x":    x,
-		"y":    y,
-	}); err != nil {
-		log.Debug("保活注入跳过", logger.F("profile", profileID), logger.F("port", debugPort), logger.F("error", err.Error()))
+	body, err := cdpGetEndpointBody(debugPort, "/json")
+	if err != nil {
+		log.Debug("保活获取标签列表失败", logger.F("profile", profileID), logger.F("port", debugPort), logger.F("error", err.Error()))
+		return
 	}
+	wsURLs := pageTargetWSURLs(body)
+	sent := 0
+	for _, ws := range wsURLs {
+		x := 40 + rand.Intn(220)
+		y := 40 + rand.Intn(160)
+		if err := cdpSendOne(ws, "Input.dispatchMouseEvent", map[string]any{
+			"type": "mouseMoved",
+			"x":    x,
+			"y":    y,
+		}); err == nil {
+			sent++
+		}
+	}
+	if sent == 0 {
+		log.Debug("保活未注入任何标签", logger.F("profile", profileID), logger.F("port", debugPort), logger.F("tabs", len(wsURLs)))
+	}
+}
+
+// pageTargetWSURLs 从 CDP /json 响应解析出所有 page 类型标签的 WebSocket 调试地址。
+func pageTargetWSURLs(jsonBody []byte) []string {
+	var targets []cdpTarget
+	if err := json.Unmarshal(jsonBody, &targets); err != nil {
+		return nil
+	}
+	urls := make([]string, 0, len(targets))
+	for _, t := range targets {
+		if t.Type == "page" && t.WebSocketDebuggerUrl != "" {
+			urls = append(urls, t.WebSocketDebuggerUrl)
+		}
+	}
+	return urls
+}
+
+// cdpSendOne 在给定 WebSocket 地址上发送一次 CDP 命令并读一次响应(独立短连,用于逐标签注入)。
+func cdpSendOne(wsURL string, method string, params map[string]any) error {
+	conn, err := cdpDialWebSocket(wsURL)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(cdpWebSocketReadTimeout))
+	if err := conn.WriteJSON(cdpMessage{Id: 1, Method: method, Params: params}); err != nil {
+		return err
+	}
+	var resp cdpResponse
+	return conn.ReadJSON(&resp)
 }
