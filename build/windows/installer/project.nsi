@@ -92,6 +92,10 @@ Section
     SetOutPath "$INSTDIR\chrome\fingerprint-chromium-148"
     File /r "kernel\fingerprint-chromium-148\*"
 
+    ; --- 离线 GeoIP 库:代理出口 IP → 地理(时区/语言/坐标)自动对齐所需(构建期从缓存 staging) ---
+    SetOutPath "$INSTDIR\data\geoip"
+    File "geoip\dbip-city-lite.mmdb"
+
     ; --- 默认配置(仅首次安装写入,保留用户已有配置) ---
     SetOutPath "$INSTDIR"
     IfFileExists "$INSTDIR\config.yaml" zwSkipCfg

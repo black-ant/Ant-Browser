@@ -131,6 +131,7 @@ accounts.yml
 # Installer build-time staging (bundled kernel/config are staged at build, not versioned)
 /dist/
 build/windows/installer/kernel/
+build/windows/installer/geoip/
 build/windows/installer/config.yaml
 build/windows/installer/tmp/
 backend/internal/identity/data/*.bak-*
