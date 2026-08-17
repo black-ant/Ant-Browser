@@ -98,15 +98,10 @@ func (a *App) DeleteGroup(groupId string) error {
 	return nil
 }
 
-// MoveInstancesToGroup 批量移动实例到分组
+// MoveInstancesToGroup 批量移动实例到分组(Manager 内部会同步内存,使按分组筛选即时生效)
 func (a *App) MoveInstancesToGroup(profileIds []string, groupId string) error {
 	log := logger.New("Group")
-	dao, ok := a.browserMgr.ProfileDAO.(*browser.SQLiteProfileDAO)
-	if !ok {
-		return fmt.Errorf("ProfileDAO 不支持批量移动")
-	}
-
-	if err := dao.MoveToGroup(profileIds, groupId); err != nil {
+	if err := a.browserMgr.MoveInstancesToGroup(profileIds, groupId); err != nil {
 		log.Error("批量移动实例失败", logger.F("count", len(profileIds)), logger.F("error", err))
 		return err
 	}

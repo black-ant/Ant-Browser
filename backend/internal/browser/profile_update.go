@@ -65,6 +65,27 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 	return profile, nil
 }
 
+// MoveInstancesToGroup 批量移动实例到分组:先更新数据库,再同步内存 m.Profiles。
+// 必须同步内存——List()(以及 GUI 列表/分组筛选)读的是内存 m.Profiles,若只改 DB,
+// 同一会话内按分组筛选会查不到数据(内存里的 group_id 仍为旧值),重启后才"恢复"。
+func (m *Manager) MoveInstancesToGroup(profileIds []string, groupId string) error {
+	dao, ok := m.ProfileDAO.(*SQLiteProfileDAO)
+	if !ok {
+		return fmt.Errorf("ProfileDAO 不支持批量移动")
+	}
+	if err := dao.MoveToGroup(profileIds, groupId); err != nil {
+		return err
+	}
+	m.Mutex.Lock()
+	for _, id := range profileIds {
+		if p, ok := m.Profiles[id]; ok {
+			p.GroupId = groupId
+		}
+	}
+	m.Mutex.Unlock()
+	return nil
+}
+
 // SetKeywords 设置实例关键字（独立接口，不影响其他字段）
 func (m *Manager) SetKeywords(profileId string, keywords []string) (*Profile, error) {
 	log := logger.New("Browser")
