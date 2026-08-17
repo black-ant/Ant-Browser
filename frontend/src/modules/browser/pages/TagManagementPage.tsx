@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Tag, Trash2, X } from 'lucide-react'
-import { Badge, Button, Card, toast } from '../../../shared/components'
+import { Badge, Button, toast } from '../../../shared/components'
 import type { BrowserProfile } from '../types'
 import { batchRemoveProfileTags, batchSetProfileTags, fetchBrowserProfiles, renameBrowserTag } from '../api'
 
@@ -343,9 +343,9 @@ export function TagManagementPage() {
           共 {displayProfiles.length} 个实例 · 已选 {selectedIds.size}
         </div>
 
-        {/* 实例表格 */}
-        <Card padding="none" className="flex-1 overflow-hidden min-h-0">
-          <div className="overflow-auto h-full">
+        {/* 实例表格:滚动容器直接是 flex-1 + min-h-0 + overflow-auto(不套 Card,
+            否则 Card 内部的 auto 高度包层会让 h-full 失效、表格不滚动)。 */}
+        <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)]">
             <table className="min-w-full">
               <thead className="sticky top-0 z-10">
                 <tr>
@@ -397,8 +397,7 @@ export function TagManagementPage() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </Card>
+        </div>
 
         {saving && (
           <div className="fixed inset-0 bg-black/20 z-50 flex items-center justify-center">
