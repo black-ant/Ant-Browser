@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import { Copy, FolderOpen, Play, Plus, Sparkles, Trash2 } from "lucide-react";
-import { Button, FormItem, Input, Modal, Select, Switch } from "../../../shared/components";
+import { Button, FormItem, Input, Modal, Switch } from "../../../shared/components";
 import { AutomationInstanceSelector } from "./AutomationInstanceSelector";
 import {
   buildCurlPreview,
@@ -10,7 +10,6 @@ import {
   type PublicApiOutputEntry,
 } from "./AutomationScriptPublicApiModal.helpers";
 import {
-  AUTOMATION_SCRIPT_PUBLIC_API_METHOD_OPTIONS,
   type AutomationScriptPublicAPIConfig,
   type AutomationScriptPublicAPIVariable,
   type AutomationScriptRecord,
@@ -34,7 +33,6 @@ interface AutomationScriptPublicApiModalViewProps {
   apiAuthHeader: string;
   profiles: BrowserProfile[];
   fullURL: string;
-  fullPath: string;
   resolvedConfig: AutomationScriptPublicAPIConfig;
   requestExampleFallback: string;
   responseExampleFallback: string;
@@ -75,7 +73,6 @@ export function AutomationScriptPublicApiModalView({
   apiAuthHeader,
   profiles,
   fullURL,
-  fullPath,
   resolvedConfig,
   requestExampleFallback,
   responseExampleFallback,
@@ -109,7 +106,7 @@ export function AutomationScriptPublicApiModalView({
     <Modal
       open={open}
       onClose={onClose}
-      title="对外接口管理"
+      title="对外接口"
       width="1100px"
       footer={
         <div className="flex w-full items-center justify-end gap-2">
@@ -129,125 +126,16 @@ export function AutomationScriptPublicApiModalView({
       }
     >
       <div className="space-y-4">
-        <div
-          ref={testSectionRef}
-          className="rounded-xl border border-slate-200/70 bg-slate-100 px-3 py-3 shadow-inner"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-800">
-              测试接口
-            </div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="space-y-3">
-              <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-3 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
-                  目标地址
-                </div>
-                <div className="mt-2 break-all text-sm text-[var(--color-text-primary)]">
-                  {fullURL}
-                </div>
-              </div>
-
-              {apiAuthEnabled ? (
-                <FormItem label={`API Key (${apiAuthHeader})`}>
-                  <Input
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder="留空则使用当前应用里的 Launch API Key"
-                  />
-                </FormItem>
-              ) : (
-                <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-3 py-3 text-sm text-[var(--color-text-secondary)]">
-                  当前 Launch API 未启用认证，可以直接测试。
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-3 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-medium text-[var(--color-text-primary)]">
-                  返回结果
-                </div>
-                {invokeResult ? (
-                  <div className="text-xs text-[var(--color-text-muted)]">
-                    HTTP {invokeResult.status} {invokeResult.statusText}
-                  </div>
-                ) : null}
-              </div>
-
-              {invokeError ? (
-                <div className="mt-3 rounded-lg border border-[var(--color-error)]/30 bg-[var(--color-error)]/10 px-3 py-3 text-sm text-[var(--color-text-secondary)]">
-                  {invokeError}
-                </div>
-              ) : null}
-
-              {!invokeError && !invokeResult ? (
-                <div className="mt-3 rounded-lg border border-dashed border-[var(--color-border-muted)] px-3 py-8 text-center text-sm text-[var(--color-text-muted)]">
-                  发送一次测试请求后，这里显示真实响应。
-                </div>
-              ) : null}
-
-              {invokeResult ? (
-                <div className="mt-3 space-y-3">
-                  <pre className="overflow-x-auto rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3 text-xs leading-6 text-[var(--color-text-secondary)]">
-                    <code>{formatInvokeResult(invokeResult)}</code>
-                  </pre>
-                  {outputEntries.length > 0 ? (
-                    <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
-                      <div className="space-y-2">
-                        {outputEntries.map((output) => (
-                          <div
-                            key={`${output.key}-${output.path}`}
-                            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-3 py-2"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm text-[var(--color-text-primary)]">
-                                {output.label} · {formatPublicApiOutputName(output.path)}
-                              </div>
-                              <div className="mt-1 break-all text-xs text-[var(--color-text-muted)]">
-                                {output.path}
-                              </div>
-                            </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => void handleOpenOutputPath(output.path)}
-                            >
-                              <FolderOpen className="h-3.5 w-3.5" />
-                              打开文件夹
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
+        <section className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={resolvedConfig.method}
-              options={AUTOMATION_SCRIPT_PUBLIC_API_METHOD_OPTIONS.map((item) => ({
-                value: item.value,
-                label: item.label,
-              }))}
-              onChange={(event) =>
-                updateConfig({ method: event.target.value as "POST" })
-              }
-              className="w-[96px] shrink-0 font-semibold"
-              disabled
-            />
-            <Input
-              value={fullURL}
-              readOnly
-              className="min-w-0 flex-1 font-mono sm:min-w-[280px]"
-            />
+            <span className="flex h-9 items-center rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 font-mono text-xs font-semibold text-[var(--color-text-secondary)]">
+              {resolvedConfig.method}
+            </span>
+            <div className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 py-2">
+              <div className="break-all font-mono text-sm text-[var(--color-text-primary)]">
+                {fullURL}
+              </div>
+            </div>
             <Button
               type="button"
               size="sm"
@@ -279,16 +167,21 @@ export function AutomationScriptPublicApiModalView({
               <Copy className="h-4 w-4" />
               curl
             </Button>
-            <div className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 text-sm text-[var(--color-text-secondary)]">
+            <label className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 text-sm text-[var(--color-text-secondary)]">
               <span>{resolvedConfig.enabled ? "已启用" : "未启用"}</span>
               <Switch
                 checked={resolvedConfig.enabled}
                 onChange={(checked) => updateConfig({ enabled: checked })}
                 disabled={busy}
               />
-            </div>
+            </label>
           </div>
+        </section>
 
+        <section className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
+          <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+            请求配置
+          </div>
           <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_180px]">
             <FormItem label="Path">
               <div className="flex gap-2">
@@ -311,9 +204,6 @@ export function AutomationScriptPublicApiModalView({
                   推荐
                 </Button>
               </div>
-              <div className="mt-1 break-all text-xs text-[var(--color-text-muted)]">
-                {fullPath}
-              </div>
             </FormItem>
 
             <FormItem label="Timeout">
@@ -329,12 +219,12 @@ export function AutomationScriptPublicApiModalView({
               />
             </FormItem>
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
+        <section className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-medium text-[var(--color-text-primary)]">
-              接口变量
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              请求参数
             </div>
             <Button
               type="button"
@@ -344,12 +234,19 @@ export function AutomationScriptPublicApiModalView({
               disabled={busy}
             >
               <Plus className="h-4 w-4" />
-              新增
+              新增变量
             </Button>
           </div>
 
           {visibleVariables.length > 0 ? (
             <div className="mt-3 space-y-2">
+              <div className="hidden grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_86px_36px] gap-2 px-2 text-xs text-[var(--color-text-muted)] lg:grid">
+                <span>变量名</span>
+                <span>默认值</span>
+                <span>说明</span>
+                <span className="text-center">必填</span>
+                <span />
+              </div>
               {visibleVariables.map(({ variable, index }) => (
                 <div
                   key={`${index}-${variable.name}`}
@@ -404,58 +301,52 @@ export function AutomationScriptPublicApiModalView({
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="mt-3 rounded-lg border border-dashed border-[var(--color-border-muted)] px-3 py-3 text-sm text-[var(--color-text-muted)]">
-              未配置变量
-            </div>
-          )}
+          ) : null}
 
           {variableError ? (
             <p className="mt-2 text-xs text-[var(--color-error)]">
               {variableError}
             </p>
-          ) : (
-            <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-              用 <code>{"{{name}}"}</code> 占位；实例 Code 由下方实例选择维护。
-            </p>
-          )}
-        </div>
+          ) : null}
+        </section>
 
-        {isDualInstanceRuntimeScript ? (
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <section className="space-y-3">
+          {isDualInstanceRuntimeScript ? (
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <AutomationInstanceSelector
+                title="实例 1"
+                mode="manual"
+                modes={["manual"]}
+                profiles={profiles}
+                selectedCode={selectedPrimaryTargetCode}
+                disabled={busy}
+                codePlaceholder="例如 BUYER_001"
+                onCodeChange={(code) => handleDualTargetCodeChange(0, code)}
+              />
+              <AutomationInstanceSelector
+                title="实例 2"
+                mode="manual"
+                modes={["manual"]}
+                profiles={profiles}
+                selectedCode={selectedSecondaryTargetCode}
+                disabled={busy}
+                codePlaceholder="例如 BUYER_002"
+                onCodeChange={(code) => handleDualTargetCodeChange(1, code)}
+              />
+            </div>
+          ) : (
             <AutomationInstanceSelector
-              title="传入实例 1"
+              title="实例"
               mode="manual"
               modes={["manual"]}
               profiles={profiles}
-              selectedCode={selectedPrimaryTargetCode}
+              selectedCode={selectedTargetCode}
               disabled={busy}
               codePlaceholder="例如 BUYER_001"
-              onCodeChange={(code) => handleDualTargetCodeChange(0, code)}
+              onCodeChange={handleTargetCodeChange}
             />
-            <AutomationInstanceSelector
-              title="传入实例 2"
-              mode="manual"
-              modes={["manual"]}
-              profiles={profiles}
-              selectedCode={selectedSecondaryTargetCode}
-              disabled={busy}
-              codePlaceholder="例如 BUYER_002"
-              onCodeChange={(code) => handleDualTargetCodeChange(1, code)}
-            />
-          </div>
-        ) : (
-          <AutomationInstanceSelector
-            title="传入实例"
-            mode="manual"
-            modes={["manual"]}
-            profiles={profiles}
-            selectedCode={selectedTargetCode}
-            disabled={busy}
-            codePlaceholder="例如 BUYER_001"
-            onCodeChange={handleTargetCodeChange}
-          />
-        )}
+          )}
+        </section>
 
         <AutomationScriptPublicApiBodyExamples
           busy={busy}
@@ -466,6 +357,82 @@ export function AutomationScriptPublicApiModalView({
           responseBodyError={responseBodyError}
           updateConfig={updateConfig}
         />
+
+        <section
+          ref={testSectionRef}
+          className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              测试结果
+            </div>
+            {invokeResult ? (
+              <div className="text-xs text-[var(--color-text-muted)]">
+                HTTP {invokeResult.status} {invokeResult.statusText}
+              </div>
+            ) : null}
+          </div>
+
+          {apiAuthEnabled ? (
+            <div className="mt-3 max-w-xl">
+              <FormItem label={`API Key · ${apiAuthHeader}`}>
+                <Input
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder="留空使用应用默认 Key"
+                />
+              </FormItem>
+            </div>
+          ) : null}
+
+          {invokeError ? (
+            <div className="mt-3 rounded-lg border border-[var(--color-error)] bg-[var(--color-bg-surface)] px-3 py-3 text-sm text-[var(--color-text-secondary)]">
+              {invokeError}
+            </div>
+          ) : null}
+
+          {!invokeError && !invokeResult ? (
+            <div className="mt-3 text-sm text-[var(--color-text-muted)]">
+              暂无测试结果
+            </div>
+          ) : null}
+
+          {invokeResult ? (
+            <div className="mt-3 space-y-3">
+              <pre className="overflow-x-auto rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] p-3 text-xs leading-6 text-[var(--color-text-secondary)]">
+                <code>{formatInvokeResult(invokeResult)}</code>
+              </pre>
+              {outputEntries.length > 0 ? (
+                <div className="space-y-2">
+                  {outputEntries.map((output) => (
+                    <div
+                      key={`${output.key}-${output.path}`}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-[var(--color-text-primary)]">
+                          {output.label} · {formatPublicApiOutputName(output.path)}
+                        </div>
+                        <div className="mt-1 break-all text-xs text-[var(--color-text-muted)]">
+                          {output.path}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleOpenOutputPath(output.path)}
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        打开文件夹
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
       </div>
     </Modal>
   );

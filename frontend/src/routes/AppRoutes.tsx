@@ -9,6 +9,10 @@ const ProfilePage = lazyNamed(
   () => import("../modules/profile/ProfilePage"),
   "ProfilePage",
 );
+const NotificationsPage = lazyNamed(
+  () => import("../modules/notifications/NotificationsPage"),
+  "NotificationsPage",
+);
 const ChartsPage = lazyNamed(
   () => import("../modules/charts/ChartsPage"),
   "ChartsPage",
@@ -73,6 +77,7 @@ export function AppRoutes() {
       <Route path="/charts" element={<ChartsPage />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/profile" element={<ProfilePage />} />
+      <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/browser/list" element={<BrowserListPage />} />
       <Route path="/browser/detail/:id" element={<BrowserDetailPage />} />
       <Route path="/browser/edit/:id" element={<BrowserEditPage />} />

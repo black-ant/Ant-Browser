@@ -44,8 +44,6 @@ export function AutomationScriptDetailPage() {
     setPublicApiModalOpen,
     publicApiTestFocusTrigger,
     setPublicApiTestFocusTrigger,
-    publicApiExpanded,
-    setPublicApiExpanded,
     paramsHelpOpen,
     setParamsHelpOpen,
     showDualRuntimeRequests,
@@ -321,35 +319,6 @@ export function AutomationScriptDetailPage() {
     }
   };
 
-  const handleCopyPublicApiUrl = async () => {
-    const currentPublicAPI = preparePublicAPIConfigForCompare(draft);
-    const nextPublicAPI = preparePublicAPIConfigForCompare(
-      draft,
-      resolvedPublicAPI,
-    );
-    const needsPersist =
-      dirty || !hasSamePublicAPIConfig(currentPublicAPI, nextPublicAPI);
-    if (needsPersist) {
-      const saved = await persistDraft(
-        {
-          ...draft,
-          publicAPI: resolvedPublicAPI,
-        },
-        { silentSuccess: true },
-      );
-      if (!saved) {
-        return;
-      }
-    }
-
-    try {
-      await navigator.clipboard.writeText(publicAPIURL);
-      toast.success("对外接口地址已复制");
-    } catch {
-      toast.error("复制失败");
-    }
-  };
-
   return (
     <>
       <AutomationScriptDetailPanels
@@ -362,9 +331,7 @@ export function AutomationScriptDetailPage() {
         isLaunchApiScript={isLaunchApiScript}
         usesManualSelector={usesManualSelector}
         resolvedPublicAPI={resolvedPublicAPI}
-        publicAPIPath={publicAPIPath}
         publicAPIURL={publicAPIURL}
-        publicApiExpanded={publicApiExpanded}
         paramsHelp={paramsHelp}
         launchBaseUrl={launchBaseUrl}
         apiAuthHeader={apiAuth.enabled ? apiAuth.header : ""}
@@ -384,10 +351,6 @@ export function AutomationScriptDetailPage() {
         onOpenExistingTargetConfig={() => {
           updateTargetConfig({ mode: "existing" });
         }}
-        onTogglePublicApiExpanded={() =>
-          setPublicApiExpanded((current) => !current)
-        }
-        onCopyPublicApiUrl={() => void handleCopyPublicApiUrl()}
         onToggleDualRuntimeRequests={() =>
           setShowDualRuntimeRequests((current) => !current)
         }

@@ -45,14 +45,10 @@ export function AutomationScriptSummaryCard({
     "!h-7 !w-full min-w-0 justify-center whitespace-nowrap !rounded-md !border !border-black !bg-black !px-2 !text-xs !font-medium !leading-none !text-white !shadow-none hover:!border-[#1f1f1f] hover:!bg-[#1f1f1f] focus-visible:!ring-black disabled:!border-[#6b7280] disabled:!bg-[#6b7280] disabled:!text-white";
   const headerCopyButtonClassName =
     "!h-7 !w-full min-w-0 justify-center whitespace-nowrap !rounded-md !border !border-black !bg-white !px-2 !text-xs !font-medium !leading-none !text-black !shadow-none hover:!border-black hover:!bg-[#f3f4f6] hover:!text-black focus-visible:!ring-black disabled:!border-[#6b7280] disabled:!bg-white disabled:!text-[#6b7280]";
-  const scriptButtonClassName =
-    actionButtonClassName;
-  const apiSetupButtonClassName =
-    actionButtonClassName;
-  const interfaceExecuteButtonClassName =
-    actionButtonClassName;
-  const editButtonClassName =
-    actionButtonClassName;
+  const scriptButtonClassName = actionButtonClassName;
+  const apiSetupButtonClassName = actionButtonClassName;
+  const interfaceExecuteButtonClassName = actionButtonClassName;
+  const editButtonClassName = actionButtonClassName;
 
   const cardClickable = selectable || interactive;
 
@@ -112,8 +108,7 @@ export function AutomationScriptSummaryCard({
       </div>
 
       <div
-        className="mt-2 grid w-full max-w-[450px] justify-start gap-1.5 overflow-hidden"
-        style={{ gridTemplateColumns: "repeat(5, minmax(78px, 84px))" }}
+        className="mt-2 grid w-full max-w-[450px] grid-cols-2 justify-start gap-1.5 overflow-hidden sm:grid-cols-5"
       >
         <Button
           type="button"

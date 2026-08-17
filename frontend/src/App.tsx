@@ -35,10 +35,21 @@ function useWailsNotifications() {
     const offCrashed = runtime.EventsOn(
       "browser:instance:crashed",
       (data: { profileId: string; profileName: string; error: string }) => {
+        const action = data.profileId
+          ? {
+              type: "navigate" as const,
+              label: "查看实例",
+              path: `/browser/detail/${encodeURIComponent(data.profileId)}`,
+            }
+          : undefined;
         addNotification({
           type: "error",
           title: "实例异常退出",
           message: `「${data.profileName || data.profileId}」意外崩溃：${data.error}`,
+          source: "runtime",
+          dedupeKey: `browser:instance:crashed:${data.profileId}`,
+          persistent: true,
+          action,
         });
       },
     );
@@ -46,12 +57,20 @@ function useWailsNotifications() {
     const offBridgeFailed = runtime.EventsOn(
       "proxy:bridge:failed",
       (data: { profileId: string; profileName: string; error: string }) => {
-        addNotification({
-          type: "warning",
+        const action = data.profileId
+          ? {
+              type: "navigate" as const,
+              label: "查看实例",
+              path: `/browser/detail/${encodeURIComponent(data.profileId)}`,
+            }
+          : undefined;
+        toast.warning(`「${data.profileName || data.profileId}」代理桥接失败，已直连启动`, 6000, {
           title: "代理已降级直连",
-          message: `「${data.profileName || data.profileId}」${data.error}`,
+          source: "runtime",
+          dedupeKey: `proxy:bridge:failed:${data.profileId}`,
+          persistent: true,
+          action,
         });
-        toast.warning(`「${data.profileName || data.profileId}」代理桥接失败，已直连启动`, 6000);
       },
     );
 
@@ -62,6 +81,14 @@ function useWailsNotifications() {
           type: "warning",
           title: "连接池节点失效",
           message: `代理节点 ${data.key} 连接中断，相关实例可能无法访问网络`,
+          source: "runtime",
+          dedupeKey: `proxy:bridge:died:${data.key}`,
+          persistent: true,
+          action: {
+            type: "navigate",
+            label: "查看代理池",
+            path: "/browser/proxy-pool",
+          },
         });
       },
     );
@@ -89,18 +116,26 @@ function useGlobalErrorNotifications() {
     };
 
     const handleError = (event: ErrorEvent) => {
+      const message = event.message || toMessage(event.error) || "未知脚本错误";
       addNotification({
         type: "error",
         title: "前端异常",
-        message: event.message || toMessage(event.error) || "未知脚本错误",
+        message,
+        source: "frontend",
+        dedupeKey: `frontend:error:${message.slice(0, 160)}`,
+        persistent: true,
       });
     };
 
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const message = toMessage(event.reason) || "未知 Promise 异常";
       addNotification({
         type: "error",
         title: "未处理异步异常",
-        message: toMessage(event.reason) || "未知 Promise 异常",
+        message,
+        source: "frontend",
+        dedupeKey: `frontend:rejection:${message.slice(0, 160)}`,
+        persistent: true,
       });
     };
 

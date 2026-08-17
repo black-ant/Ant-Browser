@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Copy, Play, Settings } from "lucide-react";
+import { Copy, Settings } from "lucide-react";
 import {
   Badge,
   Button,
@@ -27,9 +27,7 @@ interface AutomationScriptDetailBodyPanelsProps {
   isLaunchApiScript: boolean;
   usesManualSelector: boolean;
   resolvedPublicAPI: AutomationScriptPublicAPIConfig;
-  publicAPIPath: string;
   publicAPIURL: string;
-  publicApiExpanded: boolean;
   paramsHelp: ScriptParamsHelpContent | null;
   launchBaseUrl: string;
   apiAuthHeader: string;
@@ -38,10 +36,6 @@ interface AutomationScriptDetailBodyPanelsProps {
   openClawDualSiteCommand: string;
   onUpdateDraft: (patch: Partial<AutomationScriptRecord>) => void;
   onOpenTargetConfig: () => void;
-  onOpenPublicApiManager: () => void;
-  onOpenPublicApiTester: () => void;
-  onTogglePublicApiExpanded: () => void;
-  onCopyPublicApiUrl: () => void;
   onToggleDualRuntimeRequests: () => void;
   onCopyOpenClawCommand: () => void;
   onOpenParamsHelp: () => void;
@@ -84,9 +78,7 @@ export function AutomationScriptDetailBodyPanels({
   isLaunchApiScript,
   usesManualSelector,
   resolvedPublicAPI,
-  publicAPIPath,
   publicAPIURL,
-  publicApiExpanded,
   paramsHelp,
   launchBaseUrl,
   apiAuthHeader,
@@ -95,10 +87,6 @@ export function AutomationScriptDetailBodyPanels({
   openClawDualSiteCommand,
   onUpdateDraft,
   onOpenTargetConfig,
-  onOpenPublicApiManager,
-  onOpenPublicApiTester,
-  onTogglePublicApiExpanded,
-  onCopyPublicApiUrl,
   onToggleDualRuntimeRequests,
   onCopyOpenClawCommand,
   onOpenParamsHelp,
@@ -108,90 +96,22 @@ export function AutomationScriptDetailBodyPanels({
       <DetailPanel
         title="对外接口"
         actions={
-          <>
-            <Badge
-              variant={resolvedPublicAPI.enabled ? "success" : "default"}
-              size="sm"
-            >
-              {resolvedPublicAPI.enabled ? "已启用" : "未启用"}
-            </Badge>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={onTogglePublicApiExpanded}
-              aria-expanded={publicApiExpanded}
-            >
-              {publicApiExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-              {publicApiExpanded ? "收起详情" : "展开详情"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={onCopyPublicApiUrl}
-              disabled={busy}
-            >
-              <Copy className="h-4 w-4" />
-              复制 URL
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={onOpenPublicApiTester}
-              disabled={busy}
-            >
-              <Play className="h-4 w-4" />
-              测试接口
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={onOpenPublicApiManager}
-              disabled={busy}
-            >
-              管理
-            </Button>
-          </>
+          <Badge
+            variant={resolvedPublicAPI.enabled ? "success" : "default"}
+            size="sm"
+          >
+            {resolvedPublicAPI.enabled ? "已启用" : "未启用"}
+          </Badge>
         }
       >
-        <div className="rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+        <div className="flex min-w-0 items-start gap-3 rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-3">
+          <span className="shrink-0 pt-0.5 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
             URL
-          </div>
-          <div className="mt-2 break-all text-sm font-medium text-[var(--color-text-primary)]">
+          </span>
+          <code className="min-w-0 break-all text-sm text-[var(--color-text-primary)]">
             {publicAPIURL}
-          </div>
+          </code>
         </div>
-
-        {publicApiExpanded ? (
-          <>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <CompactMetaField label="Method" value={resolvedPublicAPI.method} />
-              <CompactMetaField label="Path" value={<code>{publicAPIPath}</code>} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <CompactMetaField
-                label="入参"
-                value={<code>{"instance / params / timeoutMs"}</code>}
-              />
-              <CompactMetaField
-                label="出参"
-                value={<code>{"ok / status / message / data"}</code>}
-              />
-              <CompactMetaField
-                label="Timeout"
-                value={`${resolvedPublicAPI.timeoutMs} ms`}
-              />
-            </div>
-          </>
-        ) : null}
       </DetailPanel>
 
       {isDualInstanceRuntimeScript ? (
@@ -211,7 +131,7 @@ export function AutomationScriptDetailBodyPanels({
             </div>
 
             {dualRuntimePreview.error ? (
-              <div className="rounded-xl border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-3 py-3 text-sm text-[var(--color-text-secondary)]">
+              <div className="rounded-xl border border-[var(--color-warning)] bg-[var(--color-bg-surface)] px-3 py-3 text-sm text-[var(--color-text-secondary)]">
                 当前启动配置 JSON 无法解析，暂时不能展开接口示例：{" "}
                 <code>{dualRuntimePreview.error}</code>
               </div>

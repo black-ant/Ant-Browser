@@ -28,7 +28,6 @@ export function useAutomationScriptDetailState(scriptId: string) {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [publicApiModalOpen, setPublicApiModalOpen] = useState(false);
   const [publicApiTestFocusTrigger, setPublicApiTestFocusTrigger] = useState(0);
-  const [publicApiExpanded, setPublicApiExpanded] = useState(false);
   const [paramsHelpOpen, setParamsHelpOpen] = useState(false);
   const [showDualRuntimeRequests, setShowDualRuntimeRequests] = useState(false);
   const [busyAction, setBusyAction] =
@@ -72,10 +71,6 @@ export function useAutomationScriptDetailState(scriptId: string) {
     setPublicApiModalOpen(false);
     setPublicApiTestFocusTrigger(0);
     setParamsHelpOpen(false);
-  }, [scriptId]);
-
-  useEffect(() => {
-    setPublicApiExpanded(false);
   }, [scriptId]);
 
   useEffect(() => {
@@ -197,8 +192,6 @@ export function useAutomationScriptDetailState(scriptId: string) {
     setPublicApiModalOpen,
     publicApiTestFocusTrigger,
     setPublicApiTestFocusTrigger,
-    publicApiExpanded,
-    setPublicApiExpanded,
     paramsHelpOpen,
     setParamsHelpOpen,
     showDualRuntimeRequests,

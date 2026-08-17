@@ -1,39 +1,41 @@
 ﻿import { useState, useRef, useEffect } from 'react'
-import { Bell, User, Settings, Check, Trash2, Info, AlertCircle, CheckCircle } from 'lucide-react'
+import { Bell, User, Settings, Check, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { useNotificationStore, type Notification } from '../../store/notificationStore'
+import { GetAppConfig } from '../../wailsjs/go/main/App'
+import { notificationVisuals } from '../notifications/presentation'
 
 function NotificationDropdown({
   notifications,
   onMarkAsRead,
   onMarkAllAsRead,
-  onClear
+  onClear,
+  onClose,
 }: {
   notifications: Notification[]
   onMarkAsRead: (id: string) => void
   onMarkAllAsRead: () => void
   onClear: () => void
+  onClose: () => void
 }) {
   const unreadCount = notifications.filter(n => !n.read).length
 
-  const getIcon = (type: Notification['type']) => {
-    switch (type) {
-      case 'success': return <CheckCircle className="w-4 h-4 text-[var(--color-success)]" />
-      case 'warning': return <AlertCircle className="w-4 h-4 text-[var(--color-warning)]" />
-      case 'error': return <AlertCircle className="w-4 h-4 text-[var(--color-error)]" />
-      default: return <Info className="w-4 h-4 text-[var(--color-accent)]" />
-    }
-  }
-
   return (
-    <div className="absolute right-0 top-full mt-2 w-80 bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in">
+    <div
+      role="dialog"
+      aria-label="通知中心"
+      className="absolute right-0 top-full z-50 mt-2 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] shadow-xl animate-fade-in"
+    >
       {/* Header */}
-      <div className="px-4 py-3 border-b border-[var(--color-border-muted)] flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-[var(--color-text-primary)]">异常与通知</span>
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">通知中心</span>
           {unreadCount > 0 && (
-            <span className="px-1.5 py-0.5 text-xs font-medium bg-[var(--color-accent)] text-white rounded-full">
+            <span
+              aria-label={`${unreadCount} 条未读通知`}
+              className="rounded-full bg-[var(--color-accent)] px-1.5 py-0.5 text-xs font-medium text-white"
+            >
               {unreadCount}
             </span>
           )}
@@ -41,75 +43,89 @@ function NotificationDropdown({
         <div className="flex items-center gap-1">
           {unreadCount > 0 && (
             <button
+              type="button"
               onClick={onMarkAllAsRead}
-              className="p-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-bg-muted)] rounded transition-colors"
+              aria-label="全部标为已读"
               title="全部标为已读"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-accent)]"
             >
-              <Check className="w-3.5 h-3.5" />
+              <Check className="h-3.5 w-3.5" />
             </button>
           )}
-          <button
-            onClick={onClear}
-            className="p-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-error)] hover:bg-[var(--color-bg-muted)] rounded transition-colors"
-            title="清空通知"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {notifications.length > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              aria-label="清空通知"
+              title="清空通知"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-error)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-error)]"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Notification List */}
-      <div className="max-h-80 overflow-y-auto">
+      <div className="max-h-[22rem] overflow-y-auto">
         {notifications.length === 0 ? (
           <div className="py-8 text-center text-[var(--color-text-muted)]">
-            <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">暂无异常记录</p>
+            <Bell className="mx-auto mb-2 h-8 w-8 opacity-50" />
+            <p className="text-sm">暂无通知</p>
           </div>
         ) : (
-          notifications.map((notification) => (
-            <div
-              key={notification.id}
-              onClick={() => onMarkAsRead(notification.id)}
-              className={clsx(
-                'px-4 py-3 border-b border-[var(--color-border-muted)] last:border-0 cursor-pointer transition-colors hover:bg-[var(--color-bg-muted)]',
-                !notification.read && 'bg-[var(--color-accent)]/5'
-              )}
-            >
-              <div className="flex gap-3">
-                <div className="shrink-0 mt-0.5">
-                  {getIcon(notification.type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className={clsx(
-                      'text-sm truncate',
-                      notification.read ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-primary)] font-medium'
+          notifications.slice(0, 5).map((notification) => {
+            const visual = notificationVisuals[notification.type]
+            const Icon = visual.icon
+
+            return (
+              <button
+                key={notification.id}
+                type="button"
+                onClick={() => onMarkAsRead(notification.id)}
+                aria-label={notification.read ? notification.title : `标记为已读：${notification.title}`}
+                className={clsx(
+                  'relative flex w-full items-start gap-3 border-b border-[var(--color-border-muted)] px-4 py-3 text-left transition-colors last:border-0 hover:bg-[var(--color-bg-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)]',
+                  !notification.read && 'bg-[var(--color-accent-muted)]'
+                )}
+              >
+                <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${visual.rail}`} />
+                <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${visual.iconBackground}`}>
+                  <Icon className={`h-4 w-4 ${visual.iconClass}`} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-start justify-between gap-2">
+                    <span className={clsx(
+                      'min-w-0 break-words text-sm leading-5',
+                      notification.read ? 'text-[var(--color-text-secondary)]' : 'font-semibold text-[var(--color-text-primary)]'
                     )}>
                       {notification.title}
-                    </p>
+                    </span>
                     {!notification.read && (
-                      <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] shrink-0 mt-1.5" />
+                      <span aria-label="未读" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--color-accent)]" />
                     )}
-                  </div>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-2">
+                  </span>
+                  <span className="mt-0.5 block line-clamp-3 break-words text-xs leading-4 text-[var(--color-text-secondary)]">
                     {notification.message}
-                  </p>
-                  <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-4 text-[var(--color-text-muted)]">
                     {notification.time}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))
+                  </span>
+                </span>
+              </button>
+            )
+          })
         )}
       </div>
-
-      {/* Footer */}
       {notifications.length > 0 && (
-        <div className="px-4 py-2 border-t border-[var(--color-border-muted)] bg-[var(--color-bg-muted)]/50">
-          <button className="w-full text-xs text-center text-[var(--color-accent)] hover:underline">
+        <div className="border-t border-[var(--color-border-muted)] bg-[var(--color-bg-muted)] px-4 py-2">
+          <Link
+            to="/notifications"
+            onClick={onClose}
+            className="block w-full text-center text-xs text-[var(--color-accent)] hover:underline"
+          >
             查看全部通知
-          </button>
+          </Link>
         </div>
       )}
     </div>
@@ -118,10 +134,25 @@ function NotificationDropdown({
 
 export function Topbar() {
   const [showNotifications, setShowNotifications] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
   const { notifications, markAsRead, markAllAsRead, clearNotifications } = useNotificationStore()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const unreadCount = notifications.filter(n => !n.read).length
+
+  useEffect(() => {
+    const app = (window as any).go?.main?.App
+    if (!app?.GetAppConfig) return
+
+    GetAppConfig()
+      .then((config) => {
+        const version = typeof config?.version === 'string' ? config.version.trim() : ''
+        setAppVersion(version)
+      })
+      .catch(() => {
+        setAppVersion('')
+      })
+  }, [])
 
   // 点击外部关闭
   useEffect(() => {
@@ -138,12 +169,22 @@ export function Topbar() {
     <header className="h-14 bg-[var(--color-bg-surface)] border-b border-[var(--color-border-default)] px-4 flex items-center justify-between gap-4">
       <div className="flex-1" />
 
+      {appVersion && (
+        <span className='text-xs font-medium text-[var(--color-text-muted)]'>
+          v{appVersion}
+        </span>
+      )}
+
       {/* 右侧操作 */}
       <div className="flex items-center gap-1">
         {/* 通知按钮 */}
         <div className="relative" ref={dropdownRef}>
           <button
+            type="button"
             onClick={() => setShowNotifications(!showNotifications)}
+            aria-label={`通知${unreadCount > 0 ? `，${unreadCount} 条未读` : ''}`}
+            aria-expanded={showNotifications}
+            aria-haspopup="dialog"
             className={clsx(
               'relative w-8 h-8 flex items-center justify-center rounded-md transition-colors duration-150',
               showNotifications
@@ -165,6 +206,7 @@ export function Topbar() {
               notifications={notifications}
               onMarkAsRead={markAsRead}
               onMarkAllAsRead={markAllAsRead}
+              onClose={() => setShowNotifications(false)}
               onClear={() => {
                 clearNotifications()
                 setShowNotifications(false)

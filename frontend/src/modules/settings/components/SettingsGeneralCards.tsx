@@ -35,8 +35,8 @@ export function SettingsBasicFeatureCards({ settings, onChange }: SettingsCardsP
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[var(--color-text-primary)]">启用通知</p>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">接收系统通知和提醒</p>
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">保存通知历史</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">仅控制是否写入通知中心，不影响即时提示</p>
             </div>
             <Switch checked={settings.enableNotifications} onChange={v => onChange('enableNotifications', v)} />
           </div>

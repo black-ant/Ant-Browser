@@ -338,7 +338,6 @@ export function AutomationScriptPublicApiModal({
       apiAuthHeader={apiAuthHeader}
       profiles={profiles}
       fullURL={fullURL}
-      fullPath={fullPath}
       resolvedConfig={resolvedConfig}
       requestExampleFallback={requestExampleFallback}
       responseExampleFallback={responseExampleFallback}

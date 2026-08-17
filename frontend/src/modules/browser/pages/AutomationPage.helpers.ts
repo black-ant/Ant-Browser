@@ -13,7 +13,6 @@ export type ImportMode =
   | "local"
   | "git";
 export const DUAL_INSTANCE_SCRIPT_ID = "dual-instance-runtime-switch";
-export const NEWS_SCRIPT_ID = "news-query-txt";
 
 export type DualLaunchCodes = {
   primaryCode: string;
@@ -27,7 +26,6 @@ export type AutomationCardPresentation = {
   scriptId?: string;
   scriptType: AutomationScriptType;
   modeLabel: string;
-  description: string;
   codeDisplay: string;
   primaryActionLabel: string;
   primaryActionText: string;
@@ -266,31 +264,6 @@ function buildAutomationSkillPrompt(
   return lines.join("\n");
 }
 
-function buildAutomationShortDescription(
-  script: AutomationScriptRecord,
-): string {
-  switch (script.id) {
-    case DUAL_INSTANCE_SCRIPT_ID:
-      return "启动双实例并切换 Runtime";
-    case NEWS_SCRIPT_ID:
-      return "搜索新闻并写入 TXT";
-    default:
-      break;
-  }
-
-  const source = normalizeText(script.description || script.name);
-  const firstSentence = source.split(/[。！？\n]/)[0]?.trim() || "按预置流程执行自动化";
-  const compact = firstSentence
-    .replace(/^通过/, "")
-    .replace(/^使用/, "")
-    .replace(/^基于/, "")
-    .replace(/浏览器实例/g, "实例")
-    .replace(/本地 txt/gi, "TXT")
-    .replace(/\s+/g, " ");
-
-  return compact.length > 30 ? `${compact.slice(0, 28).trim()}...` : compact;
-}
-
 function buildAutomationCodeDisplay(
   script: AutomationScriptRecord,
   profiles: BrowserProfile[],
@@ -375,7 +348,6 @@ export function buildAutomationCardPresentation(options: {
     scriptId: script.id,
     scriptType: script.type,
     modeLabel: getAutomationModeLabel(script.type),
-    description: buildAutomationShortDescription(script),
     codeDisplay: buildAutomationCodeDisplay(
       script,
       options.profiles,
@@ -408,7 +380,6 @@ export function buildDualInstanceFallbackPresentation(options: {
     versionLabel: "V -",
     scriptType: "launch-api",
     modeLabel: "接口模式",
-    description: "启动双实例并切换 Runtime",
     codeDisplay: `${options.dualLaunchCodes.primaryCode} / ${options.dualLaunchCodes.secondaryCode}`,
     primaryActionLabel: "cURL",
     primaryActionText: options.dualInstanceRunCurlDemo,

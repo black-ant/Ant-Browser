@@ -139,6 +139,11 @@ export function ImportAutomationScriptModal({
                 key={item.value}
                 size="sm"
                 variant={importMode === item.value ? "primary" : "secondary"}
+                className={`!border-2 !border-black ${
+                  importMode === item.value
+                    ? "!bg-black !text-white"
+                    : "!bg-[var(--color-bg-surface)] !text-[var(--color-text-primary)] hover:!bg-[var(--color-bg-muted)]"
+                }`}
                 onClick={() => {
                   if (item.value === "script-library") {
                     return;
@@ -156,6 +161,7 @@ export function ImportAutomationScriptModal({
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Button
                 variant="secondary"
+                className="!border-[var(--color-border-strong)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] !shadow-sm hover:!border-[var(--color-accent)] hover:!bg-[var(--color-bg-surface)]"
                 onClick={() => void onImportLocalFile()}
                 loading={busyAction === "import"}
               >
@@ -163,6 +169,7 @@ export function ImportAutomationScriptModal({
               </Button>
               <Button
                 variant="secondary"
+                className="!border-[var(--color-border-strong)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] !shadow-sm hover:!border-[var(--color-accent)] hover:!bg-[var(--color-bg-surface)]"
                 onClick={() => void onImportLocalDirectory()}
                 loading={busyAction === "import"}
               >

@@ -48,9 +48,7 @@ interface AutomationScriptDetailPanelsProps {
   isLaunchApiScript: boolean;
   usesManualSelector: boolean;
   resolvedPublicAPI: AutomationScriptPublicAPIConfig;
-  publicAPIPath: string;
   publicAPIURL: string;
-  publicApiExpanded: boolean;
   paramsHelp: ScriptParamsHelpContent | null;
   launchBaseUrl: string;
   apiAuthHeader: string;
@@ -68,8 +66,6 @@ interface AutomationScriptDetailPanelsProps {
   onDelete: () => void;
   onRefresh: () => void;
   onOpenExistingTargetConfig: () => void;
-  onTogglePublicApiExpanded: () => void;
-  onCopyPublicApiUrl: () => void;
   onToggleDualRuntimeRequests: () => void;
   onCopyOpenClawCommand: () => void;
   onOpenParamsHelp: () => void;
@@ -85,9 +81,7 @@ export function AutomationScriptDetailPanels({
   isLaunchApiScript,
   usesManualSelector,
   resolvedPublicAPI,
-  publicAPIPath,
   publicAPIURL,
-  publicApiExpanded,
   paramsHelp,
   launchBaseUrl,
   apiAuthHeader,
@@ -105,8 +99,6 @@ export function AutomationScriptDetailPanels({
   onDelete,
   onRefresh,
   onOpenExistingTargetConfig,
-  onTogglePublicApiExpanded,
-  onCopyPublicApiUrl,
   onToggleDualRuntimeRequests,
   onCopyOpenClawCommand,
   onOpenParamsHelp,
@@ -309,9 +301,7 @@ export function AutomationScriptDetailPanels({
         isLaunchApiScript={isLaunchApiScript}
         usesManualSelector={usesManualSelector}
         resolvedPublicAPI={resolvedPublicAPI}
-        publicAPIPath={publicAPIPath}
         publicAPIURL={publicAPIURL}
-        publicApiExpanded={publicApiExpanded}
         paramsHelp={paramsHelp}
         launchBaseUrl={launchBaseUrl}
         apiAuthHeader={apiAuthHeader}
@@ -320,10 +310,6 @@ export function AutomationScriptDetailPanels({
         openClawDualSiteCommand={openClawDualSiteCommand}
         onUpdateDraft={onUpdateDraft}
         onOpenTargetConfig={onOpenExistingTargetConfig}
-        onOpenPublicApiManager={onOpenPublicApiManager}
-        onOpenPublicApiTester={onOpenPublicApiTester}
-        onTogglePublicApiExpanded={onTogglePublicApiExpanded}
-        onCopyPublicApiUrl={onCopyPublicApiUrl}
         onToggleDualRuntimeRequests={onToggleDualRuntimeRequests}
         onCopyOpenClawCommand={onCopyOpenClawCommand}
         onOpenParamsHelp={onOpenParamsHelp}

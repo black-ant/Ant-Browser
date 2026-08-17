@@ -46,6 +46,8 @@ type App struct {
 	deferredStartTargets   map[string]deferredStartTargetsPlan
 	automationTargetMu     sync.Mutex
 	automationTargetCursor map[string]string
+	profileWindowMarkersMu sync.Mutex
+	profileWindowMarkers   map[string]*profileWindowMarker
 	stopServicesOnce       sync.Once
 	finalizeOnce           sync.Once
 }
@@ -62,6 +64,7 @@ func NewApp(appRoot string, appVersion ...string) *App {
 		profileBridgeRefs:      make(map[string]profileProxyBridgeRef),
 		deferredStartTargets:   make(map[string]deferredStartTargetsPlan),
 		automationTargetCursor: make(map[string]string),
+		profileWindowMarkers:   make(map[string]*profileWindowMarker),
 	}
 }
 
