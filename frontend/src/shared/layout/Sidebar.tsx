@@ -87,6 +87,9 @@ export function Sidebar() {
             </div>
             <h2 className="text-base font-semibold text-[var(--color-text-primary)] tracking-tight truncate">
               {projectConfig.name}
+              <span className="ml-1.5 text-xs font-normal text-[var(--color-text-muted)]">
+                v{projectConfig.version}
+              </span>
             </h2>
           </div>
         ) : (

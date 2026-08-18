@@ -1,10 +1,6 @@
-﻿# ZwBrowser
+# ZwBrowser
 
 > 面向多账号隔离、代理绑定和本地环境管理的桌面浏览器工具（Windows / Linux / macOS unsigned）。
-
-[![Release](https://img.shields.io/github/v/release/black-ant/Ant-Browser?sort=semver)](https://github.com/black-ant/Ant-Browser/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/black-ant/Ant-Browser/releases)
-[![Issues](https://img.shields.io/github/issues/black-ant/Ant-Browser)](https://github.com/black-ant/Ant-Browser/issues)
 
 ## 推荐内核项目
 
@@ -24,7 +20,6 @@ ZwBrowser 的目标很明确：在一台桌面设备上，帮助用户稳定管�
 - [近期更新](#近期更新)
 - [更新日志](CHANGELOG.md)
 - [核心特性](#核心特性)
-- [界面预览](#界面预览)
 - [快速开始](#快速开始)
 - [常用操作](#常用操作)
 - [常见问题](#常见问题)
@@ -93,7 +88,7 @@ ZwBrowser 适合以下场景：
 ### 1.1.0 · 2026-03-19
 
 - 完善 Linux 支持：补齐 Linux 环境下的开发、打包、安装、启动与运行链路，并持续修复安装版启动与退出稳定性问题
-- 补齐 macOS unsigned 内测构建链路：支持在原生 macOS 主机上打包 `.app` / `.zip`，并将用户状态目录放到 `~/Library/Application Support/ant-browser`
+- 补齐 macOS unsigned 内测构建链路：支持在原生 macOS 主机上打包 `.app` / `.zip`，并将用户状态目录放到 `~/Library/Application Support/zwbrowser`
 - 新增 SOCKS 代理测试支持：SOCKS 代理能力已进入测试阶段，后续会继续验证稳定性与兼容性
 - 实验性支持接口触发浏览器：支持通过接口启动浏览器实例，便于后续接入自动化流程
 
@@ -119,58 +114,6 @@ ZwBrowser 适合以下场景：
 - VPN / 代理检测：支持连接栈预热、测速、IP 健康检测和代理异常处理
 - 本地化存储：配置和实例数据保存在本地，适合长期使用和备份
 
-## 界面预览
-
-### 1. 控制台
-
-<img src="images/readme/001-首页.png" alt="控制台" width="100%" />
-
-对应功能点：
-
-- 查看实例总数、运行中实例、代理节点数量和内核版本
-- 从首页快速进入 `实例列表`、`代理池配置`、`内核管理`、`系统设置`
-- 查看客户端版本、运行环境、数据存储和当前实例运行状态
-
-### 2. 实例列表
-
-<img src="images/readme/002-实例列表.png" alt="实例列表" width="100%" />
-
-对应功能点：
-
-- 统一查看和管理所有浏览器实例
-- 按状态、代理、内核、分组、关键字筛选实例
-- 支持 `新建配置`、启动、停止、重启、配置、克隆、删除
-- 给实例分配快捷打开码，后续可以直接快速启动
-
-### 3. 代理池配置
-
-<img src="images/readme/003-设置代理池.png" alt="代理池配置" width="100%" />
-
-对应功能点：
-
-- 统一管理代理节点
-- 支持按协议、分组筛选代理
-- 支持手动维护代理和导入 Clash
-- 支持查看延迟、IP 健康并挑选可用节点
-
-代理连接栈规则：
-
-- `default_connector_type` 只有两套连接栈：`xray` 和 `mihomo`。
-- `xray` 表示 Xray + sing-box 组合栈：Xray 负责 vmess/vless/trojan/shadowsocks/链式代理等，sing-box 负责 hysteria2/tuic/anytls 等协议。
-- `mihomo` 表示独立 Mihomo 栈：需要桥接的代理统一走 mihomo。
-- 实例启动、代理测速、真实连通性、IP 健康、预热和插件下载代理必须按当前连接栈执行；不得在 `xray` 组合栈和 `mihomo` 栈之间自动混用。
-- 详细约束见 `docs/proxy-connector-stacks.md`。
-
-### 4. 代理生效验证
-
-<img src="images/readme/004-自定义代理.png" alt="代理生效验证" width="100%" />
-
-对应功能点：
-
-- 启动实例后访问 IP 检测网站验证代理是否真正生效
-- 检查 IP 地区、ASN、运营商和风险值等信息
-- 用于确认当前实例是否已经走目标代理出口
-
 ## 快速开始
 
 ### 环境要求
@@ -184,27 +127,30 @@ ZwBrowser 适合以下场景：
 
 ### 下载与运行
 
-1. 前往 Releases 页面下载最新版本：<https://github.com/black-ant/Ant-Browser/releases>
-2. 安装版直接运行 `AntBrowser-Setup-*.exe`
-3. 便携版解压后运行 `ant-chrome.exe`
-4. Linux 包下载后可直接安装 `ant-browser_<version>_<arch>.deb`，或解压 `tar.gz` 后运行 `ant-chrome`
-5. macOS unsigned 包解压后运行 `AntBrowser-<version>-macos-<arch>.app`；如被 Gatekeeper 拦截，请对本机测试包执行 `xattr -dr com.apple.quarantine <app路径>` 后再打开
+1. 前往 Releases 页面下载最新版本
+2. 安装版直接运行 `ZwBrowser-Setup-*.exe`
+3. 便携版解压后运行 `zwbrowser.exe`
+4. Linux 包下载后可直接安装 `zwbrowser_<version>_<arch>.deb`，或解压 `tar.gz` 后运行 `zwbrowser`
+5. macOS unsigned 包解压后运行 `ZwBrowser-<version>-macos-<arch>.app`；如被 Gatekeeper 拦截，请对本机测试包执行 `xattr -dr com.apple.quarantine <app路径>` 后再打开
 
 ### 从源码运行
 
 1. 开发默认使用 `master` 分支；该分支不带测试用户数据，适合作为日常开发基线。
 2. 如需带测试库的演示环境，请切换到 `user_data` 分支。
-3. Windows 统一执行 `bat\dev.bat`；默认是 `live` 热更新模式，如需静态资源排查使用 `bat\dev.bat stable`，如需受限内存复现使用 `bat\dev.bat limited`。
-4. Windows 运行时使用 `bin/xray.exe`、`bin/sing-box.exe`；Linux 运行时使用 `bin/linux-<arch>/xray`、`bin/linux-<arch>/sing-box`；macOS 运行时使用 `bin/darwin-<arch>/xray`、`bin/darwin-<arch>/sing-box`。
-5. 运行时文件采用“仓库固定 + 哈希校验”，校验清单在 `publish/runtime-manifest.json`，固定来源清单在 `publish/runtime-sources.json`。
-6. 如需刷新 Linux / macOS 运行时，执行 `python3 tools/runtime/sync-runtime.py --target <target>`（会按固定来源下载、校验归档并更新 manifest）。
+3. macOS / Linux 统一执行 `./dev.sh`；默认是 `stable` 静态资源模式，如需前端热更新使用 `./dev.sh live`。
+4. Windows 统一执行 `bat\dev.bat`；默认是 `live` 热更新模式，如需静态资源排查使用 `bat\dev.bat stable`，如需受限内存复现使用 `bat\dev.bat limited`。
+5. Windows 运行时使用 `bin/xray.exe`、`bin/sing-box.exe`；Linux 运行时使用 `bin/linux-<arch>/xray`、`bin/linux-<arch>/sing-box`；macOS 运行时使用 `bin/darwin-<arch>/xray`、`bin/darwin-<arch>/sing-box`。
+6. 运行时文件采用“仓库固定 + 哈希校验”，校验清单在 `publish/runtime-manifest.json`，固定来源清单在 `publish/runtime-sources.json`。
+7. 如需刷新 Linux / macOS 运行时，执行 `python3 tools/runtime/sync-runtime.py --target <target>`（会按固定来源下载、校验归档并更新 manifest）。
 
 开发模式说明：
 
-- `bat\dev.bat`：默认 `live` 模式，启动 Vite watcher，并通过 `-frontenddevserverurl` 接入桌面壳
-- `bat\dev.bat stable`：先构建 `frontend/dist`，再以静态资源模式启动 Wails，不依赖外部 Vite dev server
-- `bat\dev.bat live`：显式指定 `live` 模式，效果与默认一致
-- `bat\dev.bat limited`：在 `live` 基础上为 watcher 与其子进程附加 Windows Job Object 内存限制
+- `./dev.sh`（macOS / Linux）：默认 `stable` 模式，先构建 `frontend/dist`，再以静态资源模式启动 Wails，不依赖外部 Vite dev server
+- `./dev.sh live`（macOS / Linux）：显式指定 `live` 模式，启动 Vite watcher，并通过 `-frontenddevserverurl` 接入桌面壳
+- `bat\dev.bat`（Windows）：默认 `live` 模式，启动 Vite watcher，并通过 `-frontenddevserverurl` 接入桌面壳
+- `bat\dev.bat stable`（Windows）：先构建 `frontend/dist`，再以静态资源模式启动 Wails，不依赖外部 Vite dev server
+- `bat\dev.bat live`（Windows）：显式指定 `live` 模式，效果与默认一致
+- `bat\dev.bat limited`（Windows）：在 `live` 基础上为 watcher 与其子进程附加 Windows Job Object 内存限制
 - 如需为依赖下载配置代理，可在启动前设置 `DEV_PROXY_URL`、`DEV_NO_PROXY`、`DEV_GOPROXY`
 
 ### 自动化脚本包
@@ -294,7 +240,10 @@ bash publish/mac/publish-mac.sh --arch arm64
 
 ```text
 chrome/
-  chrom-142/
+  fingerprint-chromium-148/
+    chrome.exe
+    ...
+  fingerprint-chromium-144/
     chrome.exe
     ...
 ```
@@ -349,16 +298,14 @@ chrome/
 
 欢迎通过 Issue 和 Pull Request 参与改进。
 
-- Bug 反馈：请附带版本号、系统版本、复现步骤和截图
+- Bug 反馈：请附带版本号、系统版本、复现步骤
 - 功能建议：请说明业务场景、预期行为和现有问题
-- 文档优化：欢迎直接提交 README、教程和截图说明相关改进
+- 文档优化：欢迎直接提交 README、教程相关改进
 
 如果是较大改动，建议先开 Issue 对齐需求再提交 PR。
 
 ## 支持与反馈
 
-- Releases：<https://github.com/black-ant/Ant-Browser/releases>
-- Issues：<https://github.com/black-ant/Ant-Browser/issues>
 - 感谢以下社区的支持：<https://linux.do/>
 
 ## License
