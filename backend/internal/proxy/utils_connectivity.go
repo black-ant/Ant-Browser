@@ -139,8 +139,10 @@ func TestRealConnectivityWithRuntimeConfig(
 func defaultRealConnectivityTargets() []string {
 	return []string{
 		DefaultSpeedTestURL,
+		"http://connect.rom.miui.com/generate_204",
 		"https://cp.cloudflare.com/generate_204",
 		"https://www.cloudflare.com/cdn-cgi/trace",
+		"http://www.baidu.com/favicon.ico",
 		"http://www.msftconnecttest.com/connecttest.txt",
 	}
 }

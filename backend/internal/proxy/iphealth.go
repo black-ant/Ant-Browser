@@ -12,7 +12,23 @@ import (
 	"ant-chrome/backend/internal/config"
 )
 
-const DefaultIPHealthURL = "https://my.ippure.com/v1/info"
+const DefaultIPHealthURL = "http://ip-api.com/json"
+
+// ipHealthDefaultTarget IP 健康检测回退链中的一个目标(URL + 解析器)。
+type ipHealthDefaultTarget struct {
+	URL    string
+	Parser string
+}
+
+// defaultIPHealthChain IP 健康检测回退链(用户未配置目标时使用):
+// 全部为"返回标准 countryCode/city、且中国出口代理可达"的目标,避免默认走 my.ippure.com
+// 这类海外站被中国出口代理墙掉 → 检测失败 → 无法按代理匹配定位。
+// 顺序:ip-api(返回 countryCode+city,最标准)→ ipinfo(country 为2位码+city)→ cloudflare trace(loc=CC,parser 已映射 countryCode)。
+var defaultIPHealthChain = []ipHealthDefaultTarget{
+	{URL: "http://ip-api.com/json", Parser: "json"},
+	{URL: "https://ipinfo.io/json", Parser: "json"},
+	{URL: "https://www.cloudflare.com/cdn-cgi/trace", Parser: "cloudflare_trace"},
+}
 
 type IPHealthConfig struct {
 	URL     string
@@ -44,16 +60,65 @@ func FetchIPHealthInfo(
 	if cfg == nil {
 		cfg = &IPHealthConfig{}
 	}
-	targetURL := strings.TrimSpace(cfg.URL)
-	if targetURL == "" {
-		targetURL = DefaultIPHealthURL
-	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 20 * time.Second
 	}
+
+	src := resolveProxyConfig("", proxies, proxyId)
+	if src == "" {
+		return map[string]interface{}{"_source": "ip_health", "error": "未找到代理配置"}, fmt.Errorf("未找到代理配置")
+	}
+
+	client, err := buildIPHealthHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+	if err != nil {
+		return map[string]interface{}{"_source": "ip_health", "error": err.Error()},
+			fmt.Errorf("创建 IP 健康检测客户端失败: %w", err)
+	}
+
+	// 构造本轮要尝试的目标列表:用户显式配置了 URL 就只试这一个;否则走默认回退链。
+	type target struct {
+		URL    string
+		Parser string
+	}
+	var targets []target
+	if u := strings.TrimSpace(cfg.URL); u != "" {
+		targets = []target{{URL: u, Parser: cfg.Parser}}
+	} else {
+		for _, t := range defaultIPHealthChain {
+			targets = append(targets, target{URL: t.URL, Parser: t.Parser})
+		}
+	}
+
+	var lastMeta map[string]interface{}
+	var lastErr error
+	for _, t := range targets {
+		meta, perr := fetchIPHealthTarget(client, t.URL, t.Parser, cfg, timeout)
+		if perr == nil && meta != nil {
+			// 成功:要求至少解析出 IP,否则视为该目标不可用、继续回退。
+			if mapString(meta, "ip") != "" {
+				return meta, nil
+			}
+		}
+		lastMeta = meta
+		lastErr = perr
+	}
+	if lastMeta != nil {
+		return lastMeta, lastErr
+	}
+	msg := "所有 IP 健康检测目标均失败"
+	if lastErr != nil {
+		msg = lastErr.Error()
+	}
+	return map[string]interface{}{"_source": "ip_health", "error": msg}, fmt.Errorf("%s", msg)
+}
+
+// fetchIPHealthTarget 用已建好的 HTTP 客户端对单个目标发一次 IP 健康检测请求并解析。
+// 成功返回含 ip/_source/_targetUrl/_parser 的 map;失败返回带 error 字段的 meta + error。
+func fetchIPHealthTarget(client *http.Client, targetURL string, parser string, cfg *IPHealthConfig, timeout time.Duration) (map[string]interface{}, error) {
+	targetURL = strings.TrimSpace(targetURL)
 	source := resolveIPHealthSource(cfg, targetURL)
-	parser := resolveIPHealthParser(cfg.Parser)
+	parser = resolveIPHealthParser(parser)
 	meta := map[string]interface{}{
 		"_source":    source,
 		"_targetUrl": targetURL,
@@ -63,19 +128,6 @@ func FetchIPHealthInfo(
 		meta["error"] = "IP 健康检测目标 URL 为空"
 		return meta, fmt.Errorf("IP 健康检测目标 URL 为空")
 	}
-
-	src := resolveProxyConfig("", proxies, proxyId)
-	if src == "" {
-		meta["error"] = "未找到代理配置"
-		return meta, fmt.Errorf("未找到代理配置")
-	}
-
-	client, err := buildIPHealthHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
-	if err != nil {
-		meta["error"] = err.Error()
-		return meta, fmt.Errorf("创建 IP 健康检测客户端失败（source=%s）: %w", source, err)
-	}
-
 	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
 	if err != nil {
 		meta["error"] = err.Error()
@@ -106,7 +158,7 @@ func FetchIPHealthInfo(
 		return meta, fmt.Errorf("IP 健康检测 HTTP %d（source=%s）: %s", resp.StatusCode, source, snippet)
 	}
 
-	result, err := parseIPHealthBody(body, cfg.Parser)
+	result, err := parseIPHealthBody(body, parser)
 	if err != nil {
 		snippet := bodySnippet(body, 180)
 		meta["error"] = err.Error()
@@ -132,6 +184,11 @@ func parseIPHealthBody(body []byte, parser string) (map[string]interface{}, erro
 		}
 		if ip := mapString(result, "ip"); ip != "" {
 			result["ip"] = ip
+		}
+		// cloudflare trace 的国家码在 loc=CC 字段;normalize 到标准 countryCode 键,
+		// 使下游 resolveProxyLocationCountryCode 能识别 → cloudflare trace 目标也能按代理匹配定位。
+		if loc := mapString(result, "loc"); loc != "" {
+			result["countryCode"] = loc
 		}
 		return result, nil
 	}

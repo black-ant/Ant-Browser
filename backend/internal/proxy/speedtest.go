@@ -23,6 +23,16 @@ import (
 
 const DefaultSpeedTestURL = "http://www.gstatic.com/generate_204"
 
+// defaultSpeedTestURLChain 测速目标回退链(用户未配置目标时使用):
+// 先海外(gstatic generate_204),失败回退国内(miui/baidu)。
+// 中国出口代理上 gstatic 被墙会快速失败,回退到国内可达目标即可测通;
+// 海外代理上 gstatic 直通,无需走回退。两边都不用配置就能测出延迟。
+var defaultSpeedTestURLChain = []string{
+	"http://www.gstatic.com/generate_204",
+	"http://connect.rom.miui.com/generate_204",
+	"http://www.baidu.com/favicon.ico",
+}
+
 // SpeedTestConfig 测速参数
 type SpeedTestConfig struct {
 	Timeout        time.Duration
@@ -223,7 +233,7 @@ func speedTestTargetURLs(cfg *SpeedTestConfig) []string {
 			return urls
 		}
 	}
-	return []string{DefaultSpeedTestURL}
+	return defaultSpeedTestURLChain
 }
 
 func speedTestProbeEngine(src string, proxies []config.BrowserProxy, proxyId string, connectorType string) string {
