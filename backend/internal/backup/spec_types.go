@@ -67,6 +67,9 @@ type ManifestEntry struct {
 	EntryType   EntryType `json:"entryType"`
 	Required    bool      `json:"required"`
 	ArchivePath string    `json:"archivePath"`
+	FileCount   int       `json:"fileCount,omitempty"`
+	ByteSize    int64     `json:"byteSize,omitempty"`
+	SHA256      string    `json:"sha256,omitempty"`
 	Description string    `json:"description,omitempty"`
 }
 

@@ -13,25 +13,25 @@ export const notificationVisuals: Record<NotificationType, NotificationVisual> =
   success: {
     icon: CheckCircle,
     iconClass: 'text-[var(--color-success)]',
-    iconBackground: 'bg-[var(--color-bg-muted)]',
+    iconBackground: 'bg-[var(--color-success)]/10',
     rail: 'bg-[var(--color-success)]',
   },
   warning: {
     icon: AlertCircle,
     iconClass: 'text-[var(--color-warning)]',
-    iconBackground: 'bg-[var(--color-bg-muted)]',
+    iconBackground: 'bg-[var(--color-warning)]/15',
     rail: 'bg-[var(--color-warning)]',
   },
   error: {
     icon: XCircle,
     iconClass: 'text-[var(--color-error)]',
-    iconBackground: 'bg-[var(--color-bg-muted)]',
+    iconBackground: 'bg-[var(--color-error)]/15',
     rail: 'bg-[var(--color-error)]',
   },
   info: {
     icon: Info,
     iconClass: 'text-[var(--color-info)]',
-    iconBackground: 'bg-[var(--color-bg-muted)]',
+    iconBackground: 'bg-[var(--color-info)]/10',
     rail: 'bg-[var(--color-info)]',
   },
 }

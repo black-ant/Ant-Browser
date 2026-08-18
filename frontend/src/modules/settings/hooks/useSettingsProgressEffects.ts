@@ -116,7 +116,7 @@ export function useSettingsProgressEffects({
 
   useEffect(() => {
     const onImportProgress = (payload: BackupExportProgress) => {
-      const next = normalizeBackupProgress(payload, 'importing', '正在加载配置...')
+      const next = normalizeBackupProgress(payload, 'importing', '正在导入备份...')
       if (!next) {
         return
       }
@@ -162,7 +162,7 @@ export function useSettingsProgressEffects({
       setImportState({
         inProgress: true,
         progress: importProgress?.progress ?? 0,
-        message: importProgress?.message || '正在加载配置...',
+        message: importProgress?.message || '正在导入备份...',
       })
       return
     }

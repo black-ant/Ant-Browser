@@ -1,7 +1,6 @@
 package backend
 
 import (
-	"ant-chrome/backend/internal/apppath"
 	"ant-chrome/backend/internal/backup"
 	"time"
 )
@@ -12,7 +11,7 @@ type BackupManifest = backup.Manifest
 // BackupGetScopeDefinition 返回当前环境下的备份范围定义（第一阶段：范围与包格式）。
 func (a *App) BackupGetScopeDefinition() (BackupScope, error) {
 	return backup.BuildScope(backup.BuildOptions{
-		AppRoot: apppath.StateRoot(a.appRoot),
+		AppRoot: a.appStateRootAbs(),
 		Config:  a.config,
 	})
 }

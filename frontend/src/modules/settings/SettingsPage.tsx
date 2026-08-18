@@ -303,10 +303,16 @@ export function SettingsPage() {
         toast.info('已取消导出')
         return
       }
+      const fileHint = Number.isFinite(res.fileCount) && (res.fileCount || 0) > 0
+        ? `，共 ${res.fileCount} 个文件`
+        : ''
+      const resultMessage = res.zipPath
+        ? `导出完成：${res.zipPath}${fileHint}`
+        : `${res.message || '导出完成'}${fileHint}`
       setExportProgress(prev => prev?.phase === 'done'
         ? prev
-        : { phase: 'done', progress: 100, message: res.message || '导出完成' })
-      toast.success(res.message || '导出完成')
+        : { phase: 'done', progress: 100, message: resultMessage })
+      toast.success(resultMessage)
     } catch (error: any) {
       setExportProgress(prev => ({
         phase: 'error',
@@ -330,13 +336,13 @@ export function SettingsPage() {
     setImportProgress({
       phase: 'starting',
       progress: 0,
-      message: resetFirst ? '等待选择 ZIP 配置（先初始化后加载）...' : '等待选择 ZIP 配置（判重合并）...',
+      message: resetFirst ? '等待选择 ZIP 备份（清空后恢复）...' : '等待选择 ZIP 备份（合并导入）...',
     })
     try {
       const res = await importSystemConfig(resetFirst)
       if (res.cancelled) {
         setImportProgress(null)
-        toast.info('已取消加载')
+        toast.info('已取消导入')
         return
       }
       const imported = res.imported ?? 0
@@ -355,12 +361,12 @@ export function SettingsPage() {
           : ''
         if (componentTotal > 0) {
           const componentSuccess = Math.max(0, componentTotal - componentFailed)
-          toast.warning(`加载完成（部分成功）：模块成功 ${componentSuccess}/${componentTotal}，异常 ${componentFailed}${moduleHint}`)
+          toast.warning(`导入完成（部分成功）：模块成功 ${componentSuccess}/${componentTotal}，异常 ${componentFailed}${moduleHint}`)
         } else {
-          toast.warning(`加载完成（部分成功）：异常模块 ${componentFailed}${moduleHint}`)
+          toast.warning(`导入完成（部分成功）：异常模块 ${componentFailed}${moduleHint}`)
         }
       } else {
-        toast.success(`加载完成：导入 ${imported}，跳过 ${skipped}，冲突 ${conflicts}`)
+      toast.success(`导入完成：导入 ${imported}，跳过 ${skipped}，冲突 ${conflicts}`)
       }
       setImportModalOpen(false)
       setImportProgress(null)
@@ -368,9 +374,9 @@ export function SettingsPage() {
       setImportProgress(prev => ({
         phase: 'error',
         progress: prev?.progress ?? 0,
-        message: error?.message || '加载失败',
+        message: error?.message || '导入失败',
       }))
-      toast.error(error?.message || '加载失败')
+      toast.error(error?.message || '导入失败')
     } finally {
       setActionLoading('none')
     }
@@ -403,6 +409,19 @@ export function SettingsPage() {
           </Button>
         </div>
       </div>
+
+      <BackupSettingsCard
+        actionLoading={actionLoading}
+        exportProgress={exportProgress}
+        exportLogs={exportLogs}
+        exportLogsRef={exportLogsRef}
+        onInitialize={() => { void handleInitializeSystem() }}
+        onExport={() => { void handleExportSystem() }}
+        onOpenImport={() => {
+          setImportProgress(null)
+          setImportModalOpen(true)
+        }}
+      />
 
       {/* 主题设置 */}
       <Card title="主题设置" subtitle="选择您喜欢的界面主题">
@@ -447,19 +466,6 @@ export function SettingsPage() {
 
       {/* 高级设置 */}
       <SettingsAdvancedCard settings={settings} onChange={handleChange} />
-
-      <BackupSettingsCard
-        actionLoading={actionLoading}
-        exportProgress={exportProgress}
-        exportLogs={exportLogs}
-        exportLogsRef={exportLogsRef}
-        onInitialize={() => { void handleInitializeSystem() }}
-        onExport={() => { void handleExportSystem() }}
-        onOpenImport={() => {
-          setImportProgress(null)
-          setImportModalOpen(true)
-        }}
-      />
 
       <BackupImportModal
         open={importModalOpen}

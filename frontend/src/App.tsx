@@ -247,15 +247,15 @@ function CloseConfirmModal() {
         </div>
         {importInProgress && (
           <h3 className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
-            正在加载中，是否关闭？
+            正在导入备份，是否关闭？
           </h3>
         )}
         {importInProgress ? (
           <p className="text-sm text-[var(--color-text-secondary)] text-center mb-6">
-            当前正在加载配置
+            当前正在导入备份
             {importProgress > 0 ? `（${importProgress}%）` : ""}。
             <br />
-            {importMessage || "强制关闭会中断本次加载，是否仍要关闭应用？"}
+            {importMessage || "强制关闭会中断本次导入，是否仍要关闭应用？"}
           </p>
         ) : (
           <p className="mb-6 text-sm text-center text-[var(--color-text-secondary)]">

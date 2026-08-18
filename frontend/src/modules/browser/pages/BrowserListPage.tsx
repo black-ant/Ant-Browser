@@ -4,7 +4,6 @@ import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProxy } from '..
 import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
-import { BrowserBackupModal } from '../components/BrowserBackupModal'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
 import { ProfileExtensionModal } from '../components/ProfileExtensionModal'
 import { createBrowserProfileCopyOptions, isBrowserProfileCopyOptionsValid } from '../copyOptions'
@@ -28,11 +27,7 @@ import {
   stopBrowserInstance,
   updateBrowserProfile,
   openUserDataDir,
-  exportFullBrowserBackup,
-  importFullBrowserBackup,
 } from '../api'
-
-type BackupLoadingMode = 'none' | 'export' | 'import-merge' | 'import-reset'
 
 const directProxyID = '__direct__'
 
@@ -49,8 +44,6 @@ export function BrowserListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
-  const [backupModalOpen, setBackupModalOpen] = useState(false)
-  const [backupLoadingMode, setBackupLoadingMode] = useState<BackupLoadingMode>('none')
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean
     mode: 'single' | 'batch'
@@ -340,41 +333,6 @@ export function BrowserListPage() {
     }
   }
 
-  const handleExportFullBackup = async () => {
-    if (backupLoadingMode !== 'none') return
-    if (runningCount > 0) {
-      toast.warning(`建议先停止 ${runningCount} 个运行中实例后再备份`)
-    }
-    setBackupLoadingMode('export')
-    try {
-      const result = await exportFullBrowserBackup()
-      if (result.cancelled) return
-      toast.success(result.zipPath ? `备份已导出：${result.zipPath}` : (result.message || '备份已导出'))
-    } catch (error: any) {
-      toast.error(error?.message || '全量备份失败')
-    } finally {
-      setBackupLoadingMode('none')
-    }
-  }
-
-  const handleImportFullBackup = async (resetFirst: boolean) => {
-    if (backupLoadingMode !== 'none') return
-    const mode: BackupLoadingMode = resetFirst ? 'import-reset' : 'import-merge'
-    setBackupLoadingMode(mode)
-    try {
-      const result = await importFullBrowserBackup(resetFirst)
-      if (result.cancelled) return
-      toast.success(result.message || (resetFirst ? '备份已恢复' : '备份已合并'))
-      setSelectedIds(new Set())
-      setBackupModalOpen(false)
-      await loadProfiles()
-    } catch (error: any) {
-      toast.error(error?.message || '导入备份失败')
-    } finally {
-      setBackupLoadingMode('none')
-    }
-  }
-
   const openDeleteConfirm = (profileId: string) => {
     const profile = profiles.find(item => item.profileId === profileId)
     setDeleteConfirm({
@@ -537,7 +495,6 @@ export function BrowserListPage() {
         onOpenSettings={handleOpenSettings}
         onOpenTrash={openTrashModal}
         onImportProfiles={handleImportProfiles}
-        onOpenBackup={() => setBackupModalOpen(true)}
         importingProfiles={profilePackageBusy}
         onViewModeChange={setViewMode}
       />
@@ -551,23 +508,9 @@ export function BrowserListPage() {
         onBatchStart={handleBatchStart}
         onBatchStop={handleBatchStop}
         onBatchExport={handleBatchExport}
-        onOpenBackup={() => setBackupModalOpen(true)}
         onBatchDelete={openBatchDeleteConfirm}
         batchLoading={batchLoading}
         exporting={profilePackageBusy}
-      />
-
-      <BrowserBackupModal
-        open={backupModalOpen}
-        runningCount={runningCount}
-        selectedCount={selectedIds.size}
-        selectedExporting={profilePackageBusy}
-        loadingMode={backupLoadingMode}
-        onClose={() => setBackupModalOpen(false)}
-        onExportSelected={() => { void handleBatchExport() }}
-        onExportFull={() => { void handleExportFullBackup() }}
-        onImportMerge={() => { void handleImportFullBackup(false) }}
-        onImportReset={() => { void handleImportFullBackup(true) }}
       />
 
       <BrowserProfilesPanel

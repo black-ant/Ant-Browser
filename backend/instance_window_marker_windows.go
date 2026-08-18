@@ -21,12 +21,18 @@ const (
 	smtoAbortIfHung    = 0x0002
 	sendMessageTimeout = 150
 
-	gwOwner             = 4
-	iconWidth           = 32
-	iconHeight          = 32
-	dibRGBColors        = 0
-	biRGB               = 0
-	iconColorGlyphScale = 2
+	gwOwner       = 4
+	iconWidth     = 32
+	iconHeight    = 32
+	dibRGBColors  = 0
+	biRGB         = 0
+	rdwInvalidate = 0x0001
+	rdwFrame      = 0x0400
+
+	profileWindowMarkerFrameColor   uint32 = 0xFF0F172A
+	profileWindowMarkerSurfaceColor uint32 = 0xFFF8FAFC
+	profileWindowMarkerHeaderColor  uint32 = 0xFF0F766E
+	profileWindowMarkerLineColor    uint32 = 0xFFCBD5E1
 )
 
 var (
@@ -48,6 +54,8 @@ var (
 	procCreateIconIndirect     = user32WindowMarker.NewProc("CreateIconIndirect")
 	procDestroyIconMarker      = user32WindowMarker.NewProc("DestroyIcon")
 )
+
+var procRedrawWindowMarker = user32WindowMarker.NewProc(`RedrawWindow`)
 
 type profileWindowMarkerBitmapInfoHeader struct {
 	Size          uint32
@@ -302,11 +310,21 @@ func applyProfileWindowMarker(marker *profileWindowMarker, window profileWindowM
 				state.originalSmallIconCaptured = true
 			}
 		}
-		if _, ok := sendProfileWindowMarkerMessageResult(window.hwnd, wmSetIcon, iconBig, icon); ok {
+		iconChanged := false
+		if isProfileWindowMarkerIcon(window.hwnd, iconBig, icon) {
 			state.markerBigIconApplied = true
+		} else if _, ok := sendProfileWindowMarkerMessageResult(window.hwnd, wmSetIcon, iconBig, icon); ok {
+			state.markerBigIconApplied = true
+			iconChanged = true
 		}
-		if _, ok := sendProfileWindowMarkerMessageResult(window.hwnd, wmSetIcon, iconSmall, icon); ok {
+		if isProfileWindowMarkerIcon(window.hwnd, iconSmall, icon) {
 			state.markerSmallIconApplied = true
+		} else if _, ok := sendProfileWindowMarkerMessageResult(window.hwnd, wmSetIcon, iconSmall, icon); ok {
+			state.markerSmallIconApplied = true
+			iconChanged = true
+		}
+		if iconChanged {
+			refreshProfileWindowMarkerIcon(window.hwnd)
 		}
 		if marker != nil {
 			marker.setWindowState(window.hwnd, state)
@@ -318,19 +336,27 @@ func clearProfileWindowMarker(hwnd uintptr, state profileWindowMarkerWindowState
 	if hwnd == 0 {
 		return
 	}
+	iconChanged := false
 	if state.markerBigIconApplied && isProfileWindowMarkerIcon(hwnd, iconBig, markerIcon) {
 		originalIcon := uintptr(0)
 		if state.originalBigIconCaptured {
 			originalIcon = state.originalBigIcon
 		}
-		sendProfileWindowMarkerMessage(hwnd, wmSetIcon, iconBig, originalIcon)
+		if _, ok := sendProfileWindowMarkerMessageResult(hwnd, wmSetIcon, iconBig, originalIcon); ok {
+			iconChanged = true
+		}
 	}
 	if state.markerSmallIconApplied && isProfileWindowMarkerIcon(hwnd, iconSmall, markerIcon) {
 		originalIcon := uintptr(0)
 		if state.originalSmallIconCaptured {
 			originalIcon = state.originalSmallIcon
 		}
-		sendProfileWindowMarkerMessage(hwnd, wmSetIcon, iconSmall, originalIcon)
+		if _, ok := sendProfileWindowMarkerMessageResult(hwnd, wmSetIcon, iconSmall, originalIcon); ok {
+			iconChanged = true
+		}
+	}
+	if iconChanged {
+		refreshProfileWindowMarkerIcon(hwnd)
 	}
 }
 
@@ -406,6 +432,13 @@ func sendProfileWindowMarkerMessageResult(hwnd uintptr, message uint32, wParam u
 	return result, status != 0
 }
 
+func refreshProfileWindowMarkerIcon(hwnd uintptr) {
+	if hwnd == 0 {
+		return
+	}
+	procRedrawWindowMarker.Call(hwnd, 0, 0, rdwInvalidate|rdwFrame)
+}
+
 func createProfileWindowMarkerIcon(markerCode string) (uintptr, error) {
 	var bitmapInfo profileWindowMarkerBitmapInfo
 	bitmapInfo.Header = profileWindowMarkerBitmapInfoHeader{
@@ -441,12 +474,12 @@ func createProfileWindowMarkerIcon(markerCode string) (uintptr, error) {
 		pixels[index] = 0
 	}
 
-	fillProfileWindowMarkerRoundedRect(pixels, 3, 2, 28, 30, 6, 0xFFCBD5E1)
-	fillProfileWindowMarkerRoundedRect(pixels, 4, 3, 27, 29, 5, 0xFFF8FAFC)
-	fillProfileWindowMarkerRegion(pixels, 4, 27, 4, 14, 0xFF0F766E)
-	fillProfileWindowMarkerRegion(pixels, 4, 27, 16, 28, profileWindowMarkerColor(markerCode))
-	drawProfileWindowMarkerOpenGlyph(pixels, 0xFFFFFFFF)
-	drawProfileWindowMarkerGlyph(pixels, markerCode, 0, 0, 0xFFFFFFFF)
+	fillProfileWindowMarkerRoundedRect(pixels, 2, 4, 28, 30, 7, profileWindowMarkerFrameColor)
+	fillProfileWindowMarkerRoundedRect(pixels, 4, 6, 26, 28, 5, profileWindowMarkerSurfaceColor)
+	fillProfileWindowMarkerRoundedRect(pixels, 4, 6, 26, 12, 4, profileWindowMarkerHeaderColor)
+	fillProfileWindowMarkerRect(pixels, 4, 9, 26, 12, profileWindowMarkerHeaderColor)
+	drawProfileWindowMarkerWindowGlyph(pixels, markerCode)
+	drawProfileWindowMarkerBadge(pixels, markerCode)
 
 	iconInfo := profileWindowMarkerIconInfo{
 		FIcon:    1,
@@ -491,21 +524,32 @@ func profileWindowMarkerColor(markerCode string) uint32 {
 	return palette[index]
 }
 
-func fillProfileWindowMarkerRegion(pixels []uint32, left, right, top, bottom int, color uint32) {
-	for y := top; y <= bottom; y++ {
-		for x := left; x <= right; x++ {
-			if profileWindowMarkerInsideRoundedRect(x, y, 4, 3, 27, 29, 5) {
-				pixels[y*iconWidth+x] = color
+func fillProfileWindowMarkerRoundedRect(pixels []uint32, left, top, right, bottom, radius int, color uint32) {
+	for pixelY := top; pixelY <= bottom; pixelY++ {
+		for pixelX := left; pixelX <= right; pixelX++ {
+			if profileWindowMarkerInsideRoundedRect(pixelX, pixelY, left, top, right, bottom, radius) {
+				setProfileWindowMarkerPixel(pixels, pixelX, pixelY, color)
 			}
 		}
 	}
 }
 
-func fillProfileWindowMarkerRoundedRect(pixels []uint32, left, top, right, bottom, radius int, color uint32) {
-	for y := top; y <= bottom; y++ {
-		for x := left; x <= right; x++ {
-			if profileWindowMarkerInsideRoundedRect(x, y, left, top, right, bottom, radius) {
-				pixels[y*iconWidth+x] = color
+func fillProfileWindowMarkerRect(pixels []uint32, left, top, right, bottom int, color uint32) {
+	for pixelY := top; pixelY <= bottom; pixelY++ {
+		for pixelX := left; pixelX <= right; pixelX++ {
+			setProfileWindowMarkerPixel(pixels, pixelX, pixelY, color)
+		}
+	}
+}
+
+func fillProfileWindowMarkerCircle(pixels []uint32, centerX, centerY, radius int, color uint32) {
+	radiusSquared := radius * radius
+	for pixelY := centerY - radius; pixelY <= centerY+radius; pixelY++ {
+		for pixelX := centerX - radius; pixelX <= centerX+radius; pixelX++ {
+			deltaX := pixelX - centerX
+			deltaY := pixelY - centerY
+			if deltaX*deltaX+deltaY*deltaY <= radiusSquared {
+				setProfileWindowMarkerPixel(pixels, pixelX, pixelY, color)
 			}
 		}
 	}
@@ -548,34 +592,30 @@ func setProfileWindowMarkerPixel(pixels []uint32, x, y int, color uint32) {
 	pixels[y*iconWidth+x] = color
 }
 
-func drawProfileWindowMarkerOpenGlyph(pixels []uint32, color uint32) {
-	for x := 9; x <= 22; x++ {
-		setProfileWindowMarkerPixel(pixels, x, 5, color)
-		setProfileWindowMarkerPixel(pixels, x, 12, color)
+func drawProfileWindowMarkerWindowGlyph(pixels []uint32, markerCode string) {
+	for pixelX := 8; pixelX <= 22; pixelX++ {
+		setProfileWindowMarkerPixel(pixels, pixelX, 16, profileWindowMarkerFrameColor)
+		setProfileWindowMarkerPixel(pixels, pixelX, 24, profileWindowMarkerFrameColor)
+		setProfileWindowMarkerPixel(pixels, pixelX, 20, profileWindowMarkerLineColor)
 	}
-	for y := 5; y <= 12; y++ {
-		setProfileWindowMarkerPixel(pixels, 9, y, color)
-		setProfileWindowMarkerPixel(pixels, 22, y, color)
+	for pixelY := 16; pixelY <= 24; pixelY++ {
+		setProfileWindowMarkerPixel(pixels, 8, pixelY, profileWindowMarkerFrameColor)
+		setProfileWindowMarkerPixel(pixels, 22, pixelY, profileWindowMarkerFrameColor)
 	}
-	for x := 11; x <= 20; x++ {
-		setProfileWindowMarkerPixel(pixels, x, 7, color)
-	}
-	for _, x := range []int{12, 15, 18} {
-		setProfileWindowMarkerPixel(pixels, x, 6, 0xFF0F766E)
-	}
-	for x := 12; x <= 13; x++ {
-		for y := 9; y <= 11; y++ {
-			setProfileWindowMarkerPixel(pixels, x, y, color)
-		}
-	}
-	for x := 18; x <= 19; x++ {
-		for y := 9; y <= 11; y++ {
-			setProfileWindowMarkerPixel(pixels, x, y, color)
-		}
-	}
+	fillProfileWindowMarkerRoundedRect(pixels, 11, 21, 18, 23, 1, profileWindowMarkerColor(markerCode))
+	setProfileWindowMarkerPixel(pixels, 8, 9, 0xFFD1FAE5)
+	setProfileWindowMarkerPixel(pixels, 11, 9, 0xFFD1FAE5)
+	setProfileWindowMarkerPixel(pixels, 14, 9, 0xFFD1FAE5)
 }
 
-func drawProfileWindowMarkerGlyph(pixels []uint32, markerCode string, offsetX, offsetY int, color uint32) {
+func drawProfileWindowMarkerBadge(pixels []uint32, markerCode string) {
+	fillProfileWindowMarkerCircle(pixels, 24, 6, 6, profileWindowMarkerFrameColor)
+	fillProfileWindowMarkerCircle(pixels, 24, 6, 5, profileWindowMarkerSurfaceColor)
+	fillProfileWindowMarkerCircle(pixels, 24, 6, 4, profileWindowMarkerColor(markerCode))
+	drawProfileWindowMarkerGlyph(pixels, markerCode, 22, 2, 1, 0xFFFFFFFF)
+}
+
+func drawProfileWindowMarkerGlyph(pixels []uint32, markerCode string, startX, startY, scale int, color uint32) {
 	markerCode = strings.ToUpper(strings.TrimSpace(markerCode))
 	if markerCode == "" {
 		return
@@ -583,7 +623,6 @@ func drawProfileWindowMarkerGlyph(pixels []uint32, markerCode string, offsetX, o
 	const (
 		glyphWidth  = 5
 		glyphHeight = 7
-		glyphGap    = 2
 	)
 	patterns := map[byte][glyphHeight]string{
 		'0': {"11111", "10001", "10011", "10101", "11001", "10001", "11111"},
@@ -623,25 +662,13 @@ func drawProfileWindowMarkerGlyph(pixels []uint32, markerCode string, offsetX, o
 		'Y': {"10001", "10001", "01010", "00100", "00100", "00100", "00100"},
 		'Z': {"11111", "00001", "00010", "00100", "01000", "10000", "11111"},
 	}
-	visibleCode := markerCode
-	if len(visibleCode) > 3 {
-		visibleCode = visibleCode[len(visibleCode)-3:]
-	}
-	scale := iconColorGlyphScale
-	if len(visibleCode) > 1 {
-		scale = 1
-	}
-	totalWidth := len(visibleCode)*glyphWidth*scale + (len(visibleCode)-1)*glyphGap*scale
-	startX := (iconWidth-totalWidth)/2 + offsetX
-	codeAreaTop := 16
-	codeAreaHeight := 13
-	startY := codeAreaTop + (codeAreaHeight-glyphHeight*scale)/2 + offsetY
+	visibleCode := markerCode[:1]
 	for index := 0; index < len(visibleCode); index++ {
 		pattern, ok := patterns[visibleCode[index]]
 		if !ok {
 			continue
 		}
-		glyphX := startX + index*(glyphWidth+glyphGap)*scale
+		glyphX := startX + index*glyphWidth*scale
 		for row, line := range pattern {
 			for column, value := range line {
 				if value != '1' {

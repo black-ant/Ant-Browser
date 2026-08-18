@@ -7,15 +7,14 @@ import (
 )
 
 func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[string]interface{}, error) {
-	a.backupStopRuntimeForMaintenance()
 	a.backupEmitImportProgress("preparing", 10, "正在解压并校验备份包...")
-
 	extractRoot, manifest, err := backupExtractAndValidate(zipPath)
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(extractRoot)
-	a.backupEmitImportProgress("preparing", 20, "备份包校验通过，开始加载数据...")
+	a.backupStopRuntimeForMaintenance()
+	a.backupEmitImportProgress("preparing", 20, "备份包校验通过，开始导入数据...")
 
 	componentEntries := backupDetectPresentManifestEntries(extractRoot, manifest)
 	issueTracker := newBackupImportTracker(componentEntries)
@@ -44,6 +43,7 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 
 	if hasIncomingCfg {
 		a.backupEmitImportProgress("importing", 58, "正在应用系统配置...")
+		incomingCfg = a.backupNormalizeImportedConfigPaths(incomingCfg, a.config)
 		if err := a.backupApplyIncomingConfig(incomingCfg, resetFirst); err != nil {
 			issueTracker.RecordIssue("system_config_main", "主配置文件", err)
 		}
@@ -77,9 +77,9 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 	}
 
 	totalComponents, successCount, failedCount, partial := issueTracker.Summary()
-	message := "加载完成"
+	message := "导入完成"
 	if partial {
-		message = fmt.Sprintf("加载完成（部分成功）：成功 %d 个模块，异常 %d 个模块", successCount, failedCount)
+		message = fmt.Sprintf("导入完成（部分成功）：成功 %d 个模块，异常 %d 个模块", successCount, failedCount)
 	}
 	a.backupEmitImportProgress("done", 100, message)
 

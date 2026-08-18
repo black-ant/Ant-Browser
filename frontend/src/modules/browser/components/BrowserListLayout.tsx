@@ -27,7 +27,6 @@ interface BrowserListHeaderProps {
   onOpenSettings: () => void
   onOpenTrash: () => void
   onImportProfiles: () => void
-  onOpenBackup: () => void
   importingProfiles?: boolean
   onViewModeChange: (next: BrowserViewMode) => void
 }
@@ -49,7 +48,6 @@ export function BrowserListHeader({
   onOpenSettings,
   onOpenTrash,
   onImportProfiles,
-  onOpenBackup,
   importingProfiles = false,
   onViewModeChange,
 }: BrowserListHeaderProps) {
@@ -99,9 +97,11 @@ export function BrowserListHeader({
           <Button variant="secondary" size="sm" onClick={onImportProfiles} loading={importingProfiles}>
             <Upload className="w-4 h-4" />导入实例
           </Button>
-          <Button variant="secondary" size="sm" onClick={onOpenBackup}>
-            <Archive className="w-4 h-4" />备份
-          </Button>
+          <Link to="/settings">
+            <Button variant="secondary" size="sm" title="打开全局备份与恢复">
+              <Archive className="w-4 h-4" />全局备份
+            </Button>
+          </Link>
           <div className="flex items-center bg-[var(--color-bg-secondary)] rounded-md border border-[var(--color-border-default)] p-0.5 ml-2">
             <button
               className={`p-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors ${viewMode === 'card' ? 'bg-[var(--color-bg-surface)] shadow-sm text-[var(--color-accent)]' : ''}`}

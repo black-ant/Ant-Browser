@@ -42,11 +42,16 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 	userDataSrc := filepath.Join(payloadRoot, "browser", "user-data")
 	userDataDst := a.backupResolveUserDataRoot(a.config)
 	if backupPathExists(userDataSrc) {
+		userDataOverlapsAppData := backupSamePath(userDataDst, appDataDst) ||
+			backupPathWithin(userDataDst, appDataDst) ||
+			backupPathWithin(appDataDst, userDataDst)
 		if resetFirst {
-			_ = os.RemoveAll(userDataDst)
+			if !userDataOverlapsAppData {
+				_ = os.RemoveAll(userDataDst)
+			}
 			if err := os.MkdirAll(userDataDst, 0755); err != nil {
 				report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
-			} else if err := backupSyncDir(userDataSrc, userDataDst, true, stats, nil); err != nil {
+			} else if err := backupSyncDir(userDataSrc, userDataDst, true, stats, backupShouldSkipAppDBFile); err != nil {
 				report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
 			}
 		} else {

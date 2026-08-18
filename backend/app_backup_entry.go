@@ -25,11 +25,17 @@ func (a *App) BackupExportPackage() (map[string]interface{}, error) {
 	if a.ctx == nil {
 		return nil, fmt.Errorf("应用上下文未初始化")
 	}
-	a.backupEmitExportProgress("starting", 0, "等待选择导出路径...")
+	a.backupEmitExportProgress("starting", 0, "正在检查运行中的实例...")
+	if runningNames := a.backupRunningProfileNames(); len(runningNames) > 0 {
+		message := fmt.Sprintf("请先停止运行中的实例再导出：%s", strings.Join(runningNames, "、"))
+		a.backupEmitExportProgress("error", 100, message)
+		return nil, fmt.Errorf("%s", message)
+	}
+	a.backupEmitExportProgress("starting", 2, "等待选择导出路径...")
 
 	defaultName := fmt.Sprintf("ant-chrome-backup-%s.zip", time.Now().Format("20060102-150405"))
 	savePath, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-		Title:           "导出配置",
+		Title:           "导出全量备份",
 		DefaultFilename: defaultName,
 		Filters: []wailsruntime.FileFilter{
 			{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
@@ -72,7 +78,7 @@ func (a *App) BackupExportPackage() (map[string]interface{}, error) {
 	}, nil
 }
 
-// BackupImportPackage 从 ZIP 加载配置与数据。
+// BackupImportPackage 从 ZIP 导入配置与数据。
 // resetFirst=true: 先初始化，再全量导入。
 // resetFirst=false: 直接导入并执行判重合并。
 func (a *App) BackupImportPackage(resetFirst bool) (map[string]interface{}, error) {
@@ -85,7 +91,7 @@ func (a *App) BackupImportPackage(resetFirst bool) (map[string]interface{}, erro
 	a.backupEmitImportProgress("starting", 0, "等待选择 ZIP 配置文件...")
 
 	zipPath, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title: "加载配置",
+		Title: "导入全局备份",
 		Filters: []wailsruntime.FileFilter{
 			{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
 		},
@@ -95,17 +101,17 @@ func (a *App) BackupImportPackage(resetFirst bool) (map[string]interface{}, erro
 		return nil, fmt.Errorf("打开文件对话框失败: %w", err)
 	}
 	if strings.TrimSpace(zipPath) == "" {
-		a.backupEmitImportProgress("cancelled", 0, "已取消加载")
+		a.backupEmitImportProgress("cancelled", 0, "已取消导入")
 		return map[string]interface{}{
 			"cancelled": true,
-			"message":   "已取消加载",
+			"message":   "已取消导入",
 		}, nil
 	}
 	a.backupEmitImportProgress("preparing", 5, "正在校验备份包...")
 
 	result, importErr := a.backupImportFromPathLocked(zipPath, resetFirst)
 	if importErr != nil {
-		a.backupEmitImportProgress("error", 100, fmt.Sprintf("加载失败: %v", importErr))
+		a.backupEmitImportProgress("error", 100, fmt.Sprintf("导入失败: %v", importErr))
 		return nil, importErr
 	}
 	return result, nil

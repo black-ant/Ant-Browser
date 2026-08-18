@@ -110,6 +110,9 @@ export interface BackupActionResult {
   imported?: number
   skipped?: number
   conflicts?: number
+  includedEntries?: number
+  skippedEntries?: number
+  fileCount?: number
   partial?: boolean
   componentTotal?: number
   componentSuccess?: number
@@ -170,7 +173,7 @@ export async function exportSystemConfig(): Promise<BackupActionResult> {
 export async function importSystemConfig(resetFirst: boolean): Promise<BackupActionResult> {
   const bindings: any = await getBindings()
   if (!bindings?.BackupImportPackage) {
-    return { cancelled: false, message: '当前环境不支持后端加载接口' }
+    return { cancelled: false, message: '当前环境不支持后端导入接口' }
   }
   return (await bindings.BackupImportPackage(resetFirst)) || {}
 }

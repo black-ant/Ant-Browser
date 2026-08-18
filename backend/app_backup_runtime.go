@@ -4,7 +4,32 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"os/exec"
+	"sort"
+	"strings"
 )
+
+func (a *App) backupRunningProfileNames() []string {
+	if a.browserMgr == nil {
+		return nil
+	}
+
+	profiles := a.browserMgr.List()
+	names := make([]string, 0)
+	for _, profile := range profiles {
+		if !profile.Running {
+			continue
+		}
+		name := strings.TrimSpace(profile.ProfileName)
+		if name == "" {
+			name = strings.TrimSpace(profile.ProfileId)
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
 
 func (a *App) backupStopRuntimeForMaintenance() {
 	if a.browserMgr != nil {
