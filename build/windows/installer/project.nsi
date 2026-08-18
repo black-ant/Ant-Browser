@@ -88,9 +88,13 @@ Section
 
     !insertmacro wails.files
 
-    ; --- 内置 fingerprint-chromium 内核:随装即用;首启由 scanAndRegisterCores 自动注册为默认内核 ---
+    ; --- 内置 fingerprint-chromium 内核(148 + 144):随装即用;首启由 scanAndRegisterCores
+    ;     自动注册,默认内核取"最高版本"(148)。UA/UA-CH 启动时按各实例内核真实版本覆盖,
+    ;     实现诚实的版本多样性(不再伪造 145/146/147 等未构建的引擎版本)。 ---
     SetOutPath "$INSTDIR\chrome\fingerprint-chromium-148"
     File /r "kernel\fingerprint-chromium-148\*"
+    SetOutPath "$INSTDIR\chrome\fingerprint-chromium-144"
+    File /r "kernel\fingerprint-chromium-144\*"
 
     ; --- 离线 GeoIP 库:代理出口 IP → 地理(时区/语言/坐标)自动对齐所需(构建期从缓存 staging) ---
     SetOutPath "$INSTDIR\data\geoip"

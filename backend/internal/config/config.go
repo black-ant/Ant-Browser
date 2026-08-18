@@ -128,6 +128,10 @@ type BrowserConfig struct {
 	CoreRoot                   string                 `yaml:"core_root,omitempty"`
 	DefaultCoreId              string                 `yaml:"default_core_id,omitempty"`
 	DefaultConnectorType       string                 `yaml:"default_connector_type,omitempty"`
+	// KernelDistribution 新建实例在多内核间的加权分布(内核大版本→权重)。
+	// 默认 {"148":70,"144":30}:贴近真实 Chrome 人群(绝大多数最新版 + 少数未更新尾部)。
+	// 仅在"自动分布"模式下使用;用户显式指定内核时忽略。
+	KernelDistribution        map[string]int         `yaml:"kernel_distribution,omitempty"`
 	Environments               []BrowserEnvironment   `yaml:"environments,omitempty"`
 }
 

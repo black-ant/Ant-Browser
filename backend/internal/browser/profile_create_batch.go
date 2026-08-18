@@ -13,6 +13,7 @@ const MaxBatchCreateCount = 200
 // CreateBatch 批量创建 count 个环境,名称为 prefix-编号(3 位,从 startIndex 起,startIndex<=0 视为 1)。
 // 每个环境都会生成一套独立、唯一、自洽的指纹身份(与单个"新建配置"完全一致的生成路径)。
 // platform 限定本批身份采样的平台(如 "macos"/"windows"),空字符串="全部平台"(不限定)。
+// kernel 决定本批实例在多内核间的分配:"auto"(默认,148 为主 144 少数)/"all148"/"all144"。
 //
 // 关键点:
 //   - 在单次 m.Mutex 锁内顺序创建全部环境,末尾只 SaveProfiles() 一次,避免 O(N²) 写放大
@@ -20,7 +21,7 @@ const MaxBatchCreateCount = 200
 //   - 每个环境强制清空模板里的指纹参数,确保都走"唯一自洽身份"生成分支,而非共用同一套。
 //   - 唯一性由 IdentityService(GenerateUnique + browser_identities 的 UNIQUE 索引)逐个即时
 //     登记保证,因此 N 次顺序创建得到 N 套互不相同的身份。
-func (m *Manager) CreateBatch(prefix string, count, startIndex int, platform string, template ProfileInput) ([]*Profile, error) {
+func (m *Manager) CreateBatch(prefix string, count, startIndex int, platform string, kernel string, template ProfileInput) ([]*Profile, error) {
 	log := logger.New("Browser")
 
 	prefix = strings.TrimSpace(prefix)
@@ -42,6 +43,10 @@ func (m *Manager) CreateBatch(prefix string, count, startIndex int, platform str
 	default:
 		return nil, fmt.Errorf("不支持的身份平台: %q(仅支持 windows / macos,或留空表示全部)", platform)
 	}
+	kernel = strings.ToLower(strings.TrimSpace(kernel))
+	if kernel == "" {
+		kernel = KernelSelectAuto
+	}
 
 	m.InitData()
 	m.Mutex.Lock()
@@ -54,6 +59,20 @@ func (m *Manager) CreateBatch(prefix string, count, startIndex int, platform str
 		item.FingerprintArgs = nil       // 强制每个环境重新采样唯一自洽身份
 		item.UserDataDir = ""            // 由 createProfileLocked 以各自新 profileId 命名,避免共用目录
 		item.IdentityPlatform = platform // 限定该批身份平台(""=全部)
+
+		// 按内核选择模式为本实例挑内核 CoreId(auto=加权分布,确定性按 i 落点)。
+		coreId, err := m.resolveProfileCoreForKernelSelect(kernel, i)
+		if err != nil {
+			// 指定了内核却解析失败(如未内置 144):硬失败,不回退伪造。
+			if saveErr := m.SaveProfiles(); saveErr != nil {
+				log.Error("批量创建中途保存失败", logger.F("error", saveErr.Error()))
+			}
+			for _, p := range created {
+				m.ensureProfileLaunchCode(p)
+			}
+			return created, fmt.Errorf("批量创建第 %d 个(%s)分配内核失败: %w", i+1, item.ProfileName, err)
+		}
+		item.CoreId = coreId
 
 		profile, err := m.createProfileLocked(item)
 		if err != nil {

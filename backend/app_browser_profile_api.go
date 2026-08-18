@@ -50,9 +50,10 @@ func (a *App) BrowserProfileCreate(input BrowserProfileInput) (*BrowserProfile, 
 // BrowserProfileCreateBatch 批量创建配置:名称为 prefix-编号(3位,从 startIndex 起,默认 1),
 // 每个环境都会分配一套独立、唯一、自洽的指纹身份(与单个"新建配置"一致)。
 // platform 限定本批身份采样的平台(如 "macos"/"windows"),空字符串="全部平台"。
+// kernel 决定本批实例在多内核间的分配:"auto"(默认 148 为主 144 少数)/"all148"/"all144"。
 // template 提供代理/内核/省内存等公共设置;其指纹参数会被忽略以保证各环境不同。
-func (a *App) BrowserProfileCreateBatch(prefix string, count int, startIndex int, platform string, template BrowserProfileInput) ([]*BrowserProfile, error) {
-	created, err := a.browserMgr.CreateBatch(prefix, count, startIndex, platform, template)
+func (a *App) BrowserProfileCreateBatch(prefix string, count int, startIndex int, platform string, kernel string, template BrowserProfileInput) ([]*BrowserProfile, error) {
+	created, err := a.browserMgr.CreateBatch(prefix, count, startIndex, platform, kernel, template)
 	// 中途失败也对齐已建成的部分;同一代理只探测一次出口 IP,批内所有环境共享该结果。
 	a.autoAlignProfilesToProxyGeo(created)
 	return created, err

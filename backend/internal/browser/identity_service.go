@@ -120,6 +120,13 @@ func (s *IdentityService) Regenerate(profile *Profile) error {
 
 // RegenerateForPlatform 强制为 profile 生成一套唯一身份(可限定平台),存库并刷新 FingerprintArgs。
 func (s *IdentityService) RegenerateForPlatform(profile *Profile, platform string) error {
+	return s.RegenerateForPlatformWithMajor(profile, platform, 0)
+}
+
+// RegenerateForPlatformWithMajor 与 RegenerateForPlatform 相同,但额外把身份的 UA/brandVersion
+// 预先对齐到内核大版本 major(major<=0 则不改)。使新建实例的 DB/UI 版本面即与其内核一致;
+// 启动时仍有一层权威覆盖兜底(backend.overrideUAToKernelVersion),二者规则一致、互为保险。
+func (s *IdentityService) RegenerateForPlatformWithMajor(profile *Profile, platform string, major int) error {
 	if profile == nil {
 		return nil
 	}
@@ -127,6 +134,7 @@ func (s *IdentityService) RegenerateForPlatform(profile *Profile, platform strin
 	if err != nil {
 		return err
 	}
+	id = identity.ApplyKernelVersion(id, major)
 	s.mu.Lock()
 	err = s.store.Save(profile.ProfileId, id)
 	s.mu.Unlock()

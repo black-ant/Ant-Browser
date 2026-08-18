@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"ant-chrome/backend/internal/identity"
 )
 
 // GetChromeVersion 从 manifest.json 读取 Chrome 版本号
@@ -42,6 +44,24 @@ func (m *Manager) GetChromeVersion(corePath string) string {
 	}
 
 	return manifest.Version
+}
+
+// CoreMajorForID 返回指定内核(coreId 为空则取默认内核)的 Chrome 大版本;无法解析返回 0。
+// 用于新建实例时把身份 UA/brandVersion 预对齐到该实例内核的真实版本。
+func (m *Manager) CoreMajorForID(coreId string) int {
+	coreId = normalizeProfileCoreID(coreId)
+	var core Core
+	var found bool
+	if coreId != "" {
+		core, found = m.GetCore(coreId)
+	}
+	if !found {
+		core, found = m.GetDefaultCore()
+	}
+	if !found {
+		return 0
+	}
+	return identity.MajorFromVersion(m.GetChromeVersion(core.CorePath))
 }
 
 // CountInstancesByCore 统计使用指定内核的实例数量

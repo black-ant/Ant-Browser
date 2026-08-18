@@ -97,9 +97,14 @@ func ValidatePoolRecord(rec PoolRecord) ValidationResult {
 		if !uaMatchesPlatform(rec.Platform, rec.UAFull) {
 			add("ua", "User-Agent 与平台不一致", SeverityError, false)
 		}
-		// UA 里的 Chrome 主版本必须与 brandVersion(Client Hints)主版本一致。
 		uaMajor := chromeMajorFromUA(rec.UAFull)
 		brandMajor := majorVersion(rec.BrandVersion)
+		// UA 主版本必须为已内置内核版本(否则与引擎不符,启动虽覆盖也应池内自洽)。
+		if uaMajor != "" {
+			if !isBuiltinKernelMajor(uaMajor) {
+				add("uaFull", "UA 版本("+uaMajor+")非内置内核版本,与引擎不符", SeverityError, false)
+			}
+		}
 		if uaMajor != "" && brandMajor != "" && uaMajor != brandMajor {
 			add("brandVersion", "UA 版本("+uaMajor+")与品牌版本("+brandMajor+")不一致,会被 UA↔Client Hints 交叉检测", SeverityError, false)
 		}
@@ -113,7 +118,18 @@ func ValidatePoolRecord(rec PoolRecord) ValidationResult {
 	}
 	if rec.HardwareConcurrency <= 0 {
 		add("hardwareConcurrency", "CPU 核心数应大于 0", SeverityError, false)
+	} else if rec.HardwareConcurrency%2 != 0 {
+		// 消费级 x86 因超线程几乎都是偶数;奇数强烈指向虚拟机/容器,是机器人信号。
+		add("hardwareConcurrency", "CPU 核心数为奇数(真实消费级设备几乎都是偶数)", SeverityError, false)
+	} else if rec.HardwareConcurrency < 2 || rec.HardwareConcurrency > 32 {
+		add("hardwareConcurrency", "CPU 核心数超出真实桌面范围 [2,32]", SeverityError, false)
 	}
+
+	// navigator.deviceMemory 规范上限为 8,真实 Chrome 永不报 16/32。
+	if rec.DeviceMemory > 0 && rec.DeviceMemory > 8 {
+		add("deviceMemory", "deviceMemory 超过规范上限 8", SeverityError, false)
+	}
+
 	if len(rec.Languages) == 0 {
 		add("languages", "缺少语言列表", SeverityWarning, false)
 	}
@@ -150,6 +166,15 @@ func majorVersion(v string) string {
 		return v[:i]
 	}
 	return v
+}
+
+// BuiltinKernelMajors 是当前内置的 fingerprint-chromium 内核大版本集合。
+// 随内置内核演进(增减版本)同步更新;池记录 UA 主版本必须落在该集合内,保证与引擎一致。
+var BuiltinKernelMajors = map[string]bool{"148": true, "144": true}
+
+// isBuiltinKernelMajor 判断大版本串是否为已内置内核版本。
+func isBuiltinKernelMajor(major string) bool {
+	return BuiltinKernelMajors[strings.TrimSpace(major)]
 }
 
 // uaMatchesPlatform 判断 UA 是否包含与平台一致的 OS 标记。

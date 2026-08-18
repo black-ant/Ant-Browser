@@ -158,6 +158,10 @@ func normalizeConfig(config *Config) {
 	if config.Browser.Cores == nil {
 		config.Browser.Cores = []BrowserCore{}
 	}
+	if len(config.Browser.KernelDistribution) == 0 {
+		// 默认 148:144 = 70:30(贴近真实 Chrome 人群)。
+		config.Browser.KernelDistribution = map[string]int{"148": 70, "144": 30}
+	}
 	if config.Browser.Proxies == nil {
 		config.Browser.Proxies = []BrowserProxy{}
 	}

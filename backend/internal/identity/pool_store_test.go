@@ -9,10 +9,10 @@ import (
 func validPoolRecord() PoolRecord {
 	return PoolRecord{
 		Platform:            "macos",
-		BrandVersion:        "146.0.0.0",
-		UAFull:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+		BrandVersion:        "148.0.0.0",
+		UAFull:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
 		HardwareConcurrency: 10,
-		DeviceMemory:        16,
+		DeviceMemory:        8,
 		Screen:              Screen{Width: 1512, Height: 982, DevicePixelRatio: 2, ColorDepth: 30},
 		WindowSize:          "1512,900",
 		Languages:           []string{"en-US", "en"},
@@ -141,9 +141,9 @@ func TestValidatePoolRecord(t *testing.T) {
 	if r := ValidatePoolRecord(validPoolRecord()); !r.OK {
 		t.Errorf("合法记录应通过,却有问题: %+v", r.Issues)
 	}
-	// UA 版本与 brandVersion 不一致 → error。
+	// UA 版本与 brandVersion 不一致 → error(UA=148, brand=144,均合法但矛盾)。
 	bad := validPoolRecord()
-	bad.BrandVersion = "145.0.0.0" // UA 是 146
+	bad.BrandVersion = "144.0.0.0" // UA 是 148
 	r := ValidatePoolRecord(bad)
 	if r.OK {
 		t.Error("UA↔brandVersion 不一致应判 error")

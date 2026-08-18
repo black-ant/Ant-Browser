@@ -47,7 +47,7 @@ func TestCreateBatchThreadsPlatformIntoProfiles(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	manager.IdentityService = newTestIdentityService(t)
 
-	created, err := manager.CreateBatch("mac", 5, 1, "macos", ProfileInput{})
+	created, err := manager.CreateBatch("mac", 5, 1, "macos", "auto", ProfileInput{})
 	if err != nil {
 		t.Fatalf("CreateBatch: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestCreateBatchThreadsPlatformIntoProfiles(t *testing.T) {
 	}
 
 	// platform="" 时应等价全平台(不强制 macos),回归验证不影响既有无平台批量创建路径。
-	createdAny, err := manager.CreateBatch("any", 3, 1, "", ProfileInput{})
+	createdAny, err := manager.CreateBatch("any", 3, 1, "", "auto", ProfileInput{})
 	if err != nil {
 		t.Fatalf("CreateBatch(platform=\"\"): %v", err)
 	}
@@ -90,7 +90,7 @@ func TestCreateBatchRejectsInvalidPlatform(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	manager.IdentityService = newTestIdentityService(t)
 
-	created, err := manager.CreateBatch("bad", 3, 1, "linux", ProfileInput{})
+	created, err := manager.CreateBatch("bad", 3, 1, "linux", "auto", ProfileInput{})
 	if err == nil {
 		t.Fatal("expected error for unsupported platform \"linux\", got nil")
 	}
@@ -108,7 +108,7 @@ func TestCreateBatchNormalizesPlatformCase(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	manager.IdentityService = newTestIdentityService(t)
 
-	created, err := manager.CreateBatch("mixedcase", 1, 1, "MacOS", ProfileInput{})
+	created, err := manager.CreateBatch("mixedcase", 1, 1, "MacOS", "auto", ProfileInput{})
 	if err != nil {
 		t.Fatalf("expected \"MacOS\" to normalize to \"macos\" and succeed, got error: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestCreateBatchHardFailsWhenPlatformPoolEmpty(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	manager.IdentityService = newTestIdentityServiceWithOverlay(t, overlay)
 
-	created, err := manager.CreateBatch("empty", 2, 1, "macos", ProfileInput{})
+	created, err := manager.CreateBatch("empty", 2, 1, "macos", "auto", ProfileInput{})
 	if err == nil {
 		t.Fatalf("expected error when macos pool is empty, got silent success with %d profiles", len(created))
 	}

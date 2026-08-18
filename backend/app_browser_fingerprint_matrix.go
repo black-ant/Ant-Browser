@@ -138,6 +138,8 @@ func (a *App) buildBrowserFingerprintCapabilityReport(profileId string, coreId s
 	}
 
 	plan := buildBrowserFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+	// 权威层:UA / UA-CH 版本以内核真实版本为准,覆盖身份里烘焙的版本,保证与引擎一致。
+	plan.launchArgs = overrideUAToKernelVersion(plan.launchArgs, chromeVersion)
 	report := BrowserFingerprintCapabilityReport{
 		ProfileId:     profileId,
 		ChromeVersion: chromeVersion,

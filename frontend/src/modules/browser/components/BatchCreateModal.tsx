@@ -5,6 +5,7 @@ import { Button, FormItem, Input, Modal } from '../../../shared/components'
 const MAX_BATCH = 200
 
 type IdentityPlatform = '' | 'windows' | 'macos'
+type KernelSelect = 'auto' | 'all148' | 'all144'
 
 interface BatchCreateModalProps {
   open: boolean
@@ -15,6 +16,7 @@ interface BatchCreateModalProps {
     count: number,
     startIndex: number,
     platform: string,
+    kernel: string,
     liveKeepaliveEnabled: boolean,
     muteAudio: boolean,
   ) => void
@@ -27,6 +29,7 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
   const [count, setCount] = useState(10)
   const [startIndex, setStartIndex] = useState(1)
   const [platform, setPlatform] = useState<IdentityPlatform>('')
+  const [kernel, setKernel] = useState<KernelSelect>('auto')
   const [liveKeepalive, setLiveKeepalive] = useState(true)
   const [muteAudio, setMuteAudio] = useState(true)
 
@@ -53,7 +56,7 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
         <>
           <Button variant="secondary" onClick={onClose} disabled={loading}>取消</Button>
           <Button
-            onClick={() => onSubmit(trimmedPrefix, safeCount, safeStart, platform, liveKeepalive, muteAudio)}
+            onClick={() => onSubmit(trimmedPrefix, safeCount, safeStart, platform, kernel, liveKeepalive, muteAudio)}
             loading={loading}
             disabled={!canSubmit}
           >
@@ -95,6 +98,18 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
             <option value="">全部平台</option>
             <option value="windows">Windows</option>
             <option value="macos">macOS</option>
+          </select>
+        </FormItem>
+
+        <FormItem label="内核版本" hint="UA 与引擎版本一致;默认按真实人群分布(148 为主、144 少数)">
+          <select
+            value={kernel}
+            onChange={(event) => setKernel(event.target.value as KernelSelect)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-input)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+          >
+            <option value="auto">自动分布(148 为主,推荐)</option>
+            <option value="all148">全部 148</option>
+            <option value="all144">全部 144</option>
           </select>
         </FormItem>
 

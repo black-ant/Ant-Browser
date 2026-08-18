@@ -11,7 +11,7 @@ func TestCreateBatchGeneratesSequentialUniqueEnvironments(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	manager.IdentityService = newTestIdentityService(t)
 
-	created, err := manager.CreateBatch("test", 3, 1, "", ProfileInput{})
+	created, err := manager.CreateBatch("test", 3, 1, "", "auto", ProfileInput{})
 	if err != nil {
 		t.Fatalf("CreateBatch: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestCreateBatchStartIndexAndPadding(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	manager.IdentityService = newTestIdentityService(t)
 
-	created, err := manager.CreateBatch("env", 2, 9, "", ProfileInput{})
+	created, err := manager.CreateBatch("env", 2, 9, "", "auto", ProfileInput{})
 	if err != nil {
 		t.Fatalf("CreateBatch: %v", err)
 	}
@@ -57,13 +57,13 @@ func TestCreateBatchValidation(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	manager.IdentityService = newTestIdentityService(t)
 
-	if _, err := manager.CreateBatch("   ", 3, 1, "", ProfileInput{}); err == nil {
+	if _, err := manager.CreateBatch("   ", 3, 1, "", "auto", ProfileInput{}); err == nil {
 		t.Fatal("expected error for empty prefix")
 	}
-	if _, err := manager.CreateBatch("x", 0, 1, "", ProfileInput{}); err == nil {
+	if _, err := manager.CreateBatch("x", 0, 1, "", "auto", ProfileInput{}); err == nil {
 		t.Fatal("expected error for count 0")
 	}
-	if _, err := manager.CreateBatch("x", MaxBatchCreateCount+1, 1, "", ProfileInput{}); err == nil {
+	if _, err := manager.CreateBatch("x", MaxBatchCreateCount+1, 1, "", "auto", ProfileInput{}); err == nil {
 		t.Fatal("expected error for count over max")
 	}
 }

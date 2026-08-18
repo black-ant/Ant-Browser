@@ -9,6 +9,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -214,16 +217,46 @@ func (a *App) scanChromeDir(chromeRoot string) []browser.Core {
 		if _, _, ok := browser.FindCoreExecutable(absCoreDir); !ok {
 			continue // 没有浏览器可执行文件，跳过
 		}
-		isDefault := len(cores) == 0
 		cores = append(cores, browser.Core{
-			CoreId:    fmt.Sprintf("core-%s", entry.Name()),
-			CoreName:  fmt.Sprintf("Chrome %s", entry.Name()),
-			CorePath:  subPath,
-			IsDefault: isDefault,
+			CoreId:   fmt.Sprintf("core-%s", entry.Name()),
+			CoreName: fmt.Sprintf("Chrome %s", entry.Name()),
+			CorePath: subPath,
 		})
 		log.Debug("发现内核", logger.F("name", entry.Name()), logger.F("path", subPath))
 	}
+	// 默认内核取"最高版本"（如 148 优先于 144），而非字典序首个，
+	// 避免多内核并存时把较老版本误选为默认。
+	sort.SliceStable(cores, func(i, j int) bool {
+		return coreDirVersionRank(cores[i].CorePath) > coreDirVersionRank(cores[j].CorePath)
+	})
+	for i := range cores {
+		cores[i].IsDefault = i == 0
+	}
 	return cores
+}
+
+// coreDirVersionRank 从内核目录名解析可比较的版本数值（用于"最高版本为默认"排序）。
+// 目录名形如 "fingerprint-chromium-148"、"148" 或 "148.0.7778.215":
+// 取末尾数字版本段(fingerprint-chromium-148 → 148),非数字段视为 0。
+var coreDirVersionRe = regexp.MustCompile(`(\d+)(\.\d+)*\s*$`)
+
+func coreDirVersionRank(corePath string) int64 {
+	name := filepath.Base(strings.TrimSpace(corePath))
+	m := coreDirVersionRe.FindString(name)
+	if m == "" {
+		return 0
+	}
+	parts := strings.Split(strings.TrimSpace(m), ".")
+	var rank int64
+	for k := 0; k < 4; k++ {
+		rank *= 100000
+		if k < len(parts) {
+			if n, err := strconv.Atoi(strings.TrimSpace(parts[k])); err == nil && n > 0 {
+				rank += int64(n)
+			}
+		}
+	}
+	return rank
 }
 
 // ============================================================================
