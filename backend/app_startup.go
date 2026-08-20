@@ -50,6 +50,9 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	a.startupInitManagers(cfg, db)
+	// Recover browser/gateway pairs before the LaunchServer starts serving
+	// requests, so a restarted controller can still hot-switch live profiles.
+	a.reconcileProfileRuntimeFromGateway()
 	a.startupInitLaunchCode(log)
 	a.startupInitLaunchServer(log)
 	a.startupInitAutomation()
