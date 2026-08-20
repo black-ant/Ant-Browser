@@ -36,6 +36,7 @@ logging:
             - secret
 browser:
     user_data_root: data
+    local_country: CN
     default_fingerprint_args:
         - --fingerprint-brand=Chrome
         - --fingerprint-platform=windows
@@ -48,9 +49,19 @@ browser:
     default_start_urls: []
     light_start_enabled: true
     restore_last_session: false
+    live_keepalive_interval_min_ms: 60000
+    live_keepalive_interval_max_ms: 90000
     start_ready_timeout_ms: 3000
     start_stable_window_ms: 1200
+    cores:
+        - core_id: core-fingerprint-chromium-148
+          core_name: Chrome fingerprint-chromium-148
+          core_path: chrome/fingerprint-chromium-148
+          is_default: true
     default_connector_type: xray
+    kernel_distribution:
+        "144": 30
+        "148": 70
 proxy_check:
     bridge_start_timeout_ms: 15000
     speed_target_id: ""

@@ -368,3 +368,5 @@ export function UpdateGroup(arg1:string,arg2:browser.GroupInput):Promise<browser
 export function ValidateProxyConfig(arg1:string,arg2:string):Promise<backend.ProxyValidationResult>;
 
 export function WaitInstanceDebugReady(arg1:string,arg2:number,arg3:time.Duration):Promise<browser.Profile>;
+
+export function BrowserWindowsTile(arg1:Array<string>):Promise<{total:number;tiled:number;failed:number;errors:string[]}>;

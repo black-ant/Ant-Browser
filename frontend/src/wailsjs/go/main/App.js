@@ -717,3 +717,7 @@ export function ValidateProxyConfig(arg1, arg2) {
 export function WaitInstanceDebugReady(arg1, arg2, arg3) {
   return window['go']['main']['App']['WaitInstanceDebugReady'](arg1, arg2, arg3);
 }
+
+export function BrowserWindowsTile(arg1) {
+  return window['go']['main']['App']['BrowserWindowsTile'](arg1);
+}

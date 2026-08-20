@@ -128,5 +128,10 @@ export async function tileBrowserWindows(profileIds: string[]): Promise<WindowTi
   if (bindings?.BrowserWindowsTile) {
     return await bindings.BrowserWindowsTile(profileIds)
   }
+  // 静态 wailsjs 绑定文件滞后时(启动带 -skipbindings),直接走运行时注入的 window.go
+  const goApp = (globalThis as any).go?.main?.App
+  if (goApp?.BrowserWindowsTile) {
+    return await goApp.BrowserWindowsTile(profileIds)
+  }
   throw new Error('当前环境不支持窗口平铺')
 }
