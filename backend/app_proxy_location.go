@@ -71,14 +71,46 @@ func (a *App) BrowserProxyResolveLocation(proxyId string) ProxyLocationResolveRe
 	}
 
 	if cached, ok := a.cachedProxyIPHealthResult(proxyId); ok && cached.Ok {
-		return buildProxyLocationResolveResult(proxyId, cached, "cache", resolvedAt)
+		if result := buildProxyLocationResolveResult(proxyId, a.fillMissingGeoFromMMDB(cached), "cache", resolvedAt); result.Ok {
+			return result
+		}
+		// 缓存虽然 Ok 但解不出定位(如旧版检测端点没返回国家字段)——
+		// 不能被这种坏缓存永久卡死,忽略缓存重新检测一次。
 	}
 
 	health := a.BrowserProxyCheckIPHealth(proxyId)
 	if !health.Ok {
 		return ProxyLocationResolveResult{ProxyId: proxyId, Ok: false, Auto: false, Source: health.Source, Error: health.Error, Health: &health, ResolvedAt: resolvedAt}
 	}
-	return buildProxyLocationResolveResult(proxyId, health, "ip_health", resolvedAt)
+	return buildProxyLocationResolveResult(proxyId, a.fillMissingGeoFromMMDB(health), "ip_health", resolvedAt)
+}
+
+// fillMissingGeoFromMMDB 在健康检查拿到了出口 IP 但国家字段缺失/无法识别时,
+// 用应用内置的离线 GeoIP 库(data/geoip/dbip-city-lite.mmdb)兜底补出国家码与城市。
+func (a *App) fillMissingGeoFromMMDB(health ProxyIPHealthResult) ProxyIPHealthResult {
+	if a == nil || a.geoResolver == nil {
+		return health
+	}
+	ip := strings.TrimSpace(health.IP)
+	if ip == "" || resolveProxyLocationCountryCode(health) != "" {
+		return health
+	}
+	info, err := a.geoResolver.Resolve(ip)
+	if err != nil || strings.TrimSpace(info.CountryCode) == "" {
+		return health
+	}
+	if health.RawData == nil {
+		health.RawData = map[string]interface{}{}
+	}
+	health.RawData["countryCode"] = info.CountryCode
+	health.RawData["_geoFallback"] = "local_mmdb"
+	if strings.TrimSpace(health.Country) == "" {
+		health.Country = info.CountryCode
+	}
+	if strings.TrimSpace(health.City) == "" {
+		health.City = info.City
+	}
+	return health
 }
 
 func (a *App) cachedProxyIPHealthResult(proxyId string) (ProxyIPHealthResult, bool) {
@@ -120,7 +152,11 @@ func buildProxyLocationResolveResult(proxyId string, health ProxyIPHealthResult,
 		ResolvedAt: resolvedAt,
 	}
 	if !ok {
-		result.Error = fmt.Sprintf("无法根据地区自动匹配定位：%s %s", strings.TrimSpace(health.Country), strings.TrimSpace(health.City))
+		detail := strings.TrimSpace(strings.TrimSpace(health.Country) + " " + strings.TrimSpace(health.City))
+		if detail == "" {
+			detail = fmt.Sprintf("检测目标未返回国家信息（出口 IP %s，来源 %s），请手动选择定位或重新检测", strings.TrimSpace(health.IP), strings.TrimSpace(health.Source))
+		}
+		result.Error = "无法根据地区自动匹配定位：" + detail
 		result.Alternates = defaultProxyLocationOptions()
 	}
 	return result

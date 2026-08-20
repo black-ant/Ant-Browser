@@ -138,6 +138,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 		// 若离线 GeoIP 库存在,启用代理地理对齐;缺库则优雅降级为不对齐。
 		if res, err := identity.OpenMMDBResolver(a.resolveAppPath("data/geoip/dbip-city-lite.mmdb")); err == nil {
 			idSvc.SetGeoResolver(res)
+			a.geoResolver = res // 代理定位解析在健康检查缺国家字段时用它离线兜底
 		}
 	}
 

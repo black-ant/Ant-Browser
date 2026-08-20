@@ -5,6 +5,7 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/database"
+	"ant-chrome/backend/internal/identity"
 	"ant-chrome/backend/internal/launchcode"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
@@ -34,6 +35,7 @@ type App struct {
 	launchServer   *launchcode.LaunchServer
 	automationMgr  *automation.Manager
 	speedScheduler *browser.ProxySpeedScheduler
+	geoResolver    *identity.MMDBResolver
 	appRoot        string
 	version        string
 

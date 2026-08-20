@@ -19,6 +19,22 @@ func TestParseIPHealthBodyCloudflareTraceMapsLocToCountryCode(t *testing.T) {
 }
 
 // 回归:默认测速回退链必须含国内可达目标(miui/baidu),否则中国出口代理测速必失败。
+// 回归:ip-api.com 的出口 IP 在 query 字段而非 ip,parser 必须把它提升为 ip 键,
+// 否则回退链以 ip 非空判成功 → 地理字段最全的 ip-api 目标永远被误判为失败。
+func TestParseIPHealthBodyPromotesIPAPIQueryToIP(t *testing.T) {
+	body := []byte(`{"status":"success","country":"China","countryCode":"CN","city":"Suzhou","query":"36.103.196.79"}`)
+	got, err := parseIPHealthBody(body, "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["ip"] != "36.103.196.79" {
+		t.Fatalf("ip: got %q want 36.103.196.79 (应从 query 提升)", got["ip"])
+	}
+	if got["countryCode"] != "CN" {
+		t.Fatalf("countryCode: got %q want CN", got["countryCode"])
+	}
+}
+
 func TestDefaultSpeedTestURLChainContainsDomesticTargets(t *testing.T) {
 	urls := speedTestTargetURLs(nil)
 	wantAny := []string{"http://connect.rom.miui.com/generate_204", "http://www.baidu.com/favicon.ico"}

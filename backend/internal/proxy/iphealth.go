@@ -196,6 +196,13 @@ func parseIPHealthBody(body []byte, parser string) (map[string]interface{}, erro
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
+	// ip-api.com 把出口 IP 放在 query 字段而非 ip;不提升的话回退链会把
+	// 这个地理字段最全的目标误判为失败(链上以 ip 字段非空作为成功标准)。
+	if mapString(result, "ip") == "" {
+		if query := mapString(result, "query"); query != "" {
+			result["ip"] = query
+		}
+	}
 	return result, nil
 }
 
