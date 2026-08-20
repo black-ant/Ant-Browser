@@ -136,3 +136,6 @@ build/windows/installer/config.yaml
 build/windows/installer/bin/
 build/windows/installer/tmp/
 backend/internal/identity/data/*.bak-*
+
+# dev 模式运行时锁文件(AppRoot=仓库根目录时生成)
+app-instance.lock
