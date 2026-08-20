@@ -350,6 +350,10 @@ export function BrowserProfileListByTag(arg1) {
   return window['go']['main']['App']['BrowserProfileListByTag'](arg1);
 }
 
+export function BrowserProfileSwitchProxy(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProfileSwitchProxy'](arg1, arg2);
+}
+
 export function BrowserProfilePackageExport(arg1) {
   return window['go']['main']['App']['BrowserProfilePackageExport'](arg1);
 }
@@ -388,6 +392,18 @@ export function BrowserProfileTrashList() {
 
 export function BrowserProfileUpdate(arg1, arg2) {
   return window['go']['main']['App']['BrowserProfileUpdate'](arg1, arg2);
+}
+
+export function BrowserProxyGatewayStatus(arg1) {
+  return window['go']['main']['App']['BrowserProxyGatewayStatus'](arg1);
+}
+
+export function BrowserProxyRoutingGet(arg1) {
+  return window['go']['main']['App']['BrowserProxyRoutingGet'](arg1);
+}
+
+export function BrowserProxyRoutingSave(arg1, arg2, arg3) {
+  return window['go']['main']['App']['BrowserProxyRoutingSave'](arg1, arg2, arg3);
 }
 
 export function BrowserProxyBatchCheckIPHealth(arg1, arg2) {

@@ -3,7 +3,10 @@ package backend
 import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
+	"ant-chrome/backend/internal/gateway"
 	"ant-chrome/backend/internal/logger"
+	"ant-chrome/backend/internal/proxy"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -20,7 +23,52 @@ type BrowserCoreExtendedInfo = browser.CoreExtendedInfo
 type BrowserProfileCopyOptions = browser.ProfileCopyOptions
 
 // BrowserProfileList 获取所有实例列表
-func (a *App) BrowserProfileList() []BrowserProfile { return a.browserMgr.List() }
+func (a *App) BrowserProfileList() []BrowserProfile {
+	a.reconcileProfileRuntimeFromGateway()
+	return a.browserMgr.List()
+}
+
+func (a *App) reconcileProfileRuntimeFromGateway() {
+	if a == nil || a.browserMgr == nil {
+		return
+	}
+	statuses := a.existingProxyGatewayStatuses()
+	if len(statuses) == 0 {
+		return
+	}
+	type recoveredRuntime struct {
+		profileID string
+		pid       int
+		debugPort int
+	}
+	recovered := make([]recoveredRuntime, 0, len(statuses))
+	for _, status := range statuses {
+		alive := status.BrowserDebugPort > 0 && canConnectDebugPort(status.BrowserDebugPort, 250*time.Millisecond)
+		if !alive && status.BrowserPID > 0 {
+			alive = isProcessAlive(status.BrowserPID)
+		}
+		if alive {
+			recovered = append(recovered, recoveredRuntime{
+				profileID: strings.TrimSpace(status.ProfileID),
+				pid:       status.BrowserPID,
+				debugPort: status.BrowserDebugPort,
+			})
+		}
+	}
+	if len(recovered) == 0 {
+		return
+	}
+	a.browserMgr.InitData()
+	a.browserMgr.Mutex.Lock()
+	defer a.browserMgr.Mutex.Unlock()
+	for _, runtimeState := range recovered {
+		profile := a.browserMgr.Profiles[runtimeState.profileID]
+		if profile == nil || profile.Running {
+			continue
+		}
+		a.markProfileRunningLocked(runtimeState.profileID, profile, nil, runtimeState.pid, runtimeState.debugPort, runtimeState.debugPort > 0, "")
+	}
+}
 
 // BrowserProfileListByTag 按标签筛选实例列表
 func (a *App) BrowserProfileListByTag(tag string) []BrowserProfile {
@@ -42,10 +90,119 @@ func (a *App) BrowserProfileCreate(input BrowserProfileInput) (*BrowserProfile, 
 }
 
 func (a *App) BrowserProfileUpdate(profileId string, input BrowserProfileInput) (*BrowserProfile, error) {
-	return a.browserMgr.Update(profileId, input)
+	current := a.profileForGatewayUpdate(profileId)
+	if current == nil {
+		return nil, fmt.Errorf("profile not found")
+	}
+	proxyChanged := strings.TrimSpace(current.ProxyId) != strings.TrimSpace(input.ProxyId) ||
+		strings.TrimSpace(current.ProxyConfig) != strings.TrimSpace(input.ProxyConfig)
+	var switched bool
+	if current.Running && proxyChanged {
+		if _, err := a.switchProfileGateway(profileId, input.ProxyId, input.ProxyConfig, false); err != nil {
+			return nil, fmt.Errorf("运行中代理切换失败，原代理保持不变：%w", err)
+		}
+		switched = true
+	}
+	updated, err := a.browserMgr.Update(profileId, input)
+	if err != nil && switched {
+		_, _ = a.switchProfileGateway(profileId, current.ProxyId, current.ProxyConfig, false)
+	}
+	return updated, err
 }
 
-func (a *App) BrowserProfileDelete(profileId string) error { return a.browserMgr.Delete(profileId) }
+func (a *App) BrowserProfileSwitchProxy(profileId string, input BrowserProxySwitchInput) (*BrowserProxySwitchResult, error) {
+	current := a.profileForGatewayUpdate(profileId)
+	if current == nil {
+		return nil, fmt.Errorf("profile not found")
+	}
+	proxies := a.getLatestProxies()
+	resolvedID, resolvedConfig, err := resolveTemporaryBrowserStartProxy(input.ProxyID, input.ProxyConfig, proxies)
+	if err != nil {
+		return nil, err
+	}
+	if supported, message := proxy.ValidateProxyConfig(resolvedConfig, proxies, resolvedID); !supported {
+		return nil, fmt.Errorf("invalid proxy configuration: %s", message)
+	}
+	status := ProxyGatewayStatus{ProfileID: profileId, Mode: a.proxyRoutingConfig(profileId).Mode, CurrentRouteID: resolvedID}
+	if current.Running {
+		status, err = a.switchProfileGateway(profileId, resolvedID, resolvedConfig, input.Force)
+		if err != nil {
+			return nil, fmt.Errorf("热切换失败，原代理保持不变：%w", err)
+		}
+	}
+	updated, err := a.browserMgr.Update(profileId, browserProfileInputWithProxy(current, resolvedID, resolvedConfig))
+	if err != nil {
+		if current.Running {
+			_, _ = a.switchProfileGateway(profileId, current.ProxyId, current.ProxyConfig, false)
+		}
+		return nil, err
+	}
+	return &BrowserProxySwitchResult{Profile: updated, Gateway: status, AppliedLive: current.Running}, nil
+}
+
+func (a *App) BrowserProfileDelete(profileId string) error {
+	profile := a.profileForGatewayUpdate(profileId)
+	if profile == nil {
+		return fmt.Errorf("profile not found")
+	}
+	if profile.Running {
+		return fmt.Errorf("running profile cannot be deleted")
+	}
+	if err := a.browserMgr.Delete(profileId); err != nil {
+		return err
+	}
+	a.stopProfileGateway(profileId)
+	return nil
+}
+
+func (a *App) BrowserProxyRoutingGet(profileId string) ProxyRoutingConfig {
+	return a.proxyRoutingConfig(profileId)
+}
+
+func (a *App) BrowserProxyRoutingSave(profileId string, input ProxyRoutingConfig, force bool) (*ProxyGatewayStatus, error) {
+	profile := a.profileForGatewayUpdate(profileId)
+	if profile == nil {
+		return nil, fmt.Errorf("profile not found")
+	}
+	if err := gateway.ValidateRoutingConfig(input); err != nil {
+		return nil, err
+	}
+	previous := a.proxyRoutingConfig(profileId)
+	normalized := gateway.NormalizeRoutingConfig(input)
+	status := ProxyGatewayStatus{ProfileID: profileId, Mode: normalized.Mode, CurrentRouteID: profile.ProxyId}
+	if profile.Running {
+		client, err := a.ensureProxyGatewayClient()
+		if err != nil {
+			return nil, err
+		}
+		status, err = client.updateRouting(proxyGatewayProfileRequest{ProfileID: profileId, Routing: normalized, Force: force})
+		if err != nil {
+			return nil, fmt.Errorf("运行中分流规则应用失败，原规则保持不变：%w", err)
+		}
+	}
+	if _, err := a.saveProxyRoutingConfig(profileId, normalized); err != nil {
+		if profile.Running {
+			client, clientErr := a.ensureProxyGatewayClient()
+			if clientErr == nil {
+				_, _ = client.updateRouting(proxyGatewayProfileRequest{ProfileID: profileId, Routing: previous})
+			}
+		}
+		return nil, err
+	}
+	return &status, nil
+}
+
+func (a *App) BrowserProxyGatewayStatus(profileId string) (*ProxyGatewayStatus, error) {
+	client, err := a.ensureProxyGatewayClient()
+	if err != nil {
+		return nil, err
+	}
+	status, err := client.status(strings.TrimSpace(profileId))
+	if err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
 
 // BrowserProfileTrashList 获取回收站实例列表
 func (a *App) BrowserProfileTrashList() []BrowserProfile { return a.browserMgr.ListDeleted() }
@@ -57,7 +214,11 @@ func (a *App) BrowserProfileRestore(profileId string) (*BrowserProfile, error) {
 
 // BrowserProfilePermanentlyDelete 从回收站彻底删除实例
 func (a *App) BrowserProfilePermanentlyDelete(profileId string) error {
-	return a.browserMgr.PermanentlyDelete(profileId)
+	if err := a.browserMgr.PermanentlyDelete(profileId); err != nil {
+		return err
+	}
+	a.deleteProxyRoutingConfig(profileId)
+	return nil
 }
 
 // BrowserProfileTrashCleanup 清理超过保留期的回收站实例

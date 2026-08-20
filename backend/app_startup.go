@@ -50,6 +50,9 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	a.startupInitManagers(cfg, db)
+	// Recover browser/gateway pairs before the LaunchServer starts serving
+	// requests, so a restarted controller can still hot-switch live profiles.
+	a.reconcileProfileRuntimeFromGateway()
 	a.startupInitLaunchCode(log)
 	a.startupInitLaunchServer(log)
 	a.startupInitAutomation()
@@ -113,6 +116,7 @@ func (a *App) startupInitInterceptor(log *logger.Logger, cfg *config.Config) {
 		SensitiveFields: cfg.Logging.Interceptor.SensitiveFields,
 	}
 	a.interceptor = logger.NewMethodInterceptor(log, interceptorConfig)
+	a.interceptor.AddSensitiveField("proxyConfig")
 }
 
 func (a *App) startupInitDatabase(cfg *config.Config) (*database.DB, error) {
@@ -156,6 +160,7 @@ func (a *App) startupInitLaunchCode(log *logger.Logger) {
 func (a *App) startupInitLaunchServer(log *logger.Logger) {
 	port := a.config.LaunchServer.Port
 	a.launchServer = launchcode.NewLaunchServer(a.launchCodeSvc, a, a.browserMgr, port)
+	a.launchServer.SetProxyGatewayController(a.newLaunchProxyGatewayController())
 	a.launchServer.SetAPIAuthConfig(launchcode.APIAuthConfig{
 		Enabled: a.config.LaunchServer.Auth.Enabled,
 		APIKey:  a.config.LaunchServer.Auth.APIKey,

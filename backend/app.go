@@ -42,6 +42,8 @@ type App struct {
 	maintenanceMu          sync.Mutex
 	bridgeMu               sync.Mutex
 	profileBridgeRefs      map[string]profileProxyBridgeRef
+	proxyGatewayMu         sync.Mutex
+	proxyGateway           *proxyGatewayClient
 	deferredStartTargetsMu sync.Mutex
 	deferredStartTargets   map[string]deferredStartTargetsPlan
 	automationTargetMu     sync.Mutex

@@ -20,6 +20,7 @@ func (a *App) BrowserInstanceStop(profileId string) (*BrowserProfile, error) {
 	debugPort := profile.DebugPort
 	if tryCloseBrowserViaCDP(debugPort, 5*time.Second) {
 		a.markProfileStoppedLocked(profileId, profile)
+		a.stopProfileGateway(profileId)
 		log.Info("实例停止", logger.F("profile_id", profileId), logger.F("method", "cdp"), logger.F("debug_port", debugPort))
 		return profile, nil
 	}
@@ -40,6 +41,7 @@ func (a *App) BrowserInstanceStop(profileId string) (*BrowserProfile, error) {
 	}
 
 	a.markProfileStoppedLocked(profileId, profile)
+	a.stopProfileGateway(profileId)
 	log.Info("实例停止", logger.F("profile_id", profileId))
 	return profile, nil
 }

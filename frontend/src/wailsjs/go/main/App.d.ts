@@ -184,6 +184,8 @@ export function BrowserProfileList():Promise<Array<browser.Profile>>;
 
 export function BrowserProfileListByTag(arg1:string):Promise<Array<browser.Profile>>;
 
+export function BrowserProfileSwitchProxy(arg1:string,arg2:any):Promise<any>;
+
 export function BrowserProfilePackageExport(arg1:Array<string>):Promise<backend.ProfilePackageExportResult>;
 
 export function BrowserProfilePackageImport():Promise<backend.ProfilePackageImportResult>;
@@ -203,6 +205,12 @@ export function BrowserProfileTrashCleanup():Promise<void>;
 export function BrowserProfileTrashList():Promise<Array<browser.Profile>>;
 
 export function BrowserProfileUpdate(arg1:string,arg2:browser.ProfileInput):Promise<browser.Profile>;
+
+export function BrowserProxyGatewayStatus(arg1:string):Promise<any>;
+
+export function BrowserProxyRoutingGet(arg1:string):Promise<any>;
+
+export function BrowserProxyRoutingSave(arg1:string,arg2:any,arg3:boolean):Promise<any>;
 
 export function BrowserProxyBatchCheckIPHealth(arg1:Array<string>,arg2:number):Promise<Array<backend.ProxyIPHealthResult>>;
 

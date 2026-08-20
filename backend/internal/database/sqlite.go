@@ -218,6 +218,19 @@ var migrations = []migration{
 			`ALTER TABLE browser_profiles ADD COLUMN memory_limit_mb INTEGER NOT NULL DEFAULT 0`,
 		},
 	},
+	{
+		version: 15,
+		desc:    "添加实例代理分流规则",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_profile_proxy_routing (
+				profile_id TEXT PRIMARY KEY,
+				mode TEXT NOT NULL DEFAULT 'proxy',
+				rules_json TEXT NOT NULL DEFAULT '[]',
+				updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY (profile_id) REFERENCES browser_profiles(profile_id) ON DELETE CASCADE
+			)`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

@@ -142,6 +142,9 @@ func (a *App) setProfileDebugReady(profileId string, debugPort int) (*BrowserPro
 	if snapshot != nil && snapshot.DebugReady && a.launchServer != nil {
 		a.launchServer.SetActiveProfile(snapshot)
 	}
+	if snapshot != nil && snapshot.DebugReady {
+		a.attachProfileGateway(profileId, snapshot.Pid, snapshot.DebugPort)
+	}
 	return snapshot, changed
 }
 
