@@ -164,6 +164,9 @@ func (a *App) BrowserProxyRoutingSave(profileId string, input ProxyRoutingConfig
 	if profile == nil {
 		return nil, fmt.Errorf("profile not found")
 	}
+	if err := gateway.ValidateRoutingConfig(input); err != nil {
+		return nil, err
+	}
 	previous := a.proxyRoutingConfig(profileId)
 	normalized := gateway.NormalizeRoutingConfig(input)
 	status := ProxyGatewayStatus{ProfileID: profileId, Mode: normalized.Mode, CurrentRouteID: profile.ProxyId}
