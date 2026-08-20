@@ -9,8 +9,20 @@ const fingerprintCheckBookmarkUrl = 'ant://fingerprint-check'
 const isProtectedBookmark = (item: BrowserBookmark) =>
   item.url.trim().toLowerCase() === fingerprintCheckBookmarkUrl
 
+// 每行需要一个不随内容变化的稳定 key，否则编辑 URL 时 React 会重建整行导致输入框失焦
+type LocalBookmark = BrowserBookmark & { _key: string }
+
+let bookmarkKeySeq = 0
+const nextBookmarkKey = () => `bm-${Date.now()}-${bookmarkKeySeq++}`
+
+const withKeys = (list: BrowserBookmark[]): LocalBookmark[] =>
+  list.map(item => ({ ...item, _key: nextBookmarkKey() }))
+
+const stripKeys = (list: LocalBookmark[]): BrowserBookmark[] =>
+  list.map(({ _key, ...item }) => item)
+
 export function BookmarkSettingsPage() {
-  const [items, setItems] = useState<BrowserBookmark[]>([])
+  const [items, setItems] = useState<LocalBookmark[]>([])
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
@@ -18,7 +30,7 @@ export function BookmarkSettingsPage() {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
 
   useEffect(() => {
-    fetchBookmarks().then(setItems)
+    fetchBookmarks().then(list => setItems(withKeys(list)))
   }, [])
 
   const protectedItems = items
@@ -34,7 +46,7 @@ export function BookmarkSettingsPage() {
   }
 
   const handleAdd = () => {
-    setItems(prev => [...prev, { name: '', url: '', openOnStart: false }])
+    setItems(prev => [...prev, { name: '', url: '', openOnStart: false, _key: nextBookmarkKey() }])
   }
 
   const handleDelete = (index: number) => {
@@ -54,7 +66,7 @@ export function BookmarkSettingsPage() {
     }
     setSaving(true)
     try {
-      await saveBookmarks(items)
+      await saveBookmarks(stripKeys(items))
       const result = await syncBookmarksToProfiles()
       const parts = ['书签已保存']
       if (result.synced > 0) parts.push(`已同步 ${result.synced} 个已有实例`)
@@ -74,7 +86,7 @@ export function BookmarkSettingsPage() {
   const handleReset = async () => {
     await resetBookmarks()
     const fresh = await fetchBookmarks()
-    setItems(fresh)
+    setItems(withKeys(fresh))
     toast.success('已恢复默认书签')
   }
 
@@ -142,7 +154,7 @@ export function BookmarkSettingsPage() {
         <div className="space-y-2">
           {protectedItems.map(({ item, index }) => (
             <div
-              key={`${item.url}-${index}`}
+              key={item._key}
               className="flex items-center gap-2 p-2.5 rounded-xl bg-[var(--color-bg-muted)] shadow-[var(--shadow-sm)]"
             >
               <GripVertical className="w-4 h-4 text-[var(--color-text-muted)] opacity-40 shrink-0" />
@@ -177,7 +189,7 @@ export function BookmarkSettingsPage() {
         <div className="space-y-2">
           {regularItems.map(({ item, index }) => (
             <div
-              key={`${item.url}-${index}`}
+              key={item._key}
               draggable
               onDragStart={() => handleDragStart(index)}
               onDragOver={e => handleDragOver(e, index)}
