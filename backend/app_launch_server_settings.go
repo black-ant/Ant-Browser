@@ -62,6 +62,7 @@ func (a *App) restartLaunchServer(port int) error {
 	}
 
 	server := launchcode.NewLaunchServer(a.launchCodeSvc, a, a.browserMgr, port)
+	server.SetProxyGatewayController(a.newLaunchProxyGatewayController())
 	server.SetAPIAuthConfig(launchcode.APIAuthConfig{
 		Enabled: a.config.LaunchServer.Auth.Enabled,
 		APIKey:  a.config.LaunchServer.Auth.APIKey,

@@ -229,6 +229,52 @@ attach 前先看 active / debugReady / cdpUrl
 \`\`\`
 `
 
+export const DOC_API_PROXY_GATEWAY = `# 代理网关与热切换
+
+## 接口
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| \`POST\` | \`/api/proxy-gateway/switch\` | 热切换代理出口 |
+| \`GET / POST\` | \`/api/proxy-gateway/status\` | 查询网关和连接状态 |
+| \`GET\` | \`/api/proxy-gateway/routing\` | 读取分流配置 |
+| \`PUT\` | \`/api/proxy-gateway/routing\` | 保存并热应用分流配置 |
+
+每个运行实例都会使用一个独立的本地 SOCKS5 网关。代理切换后新连接立即使用新路由，旧连接默认自然排空；传 \`force=true\` 才会立即断开旧连接。代理拨号失败时不会回退直连。
+
+## 热切换
+
+\`\`\`bash
+curl -X POST http://127.0.0.1:19876/api/proxy-gateway/switch \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "selector": { "code": "BUYER_001" },
+    "proxyId": "proxy-us-new",
+    "force": false
+  }'
+\`\`\`
+
+## 规则模式
+
+\`mode\` 可选 \`proxy / rule / direct\`。规则按数组顺序匹配，\`action\` 可选 \`proxy / direct / block\`，\`matchType\` 可选 \`domain / domain_suffix / domain_keyword / ip_cidr\`。
+
+\`\`\`bash
+curl -X PUT http://127.0.0.1:19876/api/proxy-gateway/routing \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "selector": { "profileId": "550e8400-e29b-41d4-a716-446655440000" },
+    "routing": {
+      "mode": "rule",
+      "rules": [
+        { "id": "cn", "enabled": true, "matchType": "domain_suffix", "pattern": ".cn", "action": "direct" },
+        { "id": "track", "enabled": true, "matchType": "domain_keyword", "pattern": "tracker", "action": "block" }
+      ]
+    },
+    "force": false
+  }'
+\`\`\`
+`
+
 export const DOC_API_AUTOMATION = `# 脚本自动化
 
 ## 接口

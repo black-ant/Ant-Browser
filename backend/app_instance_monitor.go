@@ -66,6 +66,7 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 		a.markProfileStoppedLocked(profileId, profile)
 	}
 	a.browserMgr.Mutex.Unlock()
+	a.stopProfileGateway(profileId)
 
 	if a.ctx == nil {
 		return
@@ -117,6 +118,7 @@ func (a *App) waitDetachedBrowser(profileId string, debugPort int) {
 		profileName = profile.ProfileName
 		a.markProfileStoppedLocked(profileId, profile)
 		a.browserMgr.Mutex.Unlock()
+		a.stopProfileGateway(profileId)
 
 		log.Info("检测到浏览器调试端口关闭，实例已停止",
 			logger.F("profile_id", profileId),

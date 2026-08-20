@@ -291,7 +291,7 @@ func DefaultConfig() *Config {
 				Enabled:         true,
 				LogParameters:   true,
 				LogResults:      true,
-				SensitiveFields: []string{"password", "token", "secret"},
+				SensitiveFields: []string{"password", "token", "secret", "proxyConfig"},
 			},
 		},
 		LaunchServer: LaunchServerConfig{

@@ -32,6 +32,8 @@ type browserStartPlan struct {
 	effectiveProxy       string
 	acquiredProxyBridge  profileProxyBridgeRef
 	releaseProxyBridge   bool
+	preparedProxyGateway bool
+	releaseProxyGateway  bool
 	assignedDebugPort    int
 	startReadyTimeout    time.Duration
 	startStableWindow    time.Duration
@@ -67,6 +69,9 @@ func (plan *browserStartPlan) releaseBridgeIfNeeded(a *App) {
 	if plan.releaseProxyBridge {
 		a.releaseProxyBridgeRef(plan.acquiredProxyBridge)
 	}
+	if plan.releaseProxyGateway && plan.profile != nil {
+		a.stopProfileGateway(plan.profile.ProfileId)
+	}
 }
 
 func (a *App) resolveBrowserStartProfile(input browserStartInput) (*BrowserProfile, bool, error) {
@@ -91,6 +96,9 @@ func (a *App) resolveBrowserStartProfile(input browserStartInput) (*BrowserProfi
 			logger.F("debug_port", profile.DebugPort),
 		)
 		a.markProfileStoppedLocked(input.ProfileID, profile)
+		// The stale browser can no longer use its gateway. Stop it synchronously
+		// before preparing a replacement for the same profile ID.
+		a.stopProfileGateway(input.ProfileID)
 		return profile, false, nil
 	}
 
@@ -130,10 +138,11 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		return nil, err
 	}
 
-	effectiveProxy, acquiredProxyBridge, releaseProxyBridge, err := a.resolveBrowserStartProxy(input, profile)
+	gatewayStatus, err := a.prepareProfileProxyGateway(input, profile)
 	if err != nil {
 		return nil, err
 	}
+	effectiveProxy := gatewayStatus.ProxyURL
 
 	startReadyTimeout, startStableWindow := a.browserStartTimingSettings()
 	maxStartAttempts := browserStartAttemptCount()
@@ -153,6 +162,9 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 
 	assignedDebugPort, err := nextAvailablePort()
 	if err != nil {
+		// The gateway is prepared before the debug port so Chromium can receive
+		// its stable local endpoint. Release it when later preparation fails.
+		a.stopProfileGateway(input.ProfileID)
 		startErr := fmt.Errorf("实例启动失败：本地调试端口分配失败。原因：%v。请关闭占用端口的程序后重试。", err)
 		logger.New("Browser").Error("调试端口分配失败",
 			logger.F("profile_id", input.ProfileID),
@@ -172,8 +184,8 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		deferredStartTargets: deferredStartTargets,
 		deferredStartNewTabs: deferredStartNewTabs,
 		effectiveProxy:       effectiveProxy,
-		acquiredProxyBridge:  acquiredProxyBridge,
-		releaseProxyBridge:   releaseProxyBridge,
+		preparedProxyGateway: true,
+		releaseProxyGateway:  true,
 		assignedDebugPort:    assignedDebugPort,
 		startReadyTimeout:    startReadyTimeout,
 		startStableWindow:    startStableWindow,

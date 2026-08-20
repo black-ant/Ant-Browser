@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
+import { ChevronDown, ChevronUp, FolderOpen, GitBranch, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
 import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Textarea, toast } from '../../../shared/components'
 import type { BrowserCore, BrowserFingerprintCapabilityReport, BrowserFingerprintCapabilityRow, BrowserFingerprintCheckResult, BrowserProfileInput, BrowserProxy, BrowserGroup, ProxyLocationResolveResult } from '../types'
-import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, updateBrowserProfile, validateProxyConfig } from '../api'
+import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, switchBrowserProfileProxy, updateBrowserProfile, validateProxyConfig } from '../api'
 import { FingerprintPanel } from '../components/FingerprintPanel'
 import { applyLocaleToFingerprintArgs, validateFingerprintArgs, withAdaptiveDefaultWindowSize } from '../utils/fingerprintSerializer'
 import { TagInput } from '../components/TagInput'
 import { GroupSelector } from '../components/GroupSelector'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
+import { ProxyRoutingModal } from '../components/ProxyRoutingModal'
 
 const fallbackLowLaunchArgs = ['--disable-sync', '--no-first-run']
 const directProxyID = '__direct__'
@@ -260,6 +261,8 @@ export function BrowserEditPage() {
   const [allTags, setAllTags] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [proxyPickerOpen, setProxyPickerOpen] = useState(false)
+  const [proxyRoutingOpen, setProxyRoutingOpen] = useState(false)
+  const [profileRunning, setProfileRunning] = useState(false)
   const [proxyMode, setProxyMode] = useState<ProxySourceMode>('pool')
   const [isDirty, setIsDirty] = useState(false)
   const [leaveConfirm, setLeaveConfirm] = useState(false)
@@ -291,6 +294,7 @@ export function BrowserEditPage() {
       setGroups(groupList)
 
       if (isCreate) {
+        setProfileRunning(false)
         const resolved = resolvePoolProxySelection('', '', proxyList)
         setProxyMode('pool')
         setFormData((prev) => ({
@@ -306,6 +310,7 @@ export function BrowserEditPage() {
       const list = await fetchBrowserProfiles()
       const current = list.find(item => item.profileId === id)
       if (!current) return
+      setProfileRunning(current.running)
       const currentLaunchArgs = normalizeLaunchArgs(current.launchArgs)
       const normalizedCoreId = !current.coreId || current.coreId.toLowerCase() === 'default'
         ? ''
@@ -536,6 +541,24 @@ export function BrowserEditPage() {
     handleChange('proxyId', '')
   }
 
+  const handleProxyPicked = async (selected: BrowserProxy, options?: { force: boolean }) => {
+	setLocationResult(null)
+	if (!profileRunning || isCreate || !id) {
+		handleChange('proxyId', selected.proxyId)
+		return
+	}
+	try {
+		const result = await switchBrowserProfileProxy(id, selected.proxyId, '', options?.force === true)
+		setFormData(previous => ({ ...previous, proxyId: selected.proxyId, proxyConfig: '' }))
+		const draining = result.gateway?.drainingConnections || 0
+		toast.success(options?.force
+			? '代理已热切换，旧连接已强制断开'
+			: `代理已热切换${draining > 0 ? `，${draining} 条旧连接正在自然排空` : ''}`)
+	} catch (error: unknown) {
+		toast.error((error as Error)?.message || '代理热切换失败，原代理保持不变')
+	}
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -646,6 +669,18 @@ export function BrowserEditPage() {
                   <Layers className="w-4 h-4" />
                 </Button>
                 <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setProxyRoutingOpen(true)}
+                  disabled={isCreate}
+                  title={isCreate ? '请先创建实例' : '代理分流规则'}
+                  aria-label="代理分流规则"
+                >
+                  <GitBranch className="h-4 w-4" />
+                </Button>
+                <Button
                   variant="secondary"
                   size="sm"
                   className="shrink-0"
@@ -684,10 +719,20 @@ export function BrowserEditPage() {
       <ProxyPickerModal
         open={proxyPickerOpen}
         currentProxyId={formData.proxyId}
-        onSelect={proxy => { handleChange('proxyId', proxy.proxyId); setLocationResult(null) }}
+        profileRunning={profileRunning}
+        onSelect={(proxy, options) => { void handleProxyPicked(proxy, options) }}
         onProxyListUpdated={handleProxyListUpdated}
         onProxyDeleted={handleProxyDeleted}
+        onOpenRouting={isCreate ? undefined : () => setProxyRoutingOpen(true)}
         onClose={() => setProxyPickerOpen(false)}
+      />
+
+      <ProxyRoutingModal
+        open={proxyRoutingOpen && !isCreate}
+        profileId={id || ''}
+        profileName={formData.profileName}
+        running={profileRunning}
+        onClose={() => setProxyRoutingOpen(false)}
       />
 
       <Card

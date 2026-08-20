@@ -12,6 +12,7 @@ import (
 
 	"ant-chrome/backend/internal/automation"
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/gateway"
 	"ant-chrome/backend/internal/logger"
 )
 
@@ -85,6 +86,20 @@ type AutomationScriptRunLister interface {
 	AutomationScriptRunList(limit int) ([]automation.ScriptRunRecord, error)
 }
 
+// ProxyGatewayController 是可选的代理网关控制器。
+// LaunchServer 只依赖这组窄接口，因此不会把 App 层实现泄漏到 launchcode 包。
+type ProxyGatewayController interface {
+	SwitchProxy(profileID, proxyID, proxyConfig string, force bool) (ProxyGatewaySwitchResult, error)
+	GetRouting(profileID string) (gateway.RoutingConfig, error)
+	SaveRouting(profileID string, routing gateway.RoutingConfig, force bool) (gateway.Status, error)
+	Status(profileID string) (gateway.Status, error)
+}
+
+type ProxyGatewaySwitchResult struct {
+	Gateway     gateway.Status
+	AppliedLive bool
+}
+
 // LaunchCallRecord 接口调用记录
 type LaunchCallRecord struct {
 	Timestamp   string              `json:"timestamp"`
@@ -104,20 +119,21 @@ type LaunchCallRecord struct {
 
 // LaunchServer 本地 HTTP 唤起服务
 type LaunchServer struct {
-	service    *LaunchCodeService
-	starter    BrowserStarter
-	browserMgr *browser.Manager
-	port       int
-	server     *http.Server
-	mu         sync.Mutex
-	authMu     sync.RWMutex
-	logMu      sync.Mutex
-	callLogs   []LaunchCallRecord
-	activeMu   sync.RWMutex
-	activePort int
-	activeID   string
-	activeName string
-	apiAuth    APIAuthConfig
+	service      *LaunchCodeService
+	starter      BrowserStarter
+	browserMgr   *browser.Manager
+	port         int
+	server       *http.Server
+	mu           sync.Mutex
+	authMu       sync.RWMutex
+	logMu        sync.Mutex
+	callLogs     []LaunchCallRecord
+	activeMu     sync.RWMutex
+	activePort   int
+	activeID     string
+	activeName   string
+	apiAuth      APIAuthConfig
+	proxyGateway ProxyGatewayController
 }
 
 // NewLaunchServer 创建 LaunchServer
@@ -130,6 +146,19 @@ func NewLaunchServer(service *LaunchCodeService, starter BrowserStarter, mgr *br
 	}
 	srv.SetAPIAuthConfig(APIAuthConfig{})
 	return srv
+}
+
+// SetProxyGatewayController 注入可选的实例代理网关控制器。
+func (s *LaunchServer) SetProxyGatewayController(controller ProxyGatewayController) {
+	s.mu.Lock()
+	s.proxyGateway = controller
+	s.mu.Unlock()
+}
+
+func (s *LaunchServer) proxyGatewayController() ProxyGatewayController {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.proxyGateway
 }
 
 // Start 非阻塞启动 HTTP 服务。

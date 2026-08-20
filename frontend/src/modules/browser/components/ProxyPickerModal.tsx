@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, Search, Wifi, X } from 'lucide-react'
-import { ConfirmModal, toast } from '../../../shared/components'
+import { GitBranch, Plus, Search, Wifi, X } from 'lucide-react'
+import { ConfirmModal, Switch, toast } from '../../../shared/components'
 import type { BrowserProxy } from '../types'
 import { browserProxyBatchTestSpeed, browserProxyTestSpeed, fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
@@ -14,14 +14,16 @@ interface ProxyPickerModalProps {
   open: boolean
   currentProxyId: string
   title?: string
-  onSelect: (proxy: BrowserProxy) => void
+  profileRunning?: boolean
+  onSelect: (proxy: BrowserProxy, options?: { force: boolean }) => void
   onClose: () => void
+  onOpenRouting?: () => void
   onProxyListUpdated?: (proxies: BrowserProxy[]) => void
   onProxyDeleted?: (deletedProxyId: string, nextProxies: BrowserProxy[]) => void
   onProxyTested?: (proxyId: string, result: SpeedResult) => void
 }
 
-export function ProxyPickerModal({ open, currentProxyId, title = '从代理池选择', onSelect, onClose, onProxyListUpdated, onProxyDeleted, onProxyTested }: ProxyPickerModalProps) {
+export function ProxyPickerModal({ open, currentProxyId, title = '从代理池选择', profileRunning = false, onSelect, onClose, onOpenRouting, onProxyListUpdated, onProxyDeleted, onProxyTested }: ProxyPickerModalProps) {
   const [groups, setGroups] = useState<string[]>([])
   const [allProxies, setAllProxies] = useState<BrowserProxy[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUP)
@@ -39,6 +41,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
   const [chainEditForm, setChainEditForm] = useState<ChainEditForm>(INITIAL_CHAIN_EDIT_FORM)
   const [savingEdit, setSavingEdit] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<BrowserProxy | null>(null)
+  const [forceDisconnect, setForceDisconnect] = useState(false)
   const abortRef = useRef(false)
 
   const loadData = async () => {
@@ -76,6 +79,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     setTestingIds(new Set())
     setEditingProxy(null)
     setDeleteCandidate(null)
+    setForceDisconnect(false)
     abortRef.current = false
     void loadData()
     return () => { abortRef.current = true }
@@ -222,7 +226,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     if (!targetProxyId) return
     const selected = refreshed.find(proxy => proxy.proxyId === targetProxyId)
     if (!selected) return
-    onSelect(selected)
+    onSelect(selected, { force: profileRunning && forceDisconnect })
     onClose()
   }
 
@@ -297,7 +301,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
       onProxyListUpdated?.(nextProxies)
       if (editingProxy.proxyId === currentProxyId) {
         const updated = nextProxies.find(item => item.proxyId === currentProxyId)
-        if (updated) onSelect(updated)
+        if (updated) onSelect(updated, { force: profileRunning && forceDisconnect })
       }
       toast.success('代理已更新')
       closeEditModal()
@@ -403,7 +407,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
                     testing={testingIds.has(item.proxy.proxyId)}
                     speedResult={speedMap[item.proxy.proxyId]}
                     displayConfig={item.displayConfig}
-                    onSelect={() => { onSelect(item.proxy); onClose() }}
+                    onSelect={() => { onSelect(item.proxy, { force: profileRunning && forceDisconnect }); onClose() }}
                     onTest={e => testOne(item.proxy.proxyId, e)}
                     onEdit={e => handleEditClick(item.proxy, e)}
                     onDelete={e => handleDeleteClick(item.proxy, e)}
@@ -414,8 +418,24 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
           </div>
         </div>
 
-        <div className="px-5 py-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
-          共 {displayProxies.length} 条，点击行即选中
+        <div className="flex flex-wrap items-center gap-3 border-t border-[var(--color-border)] px-5 py-3 text-xs text-[var(--color-text-muted)]">
+          <span>共 {displayProxies.length} 条，点击行即选中</span>
+          {profileRunning && (
+            <label className="ml-auto flex items-center gap-2 text-[var(--color-text-secondary)]">
+              <Switch checked={forceDisconnect} onChange={setForceDisconnect} />
+              <span>立即断开旧连接</span>
+            </label>
+          )}
+          {onOpenRouting && (
+            <button
+              type="button"
+              onClick={() => { onOpenRouting(); onClose() }}
+              className={`${profileRunning ? '' : 'ml-auto'} flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]`}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              分流规则
+            </button>
+          )}
         </div>
       </div>
 

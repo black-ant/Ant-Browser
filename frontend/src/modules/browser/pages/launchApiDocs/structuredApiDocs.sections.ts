@@ -31,4 +31,15 @@ export const STRUCTURED_API_SECTION_DOCS: StructuredApiSectionDoc[] = [
       '详情只从表格进入。',
     ],
   },
+  {
+    id: 'api-proxy-gateway',
+    title: '代理网关与热切换',
+    intro: '每个运行实例有独立的本地 SOCKS5 网关。通过这些接口可以热切换出口、观察连接排空状态，并配置按域名或 IP 分流。',
+    highlights: [
+      '新连接使用新代理，旧连接默认自然排空；force=true 才会立即断开旧连接。',
+      '代理拨号失败时不会回退直连，避免流量逃逸。',
+      'routing 支持全部代理、规则分流、全部直连，以及 proxy / direct / block 动作。',
+      '网关端口由程序按实例动态分配，浏览器只需使用返回的本地 proxyUrl。',
+    ],
+  },
 ]

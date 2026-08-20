@@ -113,6 +113,7 @@ func (a *App) startupInitInterceptor(log *logger.Logger, cfg *config.Config) {
 		SensitiveFields: cfg.Logging.Interceptor.SensitiveFields,
 	}
 	a.interceptor = logger.NewMethodInterceptor(log, interceptorConfig)
+	a.interceptor.AddSensitiveField("proxyConfig")
 }
 
 func (a *App) startupInitDatabase(cfg *config.Config) (*database.DB, error) {
@@ -156,6 +157,7 @@ func (a *App) startupInitLaunchCode(log *logger.Logger) {
 func (a *App) startupInitLaunchServer(log *logger.Logger) {
 	port := a.config.LaunchServer.Port
 	a.launchServer = launchcode.NewLaunchServer(a.launchCodeSvc, a, a.browserMgr, port)
+	a.launchServer.SetProxyGatewayController(a.newLaunchProxyGatewayController())
 	a.launchServer.SetAPIAuthConfig(launchcode.APIAuthConfig{
 		Enabled: a.config.LaunchServer.Auth.Enabled,
 		APIKey:  a.config.LaunchServer.Auth.APIKey,

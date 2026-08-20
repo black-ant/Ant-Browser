@@ -70,6 +70,7 @@ func (a *App) BrowserInstanceOpenUrl(profileId string, targetUrl string) (bool, 
 		a.markProfileStoppedLocked(profileId, profile)
 		profile.LastError = "打开地址失败：检测到实例运行状态已失效，请先重新启动实例。"
 		a.browserMgr.Mutex.Unlock()
+		a.stopProfileGateway(profileId)
 
 		log.Warn("检测到实例运行状态已失效，取消复用打开地址",
 			logger.F("profile_id", profileId),

@@ -6,6 +6,7 @@ import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
 import { BrowserBackupModal } from '../components/BrowserBackupModal'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
+import { ProxyRoutingModal } from '../components/ProxyRoutingModal'
 import { ProfileExtensionModal } from '../components/ProfileExtensionModal'
 import { createBrowserProfileCopyOptions, isBrowserProfileCopyOptionsValid } from '../copyOptions'
 import { buildBrowserProfileCopyName } from '../copyName'
@@ -26,7 +27,7 @@ import {
   restoreBrowserProfile,
   startBrowserInstance,
   stopBrowserInstance,
-  updateBrowserProfile,
+  switchBrowserProfileProxy,
   openUserDataDir,
   exportFullBrowserBackup,
   importFullBrowserBackup,
@@ -76,6 +77,7 @@ export function BrowserListPage() {
   const closeExtensionModal = () => setExtensionModal({ open: false, profile: null })
 
   const [proxyPickerProfile, setProxyPickerProfile] = useState<BrowserProfile | null>(null)
+  const [routingProfile, setRoutingProfile] = useState<BrowserProfile | null>(null)
 
   // 复制弹窗
   const [copyModal, setCopyModal] = useState<{ open: boolean; profile: BrowserProfile | null }>({ open: false, profile: null })
@@ -486,23 +488,19 @@ export function BrowserListPage() {
   const copyConfirmDisabled =
     !copyName.trim() || !isBrowserProfileCopyOptionsValid(copyOptions)
 
-  const saveProfileProxy = async (profile: BrowserProfile, proxy: BrowserProxy) => {
+  const saveProfileProxy = async (profile: BrowserProfile, proxy: BrowserProxy, force = false) => {
     try {
-      const updated = await updateBrowserProfile(profile.profileId, {
-        profileName: profile.profileName,
-        userDataDir: profile.userDataDir,
-        coreId: profile.coreId,
-        fingerprintArgs: profile.fingerprintArgs,
-        proxyId: proxy.proxyId,
-        proxyConfig: '',
-        memoryLimitMb: profile.memoryLimitMb || 0,
-        launchArgs: profile.launchArgs,
-        tags: profile.tags,
-        keywords: profile.keywords || [],
-        groupId: profile.groupId || '',
-      })
-      mergeProfileState(updated || { ...profile, proxyId: proxy.proxyId, proxyConfig: '' })
-      toast.success('代理已切换')
+      const result = await switchBrowserProfileProxy(profile.profileId, proxy.proxyId, '', force)
+      mergeProfileState(result.profile || { ...profile, proxyId: proxy.proxyId, proxyConfig: '' })
+      if (!result.appliedLive) {
+        toast.success('代理配置已更新，将在下次启动时生效')
+      } else if (force) {
+        toast.success('代理已热切换，旧连接已断开')
+      } else if (result.gateway?.drainingConnections > 0) {
+        toast.success(`代理已热切换，${result.gateway.drainingConnections} 条旧连接正在排空`)
+      } else {
+        toast.success('代理已热切换，新连接已使用新代理')
+      }
     } catch (error: any) {
       toast.error(error?.message || '切换代理失败')
     }
@@ -602,14 +600,26 @@ export function BrowserListPage() {
         open={!!proxyPickerProfile}
         currentProxyId={proxyPickerProfile?.proxyId || directProxyID}
         title={proxyPickerProfile ? `切换代理：${proxyPickerProfile.profileName}` : '切换代理'}
-        onSelect={(proxy) => {
+        profileRunning={proxyPickerProfile?.running || false}
+        onSelect={(proxy, options) => {
           if (proxyPickerProfile) {
-            void saveProfileProxy(proxyPickerProfile, proxy)
+            void saveProfileProxy(proxyPickerProfile, proxy, options?.force || false)
           }
+        }}
+        onOpenRouting={() => {
+          if (proxyPickerProfile) setRoutingProfile(proxyPickerProfile)
         }}
         onProxyListUpdated={updateProxiesState}
         onProxyDeleted={handleProxyDeletedFromPicker}
         onClose={() => setProxyPickerProfile(null)}
+      />
+
+      <ProxyRoutingModal
+        open={!!routingProfile}
+        profileId={routingProfile?.profileId || ''}
+        profileName={routingProfile?.profileName}
+        running={routingProfile?.running || false}
+        onClose={() => setRoutingProfile(null)}
       />
 
       <ProfileExtensionModal

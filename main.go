@@ -147,6 +147,12 @@ func main() {
 	}
 
 	startupDebugEnabled := envFlagEnabled("ANT_BROWSER_DEBUG_STARTUP")
+	if handled, workerErr := backend.RunProxyGatewayWorkerFromArgs(appRoot, os.Args[1:]); handled {
+		if workerErr != nil {
+			log.Printf("代理网关工作进程退出: %v", workerErr)
+		}
+		return
+	}
 	if startupDebugEnabled {
 		log.Printf("应用根目录: %s (dev=%v)", appRoot, isDevMode)
 	}
