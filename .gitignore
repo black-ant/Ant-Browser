@@ -133,5 +133,6 @@ accounts.yml
 build/windows/installer/kernel/
 build/windows/installer/geoip/
 build/windows/installer/config.yaml
+build/windows/installer/bin/
 build/windows/installer/tmp/
 backend/internal/identity/data/*.bak-*

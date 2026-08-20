@@ -120,8 +120,11 @@ func main() {
 
 		exeDirLower := strings.ToLower(exeDir)
 		inTemp := strings.HasPrefix(exeDirLower, strings.ToLower(tempDir))
-		// wails dev 会把 exe 编译到 build/bin/ 目录
-		inBuildBin := strings.HasSuffix(filepath.ToSlash(exeDirLower), "/build/bin")
+		// wails dev 会把 exe 编译到 build/bin/ 目录;mac 下 exe 在
+		// build/bin/ZwBrowser.app/Contents/MacOS/ 内,路径含 /build/bin/ 但不以其结尾,
+		// 只匹配后缀会被误判为生产模式 → AppRoot 落到 .app 包内,仓库 bin/ 的 xray 等找不到。
+		exeDirSlash := filepath.ToSlash(exeDirLower)
+		inBuildBin := strings.HasSuffix(exeDirSlash, "/build/bin") || strings.Contains(exeDirSlash+"/", "/build/bin/")
 
 		if inTemp || inBuildBin {
 			// dev 模式：exe 在临时目录或 build/bin，使用 CWD 作为根目录

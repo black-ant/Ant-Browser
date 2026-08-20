@@ -100,6 +100,11 @@ Section
     SetOutPath "$INSTDIR\data\geoip"
     File "geoip\dbip-city-lite.mmdb"
 
+    ; --- 内置 xray:带账号密码的 socks5/http 代理必须经 xray 桥接为本地无鉴权代理,
+    ;     随装即用(构建期从仓库 bin/windows-amd64 staging 到 installer/bin) ---
+    SetOutPath "$INSTDIR\bin\windows-amd64"
+    File /r "bin\windows-amd64\*"
+
     ; --- 默认配置(仅首次安装写入,保留用户已有配置) ---
     SetOutPath "$INSTDIR"
     IfFileExists "$INSTDIR\config.yaml" zwSkipCfg
