@@ -5,6 +5,7 @@ import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } f
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BatchCreateModal } from '../components/BatchCreateModal'
 import { BatchTagModal } from '../components/BatchTagModal'
+import { BatchProxyModal } from '../components/BatchProxyModal'
 import { GroupOpsModal } from '../components/GroupOpsModal'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
 import { BrowserBackupModal } from '../components/BrowserBackupModal'
@@ -31,6 +32,7 @@ import {
   restoreBrowserProfile,
   startBrowserInstance,
   stopBrowserInstance,
+  tileBrowserWindows,
   updateBrowserProfile,
   openUserDataDir,
   exportFullBrowserBackup,
@@ -57,6 +59,8 @@ export function BrowserListPage() {
   const [batchCreating, setBatchCreating] = useState(false)
   const [tagModalOpen, setTagModalOpen] = useState(false)
   const [groupModalOpen, setGroupModalOpen] = useState(false)
+  const [proxyBatchOpen, setProxyBatchOpen] = useState(false)
+  const [tilingWindows, setTilingWindows] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
   const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [backupLoadingMode, setBackupLoadingMode] = useState<BackupLoadingMode>('none')
@@ -542,6 +546,24 @@ export function BrowserListPage() {
   }
 
 
+  const handleTileWindows = async () => {
+    setTilingWindows(true)
+    try {
+      const result = await tileBrowserWindows(Array.from(selectedIds))
+      const parts = [`已平铺 ${result.tiled} 个窗口`]
+      if (result.failed > 0) parts.push(`失败 ${result.failed} 个`)
+      if (result.failed > 0) {
+        toast.warning(parts.join('，'))
+      } else {
+        toast.success(parts.join('，'))
+      }
+    } catch (error: any) {
+      toast.error(error?.message || '窗口平铺失败')
+    } finally {
+      setTilingWindows(false)
+    }
+  }
+
   const handleBatchCreate = async (
     prefix: string,
     count: number,
@@ -550,6 +572,7 @@ export function BrowserListPage() {
     kernel: string,
     liveKeepaliveEnabled: boolean,
     muteAudio: boolean,
+    proxyId: string,
   ) => {
     setBatchCreating(true)
     try {
@@ -558,7 +581,7 @@ export function BrowserListPage() {
         userDataDir: '',
         coreId: '',
         fingerprintArgs: [],
-        proxyId: directProxyID,
+        proxyId: proxyId || directProxyID,
         proxyConfig: '',
         memoryLimitMb: 0,
         launchArgs: [],
@@ -599,6 +622,8 @@ export function BrowserListPage() {
         onImportProfiles={handleImportProfiles}
         onOpenBackup={() => setBackupModalOpen(true)}
         onOpenBatchCreate={() => setBatchCreateOpen(true)}
+        onTileWindows={() => { void handleTileWindows() }}
+        tilingWindows={tilingWindows}
         importingProfiles={profilePackageBusy}
         onViewModeChange={setViewMode}
       />
@@ -615,6 +640,7 @@ export function BrowserListPage() {
         onOpenBackup={() => setBackupModalOpen(true)}
         onOpenTags={() => setTagModalOpen(true)}
         onOpenGroups={() => setGroupModalOpen(true)}
+        onOpenProxy={() => setProxyBatchOpen(true)}
         onBatchDelete={openBatchDeleteConfirm}
         batchLoading={batchLoading}
         exporting={profilePackageBusy}
@@ -658,9 +684,21 @@ export function BrowserListPage() {
       <BatchCreateModal
         open={batchCreateOpen}
         loading={batchCreating}
+        proxies={proxies}
         onClose={() => setBatchCreateOpen(false)}
-        onSubmit={(prefix, count, startIndex, platform, kernel, liveKeepaliveEnabled, muteAudio) => {
-          void handleBatchCreate(prefix, count, startIndex, platform, kernel, liveKeepaliveEnabled, muteAudio)
+        onSubmit={(prefix, count, startIndex, platform, kernel, liveKeepaliveEnabled, muteAudio, proxyId) => {
+          void handleBatchCreate(prefix, count, startIndex, platform, kernel, liveKeepaliveEnabled, muteAudio, proxyId)
+        }}
+      />
+
+      <BatchProxyModal
+        open={proxyBatchOpen}
+        profiles={filteredProfiles.filter(p => selectedIds.has(p.profileId))}
+        proxies={proxies}
+        onClose={() => setProxyBatchOpen(false)}
+        onDone={() => {
+          setProxyBatchOpen(false)
+          void loadProfiles()
         }}
       />
 

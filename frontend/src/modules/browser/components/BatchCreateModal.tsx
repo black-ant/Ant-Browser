@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { Button, FormItem, Input, Modal } from '../../../shared/components'
+import type { BrowserProxy } from '../types'
 
 const MAX_BATCH = 200
 
@@ -10,6 +11,7 @@ type KernelSelect = 'auto' | 'all148' | 'all144'
 interface BatchCreateModalProps {
   open: boolean
   loading: boolean
+  proxies: BrowserProxy[]
   onClose: () => void
   onSubmit: (
     prefix: string,
@@ -19,12 +21,13 @@ interface BatchCreateModalProps {
     kernel: string,
     liveKeepaliveEnabled: boolean,
     muteAudio: boolean,
+    proxyId: string,
   ) => void
 }
 
 const pad3 = (n: number) => String(n).padStart(3, '0')
 
-export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCreateModalProps) {
+export function BatchCreateModal({ open, loading, proxies, onClose, onSubmit }: BatchCreateModalProps) {
   const [prefix, setPrefix] = useState('env')
   const [count, setCount] = useState(10)
   const [startIndex, setStartIndex] = useState(1)
@@ -32,6 +35,7 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
   const [kernel, setKernel] = useState<KernelSelect>('auto')
   const [liveKeepalive, setLiveKeepalive] = useState(true)
   const [muteAudio, setMuteAudio] = useState(true)
+  const [proxyId, setProxyId] = useState('')
 
   const trimmedPrefix = prefix.trim()
   const safeCount = Math.min(Math.max(1, Math.floor(count) || 0), MAX_BATCH)
@@ -56,7 +60,7 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
         <>
           <Button variant="secondary" onClick={onClose} disabled={loading}>取消</Button>
           <Button
-            onClick={() => onSubmit(trimmedPrefix, safeCount, safeStart, platform, kernel, liveKeepalive, muteAudio)}
+            onClick={() => onSubmit(trimmedPrefix, safeCount, safeStart, platform, kernel, liveKeepalive, muteAudio, proxyId)}
             loading={loading}
             disabled={!canSubmit}
           >
@@ -110,6 +114,19 @@ export function BatchCreateModal({ open, loading, onClose, onSubmit }: BatchCrea
             <option value="auto">自动分布(148 为主,推荐)</option>
             <option value="all148">全部 148</option>
             <option value="all144">全部 144</option>
+          </select>
+        </FormItem>
+
+        <FormItem label="代理" hint="本批全部环境使用同一条代理;共用代理=共用出口 IP,请注意关联风险">
+          <select
+            value={proxyId}
+            onChange={(event) => setProxyId(event.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-input)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+          >
+            <option value="">不设置（直连）</option>
+            {proxies.filter(p => p.proxyConfig !== 'direct://').map(p => (
+              <option key={p.proxyId} value={p.proxyId}>{p.proxyName || p.proxyId}</option>
+            ))}
           </select>
         </FormItem>
 

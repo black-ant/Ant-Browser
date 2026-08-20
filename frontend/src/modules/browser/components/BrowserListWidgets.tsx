@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Archive, ChevronDown, ChevronUp, Copy, Download, FolderInput, Pencil, Play, RefreshCw, Square, Tag, Trash2 } from 'lucide-react'
+import { Archive, ChevronDown, ChevronUp, Copy, Download, FolderInput, Globe, Pencil, Play, RefreshCw, Square, Tag, Trash2 } from 'lucide-react'
 
 import { Button, toast } from '../../../shared/components'
 import { regenerateBrowserProfileCode, setBrowserProfileCode } from '../api'
@@ -15,6 +15,7 @@ interface BatchToolbarProps {
   onOpenBackup: () => void
   onOpenTags: () => void
   onOpenGroups: () => void
+  onOpenProxy: () => void
   onBatchDelete: () => void
   batchLoading: boolean
   exporting?: boolean
@@ -31,6 +32,7 @@ export function BatchToolbar({
   onOpenBackup,
   onOpenTags,
   onOpenGroups,
+  onOpenProxy,
   onBatchDelete,
   batchLoading,
   exporting = false,
@@ -54,6 +56,9 @@ export function BatchToolbar({
         </Button>
         <Button size="sm" variant="secondary" onClick={onOpenGroups} title="移动到分组 / 管理分组">
           <FolderInput className="w-3.5 h-3.5" />分组
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onOpenProxy} title="批量设置代理">
+          <Globe className="w-3.5 h-3.5" />代理
         </Button>
         <Button size="sm" variant="secondary" onClick={onBatchExport} loading={exporting} title="导出实例">
           <Download className="w-3.5 h-3.5" />导出

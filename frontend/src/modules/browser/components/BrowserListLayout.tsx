@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Archive, CheckCircle, ChevronRight, ChevronUp, Edit2, Layers, LayoutGrid, List, Play, Plus, RefreshCw, Sliders, Star, Trash2, Upload, XCircle } from 'lucide-react'
+import { Archive, CheckCircle, ChevronRight, ChevronUp, Edit2, Grid3X3, Layers, LayoutGrid, List, Play, Plus, RefreshCw, Sliders, Star, Trash2, Upload, XCircle } from 'lucide-react'
 
 import { Button, Card, FormItem, Input, Modal, Switch, Table, Textarea } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
@@ -29,6 +29,8 @@ interface BrowserListHeaderProps {
   onImportProfiles: () => void
   onOpenBackup: () => void
   onOpenBatchCreate: () => void
+  onTileWindows: () => void
+  tilingWindows?: boolean
   importingProfiles?: boolean
   onViewModeChange: (next: BrowserViewMode) => void
 }
@@ -52,6 +54,8 @@ export function BrowserListHeader({
   onImportProfiles,
   onOpenBackup,
   onOpenBatchCreate,
+  onTileWindows,
+  tilingWindows = false,
   importingProfiles = false,
   onViewModeChange,
 }: BrowserListHeaderProps) {
@@ -121,6 +125,9 @@ export function BrowserListHeader({
             </button>
           </div>
           <span className="w-px h-4 bg-[var(--color-border-muted)] mx-1 self-center"></span>
+          <Button variant="secondary" size="sm" onClick={onTileWindows} loading={tilingWindows} title="把运行中实例的窗口按网格平铺，互不遮挡（勾选了实例则只平铺勾选的）">
+            <Grid3X3 className="w-4 h-4" />一键平铺
+          </Button>
           <Button variant="secondary" size="sm" onClick={onOpenBatchCreate}>
             <Layers className="w-4 h-4" />批量新建
           </Button>

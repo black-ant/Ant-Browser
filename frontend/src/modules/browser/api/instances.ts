@@ -114,3 +114,19 @@ export async function openUserDataRoot(): Promise<boolean> {
   }
   return false
 }
+
+export interface WindowTileResult {
+  total: number
+  tiled: number
+  failed: number
+  errors: string[]
+}
+
+// 一键平铺运行中实例的窗口；profileIds 为空表示全部运行中实例
+export async function tileBrowserWindows(profileIds: string[]): Promise<WindowTileResult> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserWindowsTile) {
+    return await bindings.BrowserWindowsTile(profileIds)
+  }
+  throw new Error('当前环境不支持窗口平铺')
+}
