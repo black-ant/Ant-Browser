@@ -124,14 +124,18 @@ export interface WindowTileResult {
 
 // 一键平铺运行中实例的窗口；profileIds 为空表示全部运行中实例
 export async function tileBrowserWindows(profileIds: string[]): Promise<WindowTileResult> {
-  const bindings: any = await getBindings()
-  if (bindings?.BrowserWindowsTile) {
-    return await bindings.BrowserWindowsTile(profileIds)
-  }
-  // 静态 wailsjs 绑定文件滞后时(启动带 -skipbindings),直接走运行时注入的 window.go
+  // 优先用 wails 运行时注入的 window.go（由后端反射生成，永远与当前二进制同步）；
+  // 静态 wailsjs 绑定文件在 -skipbindings 构建下会滞后于新增 Go 方法，只作兜底。
   const goApp = (globalThis as any).go?.main?.App
   if (goApp?.BrowserWindowsTile) {
     return await goApp.BrowserWindowsTile(profileIds)
   }
-  throw new Error('当前环境不支持窗口平铺')
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserWindowsTile) {
+    return await bindings.BrowserWindowsTile(profileIds)
+  }
+  const hasGo = !!goApp
+  throw new Error(
+    `当前环境不支持窗口平铺（运行中的程序版本过旧，请安装最新安装包后重试；go=${hasGo ? '1' : '0'}）`,
+  )
 }
