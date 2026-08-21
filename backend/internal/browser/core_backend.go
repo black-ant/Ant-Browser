@@ -77,6 +77,9 @@ func CoreExecutableCandidatesAnyBackend() []string {
 
 // FindCoreExecutableForBackend 按指定后端的候选名在目录中查找可执行文件。
 func FindCoreExecutableForBackend(baseDir string, backend string) (string, string, bool) {
+	if config.NormalizeCoreBackend(backend) == config.CoreBackendCloak {
+		return findCloakCoreExecutable(baseDir)
+	}
 	return findCoreExecutableWithCandidates(baseDir, CoreExecutableCandidatesForBackend(backend))
 }
 
@@ -141,21 +144,28 @@ func cloakVersionFromDirName(name string) string {
 	return version
 }
 
-// cloakCoreVersion 解析 Cloak 内核目录的 Chromium 版本号。
-// 先看目录本身，再看下一层子目录（Cloak 缓存把二进制放在 chromium-<version>/ 里）。
-func cloakCoreVersion(baseDir string) string {
+// cloakPreferredVersionDir 选出 Cloak 缓存目录里应当使用的版本目录。
+//
+// 缓存里可能同时存在多个版本（升级后旧版本不会自动清理），必须有唯一且确定的选择规则，
+// 否则"报告的版本号"和"实际启动的二进制"会来自不同目录：
+// 版本号按数值取最大，而目录遍历是字母序，两者结论并不一致
+// （例如 chromium-146.x 和 chromium-148.x 共存时，字母序会先命中 146）。
+//
+// 返回该版本目录的绝对路径和版本号；baseDir 自身就是版本目录时直接返回它。
+func cloakPreferredVersionDir(baseDir string) (string, string, bool) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
-		return ""
+		return "", "", false
 	}
 	if version := cloakVersionFromDirName(filepath.Base(baseDir)); version != "" {
-		return version
+		return baseDir, version, true
 	}
 	entries, err := os.ReadDir(baseDir)
 	if err != nil {
-		return ""
+		return "", "", false
 	}
-	best := ""
+	bestDir := ""
+	bestVersion := ""
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -164,12 +174,48 @@ func cloakCoreVersion(baseDir string) string {
 		if version == "" {
 			continue
 		}
-		// 同时存在多个版本目录时取版本号最大的一个，与 Cloak 自身"用最新缓存"的行为一致。
-		if best == "" || compareDottedVersion(version, best) > 0 {
-			best = version
+		// 取版本号最大的一个，与 Cloak 自身"用最新缓存"的行为一致。
+		// 同版本号出现多个目录名时按目录名排序保证结果稳定。
+		if bestVersion == "" {
+			bestDir, bestVersion = filepath.Join(baseDir, entry.Name()), version
+			continue
+		}
+		switch compareDottedVersion(version, bestVersion) {
+		case 1:
+			bestDir, bestVersion = filepath.Join(baseDir, entry.Name()), version
+		case 0:
+			if candidate := filepath.Join(baseDir, entry.Name()); candidate < bestDir {
+				bestDir, bestVersion = candidate, version
+			}
 		}
 	}
-	return best
+	if bestVersion == "" {
+		return "", "", false
+	}
+	return bestDir, bestVersion, true
+}
+
+// cloakCoreVersion 解析 Cloak 内核目录的 Chromium 版本号。
+// 与 findCloakCoreExecutable 使用同一套版本目录选择规则，保证两者结论一致。
+func cloakCoreVersion(baseDir string) string {
+	_, version, ok := cloakPreferredVersionDir(baseDir)
+	if !ok {
+		return ""
+	}
+	return version
+}
+
+// findCloakCoreExecutable 在 Cloak 内核目录里查找可执行文件。
+// 多版本共存时只在选定的版本目录里找，避免启动到与展示版本号不一致的旧版本。
+func findCloakCoreExecutable(baseDir string) (string, string, bool) {
+	candidates := cloakExecutableCandidates()
+	if versionDir, _, ok := cloakPreferredVersionDir(baseDir); ok {
+		if path, candidate, found := findCoreExecutableShallowWithCandidates(versionDir, candidates); found {
+			return path, candidate, true
+		}
+	}
+	// 没有版本目录（例如用户直接把二进制放在注册目录下）时回退到通用查找
+	return findCoreExecutableWithCandidates(baseDir, candidates)
 }
 
 // compareDottedVersion 按数值逐段比较点分版本号，返回 -1 / 0 / 1。
