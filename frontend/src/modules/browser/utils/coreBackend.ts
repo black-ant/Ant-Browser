@@ -24,7 +24,7 @@ export const CORE_BACKEND_OPTIONS: CoreBackendOption[] = [
   {
     value: CORE_BACKEND_CLOAK,
     label: 'Cloak',
-    description: 'CloakBrowser 源码级 patch 内核，版本号取自 chromium-<version> 目录名，噪声由指纹种子驱动',
+    description: 'CloakBrowser 源码级 patch 内核，目录下需存在 chromium-<版本>/ 子目录（可带 -pro 后缀），噪声由指纹种子驱动',
   },
 ]
 
