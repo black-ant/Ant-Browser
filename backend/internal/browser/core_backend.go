@@ -12,12 +12,19 @@ import (
 // 本文件集中存放"内核后端差异"知识，避免后端判断散落在各处。
 //
 // fingerprint_chromium：历史唯一后端，目录里有 chrome.exe 和 manifest.json / *.manifest。
-// cloak：CloakBrowser，源码级 patch 的 stealth Chromium，二进制单独分发；
-//        已知 macOS 侧为 Chromium.app，缓存目录形如 chromium-<version>/。
+// cloak：CloakBrowser，源码级 patch 的 stealth Chromium，二进制单独分发。
 //
-// 注意：Cloak 在 Windows / Linux 下的可执行文件名尚未经过实测确认，
-// 官方文档只披露了 macOS 的 Chromium.app。这里给出的候选名是一个保守超集，
-// 实测确认后应当收窄，避免误匹配同目录下的其他可执行文件。
+// 以下事实取自 CloakBrowser wrapper 源码 cloakbrowser/config.py
+// （get_binary_dir / get_binary_path / SUPPORTED_PLATFORMS）：
+//
+//	缓存根目录  ~/.cloakbrowser（可用 CLOAKBROWSER_CACHE_DIR 覆盖）
+//	版本目录    chromium-<version>[-pro]      例：chromium-146.0.7680.177.5-pro
+//	Windows     <版本目录>/chrome.exe
+//	Linux       <版本目录>/chrome             （扁平二进制，无扩展名）
+//	macOS       <版本目录>/Chromium.app/Contents/MacOS/Chromium
+//
+// 注意版本目录名用的是 chromium-<version>，而 Release tag 用的是 chromium-v<version>，
+// 两者差一个 "v"；这里解析的是解压后的目录名，所以不带 v，但同时兼容带 v 的写法。
 
 // CoreBackendLabel 返回内核后端的中文展示名。
 func CoreBackendLabel(backend string) string {
@@ -28,22 +35,17 @@ func CoreBackendLabel(backend string) string {
 }
 
 // cloakExecutableCandidates 返回 Cloak 后端在当前平台的可执行文件候选名。
+// 名单按 wrapper 的 get_binary_path 收窄到实际会产出的文件，避免误匹配同目录其他可执行文件。
 func cloakExecutableCandidates() []string {
 	switch goruntime.GOOS {
 	case "windows":
-		return []string{"chrome.exe", "cloakbrowser.exe", "chromium.exe"}
+		return []string{"chrome.exe"}
 	case "linux":
-		return []string{"chrome", "cloakbrowser", "chromium", "chrome-bin", "chromium-browser"}
+		return []string{"chrome"}
 	case "darwin":
-		return []string{
-			"Chromium.app/Contents/MacOS/Chromium",
-			"CloakBrowser.app/Contents/MacOS/CloakBrowser",
-			"Google Chrome.app/Contents/MacOS/Google Chrome",
-			"chromium",
-			"chrome",
-		}
+		return []string{"Chromium.app/Contents/MacOS/Chromium"}
 	default:
-		return []string{"chrome", "chromium"}
+		return []string{"chrome"}
 	}
 }
 
@@ -102,7 +104,14 @@ func DetectCoreBackend(baseDir string) string {
 	return config.CoreBackendFingerprintChromium
 }
 
-// cloakVersionFromDirName 从 chromium-<version> 形式的目录名提取版本号。
+// cloakVersionFromDirName 从 Cloak 缓存目录名提取版本号。
+//
+// 支持的形式（来自 wrapper get_binary_dir，附带兼容 release tag 的 v 前缀）：
+//
+//	chromium-146.0.7680.177.5        普通版本目录
+//	chromium-148.0.7778.215.3-pro    Pro 版本目录（-pro 后缀）
+//	chromium-v146.0.7680.177.5       release tag 写法，容错处理
+//
 // 不匹配时返回空串。
 func cloakVersionFromDirName(name string) string {
 	name = strings.TrimSpace(name)
@@ -111,6 +120,12 @@ func cloakVersionFromDirName(name string) string {
 		return ""
 	}
 	version := strings.TrimSpace(name[len(prefix):])
+	// Pro 构建的目录名带 -pro 后缀，版本号本身不含该后缀
+	version = strings.TrimSuffix(strings.TrimSuffix(version, "-pro"), "-PRO")
+	// 容错 release tag 的 v 前缀（chromium-v146...）
+	if len(version) > 1 && (version[0] == 'v' || version[0] == 'V') {
+		version = version[1:]
+	}
 	if version == "" {
 		return ""
 	}
