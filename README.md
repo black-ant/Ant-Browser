@@ -27,12 +27,22 @@ Ant Browser 当前推荐配套使用的浏览器内核，来源于开源项目 [
 
 新增或编辑内核时选择对应后端；未标记的历史内核一律按 `fingerprint-chromium` 处理，行为不变。
 
+Cloak 的目录结构（与其官方缓存布局一致，`chromium-<版本>` 可带 `-pro` 后缀）：
+
+```text
+chrome/cloak-148/                              # 注册给内核管理的目录
+  chromium-148.0.7778.215.3-pro/
+    chrome.exe                                 # Windows
+    chrome                                     # Linux（扁平二进制，无扩展名）
+    Chromium.app/Contents/MacOS/Chromium       # macOS
+```
+
 Cloak 后端的注意事项：
 
 - **参数集不同，且部分结论相反。** GPU Vendor / Renderer、设备内存、屏幕宽高在 fingerprint-chromium 上实测无效，但在 Cloak 上是受支持参数；反过来，Canvas / ClientRects 噪声开关和 `--disable-spoofing` 在 Cloak 上不生效，噪声统一由 `--fingerprint` 种子驱动。保存后可在实例编辑页的指纹能力矩阵查看按当前后端解析的实际运行参数。
-- **License 与缓存目录通过环境变量传入。** 在内核编辑弹窗的“内核环境变量”里按 `KEY=VALUE` 逐行填写，仅接受 `CLOAKBROWSER_` 前缀（如 `CLOAKBROWSER_LICENSE_KEY`、`CLOAKBROWSER_CACHE_DIR`），其他键会在启动时被忽略并记录警告。这些变量只对该内核生效。
-- **获取方式与自动下载。** Cloak 新版本受 license 限制、主分发路径是官方域名首次启动自动下载，因此应用内的下载推荐仍只覆盖 fingerprint-chromium。Cloak 请使用「导入本地内核目录」，或在下载弹窗手动填写地址。
-- **安全提示。** CloakBrowser 的检测通过率是其项目自测结论，且部分限定于付费版配合住宅代理。它默认会自动下载约 200MB 的二进制，建议自行核实来源与构建可复现性后再投入使用。
+- **License 与缓存目录通过环境变量传入。** Cloak 的 Pro 二进制在启动时从自己的进程环境读取 `CLOAKBROWSER_LICENSE_KEY`，因此在内核编辑弹窗的“内核环境变量”里按 `KEY=VALUE` 逐行填写即可生效。仅接受 `CLOAKBROWSER_` 前缀（如 `CLOAKBROWSER_LICENSE_KEY`、`CLOAKBROWSER_CACHE_DIR`），其他键会在启动时被忽略并记录警告。这些变量只对该内核生效。
+- **版本可用性。** 官方 GitHub Releases 只对 146 及更早版本提供压缩包（`cloakbrowser-windows-x64.zip`、`cloakbrowser-linux-x64.tar.gz`、`cloakbrowser-linux-arm64.tar.gz`）；148 及以上为 Pro 版本，Release 里只有校验和文件，需要 license 从官方渠道获取。macOS 目前没有预编译包。
+- **安全提示。** CloakBrowser 的检测通过率是其项目自测结论，且部分限定于付费版配合住宅代理。它默认会自动下载约 200MB（Windows 包解压前约 560MB）的二进制，建议自行核实来源与构建可复现性后再投入使用。
 
 Ant Browser 的目标很明确：在一台桌面设备上，帮助用户稳定管理多个彼此隔离的浏览器实例，并配合代理池、浏览器内核和快捷启动能力完成日常运营或测试工作。
 

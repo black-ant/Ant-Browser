@@ -10,6 +10,22 @@ import (
 
 // 内核后端可能需要通过环境变量传递配置（Cloak 的 license key、缓存目录等）。
 // 这些值来自内核配置的 core_env，不是全局环境，所以要在启动进程时按内核合并。
+//
+// Cloak 的 Pro 二进制在启动时直接从自己的进程环境读取 CLOAKBROWSER_LICENSE_KEY
+// （见 wrapper 源码 cloakbrowser/license.py 的 build_launch_env 说明），
+// 因此本项目直接启动内核二进制（不经过 Python / Node wrapper）时，
+// 通过进程环境注入 license 是有效的。
+//
+// wrapper 实际读取的变量（cloakbrowser/config.py、license.py）：
+//
+//	CLOAKBROWSER_LICENSE_KEY          Pro 授权密钥
+//	CLOAKBROWSER_LICENSE_STATUS_FILE  授权拒绝状态文件路径
+//	CLOAKBROWSER_CACHE_DIR            二进制缓存根目录（默认 ~/.cloakbrowser）
+//	CLOAKBROWSER_BINARY_PATH          直接指定可执行文件，跳过下载
+//	CLOAKBROWSER_VERSION / _RELEASE_CHANNEL / _AUTO_UPDATE / _DOWNLOAD_URL / _SKIP_CHECKSUM
+//
+// 其中下载相关变量只对 wrapper 的下载流程有意义；本项目按已解压目录启动，
+// 不依赖它们，但仍允许注入，便于用户自行调试。
 
 // browserCoreEnvKeyPrefixes 允许通过内核配置注入的环境变量前缀白名单。
 // 收紧白名单是为了避免内核配置变成任意改写子进程环境的通道

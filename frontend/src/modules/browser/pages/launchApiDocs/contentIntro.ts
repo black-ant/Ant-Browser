@@ -238,11 +238,13 @@ chrome/
     chrome.exe
     ...
 
-Cloak 后端：
+Cloak 后端（目录名可带 -pro 后缀）：
 chrome/
   cloak-<version>/
     chromium-<version>/
-      ...
+      chrome.exe                              # Windows
+      chrome                                  # Linux
+      Chromium.app/Contents/MacOS/Chromium    # macOS
 \`\`\`
 
 ## 内核后端
@@ -254,6 +256,7 @@ fingerprint-chromium：默认后端，历史内核按此处理
 Cloak：CloakBrowser 源码级 patch 内核
   版本号取自 chromium-<version> 目录名
   license / 缓存目录通过 CLOAKBROWSER_ 前缀环境变量传入
+  官方 Release 仅 146 及更早提供压缩包，148+ 为 Pro 需 license
 \`\`\`
 
 两个后端的指纹参数集不同，且部分参数结论相反：
