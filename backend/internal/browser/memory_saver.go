@@ -8,6 +8,9 @@ package browser
 // 实测(内核 148,经代理加载 amazon.com 与 youtube 视频页,均正常渲染):
 // 对“单个重页面”的节省有限(页面内容本身占内存大头,单实例边际约 350–550MB);
 // 主要收益在**长时导航、多标签与后台实例**。真正的规模杠杆是并发上限、后台实例挂起与轮换。
+//
+// 注意:不得加 --js-flags —— 它会改 performance.memory.jsHeapSizeLimit,属 JS 可见指纹面。
+// 渲染进程内存控制改用进程数上限(--renderer-process-limit),见 live_perf.go。
 func MemorySaverArgs() []string {
 	return []string{
 		"--process-per-site",              // 同站合并渲染进程(多标签省内存)
@@ -17,6 +20,5 @@ func MemorySaverArgs() []string {
 		"--disable-component-update",      // 关闭后台组件更新
 		"--disable-breakpad",              // 关闭崩溃上报
 		"--disable-features=Translate,MediaRouter,OptimizationHints,CalculateNativeWinOcclusion",
-		"--js-flags=--max-old-space-size=512", // 每渲染进程 V8 老生代上限(足够重型 SPA/电商)
 	}
 }

@@ -28,3 +28,10 @@ func TestMemorySaverArgsAreEcomVideoSafe(t *testing.T) {
 		}
 	}
 }
+
+// 省内存模式同样受红线约束:--js-flags 会改 performance.memory.jsHeapSizeLimit(JS 可见指纹面)。
+func TestMemorySaverArgsRespectRedLines(t *testing.T) {
+	if bad := AssertNoForbiddenArgs(MemorySaverArgs()); len(bad) != 0 {
+		t.Fatalf("MemorySaverArgs violates red lines: %v", bad)
+	}
+}
