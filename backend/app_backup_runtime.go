@@ -79,7 +79,10 @@ func (a *App) backupReloadAfterMutation() error {
 			browser.DefaultProxySpeedInterval,
 			browser.DefaultProxySpeedConcurrency,
 		)
-		a.speedScheduler.Start()
+		// 与启动路径一致:默认不跑周期测速,手动 RunOnce 仍可用。
+		if speedAutoTestEnabled(a.config) {
+			a.speedScheduler.Start()
+		}
 	}
 	return nil
 }

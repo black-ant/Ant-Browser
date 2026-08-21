@@ -129,10 +129,12 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
       void loadProfiles({ silent: true, syncRuntimeState: true })
     })
 
+    // 事件驱动为主(started/updated/stopped/crashed 已实时刷新);
+    // 轮询仅兜底进程意外消亡等无事件场景,10s 足够,降低多开时后端全量序列化压力。
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void loadProfiles({ silent: true, syncRuntimeState: true })
-    }, 2000)
+    }, 10000)
 
     return () => {
       window.clearInterval(timer)

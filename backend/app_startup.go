@@ -56,6 +56,7 @@ func (a *App) startup(ctx context.Context) {
 	a.startupInitAutomation()
 	a.startupInitBridgeHooks()
 	a.startupInitSpeedScheduler()
+	go a.CleanStoppedProfileCaches() // 启动即回收上次会话留下的已停实例缓存(不阻塞启动)
 
 	log.Info("应用启动成功")
 }
@@ -211,6 +212,18 @@ func (a *App) startupInitBridgeHooks() {
 	}
 }
 
+// speedAutoTestEnabled 后台自动测速开关:直播挂机场景默认关 —— 它会每 30 分钟拉起代理内核
+// 并对全部节点发探测流量,产生持续底噪。前端"立即测速"(RunOnce)不受此开关影响。
+func speedAutoTestEnabled(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	if p := cfg.Browser.SpeedAutoTestEnabled; p != nil {
+		return *p
+	}
+	return false
+}
+
 func (a *App) startupInitSpeedScheduler() {
 	a.speedScheduler = browser.NewProxySpeedScheduler(
 		a.browserMgr.ProxyDAO,
@@ -222,5 +235,8 @@ func (a *App) startupInitSpeedScheduler() {
 		browser.DefaultProxySpeedInterval,
 		browser.DefaultProxySpeedConcurrency,
 	)
-	a.speedScheduler.Start()
+	// 调度器仍然构造(手动 RunOnce 需要它),只是默认不启动周期任务。
+	if speedAutoTestEnabled(a.config) {
+		a.speedScheduler.Start()
+	}
 }
