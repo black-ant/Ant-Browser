@@ -261,7 +261,7 @@ func (a *App) buildFingerprintCheckPageContextForExpectedArgs(profileId string, 
 }
 
 func (a *App) buildFingerprintCheckPageContextForExpectedArgsAndProfile(profileId string, expectedArgs []string, profile *BrowserProfile) ([]byte, error) {
-	expected := buildBrowserFingerprintExpected(expectedArgs)
+	expected := buildBrowserFingerprintExpectedForBackend(expectedArgs, a.profileCoreBackend(profile))
 	data, err := json.MarshalIndent(fingerprintCheckPageContext{
 		ProfileId:  profileId,
 		Expected:   expected,

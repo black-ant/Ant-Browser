@@ -3,7 +3,8 @@ import { FolderOpen } from 'lucide-react'
 import { Badge, Button, Card, ConfirmModal, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserSettings, BrowserCoreExtended, BrowserProxy } from '../types'
-import { fetchBrowserCores, saveBrowserCore, deleteBrowserCore, setDefaultBrowserCore, validateBrowserCorePath, openCorePath, fetchBrowserSettings, saveBrowserSettings, fetchCoreExtendedInfo, scanBrowserCores, importLocalBrowserCore, BrowserCoreDownload, fetchBrowserProxies, redownloadBrowserCore } from '../api'
+import { fetchBrowserCores, saveBrowserCore, deleteBrowserCore, setDefaultBrowserCore, validateBrowserCorePathForBackend, openCorePath, fetchBrowserSettings, saveBrowserSettings, fetchCoreExtendedInfo, scanBrowserCores, importLocalBrowserCore, BrowserCoreDownload, fetchBrowserProxies, redownloadBrowserCore } from '../api'
+import { CORE_BACKEND_FINGERPRINT_CHROMIUM, coreBackendLabel, isCloakBackend, normalizeCoreBackend, parseCoreEnvInput } from '../utils/coreBackend'
 import { Environment, EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime'
 import { CoreDownloadModal } from './coreManagement/CoreDownloadModal'
 import { CoreEditModal } from './coreManagement/CoreEditModal'
@@ -48,7 +49,7 @@ export function CoreManagementPage() {
   // 编辑弹窗状态
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editingCore, setEditingCore] = useState<BrowserCore | null>(null)
-  const [editForm, setEditForm] = useState<CoreEditForm>({ coreName: '', corePath: '' })
+  const [editForm, setEditForm] = useState<CoreEditForm>({ coreName: '', corePath: '', coreBackend: CORE_BACKEND_FINGERPRINT_CHROMIUM, coreEnv: '' })
   const [saving, setSaving] = useState(false)
   const [pathValidating, setPathValidating] = useState(false)
   const [pathValidResult, setPathValidResult] = useState<BrowserCoreValidateResult | null>(null)
@@ -121,7 +122,9 @@ export function CoreManagementPage() {
       // 验证所有路径并合并扩展信息
       const displayInfoList: CoreDisplayInfo[] = await Promise.all(
         coreList.map(async (core) => {
-          const result = await validateBrowserCorePath(core.corePath)
+          const coreBackend = normalizeCoreBackend(core.coreBackend)
+          // 按内核后端校验：不同后端的可执行文件名不同
+          const result = await validateBrowserCorePathForBackend(core.corePath, coreBackend)
           const extended = extendedMap.get(core.coreId)
           return {
             coreId: core.coreId,
@@ -132,6 +135,7 @@ export function CoreManagementPage() {
             pathMessage: result.message,
             chromeVersion: extended?.chromeVersion || '',
             instanceCount: extended?.instanceCount || 0,
+            coreBackend,
           }
         })
       )
@@ -141,35 +145,45 @@ export function CoreManagementPage() {
     }
   }
 
-  // 防抖验证路径
-  const validatePath = useCallback(async (path: string) => {
+  // 防抖验证路径（按当前选择的内核后端校验）
+  const validatePath = useCallback(async (path: string, coreBackend: string) => {
     if (!path.trim()) {
       setPathValidResult(null)
       return
     }
     setPathValidating(true)
     try {
-      const result = await validateBrowserCorePath(path)
+      const result = await validateBrowserCorePathForBackend(path, normalizeCoreBackend(coreBackend))
       setPathValidResult(result)
     } finally {
       setPathValidating(false)
     }
   }, [])
 
-  // 路径输入变化时触发验证（防抖）
+  // 路径或后端变化时触发验证（防抖）
   useEffect(() => {
     fetchBrowserProxies().then(setProxies)
     const timer = setTimeout(() => {
       if (editModalOpen && editForm.corePath) {
-        validatePath(editForm.corePath)
+        validatePath(editForm.corePath, editForm.coreBackend)
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [editForm.corePath, editModalOpen, validatePath])
+  }, [editForm.corePath, editForm.coreBackend, editModalOpen, validatePath])
 
   // 表格列定义
   const columns: TableColumn<CoreDisplayInfo>[] = [
     { key: 'coreName', title: '内核名称', width: '150px' },
+    {
+      key: 'coreBackend',
+      title: '内核后端',
+      width: '150px',
+      render: (val) => (
+        <Badge variant={isCloakBackend(val as string) ? 'info' : 'default'}>
+          {coreBackendLabel(val as string)}
+        </Badge>
+      ),
+    },
     { key: 'corePath', title: '内核路径', width: '180px' },
     {
       key: 'chromeVersion',
@@ -271,7 +285,7 @@ export function CoreManagementPage() {
   // 新增内核
   const handleAdd = () => {
     setEditingCore(null)
-    setEditForm({ coreName: '', corePath: '' })
+    setEditForm({ coreName: '', corePath: '', coreBackend: CORE_BACKEND_FINGERPRINT_CHROMIUM, coreEnv: '' })
     setPathValidResult(null)
     setEditModalOpen(true)
   }
@@ -281,7 +295,12 @@ export function CoreManagementPage() {
     const core = cores.find(c => c.coreId === record.coreId)
     if (core) {
       setEditingCore(core)
-      setEditForm({ coreName: core.coreName, corePath: core.corePath })
+      setEditForm({
+        coreName: core.coreName,
+        corePath: core.corePath,
+        coreBackend: normalizeCoreBackend(core.coreBackend),
+        coreEnv: (core.coreEnv || []).join('\n'),
+      })
       setPathValidResult({ valid: record.pathValid, message: record.pathMessage })
       setEditModalOpen(true)
     }
@@ -350,6 +369,8 @@ export function CoreManagementPage() {
         coreName: editForm.coreName.trim(),
         corePath: editForm.corePath.trim(),
         isDefault: editingCore?.isDefault || false,
+        coreBackend: normalizeCoreBackend(editForm.coreBackend),
+        coreEnv: parseCoreEnvInput(editForm.coreEnv),
       }
       await saveBrowserCore(input)
       await loadData()

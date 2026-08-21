@@ -21,6 +21,29 @@ const (
 	BrowserConnectorMihomoStack = BrowserConnectorMihomo
 )
 
+const (
+	// CoreBackendFingerprintChromium 是历史唯一支持的浏览器内核后端。
+	// 空 core_backend 一律按它处理，保证旧数据行为不变。
+	CoreBackendFingerprintChromium = "fingerprint_chromium"
+	// CoreBackendCloak 是 CloakBrowser（源码级 patch 的 stealth Chromium）后端。
+	CoreBackendCloak = "cloak"
+)
+
+// NormalizeCoreBackend 归一化内核后端标记，无法识别或为空时回退到 fingerprint-chromium。
+func NormalizeCoreBackend(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case CoreBackendCloak, "cloakbrowser", "cloak-browser", "cloak_browser":
+		return CoreBackendCloak
+	default:
+		return CoreBackendFingerprintChromium
+	}
+}
+
+// KnownCoreBackends 返回可供界面选择的内核后端列表。
+func KnownCoreBackends() []string {
+	return []string{CoreBackendFingerprintChromium, CoreBackendCloak}
+}
+
 // NormalizeBrowserConnectorType 规范化连接栈配置。
 func NormalizeBrowserConnectorType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {

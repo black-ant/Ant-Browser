@@ -14,10 +14,14 @@ import {
   validateFingerprintArgs,
 } from '../utils/fingerprintSerializer'
 import { FINGERPRINT_CAPABILITIES, FINGERPRINT_PERSONAS, capabilityModeLabel } from '../utils/fingerprintCapabilities'
+import { isCloakBackend } from '../utils/coreBackend'
 
 interface FingerprintPanelProps {
   value: string[]
   onChange: (args: string[]) => void
+  // 当前实例使用的内核后端。指纹参数在不同后端下的有效性结论可能相反，
+  // 面板需要据此调整校验口径，避免把 fingerprint-chromium 的结论套到 Cloak 上。
+  coreBackend?: string
 }
 
 const BRAND_OPTIONS = [
@@ -229,7 +233,7 @@ function EditableOptionInput({ value, onChange, options, placeholder }: Editable
   )
 }
 
-export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
+export function FingerprintPanel({ value, onChange, coreBackend }: FingerprintPanelProps) {
   const [config, setConfig] = useState<FingerprintConfig>(() => deserialize(value))
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [advancedHelpOpen, setAdvancedHelpOpen] = useState(false)
@@ -285,6 +289,10 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
   }
 
   const advancedText = serialize(config).join('\n')
+  const cloakBackend = isCloakBackend(coreBackend)
+  // Cloak 的参数集与 fingerprint-chromium 差异较大（GPU / 内存 / 屏幕在 Cloak 下有效，
+  // 噪声开关和 --disable-spoofing 在 Cloak 下无效），当前面板按 fingerprint-chromium 建模，
+  // 因此在 Cloak 内核下不展示这套校验结论，避免给出相反的判断。
   const validation = validateFingerprintArgs(value)
   const validationTone = validation.issues.some(issue => issue.level === 'error')
     ? 'border-red-200 bg-red-50 text-red-700'
@@ -297,7 +305,17 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
 
   return (
     <div className="space-y-4">
-      <div className={`rounded-lg border px-3 py-2 text-sm ${validationTone}`}>
+      {cloakBackend ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          <div className="font-medium">当前实例使用 Cloak 内核</div>
+          <ul className="mt-1 space-y-1 text-xs leading-5">
+            <li>指纹面板的可用性提示按 fingerprint-chromium 建模，对 Cloak 不适用，已暂时隐藏。</li>
+            <li>Cloak 下 GPU Vendor / Renderer、设备内存、屏幕宽高是受支持参数；Canvas / ClientRects 噪声开关和排除伪装不生效，噪声由指纹种子驱动。</li>
+            <li>保存后请在“指纹能力矩阵”查看按 Cloak 后端解析的实际运行参数。</li>
+          </ul>
+        </div>
+      ) : (
+        <div className={`rounded-lg border px-3 py-2 text-sm ${validationTone}`}>
         <div className="font-medium">{validationTitle}</div>
         {validation.issues.length > 0 && (
           <ul className="mt-1 space-y-1">
@@ -307,7 +325,8 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
             {validation.issues.length > 4 && <li className="text-xs">还有 {validation.issues.length - 4} 项，请在高级模式中检查</li>}
           </ul>
         )}
-      </div>
+        </div>
+      )}
 
       <div className="p-3 rounded-lg bg-[var(--color-bg-hover)] border border-[var(--color-border)] space-y-2">
         <div className="flex items-center justify-between gap-3">

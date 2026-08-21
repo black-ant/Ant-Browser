@@ -1,5 +1,10 @@
 # Changelog
 
+## 未发布
+
+- 内核后端：内核管理新增后端类型标记，支持 fingerprint-chromium 与 Cloak（CloakBrowser）两种浏览器内核。可执行文件查找、版本号识别、指纹参数矩阵和自测期望值均按后端分派；未标记的历史内核继续按 fingerprint-chromium 处理，行为不变。
+- 内核环境变量：内核可配置 `CLOAKBROWSER_` 前缀的环境变量（如 license key、缓存目录），启动实例时按所选内核注入，不影响其他内核和全局环境。
+
 ## 1.8.1 - 2026-09-14
 
 - 备份凭据迁移：OpenList Token 和 S3 访问凭据稳定保存到用户配置目录中的 `backup.local.yaml`；兼容 Windows 旧安装目录凭据迁移，避免升级或卸载后丢失配置。

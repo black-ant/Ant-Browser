@@ -89,10 +89,12 @@ type Settings struct {
 
 // CoreInput 内核配置输入
 type CoreInput struct {
-	CoreId    string `json:"coreId"`
-	CoreName  string `json:"coreName"`
-	CorePath  string `json:"corePath"`
-	IsDefault bool   `json:"isDefault"`
+	CoreId      string   `json:"coreId"`
+	CoreName    string   `json:"coreName"`
+	CorePath    string   `json:"corePath"`
+	IsDefault   bool     `json:"isDefault"`
+	CoreBackend string   `json:"coreBackend"`
+	CoreEnv     []string `json:"coreEnv"`
 }
 
 // CoreValidateResult 内核路径验证结果
@@ -106,6 +108,7 @@ type CoreExtendedInfo struct {
 	CoreId        string `json:"coreId"`
 	ChromeVersion string `json:"chromeVersion"`
 	InstanceCount int    `json:"instanceCount"`
+	CoreBackend   string `json:"coreBackend"`
 }
 
 // Group 实例分组

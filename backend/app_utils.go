@@ -110,11 +110,12 @@ func (a *App) autoDetectCores() {
 		if a.browserMgr == nil {
 			break
 		}
-		result := a.browserMgr.ValidateCorePath(core.CorePath)
+		// 按内核自身的后端校验，避免用另一后端的候选名给出误导性的启动日志
+		result := a.browserMgr.ValidateCorePathForBackend(core.CorePath, core.CoreBackend)
 		if result.Valid {
-			log.Debug("内核路径有效", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath))
+			log.Debug("内核路径有效", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath), logger.F("core_backend", config.NormalizeCoreBackend(core.CoreBackend)))
 		} else {
-			log.Warn("内核路径无效", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath), logger.F("message", result.Message))
+			log.Warn("内核路径无效", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath), logger.F("core_backend", config.NormalizeCoreBackend(core.CoreBackend)), logger.F("message", result.Message))
 		}
 	}
 }
@@ -151,15 +152,21 @@ func (a *App) scanAndRegisterCores() []browser.Core {
 		}
 		core.IsDefault = !hasDefault
 		if err := a.browserMgr.SaveCore(browser.CoreInput{
-			CoreId:    core.CoreId,
-			CoreName:  core.CoreName,
-			CorePath:  core.CorePath,
-			IsDefault: core.IsDefault,
+			CoreId:      core.CoreId,
+			CoreName:    core.CoreName,
+			CorePath:    core.CorePath,
+			IsDefault:   core.IsDefault,
+			CoreBackend: core.CoreBackend,
+			CoreEnv:     core.CoreEnv,
 		}); err != nil {
 			log.Warn("自动注册内核失败", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath), logger.F("error", err.Error()))
 			continue
 		}
-		log.Info("发现新内核，已注册", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath))
+		log.Info("发现新内核，已注册",
+			logger.F("core_id", core.CoreId),
+			logger.F("path", core.CorePath),
+			logger.F("core_backend", core.CoreBackend),
+		)
 		knownPaths[normalizeCorePathForCompare(core.CorePath)] = struct{}{}
 		hasDefault = hasDefault || core.IsDefault
 	}
@@ -189,10 +196,11 @@ func (a *App) scanChromeDir(chromeRoot string) []browser.Core {
 	if _, _, ok := browser.FindCoreExecutableShallow(baseDir); ok {
 		return []browser.Core{
 			{
-				CoreId:    "default",
-				CoreName:  "默认内核",
-				CorePath:  chromeRoot,
-				IsDefault: true,
+				CoreId:      "default",
+				CoreName:    "默认内核",
+				CorePath:    chromeRoot,
+				IsDefault:   true,
+				CoreBackend: browser.DetectCoreBackend(baseDir),
 			},
 		}
 	}
@@ -215,15 +223,29 @@ func (a *App) scanChromeDir(chromeRoot string) []browser.Core {
 			continue // 没有浏览器可执行文件，跳过
 		}
 		isDefault := len(cores) == 0
+		coreBackend := browser.DetectCoreBackend(absCoreDir)
 		cores = append(cores, browser.Core{
-			CoreId:    fmt.Sprintf("core-%s", entry.Name()),
-			CoreName:  fmt.Sprintf("Chrome %s", entry.Name()),
-			CorePath:  subPath,
-			IsDefault: isDefault,
+			CoreId:      fmt.Sprintf("core-%s", entry.Name()),
+			CoreName:    coreDisplayNameForBackend(coreBackend, entry.Name()),
+			CorePath:    subPath,
+			IsDefault:   isDefault,
+			CoreBackend: coreBackend,
 		})
-		log.Debug("发现内核", logger.F("name", entry.Name()), logger.F("path", subPath))
+		log.Debug("发现内核",
+			logger.F("name", entry.Name()),
+			logger.F("path", subPath),
+			logger.F("core_backend", coreBackend),
+		)
 	}
 	return cores
+}
+
+// coreDisplayNameForBackend 生成自动扫描内核的默认展示名。
+func coreDisplayNameForBackend(backend string, dirName string) string {
+	if config.NormalizeCoreBackend(backend) == config.CoreBackendCloak {
+		return fmt.Sprintf("Cloak %s", dirName)
+	}
+	return fmt.Sprintf("Chrome %s", dirName)
 }
 
 // ============================================================================
