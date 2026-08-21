@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"testing"
 )
 
@@ -56,6 +57,78 @@ func TestCloakExecutableCandidatesAreNarrow(t *testing.T) {
 		if candidates[0] != "Chromium.app/Contents/MacOS/Chromium" {
 			t.Fatalf("darwin cloak candidate = %q, want the Chromium.app bundle path", candidates[0])
 		}
+	}
+}
+
+// 多版本缓存共存时，"报告的版本号"和"实际启动的二进制"必须来自同一个版本目录。
+// 版本号按数值取最大，而目录遍历是字母序，两者结论并不一致：
+// chromium-146.x 和 chromium-148.x 共存时字母序会先命中 146，
+// 于是界面显示 148 却启动了 146 —— 指纹配置会按错误的内核版本解析。
+func TestCloakMultiVersionCacheStaysConsistent(t *testing.T) {
+	cache := t.TempDir()
+	candidate := CoreExecutableCandidatesForBackend(config.CoreBackendCloak)[0]
+	for _, versionDir := range []string{
+		"chromium-146.0.7680.177.5",
+		"chromium-148.0.7778.215.3-pro",
+		"chromium-99.0.1",
+	} {
+		exePath := filepath.Join(cache, versionDir, filepath.FromSlash(candidate))
+		if err := os.MkdirAll(filepath.Dir(exePath), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", versionDir, err)
+		}
+		if err := os.WriteFile(exePath, []byte("binary"), 0o755); err != nil {
+			t.Fatalf("write %s: %v", versionDir, err)
+		}
+	}
+
+	version := cloakCoreVersion(cache)
+	if want := "148.0.7778.215.3"; version != want {
+		t.Fatalf("cloakCoreVersion = %q, want %q", version, want)
+	}
+
+	exePath, _, ok := FindCoreExecutableForBackend(cache, config.CoreBackendCloak)
+	if !ok {
+		t.Fatal("FindCoreExecutableForBackend failed to locate a binary")
+	}
+	expectedDir := filepath.Join(cache, "chromium-148.0.7778.215.3-pro")
+	if !strings.HasPrefix(exePath, expectedDir) {
+		t.Fatalf("版本号报 %s，但解析出的二进制是 %s（应在 %s 下）", version, exePath, expectedDir)
+	}
+}
+
+// ResolveCoreExecutable 是实际启动走的入口，也必须遵守同一套版本目录选择规则。
+func TestResolveCoreExecutablePicksReportedCloakVersion(t *testing.T) {
+	appRoot := t.TempDir()
+	coreRel := filepath.Join("chrome", "cloak")
+	candidate := CoreExecutableCandidatesForBackend(config.CoreBackendCloak)[0]
+	for _, versionDir := range []string{"chromium-146.0.7680.177.5", "chromium-148.0.7778.215.3-pro"} {
+		exePath := filepath.Join(appRoot, coreRel, versionDir, filepath.FromSlash(candidate))
+		if err := os.MkdirAll(filepath.Dir(exePath), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(exePath, []byte("binary"), 0o755); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	manager := NewManager(&config.Config{}, appRoot)
+	core := Core{
+		CoreId:      "cloak",
+		CoreName:    "Cloak",
+		CorePath:    filepath.ToSlash(coreRel),
+		CoreBackend: config.CoreBackendCloak,
+	}
+
+	resolved, err := manager.ResolveCoreExecutable(core)
+	if err != nil {
+		t.Fatalf("ResolveCoreExecutable returned error: %v", err)
+	}
+	reported := manager.GetCoreVersion(core.CorePath, core.CoreBackend)
+	if reported != "148.0.7778.215.3" {
+		t.Fatalf("reported version = %q, want 148.0.7778.215.3", reported)
+	}
+	if !strings.Contains(filepath.ToSlash(resolved), "chromium-148.0.7778.215.3-pro/") {
+		t.Fatalf("启动路径 %s 与展示版本 %s 不一致", resolved, reported)
 	}
 }
 
