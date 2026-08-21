@@ -10,20 +10,22 @@ const directProxyID = "__direct__"
 // ApplyDefaults 应用默认配置
 func (m *Manager) ApplyDefaults(profile *Profile) bool {
 	log := logger.New("Browser")
-	if profile.FingerprintArgs == nil || len(profile.FingerprintArgs) == 0 {
-		profile.FingerprintArgs = append([]string{}, m.Config.Browser.DefaultFingerprintArgs...)
+	profile.CoreId = normalizeProfileCoreID(profile.CoreId)
+	if profile.CoreId == "" {
+		if defaultCore, ok := m.GetDefaultCore(); ok {
+			profile.CoreId = defaultCore.CoreId
+		}
+	}
+	if len(profile.FingerprintArgs) == 0 {
+		// 全局 default_fingerprint_args 是按 fingerprint-chromium 写的，
+		// 直接套到 Cloak 实例上会产生一批无效参数，所以按后端过滤。
+		profile.FingerprintArgs = m.defaultFingerprintArgsForCore(profile.CoreId)
 	}
 	if profile.LaunchArgs == nil || len(profile.LaunchArgs) == 0 {
 		profile.LaunchArgs = append([]string{}, m.Config.Browser.DefaultLaunchArgs...)
 	}
 	if strings.TrimSpace(profile.UserDataDir) == "" {
 		profile.UserDataDir = profile.ProfileId
-	}
-	profile.CoreId = normalizeProfileCoreID(profile.CoreId)
-	if profile.CoreId == "" {
-		if defaultCore, ok := m.GetDefaultCore(); ok {
-			profile.CoreId = defaultCore.CoreId
-		}
 	}
 
 	proxyChanged := false

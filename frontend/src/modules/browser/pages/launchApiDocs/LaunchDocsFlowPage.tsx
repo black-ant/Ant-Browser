@@ -17,11 +17,13 @@ export function LaunchDocsFlowPage({ baseUrl }: LaunchDocsFlowPageProps) {
     {
       step: '01',
       title: '内核下载',
-      summary: '先准备浏览器内核，并在应用里确认已识别。',
+      summary: '先准备浏览器内核，选对内核后端，并在应用里确认已识别。',
       path: '指纹浏览器 -> 内核管理 -> 下载内核 -> 设为默认',
       example: `chrome/
   chrome-<version>/
-    chrome.exe`,
+    chrome.exe        # fingerprint-chromium
+  cloak-<version>/
+    chromium-<ver>/   # Cloak`,
     },
     {
       step: '02',

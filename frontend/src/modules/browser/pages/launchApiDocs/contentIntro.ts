@@ -232,11 +232,37 @@ export const DOC_CORE_INTRO = `# 内核介绍
 ## 推荐目录
 
 \`\`\`text
+fingerprint-chromium 后端：
 chrome/
   chrome-<version>/
     chrome.exe
     ...
+
+Cloak 后端（目录名可带 -pro 后缀）：
+chrome/
+  cloak-<version>/
+    chromium-<version>/
+      chrome.exe                              # Windows
+      chrome                                  # Linux
+      Chromium.app/Contents/MacOS/Chromium    # macOS
 \`\`\`
+
+## 内核后端
+
+\`\`\`text
+fingerprint-chromium：默认后端，历史内核按此处理
+  可执行文件 chrome.exe，版本号取自 manifest.json
+
+Cloak：CloakBrowser 源码级 patch 内核
+  版本号取自 chromium-<version> 目录名
+  license / 缓存目录通过 CLOAKBROWSER_ 前缀环境变量传入
+  官方 Release 仅 146 及更早提供压缩包，148+ 为 Pro 需 license
+\`\`\`
+
+两个后端的指纹参数集不同，且部分参数结论相反：
+GPU Vendor / Renderer、设备内存、屏幕宽高在 Cloak 上有效、在 fingerprint-chromium 上无效；
+Canvas / ClientRects 噪声开关和排除伪装只在 fingerprint-chromium 上有效。
+新增内核时请选对后端，否则路径校验和指纹矩阵都会给出错误结论。
 
 ## 两种准备方式
 
@@ -275,9 +301,10 @@ chrome/
 ## 自检
 
 \`\`\`text
-1. 目录下能看到 chrome.exe
-2. 内核管理页能识别到该目录
-3. 实例绑定的是正确版本
+1. 目录符合所选后端要求（chrome.exe 或 chromium-<version>/）
+2. 内核管理页能识别到该目录，状态显示“有效”
+3. 内核后端标记与实际内核一致
+4. 实例绑定的是正确版本
 \`\`\`
 `
 

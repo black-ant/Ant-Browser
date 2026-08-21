@@ -729,6 +729,7 @@ export function BrowserEditPage() {
         <FingerprintPanel
           value={formData.fingerprintArgs}
           onChange={args => handleChange('fingerprintArgs', args)}
+          coreBackend={fingerprintMatrix?.coreBackend}
         />
       </Card>
 

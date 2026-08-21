@@ -12,9 +12,12 @@ import (
 	"time"
 )
 
-var startBrowserWindowProcess = func(chromeBinaryPath string, args []string) (*exec.Cmd, error) {
+var startBrowserWindowProcess = func(chromeBinaryPath string, args []string, processEnv []string) (*exec.Cmd, error) {
 	cmd := exec.Command(chromeBinaryPath, args...)
 	cmd.Dir = filepath.Dir(chromeBinaryPath)
+	if len(processEnv) > 0 {
+		cmd.Env = processEnv
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -145,7 +148,7 @@ func (a *App) markProfileStoppedLocked(profileId string, profile *BrowserProfile
 }
 
 func (a *App) openBrowserWindowForRunningProfile(profile *BrowserProfile, extraLaunchArgs []string, startURLs []string) error {
-	chromeBinaryPath, err := a.browserMgr.ResolveChromeBinary(profile)
+	chromeBinaryPath, resolvedCore, err := a.browserMgr.ResolveChromeBinaryWithCore(profile)
 	if err != nil {
 		return err
 	}
@@ -167,7 +170,11 @@ func (a *App) openBrowserWindowForRunningProfile(profile *BrowserProfile, extraL
 		args = append(args, "about:blank")
 	}
 
-	cmd, err := startBrowserWindowProcess(chromeBinaryPath, args)
+	profileIDForLog := ""
+	if profile != nil {
+		profileIDForLog = profile.ProfileId
+	}
+	cmd, err := startBrowserWindowProcess(chromeBinaryPath, args, buildBrowserProcessEnv(resolvedCore, profileIDForLog))
 	if err != nil {
 		return fmt.Errorf("%s", describeChromeProcessStartError(chromeBinaryPath, err))
 	}

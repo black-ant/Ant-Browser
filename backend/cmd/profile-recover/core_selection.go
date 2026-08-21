@@ -61,30 +61,38 @@ func selectCore(appRoot string, cfg *config.Config, dbPath string, apply bool) (
 func pickCoreFromList(appRoot string, cores []browser.Core, source string) selectedCore {
 	for _, core := range cores {
 		if core.IsDefault {
-			return buildSelectedCore(appRoot, core.CoreId, core.CoreName, core.CorePath, source)
+			return buildSelectedCore(appRoot, core.CoreId, core.CoreName, core.CorePath, core.CoreBackend, source)
 		}
 	}
 	first := cores[0]
-	return buildSelectedCore(appRoot, first.CoreId, first.CoreName, first.CorePath, source)
+	return buildSelectedCore(appRoot, first.CoreId, first.CoreName, first.CorePath, first.CoreBackend, source)
 }
 
 func pickCoreFromConfig(appRoot string, cores []config.BrowserCore, source string) selectedCore {
 	for _, core := range cores {
 		if core.IsDefault {
-			return buildSelectedCore(appRoot, core.CoreId, core.CoreName, core.CorePath, source)
+			return buildSelectedCore(appRoot, core.CoreId, core.CoreName, core.CorePath, core.CoreBackend, source)
 		}
 	}
 	first := cores[0]
-	return buildSelectedCore(appRoot, first.CoreId, first.CoreName, first.CorePath, source)
+	return buildSelectedCore(appRoot, first.CoreId, first.CoreName, first.CorePath, first.CoreBackend, source)
 }
 
-func buildSelectedCore(appRoot, coreID, coreName, corePath, source string) selectedCore {
+func buildSelectedCore(appRoot, coreID, coreName, corePath, coreBackend, source string) selectedCore {
 	coreAbsPath := apppath.Resolve(appRoot, corePath)
+	// 不同内核后端的可执行文件名不同（Cloak 在 macOS 下是 Chromium.app），
+	// 所以按后端候选名实际查找，找不到再回落到该后端的首个候选名。
+	binaryPath := ""
+	if resolved, _, ok := browser.FindCoreExecutableForBackend(coreAbsPath, coreBackend); ok {
+		binaryPath = resolved
+	} else if candidates := browser.CoreExecutableCandidatesForBackend(coreBackend); len(candidates) > 0 {
+		binaryPath = filepath.Join(coreAbsPath, filepath.FromSlash(candidates[0]))
+	}
 	return selectedCore{
 		CoreID:     strings.TrimSpace(coreID),
 		CoreName:   strings.TrimSpace(coreName),
 		CorePath:   strings.TrimSpace(corePath),
-		BinaryPath: filepath.Join(coreAbsPath, "chrome.exe"),
+		BinaryPath: binaryPath,
 		Source:     source,
 	}
 }

@@ -130,6 +130,13 @@ type BrowserCore struct {
 	CoreName  string `yaml:"core_name" json:"coreName"`
 	CorePath  string `yaml:"core_path" json:"corePath"`
 	IsDefault bool   `yaml:"is_default" json:"isDefault"`
+	// CoreBackend 标记内核后端类型（fingerprint_chromium / cloak）。
+	// 空值按 fingerprint_chromium 兼容历史数据。
+	// 注意：这里的 "backend" 指浏览器内核实现，与代理内核（preferred_kernel）无关。
+	CoreBackend string `yaml:"core_backend,omitempty" json:"coreBackend,omitempty"`
+	// CoreEnv 启动该内核时追加的环境变量，元素格式 KEY=VALUE。
+	// Cloak 需要 CLOAKBROWSER_LICENSE_KEY / CLOAKBROWSER_CACHE_DIR 等。
+	CoreEnv []string `yaml:"core_env,omitempty" json:"coreEnv,omitempty"`
 }
 
 type BrowserProxy struct {

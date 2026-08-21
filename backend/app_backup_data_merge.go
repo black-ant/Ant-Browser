@@ -247,6 +247,31 @@ WHERE NOT EXISTS (
 				}
 			}
 		}
+		if item.name == "browser_cores" {
+			// core_backend / core_env 是同一次迁移新增的，旧备份没有这两列时沿用基础语句。
+			hasCoreBackend, err := backupSrcColumnExists(tx, item.name, "core_backend")
+			if err != nil {
+				return err
+			}
+			hasCoreEnv, err := backupSrcColumnExists(tx, item.name, "core_env")
+			if err != nil {
+				return err
+			}
+			if hasCoreBackend && hasCoreEnv {
+				if resetFirst {
+					sqlText = `INSERT INTO browser_cores (core_id, core_name, core_path, is_default, core_backend, core_env, sort_order, created_at)
+SELECT core_id, core_name, core_path, is_default, COALESCE(core_backend,''), COALESCE(core_env,'[]'), sort_order, created_at FROM src.browser_cores`
+				} else {
+					sqlText = `INSERT INTO browser_cores (core_id, core_name, core_path, is_default, core_backend, core_env, sort_order, created_at)
+SELECT s.core_id, s.core_name, s.core_path, s.is_default, COALESCE(s.core_backend,''), COALESCE(s.core_env,'[]'), s.sort_order, s.created_at
+FROM src.browser_cores s
+WHERE NOT EXISTS (
+  SELECT 1 FROM browser_cores t
+  WHERE t.core_id = s.core_id OR lower(t.core_path) = lower(s.core_path)
+)`
+				}
+			}
+		}
 		if item.name == "browser_profiles" {
 			hasRestoreLastSession, err := backupSrcColumnExists(tx, item.name, "restore_last_session")
 			if err != nil {
