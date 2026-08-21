@@ -154,7 +154,7 @@ func (a *App) openBrowserWindowForRunningProfile(profile *BrowserProfile, extraL
 	if err := os.MkdirAll(userDataDir, 0755); err != nil {
 		return fmt.Errorf("无法创建用户数据目录 %s：%w", userDataDir, err)
 	}
-	ensureLaunchPreferences(userDataDir)
+	ensureLaunchPreferences(userDataDir, livePerfPrefsEnabled(a.config))
 
 	args := []string{
 		fmt.Sprintf("--user-data-dir=%s", userDataDir),

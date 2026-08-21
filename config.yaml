@@ -13,7 +13,8 @@ runtime:
     max_memory_mb: 0
     gc_percent: 100
 logging:
-    level: info
+    # 多开挂机场景:只保留 warn 及以上,避免每实例持续产生日志开销。
+    level: warn
     file_enabled: false
     file_path: data/logs/app.log
     format: text
@@ -27,9 +28,10 @@ logging:
         max_backups: 5
         time_interval: daily
     interceptor:
-        enabled: true
-        log_parameters: true
-        log_results: true
+        # 关闭 API 拦截器:开启时每次 Wails 调用都会全量序列化参数与返回值,纯浪费。
+        enabled: false
+        log_parameters: false
+        log_results: false
         sensitive_fields:
             - password
             - token
@@ -49,6 +51,15 @@ browser:
     default_start_urls: []
     light_start_enabled: true
     restore_last_session: false
+    # 直播多开性能模式:A 级(零指纹面)默认开;B 级激进合并站点隔离,仅专用挂机墙开启。
+    live_perf_enabled: true
+    live_perf_aggressive: false
+    # 后台自动测速:挂机场景默认关(会周期拉起代理内核+发探测流量);手动测速不受影响。
+    speed_autotest_enabled: false
+    # 定时主动内存回收:moderate 温和,critical 更狠但可能让播放器短暂卡顿。
+    memory_reclaim_enabled: true
+    memory_reclaim_interval_ms: 600000
+    memory_reclaim_level: moderate
     live_keepalive_interval_min_ms: 60000
     live_keepalive_interval_max_ms: 90000
     start_ready_timeout_ms: 3000

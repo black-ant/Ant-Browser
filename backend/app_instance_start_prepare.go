@@ -2,6 +2,7 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"os"
@@ -123,6 +124,35 @@ func (a *App) resolveBrowserStartProfile(input browserStartInput) (*BrowserProfi
 	return profile, true, nil
 }
 
+// livePerfEnabled 直播多开性能模式开关:nil = 默认开。
+// 参数集本体与红线守卫见 internal/browser/live_perf.go 与 forbidden_args.go。
+func livePerfEnabled(cfg *config.Config) bool {
+	if cfg == nil {
+		return true
+	}
+	if p := cfg.Browser.LivePerfEnabled; p != nil {
+		return *p
+	}
+	return true
+}
+
+// livePerfPrefsEnabled 与 livePerfEnabled 同一开关,供 Preferences 层使用。
+func livePerfPrefsEnabled(cfg *config.Config) bool {
+	return livePerfEnabled(cfg)
+}
+
+// appendLivePerfArgs 按配置叠加直播性能模式参数(A 级默认开,B 级需显式打开)。
+func appendLivePerfArgs(args []string, cfg *config.Config) []string {
+	if !livePerfEnabled(cfg) {
+		return args
+	}
+	args = append(args, browser.LivePerfArgs()...)
+	if cfg != nil && cfg.Browser.LivePerfAggressive {
+		args = append(args, browser.LivePerfAggressiveArgs()...)
+	}
+	return args
+}
+
 // muteAudioLaunchArgs 返回该实例是否需要注入静音参数(硬静音,取消需重启)。
 func muteAudioLaunchArgs(profile *BrowserProfile) []string {
 	if profile != nil && profile.MuteAudio {
@@ -174,6 +204,9 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	if a.config != nil && a.config.Browser.MemorySaverEnabled {
 		sanitizedExtraLaunchArgs = append(sanitizedExtraLaunchArgs, browser.MemorySaverArgs()...)
 	}
+
+	// 直播多开性能模式(默认开)。重复的 --disable-features 由 buildBrowserLaunchArgs 出口统一合并。
+	sanitizedExtraLaunchArgs = appendLivePerfArgs(sanitizedExtraLaunchArgs, a.config)
 
 	// 直播养号:默认硬静音,避免多开时上百路音频抢占声卡。--mute-audio 是启动参数,
 	// 取消静音需重启该实例(前端「取消静音并重启」)。
@@ -240,7 +273,7 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 		return nil, nil, nil, "", "", startErr
 	}
 	// 启动前调整 Preferences:允许所有 Cookie、去掉"恢复上次页面"与"设为默认浏览器"提示。
-	ensureLaunchPreferences(userDataDir)
+	ensureLaunchPreferences(userDataDir, livePerfPrefsEnabled(a.config))
 
 	fingerprintLaunchArgs := a.buildBrowserFingerprintCapabilityReport(input.ProfileID, profile.CoreId, profile.FingerprintArgs).LaunchArgs
 	fingerprintExpectedArgs := combineFingerprintExpectedArgs(fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs)
@@ -343,6 +376,8 @@ func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy st
 	if extensionArg := strings.Join(normalizeNonEmptyStrings(extensionDirs), ","); extensionArg != "" {
 		args = append(args, fmt.Sprintf("--disable-extensions-except=%s", extensionArg))
 		args = append(args, fmt.Sprintf("--load-extension=%s", extensionArg))
+	} else {
+		args = append(args, "--disable-extensions") // 无扩展实例:跳过整个扩展子系统
 	}
 
 	args = append(args, normalizeNonEmptyStrings(fingerprintLaunchArgs)...)

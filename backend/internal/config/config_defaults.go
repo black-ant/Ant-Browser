@@ -145,6 +145,21 @@ func normalizeConfig(config *Config) {
 	if config.Browser.LightStartEnabled == nil {
 		config.Browser.LightStartEnabled = defaultConfig.Browser.LightStartEnabled
 	}
+	if config.Browser.LivePerfEnabled == nil {
+		config.Browser.LivePerfEnabled = defaultConfig.Browser.LivePerfEnabled
+	}
+	if config.Browser.SpeedAutoTestEnabled == nil {
+		config.Browser.SpeedAutoTestEnabled = defaultConfig.Browser.SpeedAutoTestEnabled
+	}
+	if config.Browser.MemoryReclaimEnabled == nil {
+		config.Browser.MemoryReclaimEnabled = defaultConfig.Browser.MemoryReclaimEnabled
+	}
+	if config.Browser.MemoryReclaimIntervalMs <= 0 {
+		config.Browser.MemoryReclaimIntervalMs = defaultConfig.Browser.MemoryReclaimIntervalMs
+	}
+	if strings.TrimSpace(config.Browser.MemoryReclaimLevel) == "" {
+		config.Browser.MemoryReclaimLevel = defaultConfig.Browser.MemoryReclaimLevel
+	}
 	if config.Browser.StartReadyTimeoutMs <= 0 {
 		config.Browser.StartReadyTimeoutMs = defaultConfig.Browser.StartReadyTimeoutMs
 	}
@@ -280,6 +295,15 @@ func DefaultConfig() *Config {
 			DefaultStartURLs:       DefaultBrowserStartURLs(),
 			LightStartEnabled:      boolPtr(true),
 			RestoreLastSession:     false,
+			// 直播多开性能模式:A 级默认开(零指纹面),B 级激进默认关。
+			LivePerfEnabled:    boolPtr(true),
+			LivePerfAggressive: false,
+			// 后台自动测速默认关:挂机场景会周期拉起代理内核 + 发探测流量。手动测速不受影响。
+			SpeedAutoTestEnabled: boolPtr(false),
+			// 定时主动内存回收:默认开,10 分钟一轮,moderate 级(critical 可能让播放器卡顿)。
+			MemoryReclaimEnabled:    boolPtr(true),
+			MemoryReclaimIntervalMs: 600000,
+			MemoryReclaimLevel:      "moderate",
 			StartReadyTimeoutMs:    3000,
 			StartStableWindowMs:    1200,
 			DefaultConnectorType:   BrowserConnectorXray,

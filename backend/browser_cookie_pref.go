@@ -14,8 +14,9 @@ import (
 //   - browser.check_default_browser = false : 去掉"设为默认浏览器"提示(与 --no-default-browser-check 双保险)。
 //   - 删除 browser.window_placement / app_window_placement : 否则 Chrome 会用上次保存的(常为最大化)
 //     窗口状态覆盖命令行 --window-size,导致窗口开成真机工作区大小、指纹检测 Window Size 对不上。
+// livePerf=true 时额外关闭一批纯后台的浏览器服务(见函数末尾)。
 // 仅在实例未运行(启动前)调用,读改写合并,用 UseNumber 保留数字类型,避免破坏 Preferences 其他字段。
-func ensureLaunchPreferences(userDataDir string) {
+func ensureLaunchPreferences(userDataDir string, livePerf bool) {
 	if userDataDir == "" {
 		return
 	}
@@ -53,7 +54,48 @@ func ensureLaunchPreferences(userDataDir string) {
 	delete(browser, "app_window_placement")
 	prefs["browser"] = browser
 
+	if livePerf {
+		// 直播性能模式:关掉纯后台的浏览器服务。这些都在**浏览器面**,页面 JS 观测不到。
+		//
+		// 红线:绝不写 default_content_setting_values —— 权限状态(Notification.permission 等)
+		// JS 可读,属指纹面。这里只碰"服务开关",不碰"权限状态"。
+		prefs["safebrowsing"] = mergeSubMap(prefs, "safebrowsing", map[string]interface{}{
+			"enabled": false, // 关 SafeBrowsing:去掉持续的名单更新与上报网络
+		})
+		prefs["net"] = mergeSubMap(prefs, "net", map[string]interface{}{
+			"network_prediction_options": 2, // 2 = 永不预取 / 预连接
+		})
+		prefs["search"] = mergeSubMap(prefs, "search", map[string]interface{}{
+			"suggest_enabled": false, // 关搜索建议(每次输入都会发请求)
+		})
+		prefs["translate"] = mergeSubMap(prefs, "translate", map[string]interface{}{
+			"enabled": false,
+		})
+		prefs["spellcheck"] = mergeSubMap(prefs, "spellcheck", map[string]interface{}{
+			"use_spelling_service": false,
+		})
+		prefs["alternate_error_pages"] = mergeSubMap(prefs, "alternate_error_pages", map[string]interface{}{
+			"enabled": false,
+		})
+		prefs["credentials_enable_service"] = false // 关密码保存气泡
+		profile["password_manager_leak_detection"] = false
+		prefs["profile"] = profile
+	}
+
 	if out, err := json.Marshal(prefs); err == nil {
 		_ = os.WriteFile(prefsPath, out, 0o644)
 	}
+}
+
+// mergeSubMap 取 prefs[key] 的既有子对象(无则新建),覆盖写入 kv 后返回。
+// 用于只改指定字段而不丢掉 Preferences 里同段的其他内容。
+func mergeSubMap(prefs map[string]interface{}, key string, kv map[string]interface{}) map[string]interface{} {
+	sub, ok := prefs[key].(map[string]interface{})
+	if !ok {
+		sub = map[string]interface{}{}
+	}
+	for k, v := range kv {
+		sub[k] = v
+	}
+	return sub
 }
