@@ -35,6 +35,7 @@ type CookieInfo struct {
 
 // cdpTarget 表示 /json 接口返回的调试目标
 type cdpTarget struct {
+	Id                   string `json:"id"`
 	WebSocketDebuggerUrl string `json:"webSocketDebuggerUrl"`
 	Type                 string `json:"type"`
 }
