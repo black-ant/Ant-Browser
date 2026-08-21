@@ -54,7 +54,7 @@ func (m *Manager) ResolveCoreExecutable(core Core) (string, error) {
 
 	baseDir := m.ResolveRelativePath(corePath)
 	candidates := CoreExecutableCandidatesForBackend(core.CoreBackend)
-	exePath, _, ok := findCoreExecutableWithCandidates(baseDir, candidates)
+	exePath, _, ok := FindCoreExecutableForBackend(baseDir, core.CoreBackend)
 	if !ok {
 		return "", fmt.Errorf("浏览器内核目录无效：未找到 %s 后端的可执行文件（候选：%s）。请检查内核目录是否完整、内核后端是否选对，或重新下载内核",
 			CoreBackendLabel(core.CoreBackend), strings.Join(candidates, ", "))
@@ -87,12 +87,21 @@ func (m *Manager) ValidateCorePathForBackend(corePath string, backend string) Co
 
 	candidates := CoreExecutableCandidatesAnyBackend()
 	backendHint := ""
-	if strings.TrimSpace(backend) != "" {
+	specifiedBackend := strings.TrimSpace(backend)
+	if specifiedBackend != "" {
 		candidates = CoreExecutableCandidatesForBackend(backend)
 		backendHint = CoreBackendLabel(backend) + " 后端"
 	}
 
-	exePath, _, ok := findCoreExecutableWithCandidates(baseDir, candidates)
+	// 指定后端时走该后端的查找规则（Cloak 需要按版本目录定位），
+	// 未指定时才做跨后端的宽松查找。
+	var exePath string
+	var ok bool
+	if specifiedBackend != "" {
+		exePath, _, ok = FindCoreExecutableForBackend(baseDir, backend)
+	} else {
+		exePath, _, ok = findCoreExecutableWithCandidates(baseDir, candidates)
+	}
 	if !ok {
 		if backendHint != "" {
 			return CoreValidateResult{Valid: false, Message: fmt.Sprintf("未找到 %s 的浏览器可执行文件（候选：%s）", backendHint, strings.Join(candidates, ", "))}
