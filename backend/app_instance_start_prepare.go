@@ -348,5 +348,7 @@ func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy st
 	args = append(args, normalizeNonEmptyStrings(fingerprintLaunchArgs)...)
 	args = append(args, sanitizedProfileLaunchArgs...)
 	args = append(args, sanitizedExtraLaunchArgs...)
+	// 各层可能各带一条 --disable-features=,Chromium 只取最后一条 → 必须合并,否则叠加层互相覆盖。
+	args = mergeFeatureSwitches(args)
 	return browser.BuildLaunchArgs(args, launchTargets)
 }
