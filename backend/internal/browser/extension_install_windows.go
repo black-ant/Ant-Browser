@@ -6,6 +6,7 @@ package browser
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,7 @@ type externalExtensionRegistryState struct {
 	versionExists bool
 }
 
-func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packagePath string, extension Extension) (string, error) {
+func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packagePath string, extension Extension, installArgs []string) (string, error) {
 	externalExtensionInstallMutex.Lock()
 	defer externalExtensionInstallMutex.Unlock()
 
@@ -50,13 +51,21 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 		}
 	}()
 
-	command := exec.Command(
-		chromeBinaryPath,
-		"--user-data-dir="+userDataDir,
+	// installArgs 携带实例的调试端口、代理与指纹参数：
+	// 当实例浏览器尚未运行时，安装助手进程就是实例浏览器本身，
+	// 缺少这些参数会破坏实例启动检测并导致代理失效。
+	commandArgs := []string{
 		"--no-first-run",
 		"--no-default-browser-check",
-		"about:blank",
-	)
+	}
+	if len(installArgs) > 0 {
+		commandArgs = append(commandArgs, installArgs...)
+	} else {
+		commandArgs = append(commandArgs, "--user-data-dir="+userDataDir)
+	}
+	commandArgs = append(commandArgs, "about:blank")
+
+	command := exec.Command(chromeBinaryPath, commandArgs...)
 	command.Dir = filepath.Dir(chromeBinaryPath)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
@@ -84,7 +93,7 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 				keepRegistry = true
 				return installedRuntimeID, nil
 			}
-			return "", fmt.Errorf("浏览器安装进程结束，但未发现持久插件目录")
+			return "", fmt.Errorf("浏览器安装进程结束，但未发现持久插件目录%s", browserExtensionInstallerExitHint(userDataDir))
 		default:
 			time.Sleep(200 * time.Millisecond)
 		}
@@ -93,6 +102,16 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 	terminateExtensionInstallerProcess(command)
 	<-waitResult
 	return "", fmt.Errorf("等待浏览器完成插件安装超时")
+}
+
+func browserExtensionInstallerExitHint(userDataDir string) string {
+	if userDataDir == "" {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(userDataDir, "SingletonLock")); err == nil {
+		return "；该用户数据目录可能正被运行中的浏览器实例占用，插件将由运行中的实例接管，请在实例启动后检查插件是否可用"
+	}
+	return ""
 }
 
 func ensurePersistentExternalExtensionRegistry(runtimeID string, packagePath string, version string) error {
@@ -170,7 +189,7 @@ func registerExternalExtension(runtimeID string, packagePath string, version str
 		_ = restoreExternalExtensionRegistry(state)
 		return nil, fmt.Errorf("打开外部插件注册表项失败: %w", err)
 	}
-	if err := key.SetStringValue("path", packagePath); err == nil {
+	if err = key.SetStringValue("path", packagePath); err == nil {
 		err = key.SetStringValue("version", version)
 	}
 	_ = key.Close()

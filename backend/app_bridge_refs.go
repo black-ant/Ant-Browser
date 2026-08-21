@@ -74,6 +74,14 @@ func (a *App) releaseProxyBridgeRef(ref profileProxyBridgeRef) {
 
 func (a *App) clearProfileProxyBridges() {
 	a.bridgeMu.Lock()
+	refs := make([]profileProxyBridgeRef, 0, len(a.profileBridgeRefs))
+	for _, ref := range a.profileBridgeRefs {
+		refs = append(refs, ref)
+	}
 	a.profileBridgeRefs = make(map[string]profileProxyBridgeRef)
 	a.bridgeMu.Unlock()
+
+	for _, ref := range refs {
+		a.releaseProxyBridgeRef(ref)
+	}
 }

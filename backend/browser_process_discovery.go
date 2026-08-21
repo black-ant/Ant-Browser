@@ -87,6 +87,43 @@ func detectBrowserRuntimeByActivePort(userDataDir string) (browserRuntimeDetecti
 	return browserRuntimeDetection{}, false
 }
 
+// terminateBrowserUserDataOrphans 结束同一用户数据目录下无法被 CDP 接管的残留浏览器进程。
+// 仅当主浏览器进程（无 --type= 参数）不携带调试端口时才清理，
+// 避免误杀正在启动或受管实例的子进程；taskkill /T 会连同子进程一起结束。
+func terminateBrowserUserDataOrphans(userDataDir string, timeout time.Duration) (bool, error) {
+	processes, err := findBrowserUserDataProcesses(userDataDir)
+	if err != nil {
+		return false, err
+	}
+	mainPID := 0
+	hasManaged := false
+	for _, process := range processes {
+		if process.PID <= 0 || isBrowserChildProcessCommandLine(process.CommandLine) {
+			continue
+		}
+		debugPort := process.DebugPort
+		if debugPort <= 0 {
+			debugPort = parseRemoteDebuggingPort(process.CommandLine)
+		}
+		if debugPort > 0 {
+			hasManaged = true
+			continue
+		}
+		mainPID = process.PID
+	}
+	if hasManaged || mainPID <= 0 {
+		return false, nil
+	}
+	if err := terminateBrowserUserDataProcess(mainPID, timeout); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func isBrowserChildProcessCommandLine(commandLine string) bool {
+	return strings.Contains(commandLine, "--type=")
+}
+
 func terminateBrowserProcessesByUserDataDir(userDataDir string, timeout time.Duration) (bool, error) {
 	processes, err := findBrowserUserDataProcesses(userDataDir)
 	if err != nil {

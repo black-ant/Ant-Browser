@@ -187,12 +187,19 @@ func openDeferredStartTargets(debugPort int, plan deferredStartTargetsPlan) erro
 }
 
 func (a *App) setProfileRuntimeWarning(profileId string, debugPort int, warning string) (*BrowserProfile, bool) {
+	return a.setProfileRuntimeWarningForMonitor(profileId, debugPort, warning, nil)
+}
+
+func (a *App) setProfileRuntimeWarningForMonitor(profileId string, debugPort int, warning string, monitor *browserProcessMonitor) (*BrowserProfile, bool) {
 	if a == nil || a.browserMgr == nil {
 		return nil, false
 	}
 
 	a.browserMgr.Mutex.Lock()
 	defer a.browserMgr.Mutex.Unlock()
+	if !a.browserProcessMonitorIsCurrentLocked(profileId, monitor) {
+		return nil, false
+	}
 
 	profile, exists := a.browserMgr.Profiles[profileId]
 	if !exists || profile == nil || !profile.Running || profile.DebugPort != debugPort {
@@ -208,14 +215,24 @@ func (a *App) setProfileRuntimeWarning(profileId string, debugPort int, warning 
 }
 
 func (a *App) finalizeDeferredStartTargets(profileId string, debugPort int) (*BrowserProfile, bool) {
+	return a.finalizeDeferredStartTargetsForMonitor(profileId, debugPort, nil)
+}
+
+func (a *App) finalizeDeferredStartTargetsForMonitor(profileId string, debugPort int, monitor *browserProcessMonitor) (*BrowserProfile, bool) {
+	if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
+		return nil, false
+	}
 	plan := a.consumeDeferredStartTargets(profileId)
 	if len(plan.targets) == 0 {
+		return nil, false
+	}
+	if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
 		return nil, false
 	}
 
 	if err := openDeferredStartTargets(debugPort, plan); err != nil {
 		warning := deferredStartTargetsWarning(plan.targets, err)
-		snapshot, changed := a.setProfileRuntimeWarning(profileId, debugPort, warning)
+		snapshot, changed := a.setProfileRuntimeWarningForMonitor(profileId, debugPort, warning, monitor)
 		logger.New("Browser").Warn("浏览器已就绪，但启动页延后打开失败",
 			logger.F("profile_id", profileId),
 			logger.F("debug_port", debugPort),

@@ -110,7 +110,7 @@ func (m *XrayManager) watchBridge(bridge *XrayBridge, key string) {
 
 	if shouldRestart {
 		log := logger.New("Xray")
-		if err := m.restartPinnedBridge(log, key, bridge, refCount); err == nil {
+		if err := m.restartPinnedBridge(log, key, bridge); err == nil {
 			return
 		} else if errors.Is(err, errXrayBridgeRestartNotNeeded) {
 			return

@@ -29,6 +29,7 @@
   lastStartAt?: string
   lastStopAt?: string
   launchCode?: string
+  windowMarkerCode?: string
 }
 
 export interface BrowserProfileInput {

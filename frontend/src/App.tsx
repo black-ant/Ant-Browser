@@ -64,7 +64,7 @@ function useWailsNotifications() {
               path: `/browser/detail/${encodeURIComponent(data.profileId)}`,
             }
           : undefined;
-        toast.warning(`「${data.profileName || data.profileId}」代理桥接失败，已直连启动`, 6000, {
+        toast.warning(`「${data.profileName || data.profileId}」代理桥接失败，已直连启动`, 8_000, {
           title: "代理已降级直连",
           source: "runtime",
           dedupeKey: `proxy:bridge:failed:${data.profileId}`,

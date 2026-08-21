@@ -18,6 +18,51 @@ interface ProfileStatus {
   label: string
 }
 
+function ProfileStatusIndicator({ status }: { status: ProfileStatus }) {
+  const dotColor = status.variant === 'success'
+    ? 'bg-[var(--color-success)]'
+    : status.variant === 'error'
+      ? 'bg-[var(--color-error)]'
+      : 'bg-[var(--color-text-muted)]'
+
+  return (
+    <span
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bg-muted)]"
+      role="img"
+      aria-label={status.label}
+      title={status.label}
+    >
+      <span className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
+    </span>
+  )
+}
+
+function ProfileWindowMarkerBadge({ code }: { code: string }) {
+  return (
+    <span
+      className="absolute left-2.5 top-2.5 z-10 inline-flex min-h-5 min-w-5 items-center justify-center rounded-md border border-[var(--color-accent)]/25 bg-[var(--color-accent)] px-1 text-[10px] font-semibold leading-none text-[var(--color-text-inverse)]"
+      role="img"
+      aria-label={`实例标识：${code}`}
+      title={`实例标识：${code}`}
+    >
+      {code}
+    </span>
+  )
+}
+
+function ProfileWindowMarkerCode({ code }: { code: string }) {
+  return (
+    <span
+      className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-md border border-[var(--color-accent)]/25 bg-[var(--color-accent)] px-1 text-[10px] font-semibold leading-none text-[var(--color-text-inverse)]"
+      role="img"
+      aria-label={`实例标识：${code}`}
+      title={`实例标识：${code}`}
+    >
+      {code}
+    </span>
+  )
+}
+
 interface BrowserProfilesPanelProps {
   loading: boolean
   viewMode: BrowserViewMode
@@ -314,14 +359,17 @@ function BrowserProfileCard({
   onOpenProxyPicker: (profile: BrowserProfile) => void
   onDelete: (profileId: string) => void
 }) {
+  const markerCode = profile.running ? (profile.windowMarkerCode || '').trim().toUpperCase() : ''
+
   return (
     <div
       className={`relative flex flex-col border rounded-xl bg-[var(--color-bg-surface)] p-3 shadow-[0_1px_4px_rgba(0,0,0,0.08)] transition-all duration-200 h-[320px] overflow-visible
         ${isSelected ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/20' : 'border-[var(--color-border-default)] hover:border-[var(--color-accent)]'}
       `}
     >
+      {markerCode && <ProfileWindowMarkerBadge code={markerCode} />}
       <div className="flex flex-col gap-3 pb-3 border-b border-[var(--color-border-muted)]/50 shrink-0">
-        <div className="flex justify-between items-start gap-2">
+        <div className={`flex justify-between items-start gap-2 ${markerCode ? 'pl-8' : ''}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <input
               type="checkbox"
@@ -339,9 +387,10 @@ function BrowserProfileCard({
             )}
           </div>
 
-          <Badge variant={status.variant} dot dotClassName="w-2 h-2 shrink-0">
-            {status.label}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <ProfileStatusIndicator status={status} />
+            {markerCode && <ProfileWindowMarkerCode code={markerCode} />}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 flex-wrap">
@@ -488,7 +537,13 @@ export function BrowserProfilesPanel({
       width: 100,
       render: (_, record) => {
         const status = getProfileStatus(record)
-        return <Badge variant={status.variant} dot>{status.label}</Badge>
+        const markerCode = record.running ? (record.windowMarkerCode || '').trim().toUpperCase() : ''
+        return (
+          <div className="flex items-center gap-1.5">
+            <ProfileStatusIndicator status={status} />
+            {markerCode && <ProfileWindowMarkerCode code={markerCode} />}
+          </div>
+        )
       },
     },
     {

@@ -28,6 +28,7 @@ type Profile struct {
 	Keywords           []string `json:"keywords"`
 	GroupId            string   `json:"groupId"` // 所属分组ID
 	LaunchCode         string   `json:"launchCode"`
+	WindowMarkerCode   string   `json:"windowMarkerCode,omitempty"`
 	Running            bool     `json:"running"`
 	DebugPort          int      `json:"debugPort"`
 	DebugReady         bool     `json:"debugReady"`

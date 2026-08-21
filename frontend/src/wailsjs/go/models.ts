@@ -1059,6 +1059,9 @@ export namespace backup {
 	    entryType: string;
 	    required: boolean;
 	    archivePath: string;
+	    fileCount?: number;
+	    byteSize?: number;
+	    sha256?: string;
 	    description?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1072,6 +1075,9 @@ export namespace backup {
 	        this.entryType = source["entryType"];
 	        this.required = source["required"];
 	        this.archivePath = source["archivePath"];
+	        this.fileCount = source["fileCount"];
+	        this.byteSize = source["byteSize"];
+	        this.sha256 = source["sha256"];
 	        this.description = source["description"];
 	    }
 	}
@@ -1390,6 +1396,7 @@ export namespace browser {
 	    keywords: string[];
 	    groupId: string;
 	    launchCode: string;
+	    windowMarkerCode?: string;
 	    running: boolean;
 	    debugPort: number;
 	    debugReady: boolean;
@@ -1427,6 +1434,7 @@ export namespace browser {
 	        this.keywords = source["keywords"];
 	        this.groupId = source["groupId"];
 	        this.launchCode = source["launchCode"];
+	        this.windowMarkerCode = source["windowMarkerCode"];
 	        this.running = source["running"];
 	        this.debugPort = source["debugPort"];
 	        this.debugReady = source["debugReady"];

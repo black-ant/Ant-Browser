@@ -31,23 +31,27 @@ type extensionLegacyPreferences struct {
 	} `json:"extensions"`
 }
 
-func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath string, userDataDir string) ([]string, error) {
+func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath string, userDataDir string, installArgs []string) ([]string, []error) {
+	warnings := make([]error, 0, 1)
 	if m == nil || m.ExtensionDAO == nil || profile == nil {
-		return nil, nil
+		return nil, warnings
 	}
 	if strings.TrimSpace(chromeBinaryPath) == "" {
-		return nil, fmt.Errorf("插件持久安装失败：浏览器内核路径为空")
+		warnings = append(warnings, fmt.Errorf("插件持久安装失败：浏览器内核路径为空"))
+		return nil, warnings
 	}
 	if strings.TrimSpace(userDataDir) == "" {
-		return nil, fmt.Errorf("插件持久安装失败：实例数据目录为空")
+		warnings = append(warnings, fmt.Errorf("插件持久安装失败：实例数据目录为空"))
+		return nil, warnings
 	}
 	if err := m.cleanupManagedExternalExtensionRegistry(); err != nil {
-		return nil, err
+		warnings = append(warnings, fmt.Errorf("清理外部插件注册表失败：%w", err))
 	}
 
 	settings, err := m.ExtensionDAO.GetProfileSettings(profile.ProfileId)
 	if err != nil {
-		return nil, err
+		warnings = append(warnings, fmt.Errorf("读取实例插件配置失败：%w", err))
+		return nil, warnings
 	}
 	var extensions []Extension
 	if settings.Configured {
@@ -56,39 +60,44 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 		extensions, err = m.ExtensionDAO.ListDefaultInstall()
 	}
 	if err != nil {
-		return nil, err
+		warnings = append(warnings, fmt.Errorf("读取实例插件列表失败：%w", err))
+		return nil, warnings
 	}
 
 	desired := make(map[string]Extension, len(extensions))
 	for _, extension := range extensions {
 		desired[extension.ExtensionID] = extension
-		if _, err := m.ensurePersistentExtensionInstalled(profile, userDataDir, chromeBinaryPath, extension); err != nil {
-			return nil, err
+		if _, installErr := m.ensurePersistentExtensionInstalled(profile, userDataDir, chromeBinaryPath, extension, installArgs); installErr != nil {
+			warnings = append(warnings, installErr)
+			continue
 		}
 	}
 
 	runtimeStates, err := m.ExtensionDAO.ListProfileExtensionRuntime(profile.ProfileId)
 	if err != nil {
-		return nil, err
+		warnings = append(warnings, fmt.Errorf("读取实例插件运行态失败：%w", err))
+		return nil, warnings
 	}
 	for _, runtimeState := range runtimeStates {
 		if _, ok := desired[runtimeState.ExtensionID]; ok {
 			continue
 		}
 		if err := cleanupProfileExtensionRuntime(userDataDir, runtimeState.RuntimeExtensionID); err != nil {
-			return nil, err
+			warnings = append(warnings, fmt.Errorf("清理实例插件运行态失败（%s）：%w", runtimeState.ExtensionID, err))
+			continue
 		}
 		runtimeState.Status = ExtensionRuntimeStatusDisabled
 		runtimeState.LastVerifiedAt = time.Now().Format(time.RFC3339)
 		runtimeState.LastError = ""
 		if err := m.ExtensionDAO.UpsertProfileExtensionRuntime(runtimeState); err != nil {
-			return nil, err
+			warnings = append(warnings, fmt.Errorf("更新实例插件运行态失败（%s）：%w", runtimeState.ExtensionID, err))
 		}
 	}
 
 	allExtensions, err := m.ExtensionDAO.List()
 	if err != nil {
-		return nil, err
+		warnings = append(warnings, fmt.Errorf("读取插件列表失败：%w", err))
+		return nil, warnings
 	}
 	for _, extension := range allExtensions {
 		if _, ok := desired[extension.ExtensionID]; ok {
@@ -96,16 +105,17 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 		}
 		legacyIDs, legacyErr := findLegacyRuntimeExtensionIDs(userDataDir, extension.InstallDir)
 		if legacyErr != nil {
-			return nil, legacyErr
+			warnings = append(warnings, fmt.Errorf("查找旧版插件目录失败（%s）：%w", extension.ExtensionID, legacyErr))
+			continue
 		}
 		for _, runtimeID := range legacyIDs {
 			if err := cleanupProfileExtensionRuntime(userDataDir, runtimeID); err != nil {
-				return nil, err
+				warnings = append(warnings, fmt.Errorf("清理旧版插件目录失败（%s）：%w", runtimeID, err))
 			}
 		}
 	}
 
-	return nil, nil
+	return nil, warnings
 }
 func (m *Manager) RemoveExtensionFromStoppedProfiles(extensionID string) error {
 	if m == nil || m.ExtensionDAO == nil {
@@ -267,7 +277,7 @@ func (m *Manager) ExtensionPackagePaths(extension Extension) ([]string, error) {
 	return validated, nil
 }
 
-func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataDir string, chromeBinaryPath string, extension Extension) (string, error) {
+func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataDir string, chromeBinaryPath string, extension Extension, installArgs []string) (string, error) {
 	packagePath, packageHash, err := m.resolveExtensionPackage(extension, chromeBinaryPath)
 	if err != nil {
 		return "", err
@@ -308,7 +318,7 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 	if err != nil {
 		return "", err
 	}
-	runtimeExtensionID, err := installCRXIntoProfile(userDataDir, chromeBinaryPath, packagePath, extension)
+	runtimeExtensionID, err := installCRXIntoProfile(userDataDir, chromeBinaryPath, packagePath, extension, installArgs)
 	if err != nil {
 		_ = restoreProfileExtensionState(userDataDir, backupPath, legacyRuntimeIDs, "")
 		m.recordProfileExtensionRuntimeError(profile.ProfileId, extension, runtimeState, packageHash, backupPath, err)

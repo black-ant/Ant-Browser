@@ -1,32 +1,91 @@
 package backend
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
-func TestNextProfileWindowMarkerCodeUsesLettersThenNumbers(t *testing.T) {
-	if code := nextProfileWindowMarkerCode(nil); code != "A" {
-		t.Fatalf("first marker code = %q, want A", code)
+func TestProfileWindowMarkerTaskbarOverlayReappliesAfterInterval(t *testing.T) {
+	state := &profileWindowMarkerWindowState{
+		taskbarOverlayIconApplied:   true,
+		taskbarOverlayLastAppliedAt: time.Now(),
+	}
+	if state.taskbarOverlayNeedsReapply() {
+		t.Fatal("recently applied overlay must not need a reapply")
 	}
 
-	used := make(map[string]struct{}, len(profileWindowMarkerLetters))
-	for _, code := range profileWindowMarkerLetters {
-		used[string(code)] = struct{}{}
+	state.taskbarOverlayLastAppliedAt = time.Now().Add(-profileWindowMarkerOverlayReapplyInterval - time.Second)
+	if !state.taskbarOverlayNeedsReapply() {
+		t.Fatal("overlay must be reapplied after the refresh interval")
 	}
-	if code := nextProfileWindowMarkerCode(used); code != "1" {
-		t.Fatalf("marker code after letters = %q, want 1", code)
-	}
-	used["1"] = struct{}{}
-	if code := nextProfileWindowMarkerCode(used); code != "2" {
-		t.Fatalf("marker code after first number = %q, want 2", code)
+
+	state.taskbarOverlayIconApplied = false
+	if !state.taskbarOverlayNeedsReapply() {
+		t.Fatal("overlay must be applied when it was never applied")
 	}
 }
 
-func TestNextProfileWindowMarkerCodeReusesAvailableLetter(t *testing.T) {
-	used := map[string]struct{}{"A": {}, "C": {}}
+func TestProfileWindowMarkerIconResourcePathPrefersInstalledIcon(t *testing.T) {
+	appRoot := t.TempDir()
+	installedIcon := filepath.Join(appRoot, "AntBrowser.ico")
+	if err := os.WriteFile(installedIcon, []byte("ico"), 0o600); err != nil {
+		t.Fatalf("write installed icon: %v", err)
+	}
+
+	if got := profileWindowMarkerIconResourcePath(appRoot); got != installedIcon {
+		t.Fatalf("icon resource path = %q, want %q", got, installedIcon)
+	}
+}
+
+func TestNextProfileWindowMarkerCodeUsesNumbersThenLetters(t *testing.T) {
+	if code := nextProfileWindowMarkerCode(nil); code != "1" {
+		t.Fatalf("first marker code = %q, want 1", code)
+	}
+
+	used := make(map[string]struct{}, 12)
+	for index := 1; index <= 10; index++ {
+		used[strconv.Itoa(index)] = struct{}{}
+	}
+	if code := nextProfileWindowMarkerCode(used); code != "A" {
+		t.Fatalf("marker code after one through ten = %q, want A", code)
+	}
+	used["A"] = struct{}{}
 	if code := nextProfileWindowMarkerCode(used); code != "B" {
-		t.Fatalf("available marker code = %q, want B", code)
+		t.Fatalf("marker code after A = %q, want B", code)
+	}
+}
+
+func TestNextProfileWindowMarkerCodeContinuesThroughTen(t *testing.T) {
+	used := make(map[string]struct{}, 9)
+	for index := 1; index <= 9; index++ {
+		used[strconv.Itoa(index)] = struct{}{}
+	}
+	if code := nextProfileWindowMarkerCode(used); code != "10" {
+		t.Fatalf("marker code after one through nine = %q, want 10", code)
+	}
+}
+
+func TestNextProfileWindowMarkerCodeContinuesWithNumbersAfterLetters(t *testing.T) {
+	used := make(map[string]struct{}, 36)
+	for index := 1; index <= 10; index++ {
+		used[strconv.Itoa(index)] = struct{}{}
+	}
+	for _, code := range profileWindowMarkerLetters {
+		used[string(code)] = struct{}{}
+	}
+	if code := nextProfileWindowMarkerCode(used); code != "11" {
+		t.Fatalf("marker code after one through ten and A-Z = %q, want 11", code)
+	}
+}
+
+func TestNextProfileWindowMarkerCodeReusesAvailableNumber(t *testing.T) {
+	used := map[string]struct{}{"1": {}, "3": {}}
+	if code := nextProfileWindowMarkerCode(used); code != "2" {
+		t.Fatalf("available marker code = %q, want 2", code)
 	}
 }
 
@@ -102,11 +161,13 @@ func TestProfileWindowMarkerWindowStateResetsWhenProcessChanges(t *testing.T) {
 		processID:               100,
 		originalBigIcon:         1,
 		originalBigIconCaptured: true,
-		markerBigIconApplied:    true,
+		fallbackBigIconApplied:  true,
+		decoratedBigIcon:        2,
+		decoratedBigIconApplied: true,
 	})
 	marker.rememberWindow(42, 100)
 	state, ok := marker.windowState(42)
-	if !ok || !state.originalBigIconCaptured || !state.markerBigIconApplied {
+	if !ok || !state.originalBigIconCaptured || !state.fallbackBigIconApplied || state.decoratedBigIcon != 2 || !state.decoratedBigIconApplied {
 		t.Fatalf("window state was not preserved for the same process: %+v", state)
 	}
 
@@ -115,7 +176,31 @@ func TestProfileWindowMarkerWindowStateResetsWhenProcessChanges(t *testing.T) {
 	if !ok {
 		t.Fatal("window state was lost after process change")
 	}
-	if state.processID != 200 || state.originalBigIconCaptured || state.markerBigIconApplied {
+	if state.processID != 200 || state.originalBigIconCaptured || state.fallbackBigIconApplied || state.decoratedBigIcon != 0 || state.decoratedBigIconApplied {
 		t.Fatalf("window state was not reset after process change: %+v", state)
+	}
+}
+
+func TestProfileWindowMarkerAppUserModelIDUsesStableProfileID(t *testing.T) {
+	appID := profileWindowMarkerAppUserModelID("profile one/中文:A", "B")
+	if appID != "AntBrowser.Instance.profile.one.A" {
+		t.Fatalf("unexpected AppUserModelID: %q", appID)
+	}
+}
+
+func TestProfileWindowMarkerAppUserModelIDFallsBackToMarkerCode(t *testing.T) {
+	appID := profileWindowMarkerAppUserModelID("", "A")
+	if appID != "AntBrowser.Instance.A" {
+		t.Fatalf("unexpected fallback AppUserModelID: %q", appID)
+	}
+}
+
+func TestProfileWindowMarkerAppUserModelIDStaysWithinWindowsLimit(t *testing.T) {
+	appID := profileWindowMarkerAppUserModelID(strings.Repeat("a", 200), "A")
+	if len(appID) > 128 {
+		t.Fatalf("AppUserModelID exceeds Windows limit: len=%d", len(appID))
+	}
+	if strings.HasSuffix(appID, ".") || strings.HasSuffix(appID, "-") || strings.HasSuffix(appID, "_") {
+		t.Fatalf("AppUserModelID has a trailing separator: %q", appID)
 	}
 }

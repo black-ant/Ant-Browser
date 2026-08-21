@@ -6,6 +6,8 @@ package backend
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -13,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 func findBrowserUserDataProcessesOS(userDataDir string) ([]browserUserDataProcess, error) {
@@ -151,8 +154,21 @@ func runPowerShellJSON(script string, args ...string) ([]byte, error) {
 		}
 	}
 
-	commandArgs := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script}
-	commandArgs = append(commandArgs, args...)
+	commandText := "& { " + strings.TrimSpace(script) + " }"
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") && !strings.ContainsAny(arg, " \t\r\n") {
+			commandText += " " + arg
+			continue
+		}
+		commandText += " '" + strings.ReplaceAll(arg, "'", "''") + "'"
+	}
+	commandArgs := []string{
+		"-NoProfile",
+		"-ExecutionPolicy",
+		"Bypass",
+		"-EncodedCommand",
+		encodePowerShellCommand(commandText),
+	}
 	cmd := exec.CommandContext(ctx, powershellPath, commandArgs...)
 	hideWindow(cmd)
 	output, err := cmd.Output()
@@ -163,4 +179,13 @@ func runPowerShellJSON(script string, args ...string) ([]byte, error) {
 		return nil, err
 	}
 	return output, nil
+}
+
+func encodePowerShellCommand(command string) string {
+	codeUnits := utf16.Encode([]rune(command))
+	data := make([]byte, len(codeUnits)*2)
+	for index, codeUnit := range codeUnits {
+		binary.LittleEndian.PutUint16(data[index*2:], codeUnit)
+	}
+	return base64.StdEncoding.EncodeToString(data)
 }

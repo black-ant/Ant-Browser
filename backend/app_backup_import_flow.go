@@ -67,8 +67,12 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 	a.backupImportFileTrees(payloadRoot, incomingCfg, resetFirst, stats, issueTracker.RecordIssue)
 
 	a.backupEmitImportProgress("importing", 92, "正在修复插件迁移路径...")
-	if err := a.backupRepairExtensionPathsAfterImport(); err != nil {
+	repairIssues, err := a.backupRepairExtensionPathsAfterImport()
+	if err != nil {
 		issueTracker.RecordIssue("browser_extension_paths", "插件路径迁移", err)
+	}
+	for _, issue := range repairIssues {
+		issueTracker.RecordIssue("browser_extension_paths", "插件路径迁移", issue)
 	}
 
 	a.backupEmitImportProgress("importing", 94, "正在刷新运行时配置...")

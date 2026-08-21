@@ -35,10 +35,6 @@ func browserDebugPendingWarning(timeout time.Duration) string {
 	return fmt.Sprintf("浏览器窗口已启动，但调试接口在 %s 内仍未就绪；系统会继续在后台连接。连接完成前，Cookie、自动化和统一 CDP 入口暂不可用。", formatBrowserWaitWindow(timeout))
 }
 
-func browserDebugPendingStartNotice(timeout time.Duration) string {
-	return fmt.Sprintf("浏览器窗口已启动，但在 %s 内尚未完成接管；系统会继续在后台连接，请稍后查看实例状态。连接完成前，Cookie、自动化和统一 CDP 入口暂不可用。", formatBrowserWaitWindow(timeout))
-}
-
 func formatBrowserWaitWindow(timeout time.Duration) string {
 	if timeout <= 0 {
 		return "当前等待窗口"
@@ -59,14 +55,15 @@ func browserInstanceEventPayload(profile *BrowserProfile, reused bool) map[strin
 		return map[string]interface{}{}
 	}
 	return map[string]interface{}{
-		"profileId":      profile.ProfileId,
-		"profileName":    profile.ProfileName,
-		"debugPort":      profile.DebugPort,
-		"debugReady":     profile.DebugReady,
-		"pid":            profile.Pid,
-		"reused":         reused,
-		"running":        profile.Running,
-		"runtimeWarning": profile.RuntimeWarning,
+		"profileId":        profile.ProfileId,
+		"profileName":      profile.ProfileName,
+		"debugPort":        profile.DebugPort,
+		"debugReady":       profile.DebugReady,
+		"pid":              profile.Pid,
+		"reused":           reused,
+		"running":          profile.Running,
+		"runtimeWarning":   profile.RuntimeWarning,
+		"windowMarkerCode": profile.WindowMarkerCode,
 	}
 }
 
@@ -88,6 +85,10 @@ func (a *App) markProfileRunningLocked(profileId string, profile *BrowserProfile
 	if profile == nil {
 		return
 	}
+	if a.browserProcessMonitors == nil {
+		a.browserProcessMonitors = make(map[string]*browserProcessMonitor)
+	}
+	delete(a.browserProcessMonitors, profileId)
 	profile.Running = true
 	profile.DebugPort = debugPort
 	profile.DebugReady = debugReady
@@ -102,6 +103,39 @@ func (a *App) markProfileRunningLocked(profileId string, profile *BrowserProfile
 	if debugReady && a.launchServer != nil {
 		a.launchServer.SetActiveProfile(profile)
 	}
+	if cmd == nil && debugReady && debugPort > 0 {
+		monitor := newDetachedBrowserProcessMonitor()
+		a.setBrowserProcessMonitorLocked(profileId, monitor)
+		go a.waitDetachedBrowser(profileId, debugPort, monitor)
+	}
+}
+
+func (a *App) setBrowserProcessMonitorLocked(profileId string, monitor *browserProcessMonitor) {
+	if a.browserProcessMonitors == nil {
+		a.browserProcessMonitors = make(map[string]*browserProcessMonitor)
+	}
+	if monitor == nil {
+		delete(a.browserProcessMonitors, profileId)
+		return
+	}
+	a.browserProcessMonitors[profileId] = monitor
+}
+
+func (a *App) browserProcessMonitorIsCurrentLocked(profileId string, monitor *browserProcessMonitor) bool {
+	if monitor == nil {
+		return true
+	}
+	return a.browserProcessMonitors != nil && a.browserProcessMonitors[profileId] == monitor
+}
+
+func (a *App) browserProcessMonitorIsCurrent(profileId string, monitor *browserProcessMonitor) bool {
+	if a == nil || a.browserMgr == nil || monitor == nil {
+		return monitor == nil
+	}
+	a.browserMgr.Mutex.Lock()
+	current := a.browserProcessMonitorIsCurrentLocked(profileId, monitor)
+	a.browserMgr.Mutex.Unlock()
+	return current
 }
 
 func (a *App) markProfileLastLaunchArgsLocked(profile *BrowserProfile, args []string) {
@@ -122,11 +156,19 @@ func (a *App) markProfileDebugReadyLocked(profile *BrowserProfile, debugPort int
 }
 
 func (a *App) setProfileDebugReady(profileId string, debugPort int) (*BrowserProfile, bool) {
+	return a.setProfileDebugReadyForMonitor(profileId, debugPort, nil)
+}
+
+func (a *App) setProfileDebugReadyForMonitor(profileId string, debugPort int, monitor *browserProcessMonitor) (*BrowserProfile, bool) {
 	if a == nil || a.browserMgr == nil {
 		return nil, false
 	}
 
 	a.browserMgr.Mutex.Lock()
+	if !a.browserProcessMonitorIsCurrentLocked(profileId, monitor) {
+		a.browserMgr.Mutex.Unlock()
+		return nil, false
+	}
 	profile, exists := a.browserMgr.Profiles[profileId]
 	if !exists || profile == nil || !profile.Running || profile.DebugPort != debugPort {
 		a.browserMgr.Mutex.Unlock()
@@ -147,6 +189,10 @@ func (a *App) setProfileDebugReady(profileId string, debugPort int) (*BrowserPro
 }
 
 func (a *App) waitForBrowserDebugReady(profileId string, debugPort int, timeout time.Duration) (*BrowserProfile, bool) {
+	return a.waitForBrowserDebugReadyForMonitor(profileId, debugPort, timeout, nil)
+}
+
+func (a *App) waitForBrowserDebugReadyForMonitor(profileId string, debugPort int, timeout time.Duration, monitor *browserProcessMonitor) (*BrowserProfile, bool) {
 	if a == nil || a.browserMgr == nil || debugPort <= 0 || timeout <= 0 {
 		return nil, false
 	}
@@ -154,6 +200,10 @@ func (a *App) waitForBrowserDebugReady(profileId string, debugPort int, timeout 
 	deadline := time.Now().Add(timeout)
 	for {
 		a.browserMgr.Mutex.Lock()
+		if !a.browserProcessMonitorIsCurrentLocked(profileId, monitor) {
+			a.browserMgr.Mutex.Unlock()
+			return nil, false
+		}
 		profile, exists := a.browserMgr.Profiles[profileId]
 		if !exists || profile == nil || !profile.Running || profile.DebugPort != debugPort {
 			a.browserMgr.Mutex.Unlock()
@@ -167,7 +217,7 @@ func (a *App) waitForBrowserDebugReady(profileId string, debugPort int, timeout 
 		a.browserMgr.Mutex.Unlock()
 
 		if err := probeBrowserDebugPort(debugPort, browserDebugProbeTimeout); err == nil {
-			return a.setProfileDebugReady(profileId, debugPort)
+			return a.setProfileDebugReadyForMonitor(profileId, debugPort, monitor)
 		}
 		if time.Now().After(deadline) {
 			return nil, false
@@ -176,17 +226,20 @@ func (a *App) waitForBrowserDebugReady(profileId string, debugPort int, timeout 
 	}
 }
 
-func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeout time.Duration) {
-	snapshot, changed := a.waitForBrowserDebugReady(profileId, debugPort, timeout)
+func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeout time.Duration, monitor *browserProcessMonitor) {
+	snapshot, changed := a.waitForBrowserDebugReadyForMonitor(profileId, debugPort, timeout, monitor)
 	if snapshot == nil {
 		return
 	}
 
-	if warningSnapshot, warningChanged := a.finalizeDeferredStartTargets(profileId, debugPort); warningSnapshot != nil {
+	if warningSnapshot, warningChanged := a.finalizeDeferredStartTargetsForMonitor(profileId, debugPort, monitor); warningSnapshot != nil {
 		snapshot = warningSnapshot
 		changed = changed || warningChanged
 	}
 	if !changed {
+		return
+	}
+	if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
 		return
 	}
 

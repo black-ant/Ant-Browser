@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,7 +34,7 @@ func TestBackupRepairExtensionPathsAfterImportRelocatesManagedArtifacts(t *testi
 
 	stats := &backupMergeStats{}
 	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
-	if err := app.backupRepairExtensionPathsAfterImport(); err != nil {
+	if _, err := app.backupRepairExtensionPathsAfterImport(); err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned error: %v", err)
 	}
 
@@ -81,7 +82,7 @@ func TestBackupRepairExtensionPathsClearsMissingManagedPackage(t *testing.T) {
 
 	stats := &backupMergeStats{}
 	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
-	if err := app.backupRepairExtensionPathsAfterImport(); err != nil {
+	if _, err := app.backupRepairExtensionPathsAfterImport(); err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned error: %v", err)
 	}
 
@@ -107,7 +108,7 @@ func TestBackupRepairExtensionPathsClearsMissingManagedDirectory(t *testing.T) {
 	insertBackupTestExtension(t, app, backupTestExtensionID, oldInstallDir, "", "")
 	stats := &backupMergeStats{}
 	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
-	if err := app.backupRepairExtensionPathsAfterImport(); err != nil {
+	if _, err := app.backupRepairExtensionPathsAfterImport(); err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned error: %v", err)
 	}
 
@@ -141,7 +142,7 @@ func TestBackupRepairExtensionPathsRollsBackAllUpdatesOnFailure(t *testing.T) {
 
 	stats := &backupMergeStats{}
 	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
-	if err := app.backupRepairExtensionPathsAfterImport(); err == nil {
+	if _, err := app.backupRepairExtensionPathsAfterImport(); err == nil {
 		t.Fatal("backupRepairExtensionPathsAfterImport returned nil, want forced failure")
 	}
 
@@ -149,6 +150,99 @@ func TestBackupRepairExtensionPathsRollsBackAllUpdatesOnFailure(t *testing.T) {
 	gotInstallDirB, _, _ := readBackupTestExtension(t, app, backupTestExtensionIDB)
 	if !backupSamePath(gotInstallDirA, oldInstallDirA) || !backupSamePath(gotInstallDirB, oldInstallDirB) {
 		t.Fatalf("transaction did not roll back: install dirs = (%q, %q)", gotInstallDirA, gotInstallDirB)
+	}
+}
+
+func TestBackupRepairExtensionPathsInvalidIDDoesNotBlockOthers(t *testing.T) {
+	app := newBackupExtensionRepairTestApp(t)
+	oldRoot := t.TempDir()
+	oldInstallDir := filepath.Join(oldRoot, "data", "extensions", backupTestExtensionID)
+	invalidID := "invalid-extension-id"
+	invalidInstallDir := filepath.Join(oldRoot, "data", "extensions", invalidID)
+	payloadRoot := t.TempDir()
+
+	insertBackupTestExtension(t, app, backupTestExtensionID, oldInstallDir, "", "")
+	insertBackupTestExtension(t, app, invalidID, invalidInstallDir, "", "")
+	writeBackupExtensionPayload(t, payloadRoot, backupTestExtensionID, nil, false, "")
+
+	stats := &backupMergeStats{}
+	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	issues, err := app.backupRepairExtensionPathsAfterImport()
+	if err != nil {
+		t.Fatalf("backupRepairExtensionPathsAfterImport returned hard error: %v", err)
+	}
+	if len(issues) != 1 || !strings.Contains(issues[0].Error(), "插件 ID 无效") {
+		t.Fatalf("issues = %v, want single invalid-ID issue", issues)
+	}
+
+	gotInstallDir, _, _ := readBackupTestExtension(t, app, backupTestExtensionID)
+	wantInstallDir := filepath.Join(app.appRoot, "data", "extensions", backupTestExtensionID)
+	if !backupSamePath(gotInstallDir, wantInstallDir) {
+		t.Fatalf("valid extension install_dir = %q, want %q", gotInstallDir, wantInstallDir)
+	}
+	gotInvalidInstallDir, _, _ := readBackupTestExtension(t, app, invalidID)
+	if !backupSamePath(gotInvalidInstallDir, invalidInstallDir) {
+		t.Fatalf("invalid-ID extension install_dir = %q, want untouched %q", gotInvalidInstallDir, invalidInstallDir)
+	}
+}
+
+func TestBackupRepairExtensionPathsReportsCorruptManifest(t *testing.T) {
+	app := newBackupExtensionRepairTestApp(t)
+	oldRoot := t.TempDir()
+	oldInstallDir := filepath.Join(oldRoot, "data", "extensions", backupTestExtensionID)
+	payloadRoot := t.TempDir()
+
+	insertBackupTestExtension(t, app, backupTestExtensionID, oldInstallDir, "", "")
+	writeBackupExtensionPayload(t, payloadRoot, backupTestExtensionID, nil, false, "")
+	manifestPath := filepath.Join(payloadRoot, "app", "data", "extensions", backupTestExtensionID, "manifest.json")
+	if err := os.WriteFile(manifestPath, []byte(`{"name": "broken`), 0o644); err != nil {
+		t.Fatalf("WriteFile corrupt manifest returned error: %v", err)
+	}
+
+	stats := &backupMergeStats{}
+	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	issues, err := app.backupRepairExtensionPathsAfterImport()
+	if err != nil {
+		t.Fatalf("backupRepairExtensionPathsAfterImport returned hard error: %v", err)
+	}
+	if len(issues) != 1 || !strings.Contains(issues[0].Error(), "manifest.json 内容损坏") {
+		t.Fatalf("issues = %v, want manifest corruption issue", issues)
+	}
+
+	gotInstallDir, _, _ := readBackupTestExtension(t, app, backupTestExtensionID)
+	wantInstallDir := filepath.Join(app.appRoot, "data", "extensions", backupTestExtensionID)
+	if !backupSamePath(gotInstallDir, wantInstallDir) {
+		t.Fatalf("install_dir = %q, want %q", gotInstallDir, wantInstallDir)
+	}
+}
+
+func TestBackupRepairExtensionPathsReportsCorruptCRX(t *testing.T) {
+	app := newBackupExtensionRepairTestApp(t)
+	oldRoot := t.TempDir()
+	oldInstallDir := filepath.Join(oldRoot, "data", "extensions", backupTestExtensionID)
+	oldPackagePath := filepath.Join(oldRoot, "data", "extensions", "packages", backupTestExtensionID+".crx")
+	payloadRoot := t.TempDir()
+
+	insertBackupTestExtension(t, app, backupTestExtensionID, oldInstallDir, oldPackagePath, "old-hash")
+	writeBackupExtensionPayload(t, payloadRoot, backupTestExtensionID, []byte("not-a-crx"), true, "")
+
+	stats := &backupMergeStats{}
+	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	issues, err := app.backupRepairExtensionPathsAfterImport()
+	if err != nil {
+		t.Fatalf("backupRepairExtensionPathsAfterImport returned hard error: %v", err)
+	}
+	if len(issues) != 1 || !strings.Contains(issues[0].Error(), "不是合法 CRX") {
+		t.Fatalf("issues = %v, want CRX corruption issue", issues)
+	}
+
+	gotInstallDir, gotPackagePath, gotPackageHash := readBackupTestExtension(t, app, backupTestExtensionID)
+	wantInstallDir := filepath.Join(app.appRoot, "data", "extensions", backupTestExtensionID)
+	if !backupSamePath(gotInstallDir, wantInstallDir) {
+		t.Fatalf("install_dir = %q, want %q", gotInstallDir, wantInstallDir)
+	}
+	if gotPackagePath != "" || gotPackageHash != "" {
+		t.Fatalf("corrupt package metadata = (%q, %q), want empty values", gotPackagePath, gotPackageHash)
 	}
 }
 

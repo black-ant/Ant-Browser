@@ -209,7 +209,11 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
     setStartingCode(normalized)
     try {
       const profile = await startBrowserInstanceByCode(normalized)
-      toast.success(profile?.running ? `实例「${profile.profileName}」已在运行` : `实例「${profile?.profileName || normalized}」已启动`)
+      if (profile?.runtimeWarning) {
+        toast.warning(`实例「${profile.profileName || normalized}」已启动：${profile.runtimeWarning}`)
+      } else {
+        toast.success(profile?.running ? `实例「${profile.profileName}」已在运行` : `实例「${profile?.profileName || normalized}」已启动`)
+      }
       onClose()
       return true
     } catch (error: any) {

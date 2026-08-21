@@ -5,50 +5,17 @@ import io
 import struct
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image
+
+from ant_logo import render_logo
 
 
 DESIGN_SIZE = 1024
-BLUE_TOP = (42, 132, 255)
-BLUE_BOTTOM = (8, 42, 104)
-BLUE_GLOW = (105, 196, 255, 255)
-WHITE = (255, 255, 255, 255)
-BLACK = (2, 8, 18, 235)
+ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
 
 def build_master_icon() -> Image.Image:
-    size = DESIGN_SIZE
-    canvas = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-
-    shadow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    shadow_draw = ImageDraw.Draw(shadow)
-    shadow_draw.rounded_rectangle((50, 58, 974, 982), radius=230, fill=(0, 0, 0, 160))
-    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(20)))
-
-    outer_mask = Image.new('L', (size, size), 0)
-    ImageDraw.Draw(outer_mask).rounded_rectangle((46, 38, 978, 970), radius=230, fill=255)
-    gradient = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    gradient_draw = ImageDraw.Draw(gradient)
-    for pixel_y in range(size):
-        progress = pixel_y / (size - 1)
-        red = int(BLUE_TOP[0] * (1 - progress) + BLUE_BOTTOM[0] * progress)
-        green = int(BLUE_TOP[1] * (1 - progress) + BLUE_BOTTOM[1] * progress)
-        blue = int(BLUE_TOP[2] * (1 - progress) + BLUE_BOTTOM[2] * progress)
-        gradient_draw.line((0, pixel_y, size, pixel_y), fill=(red, green, blue, 255))
-    canvas.paste(gradient, (0, 0), outer_mask)
-
-    draw = ImageDraw.Draw(canvas)
-    draw.rounded_rectangle((64, 56, 960, 954), radius=214, outline=(125, 207, 255, 155), width=8)
-
-    draw.rounded_rectangle((738, 94, 888, 154), radius=30, fill=BLACK)
-    draw.ellipse((795, 113, 823, 141), fill=BLUE_GLOW)
-
-    a_points = [(280, 780), (448, 260), (566, 260), (744, 780), (626, 780), (579, 631), (409, 631), (365, 780)]
-    draw.polygon(a_points, fill=WHITE)
-    draw.polygon([(505, 384), (554, 520), (456, 520)], fill=(12, 54, 126, 255))
-    draw.polygon([(403, 558), (594, 558), (620, 626), (380, 626)], fill=(12, 54, 126, 255))
-    draw.line((584, 350, 678, 636), fill=BLUE_GLOW, width=14)
-    return canvas
+    return render_logo(DESIGN_SIZE)
 
 
 def build_ico(frames: list[Image.Image]) -> bytes:
@@ -99,8 +66,7 @@ def main() -> None:
     args = parser.parse_args()
 
     master = build_master_icon()
-    icon_sizes = (16, 20, 24, 32, 40, 48, 64, 128, 256)
-    frames = [master.resize((size, size), Image.Resampling.LANCZOS) for size in icon_sizes]
+    frames = [render_logo(size) for size in ICON_SIZES]
 
     save_parent(Path(args.png), master)
     save_parent(Path(args.ico), build_ico(frames))
@@ -109,10 +75,10 @@ def main() -> None:
     if args.preview_dir:
         preview_dir = Path(args.preview_dir)
         preview_dir.mkdir(parents=True, exist_ok=True)
-        for size, frame in zip(icon_sizes, frames):
+        for size, frame in zip(ICON_SIZES, frames):
             frame.save(preview_dir / f'app_{size}.png', format='PNG', optimize=True)
 
-    print(f'wrote {args.png}, {args.ico}, {args.favicon}; sizes={icon_sizes}')
+    print(f'wrote {args.png}, {args.ico}, {args.favicon}; sizes={ICON_SIZES}')
 
 
 if __name__ == '__main__':

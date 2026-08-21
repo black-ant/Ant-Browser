@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import type { FocusEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { create } from 'zustand'
 import { Link } from 'react-router-dom'
@@ -21,7 +20,30 @@ interface Toast extends NotificationPayload {
 type ToastOptions = Omit<NotificationInput, 'type' | 'message'>
 
 const TOAST_DEDUPE_WINDOW_MS = 10_000
+const TOAST_BACKDROP_DURATIONS: Record<NotificationType, number> = {
+  success: 900,
+  info: 1_500,
+  warning: 3_000,
+  error: 3_000,
+}
+const TOAST_FOCUS_PRIORITY: Record<NotificationType, number> = {
+  success: 1,
+  info: 2,
+  warning: 3,
+  error: 4,
+}
+const TOAST_EXIT_DURATIONS: Record<NotificationType, number> = {
+  success: 460,
+  info: 220,
+  warning: 220,
+  error: 220,
+}
 const toastDedupeTimestamps = new Map<string, number>()
+
+interface ToastFocus {
+  id: string
+  type: NotificationType
+}
 
 interface ToastStore {
   toasts: Toast[]
@@ -76,50 +98,43 @@ function shouldShowToast(dedupeKey?: string) {
   return true
 }
 
-function ToastItem({ toast: t }: { toast: Toast }) {
+function selectToastFocus(toasts: Toast[]) {
+  return [...toasts].sort((left, right) => TOAST_FOCUS_PRIORITY[right.type] - TOAST_FOCUS_PRIORITY[left.type])[0] ?? null
+}
+
+function ToastItem({ toast: t, onManualDismiss }: { toast: Toast; onManualDismiss: (dismissedId: string) => void }) {
   const removeToast = useToastStore((state) => state.removeToast)
   const visual = notificationVisuals[t.type]
   const Icon = visual.icon
   const duration = t.duration ?? notificationDurations[t.type]
-  const remainingMs = useRef(duration)
-  const startedAt = useRef<number | null>(null)
-  const [paused, setPaused] = useState(false)
+  const exitDuration = TOAST_EXIT_DURATIONS[t.type]
+  const exitAnimation = t.type === 'success' ? 'animate-toast-success-out' : 'animate-toast-out'
   const [leaving, setLeaving] = useState(false)
 
-  const startExit = () => {
-    if (!leaving) setLeaving(true)
-  }
+  const startExit = useCallback(
+    (manual = false) => {
+      if (manual) onManualDismiss(t.id)
+      setLeaving(true)
+    },
+    [onManualDismiss, t.id],
+  )
 
   useEffect(() => {
-    if (duration <= 0 || paused) return
+    if (duration <= 0) return
 
-    startedAt.current = Date.now()
-    const timer = window.setTimeout(startExit, remainingMs.current)
-
-    return () => {
-      if (startedAt.current !== null) {
-        remainingMs.current = Math.max(0, remainingMs.current - (Date.now() - startedAt.current))
-        startedAt.current = null
-      }
-      window.clearTimeout(timer)
-    }
-  }, [duration, paused, t.id])
+    const timer = window.setTimeout(startExit, duration)
+    return () => window.clearTimeout(timer)
+  }, [duration, startExit])
 
   useEffect(() => {
     if (!leaving) return
-    const timer = window.setTimeout(() => removeToast(t.id), 220)
+    const timer = window.setTimeout(() => removeToast(t.id), exitDuration)
     return () => window.clearTimeout(timer)
-  }, [leaving, removeToast, t.id])
+  }, [exitDuration, leaving, removeToast, t.id])
 
-  const pause = () => setPaused(true)
-  const resume = () => setPaused(false)
-  const handleBlur = (event: FocusEvent<HTMLDivElement>) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-    resume()
-  }
   const isCritical = t.type === 'error' || t.type === 'warning'
   const isError = t.type === 'error'
-  const toneClass = isError ? 'toast-error' : t.type === 'warning' ? 'toast-warning' : ''
+  const toneClass = `toast-${t.type}`
   const titleClass = isError
     ? 'font-bold text-[var(--color-error)]'
     : 'font-semibold text-[var(--color-text-primary)]'
@@ -131,11 +146,7 @@ function ToastItem({ toast: t }: { toast: Toast }) {
       role={isCritical ? 'alert' : 'status'}
       aria-live={isCritical ? 'assertive' : 'polite'}
       aria-atomic="true"
-      onMouseEnter={pause}
-      onMouseLeave={resume}
-      onFocus={pause}
-      onBlur={handleBlur}
-      className={`pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-3.5 shadow-xl ${toneClass} ${leaving ? 'animate-toast-out' : 'animate-toast-in'}`}
+      className={`toast-card pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-xl border px-4 py-3.5 ${toneClass} ${leaving ? exitAnimation : 'animate-toast-in'}`}
     >
       <span aria-hidden="true" className={`absolute inset-y-0 left-0 ${railWidthClass} ${visual.rail}`} />
       <span className={`mt-0.5 flex shrink-0 items-center justify-center rounded-lg ${iconSizeClass} ${visual.iconBackground}`}>
@@ -147,7 +158,7 @@ function ToastItem({ toast: t }: { toast: Toast }) {
         {t.action?.type === 'navigate' && (
           <Link
             to={t.action.path}
-            onClick={startExit}
+            onClick={() => startExit(true)}
             className="mt-3 inline-flex cursor-pointer items-center rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
           >
             {t.action.label}
@@ -156,7 +167,7 @@ function ToastItem({ toast: t }: { toast: Toast }) {
       </div>
       <button
         type="button"
-        onClick={startExit}
+        onClick={() => startExit(true)}
         aria-label="关闭通知"
         title="关闭通知"
         className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]"
@@ -169,33 +180,70 @@ function ToastItem({ toast: t }: { toast: Toast }) {
 
 export function ToastContainer() {
   const toasts = useToastStore((state) => state.toasts)
-  const [flashKey, setFlashKey] = useState<string | null>(null)
+  const [focus, setFocus] = useState<ToastFocus | null>(null)
+  const focusTimer = useRef<number | null>(null)
+  const focusRef = useRef<ToastFocus | null>(null)
   const visibleToastIds = useRef(new Set<string>())
 
   useEffect(() => {
     const currentToastIds = new Set(toasts.map((toast) => toast.id))
     const addedToast = [...toasts].reverse().find((toast) => !visibleToastIds.current.has(toast.id))
-
-    if (addedToast) {
-      setFlashKey(addedToast.id)
-    }
-
     visibleToastIds.current = currentToastIds
+    if (!addedToast) return
+
+    const focusToast = selectToastFocus(toasts)
+    if (!focusToast) return
+
+    const nextFocus: ToastFocus = { id: focusToast.id, type: focusToast.type }
+    setFocus((current) => {
+      if (!current) return nextFocus
+      if (TOAST_FOCUS_PRIORITY[nextFocus.type] < TOAST_FOCUS_PRIORITY[current.type]) return current
+      if (current.id === nextFocus.id && current.type === nextFocus.type) return current
+      return nextFocus
+    })
   }, [toasts])
+
+  useEffect(() => {
+    focusRef.current = focus
+    if (!focus) return
+
+    if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+    focusTimer.current = window.setTimeout(() => {
+      setFocus((current) => (current?.id === focus.id ? null : current))
+      focusTimer.current = null
+    }, TOAST_BACKDROP_DURATIONS[focus.type])
+
+    return () => {
+      if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+      focusTimer.current = null
+    }
+  }, [focus])
+
+  useEffect(() => () => {
+    if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+  }, [])
+
+  const dismissFocus = useCallback((dismissedId: string) => {
+    if (!focusRef.current || focusRef.current.id !== dismissedId) return
+    if (focusTimer.current !== null) {
+      window.clearTimeout(focusTimer.current)
+      focusTimer.current = null
+    }
+    setFocus(null)
+  }, [])
 
   return (
     <>
-      {flashKey ? (
+      {focus ? (
         <div
-          key={flashKey}
+          key={`${focus.id}-${focus.type}`}
           aria-hidden="true"
-          onAnimationEnd={() => setFlashKey((current) => (current === flashKey ? null : current))}
-          className="toast-flash pointer-events-none fixed inset-0 z-[9995]"
+          className={`toast-focus-backdrop toast-focus-${focus.type} pointer-events-none fixed inset-0 z-[9995]`}
         />
       ) : null}
-      <div className="pointer-events-none fixed left-4 right-4 top-[4.5rem] z-[10000] flex max-h-[calc(100vh-6rem)] w-auto flex-col gap-3 overflow-y-auto overscroll-contain sm:left-auto sm:right-4 sm:w-[min(480px,calc(100vw-2rem))]">
+      <div className="pointer-events-none fixed right-3 top-3 z-[10000] flex max-h-[calc(100vh-1.5rem)] w-[min(480px,calc(100vw-1.5rem))] flex-col gap-3 overflow-y-auto overscroll-contain sm:right-4 sm:top-4 sm:w-[min(480px,calc(100vw-2rem))]">
         {[...toasts].reverse().map((t) => (
-          <ToastItem key={t.id} toast={t} />
+          <ToastItem key={t.id} toast={t} onManualDismiss={dismissFocus} />
         ))}
       </div>
     </>

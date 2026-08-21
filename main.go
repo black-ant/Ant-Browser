@@ -264,6 +264,7 @@ func main() {
 			}
 			wailsCtx = ctx
 			runtime.WindowCenter(wailsCtx)
+			backend.ApplyMainApplicationWindowIcon(appRoot, cfg.App.Name)
 			// 启动系统托盘（非阻塞）
 			go backend.RunTray(backend.TrayCallbacks{
 				OnShow: func() {

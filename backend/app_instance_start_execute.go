@@ -66,6 +66,10 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 		stableDebugPort, readyErr := waitBrowserDebugPortStable(plan.assignedDebugPort, plan.userDataDir, plan.startReadyTimeout, plan.startStableWindow, monitor)
 		if readyErr == nil {
 			a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, stableDebugPort, true, "")
+			if plan.extensionWarning != "" {
+				profile.RuntimeWarning = plan.extensionWarning
+			}
+			a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
 			if plan.acquiredProxyBridge.valid() {
 				a.bindProfileProxyBridge(input.ProfileID, plan.acquiredProxyBridge)
 				plan.releaseProxyBridge = false
@@ -74,6 +78,9 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 				deferredPlan := deferredStartTargetsPlan{targets: plan.deferredStartTargets, newTabs: plan.deferredStartNewTabs}
 				if err := openDeferredStartTargets(stableDebugPort, deferredPlan); err != nil {
 					warning := deferredStartTargetsWarning(plan.deferredStartTargets, err)
+					if plan.extensionWarning != "" {
+						warning = plan.extensionWarning + "；" + warning
+					}
 					profile.RuntimeWarning = warning
 					profile.LastError = ""
 					log.Warn("浏览器已就绪，但启动页延后打开失败",
@@ -138,11 +145,14 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 		break
 	}
 
-	pendingStartNotice := ""
-	if shouldKeepBrowserRunningPendingDebugReady(plan.assignedDebugPort, monitor) {
+	pendingAttach := shouldKeepBrowserRunningPendingDebugReady(plan.assignedDebugPort, monitor)
+	if pendingAttach {
 		runtimeWarning := browserDebugPendingWarning(plan.totalReadyTimeout)
-		pendingStartNotice = browserDebugPendingStartNotice(plan.totalReadyTimeout)
+		if plan.extensionWarning != "" {
+			runtimeWarning = runtimeWarning + "；" + plan.extensionWarning
+		}
 		a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, plan.assignedDebugPort, false, runtimeWarning)
+		a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
 		if len(plan.deferredStartTargets) > 0 {
 			a.storeDeferredStartTargets(input.ProfileID, plan.deferredStartTargets, plan.deferredStartNewTabs)
 		}
@@ -169,12 +179,11 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 			}()
 			a.waitBrowserProcess(input.ProfileID, monitor)
 		}()
-		go a.waitBrowserDebugReadyAsync(input.ProfileID, plan.assignedDebugPort, browserAsyncDebugAttachTimeout)
+		go a.waitBrowserDebugReadyAsync(input.ProfileID, plan.assignedDebugPort, browserAsyncDebugAttachTimeout, monitor)
 	}
 
-	if pendingStartNotice != "" {
-		profile.LastError = pendingStartNotice
-		return profile, fmt.Errorf("%s", pendingStartNotice)
+	if pendingAttach {
+		return profile, nil
 	}
 
 	if lastStartErr != nil {

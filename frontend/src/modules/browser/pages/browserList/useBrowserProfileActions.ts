@@ -127,7 +127,11 @@ export function useBrowserProfileActions({
       await warmupProfileProxyBeforeStart(profile)
       const restartedProfile = await restartBrowserInstance(profileId)
       mergeProfileState(restartedProfile)
-      toast.success(`实例已重启${restartedProfile?.profileName ? `：${restartedProfile.profileName}` : ''}`)
+      if (restartedProfile?.runtimeWarning || (restartedProfile?.running && !restartedProfile.debugReady)) {
+        toast.warning(restartedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
+      } else {
+        toast.success(`实例已重启${restartedProfile?.profileName ? `：${restartedProfile.profileName}` : ''}`)
+      }
       await loadProfiles({ silent: true, syncRuntimeState: true })
     } catch (error: any) {
       const feedback = resolveActionFeedback(error, '实例重启失败')

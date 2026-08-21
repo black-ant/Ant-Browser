@@ -42,10 +42,10 @@ export const notificationTitles: Record<NotificationType, string> = {
 }
 
 export const notificationDurations: Record<NotificationType, number> = {
-  success: 4000,
-  error: 8000,
-  warning: 6000,
-  info: 4000,
+  success: 3_000,
+  error: 10_000,
+  warning: 8_000,
+  info: 5_000,
 }
 
 export function createNotificationPayload(input: NotificationInput): NotificationPayload {

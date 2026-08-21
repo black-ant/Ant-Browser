@@ -117,7 +117,8 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
       clearPending(payload)
       void loadProfiles({ silent: true, syncRuntimeState: true })
     })
-    const offUpdated = EventsOn('browser:instance:updated', () => {
+    const offUpdated = EventsOn('browser:instance:updated', (payload: any) => {
+      clearPending(payload)
       void loadProfiles({ silent: true, syncRuntimeState: true })
     })
     const offStopped = EventsOn('browser:instance:stopped', (payload: any) => {

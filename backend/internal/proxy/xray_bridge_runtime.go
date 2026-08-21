@@ -18,7 +18,7 @@ func cloneInterfaceSlice(items []interface{}) []interface{} {
 	return cloned
 }
 
-func (m *XrayManager) restartPinnedBridge(log *logger.Logger, key string, bridge *XrayBridge, refCount int) error {
+func (m *XrayManager) restartPinnedBridge(log *logger.Logger, key string, bridge *XrayBridge) error {
 	if bridge == nil {
 		return fmt.Errorf("xray 桥接不存在")
 	}
@@ -31,7 +31,7 @@ func (m *XrayManager) restartPinnedBridge(log *logger.Logger, key string, bridge
 		m.mu.Unlock()
 		return errXrayBridgeRestartNotNeeded
 	}
-	refCount = bridge.RefCount
+	refCount := bridge.RefCount
 	m.mu.Unlock()
 
 	if refCount <= 0 {

@@ -55,6 +55,12 @@ func newBrowserProcessMonitor(cmd *exec.Cmd) (*browserProcessMonitor, error) {
 	}, nil
 }
 
+func newDetachedBrowserProcessMonitor() *browserProcessMonitor {
+	waitDone := make(chan struct{})
+	close(waitDone)
+	return &browserProcessMonitor{waitDone: waitDone}
+}
+
 func (m *browserProcessMonitor) Start() {
 	go m.captureStderr()
 	<-m.stderrInit

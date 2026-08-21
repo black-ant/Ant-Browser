@@ -3,7 +3,9 @@ package backend
 import (
 	"ant-chrome/backend/internal/browser"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,41 +30,42 @@ type backupProfileExtensionRuntimePathRecord struct {
 	backupPath  string
 }
 
-func (a *App) backupRepairExtensionPathsAfterImport() error {
+func (a *App) backupRepairExtensionPathsAfterImport() ([]error, error) {
 	if a == nil || a.db == nil || a.db.GetConn() == nil {
-		return fmt.Errorf("数据库未初始化，无法修复插件迁移路径")
+		return nil, fmt.Errorf("数据库未初始化，无法修复插件迁移路径")
 	}
 
 	tx, err := a.db.GetConn().Begin()
 	if err != nil {
-		return fmt.Errorf("开启插件路径修复事务失败: %w", err)
+		return nil, fmt.Errorf("开启插件路径修复事务失败: %w", err)
 	}
 	defer tx.Rollback()
 
+	issues := make([]error, 0)
 	extensions, err := backupLoadExtensionPathRecords(tx)
 	if err != nil {
-		return err
+		return issues, err
 	}
 	for _, extension := range extensions {
-		if err := a.backupRepairExtensionPathRecord(tx, extension); err != nil {
-			return err
+		if err := a.backupRepairExtensionPathRecord(tx, extension, &issues); err != nil {
+			return issues, err
 		}
 	}
 
 	runtimeStates, err := backupLoadProfileExtensionRuntimePathRecords(tx)
 	if err != nil {
-		return err
+		return issues, err
 	}
 	for _, runtimeState := range runtimeStates {
 		if err := a.backupRepairProfileExtensionRuntimePath(tx, runtimeState); err != nil {
-			return err
+			return issues, err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交插件路径修复事务失败: %w", err)
+		return issues, fmt.Errorf("提交插件路径修复事务失败: %w", err)
 	}
-	return nil
+	return issues, nil
 }
 
 func backupLoadExtensionPathRecords(tx *sql.Tx) ([]backupExtensionPathRecord, error) {
@@ -112,11 +115,11 @@ func backupLoadProfileExtensionRuntimePathRecords(tx *sql.Tx) ([]backupProfileEx
 	return items, nil
 }
 
-func (a *App) backupRepairExtensionPathRecord(tx *sql.Tx, record backupExtensionPathRecord) error {
+func (a *App) backupRepairExtensionPathRecord(tx *sql.Tx, record backupExtensionPathRecord, issues *[]error) error {
 	extensionID := browser.NormalizeExtensionID(record.extensionID)
 	if extensionID == "" {
 		if strings.TrimSpace(record.installDir) != "" || strings.TrimSpace(record.packagePath) != "" {
-			return fmt.Errorf("插件 ID 无效，无法重建迁移路径: %q", record.extensionID)
+			*issues = append(*issues, fmt.Errorf("插件 ID 无效，无法重建迁移路径: %q", record.extensionID))
 		}
 		return nil
 	}
@@ -135,6 +138,9 @@ func (a *App) backupRepairExtensionPathRecord(tx *sql.Tx, record backupExtension
 			newInstallDir = installDir
 			changed = true
 		}
+		if !backupExtensionManifestValid(installDir) {
+			*issues = append(*issues, fmt.Errorf("插件 manifest.json 内容损坏(%s): %s", extensionID, filepath.Join(installDir, "manifest.json")))
+		}
 	} else if backupPathHasSuffix(newInstallDir, filepath.ToSlash(filepath.Join(backupManagedExtensionsRoot, extensionID))) {
 		if newInstallDir != "" {
 			newInstallDir = ""
@@ -144,14 +150,23 @@ func (a *App) backupRepairExtensionPathRecord(tx *sql.Tx, record backupExtension
 
 	if newPackagePath != "" {
 		if backupExtensionRegularFileExists(packagePath) {
-			packageHash, err := backupSHA256File(packagePath)
-			if err != nil {
-				return fmt.Errorf("计算插件包哈希失败(%s): %w", extensionID, err)
-			}
-			if !backupSamePath(newPackagePath, packagePath) || newPackageHash != packageHash {
-				newPackagePath = packagePath
-				newPackageHash = packageHash
-				changed = true
+			if !backupValidCRXFile(packagePath) {
+				if newPackagePath != "" || newPackageHash != "" {
+					newPackagePath = ""
+					newPackageHash = ""
+					changed = true
+				}
+				*issues = append(*issues, fmt.Errorf("插件包不是合法 CRX(%s): %s", extensionID, packagePath))
+			} else {
+				packageHash, err := backupSHA256File(packagePath)
+				if err != nil {
+					return fmt.Errorf("计算插件包哈希失败(%s): %w", extensionID, err)
+				}
+				if !backupSamePath(newPackagePath, packagePath) || newPackageHash != packageHash {
+					newPackagePath = packagePath
+					newPackageHash = packageHash
+					changed = true
+				}
 			}
 		} else if backupPathHasSuffix(newPackagePath, filepath.ToSlash(filepath.Join(backupManagedExtensionsRoot, "packages", extensionID+".crx"))) {
 			newPackagePath = ""
@@ -208,6 +223,29 @@ func (a *App) backupRepairProfileExtensionRuntimePath(tx *sql.Tx, record backupP
 
 func backupExtensionManifestExists(installDir string) bool {
 	return backupExtensionRegularFileExists(filepath.Join(installDir, "manifest.json"))
+}
+
+func backupExtensionManifestValid(installDir string) bool {
+	data, err := os.ReadFile(filepath.Join(installDir, "manifest.json"))
+	if err != nil {
+		return false
+	}
+	var manifest map[string]interface{}
+	return json.Unmarshal(data, &manifest) == nil
+}
+
+func backupValidCRXFile(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	magic := make([]byte, 4)
+	read, err := io.ReadFull(file, magic)
+	if err != nil || read != len(magic) {
+		return false
+	}
+	return string(magic) == "Cr24"
 }
 
 func backupExtensionRegularFileExists(path string) bool {

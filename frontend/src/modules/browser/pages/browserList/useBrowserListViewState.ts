@@ -3,12 +3,15 @@ import type { BrowserCore, BrowserProfile } from '../../types'
 import { EMPTY_FILTERS, type InstanceFilters } from '../../components/InstanceFilterBar'
 import type { BrowserViewMode } from '../../components/BrowserListLayout'
 
-export const resolveProfileStatus = (running: boolean, debugReady: boolean, starting: boolean, stopping: boolean) => {
+export const resolveProfileStatus = (running: boolean, debugReady: boolean, starting: boolean, stopping: boolean, lastError = '') => {
   if (starting) {
-    return { variant: 'info' as const, label: '启动中' }
+    return { variant: 'default' as const, label: '启动中' }
   }
   if (stopping) {
     return { variant: 'default' as const, label: '停止中' }
+  }
+  if (!running && lastError.trim()) {
+    return { variant: 'error' as const, label: '异常' }
   }
   if (running && !debugReady) {
     return { variant: 'info' as const, label: '运行中（待就绪）' }
@@ -16,7 +19,7 @@ export const resolveProfileStatus = (running: boolean, debugReady: boolean, star
   if (running) {
     return { variant: 'success' as const, label: '运行中' }
   }
-  return { variant: 'warning' as const, label: '已停止' }
+  return { variant: 'default' as const, label: '已停止' }
 }
 
 export function useBrowserListViewState() {
@@ -104,7 +107,7 @@ export function useBrowserListDerived(
   const isProfileBusy = (profileId: string) => isProfileStarting(profileId) || isProfileStopping(profileId)
 
   const getProfileStatus = (profile: BrowserProfile) => (
-    resolveProfileStatus(profile.running, profile.debugReady, isProfileStarting(profile.profileId), isProfileStopping(profile.profileId))
+    resolveProfileStatus(profile.running, profile.debugReady, isProfileStarting(profile.profileId), isProfileStopping(profile.profileId), profile.lastError)
   )
 
   const filteredProfiles = useMemo(() => {

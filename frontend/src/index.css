@@ -190,15 +190,25 @@ input, select, textarea {
   }
 }
 
-@keyframes toastFlash {
+@keyframes toastSuccessOut {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translate3d(0, -4px, 0) scale(0.98);
+  }
+}
+
+@keyframes toastFocusIn {
   0% {
     opacity: 0;
   }
-  18% {
-    opacity: 0.1;
-  }
   100% {
-    opacity: 0;
+    opacity: 1;
   }
 }
 
@@ -225,15 +235,40 @@ input, select, textarea {
   animation: toastOut 0.18s ease-in forwards;
 }
 
-.toast-flash {
-  background: rgb(15 23 42 / 0.9);
-  animation: toastFlash 0.16s ease-out forwards;
+.animate-toast-success-out {
+  animation: toastSuccessOut 0.46s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.toast-card {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-muted);
+  box-shadow: 0 18px 42px rgb(15 23 42 / 0.14), 0 1px 0 rgb(255 255 255 / 0.72) inset;
+  -webkit-backdrop-filter: blur(14px) saturate(1.04);
+  backdrop-filter: blur(14px) saturate(1.04);
+}
+
+[data-theme='dark'] .toast-card {
+  box-shadow: 0 18px 42px rgb(0 0 0 / 0.42), 0 1px 0 rgb(255 255 255 / 0.06) inset;
+}
+
+.toast-success {
+  border-color: rgb(34 197 94 / 0.4);
+  background: linear-gradient(90deg, rgb(34 197 94 / 0.1), transparent 68%), var(--color-bg-muted);
+}
+
+.toast-info {
+  border-color: rgb(59 130 246 / 0.4);
+  background: linear-gradient(90deg, rgb(59 130 246 / 0.08), transparent 68%), var(--color-bg-muted);
+}
+
+.toast-warning {
+  border-color: rgb(245 158 11 / 0.55);
+  background: linear-gradient(90deg, rgb(245 158 11 / 0.12), transparent 68%), var(--color-bg-muted);
 }
 
 .toast-error {
   border-color: var(--color-error);
-  background: linear-gradient(90deg, rgb(239 68 68 / 0.12), transparent 68%), var(--color-bg-surface);
-  box-shadow: 0 14px 32px rgb(127 29 29 / 0.22), 0 0 0 1px rgb(239 68 68 / 0.16);
+  background: linear-gradient(90deg, rgb(239 68 68 / 0.14), transparent 68%), var(--color-bg-muted);
+  box-shadow: 0 18px 42px rgb(127 29 29 / 0.2), 0 0 0 1px rgb(239 68 68 / 0.16);
 }
 
 .toast-error::after {
@@ -246,15 +281,42 @@ input, select, textarea {
   animation: toastErrorRing 0.85s ease-out 0.04s both;
 }
 
-.toast-warning {
-  border-color: var(--color-warning);
-  background: linear-gradient(90deg, rgb(245 158 11 / 0.1), transparent 68%), var(--color-bg-surface);
+.toast-focus-backdrop {
+  background: rgb(15 23 42 / 0.08);
+  -webkit-backdrop-filter: blur(7px) saturate(0.9);
+  backdrop-filter: blur(7px) saturate(0.9);
+  animation: toastFocusIn 0.18s ease-out both;
+  will-change: opacity, backdrop-filter;
 }
 
+.toast-focus-success {
+  background: rgb(15 23 42 / 0.025);
+  -webkit-backdrop-filter: blur(2px) saturate(1);
+  backdrop-filter: blur(2px) saturate(1);
+}
+
+.toast-focus-info {
+  background: rgb(15 23 42 / 0.045);
+  -webkit-backdrop-filter: blur(4px) saturate(0.96);
+  backdrop-filter: blur(4px) saturate(0.96);
+}
+
+.toast-focus-warning {
+  background: rgb(15 23 42 / 0.065);
+  -webkit-backdrop-filter: blur(6px) saturate(0.92);
+  backdrop-filter: blur(6px) saturate(0.92);
+}
+
+.toast-focus-error {
+  background: rgb(15 23 42 / 0.08);
+  -webkit-backdrop-filter: blur(7px) saturate(0.9);
+  backdrop-filter: blur(7px) saturate(0.9);
+}
 @media (prefers-reduced-motion: reduce) {
   .animate-toast-in,
   .animate-toast-out,
-  .toast-flash,
+  .animate-toast-success-out,
+  .toast-focus-backdrop,
   .toast-error::after {
     animation-duration: 0.01ms !important;
   }

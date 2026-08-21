@@ -11,15 +11,16 @@ import (
 	"time"
 )
 
-func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packagePath string, extension Extension) (string, error) {
-	command := exec.Command(
-		chromeBinaryPath,
-		"--user-data-dir="+userDataDir,
+func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packagePath string, extension Extension, installArgs []string) (string, error) {
+	commandArgs := []string{
+		"--user-data-dir=" + userDataDir,
 		"--no-first-run",
 		"--no-default-browser-check",
-		"--install-extension="+packagePath,
-		"about:blank",
-	)
+		"--install-extension=" + packagePath,
+	}
+	commandArgs = append(commandArgs, installArgs...)
+	commandArgs = append(commandArgs, "about:blank")
+	command := exec.Command(chromeBinaryPath, commandArgs...)
 	command.Dir = filepath.Dir(chromeBinaryPath)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
@@ -54,6 +55,10 @@ func installCRXIntoProfile(userDataDir string, chromeBinaryPath string, packageP
 	terminateExtensionInstallerProcess(command)
 	<-waitResult
 	return "", fmt.Errorf("等待浏览器完成插件安装超时")
+}
+
+func browserExtensionInstallerExitHint(_ string) string {
+	return ""
 }
 
 func (m *Manager) cleanupManagedExternalExtensionRegistry() error {

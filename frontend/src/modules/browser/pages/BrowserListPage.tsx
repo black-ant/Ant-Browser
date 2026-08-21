@@ -190,18 +190,32 @@ export function BrowserListPage() {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
     setBatchLoading(true)
-    let success = 0, pending = 0, failed = 0
+    let success = 0, pending = 0, failed = 0, skipped = 0
     const pendingMessages: string[] = []
     const failureMessages: string[] = []
     for (const id of ids) {
       const profile = profiles.find(p => p.profileId === id)
-      if (!profile || profile.running) continue
+      if (!profile || profile.running) {
+        skipped++
+        continue
+      }
       updatePendingIds(setStartingIds, id, true)
       try {
         await warmupProfileProxyBeforeStart(profile)
         const startedProfile = await startBrowserInstance(id)
         mergeProfileState(startedProfile)
-        success++
+        if (!startedProfile?.running) {
+          failed++
+          failureMessages.push(`${profile.profileName}：实例未进入运行状态。`)
+        } else if (!startedProfile.debugReady) {
+          pending++
+          pendingMessages.push(`${profile.profileName}：${startedProfile.runtimeWarning || '浏览器已打开，正在后台接管。'}`)
+        } else if (startedProfile.debugPort <= 0) {
+          failed++
+          failureMessages.push(`${profile.profileName}：调试端口无效，实例不可操作。`)
+        } else {
+          success++
+        }
       } catch (error: any) {
         const feedback = resolveActionFeedback(error, '实例启动失败')
         if (feedback.pendingAttach) {
@@ -219,7 +233,16 @@ export function BrowserListPage() {
     const summary = [`成功 ${success}`]
     if (pending > 0) summary.push(`待接管 ${pending}`)
     if (failed > 0) summary.push(`失败 ${failed}`)
-    toast.success(`批量启动完成：${summary.join('，')}`)
+    if (skipped > 0) summary.push(`跳过 ${skipped}`)
+    if (success > 0 && pending === 0 && failed === 0 && skipped === 0) {
+      toast.success(`批量启动完成：${summary.join('，')}`)
+    } else if (failed > 0 && success === 0 && pending === 0) {
+      toast.error(`批量启动失败：${summary.join('，')}`)
+    } else if (success > 0 || pending > 0 || failed > 0) {
+      toast.warning(`批量启动结果：${summary.join('，')}`)
+    } else {
+      toast.info(`没有可启动的实例${skipped > 0 ? `，跳过 ${skipped}` : ''}`)
+    }
     if (pendingMessages.length > 0) {
       const preview = pendingMessages.slice(0, 3)
       const more = pendingMessages.length > preview.length ? `\n另有 ${pendingMessages.length - preview.length} 个实例已打开窗口，仍在后台接管。` : ''
@@ -237,15 +260,22 @@ export function BrowserListPage() {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
     setBatchLoading(true)
-    let success = 0, failed = 0
+    let success = 0, failed = 0, skipped = 0
     for (const id of ids) {
       const profile = profiles.find(p => p.profileId === id)
-      if (!profile || !profile.running) continue
+      if (!profile || !profile.running) {
+        skipped++
+        continue
+      }
       updatePendingIds(setStoppingIds, id, true)
       try {
         const stoppedProfile = await stopBrowserInstance(id)
         mergeProfileState(stoppedProfile)
-        success++
+        if (stoppedProfile && !stoppedProfile.running) {
+          success++
+        } else {
+          failed++
+        }
       } catch {
         failed++
       } finally {
@@ -253,7 +283,18 @@ export function BrowserListPage() {
       }
     }
     setBatchLoading(false)
-    toast.success(`批量停止完成：成功 ${success}${failed > 0 ? `，失败 ${failed}` : ''}`)
+    const summary = [`成功 ${success}`]
+    if (failed > 0) summary.push(`失败 ${failed}`)
+    if (skipped > 0) summary.push(`跳过 ${skipped}`)
+    if (success > 0 && failed === 0 && skipped === 0) {
+      toast.success(`批量停止完成：${summary.join('，')}`)
+    } else if (failed > 0 && success === 0) {
+      toast.error(`批量停止失败：${summary.join('，')}`)
+    } else if (success > 0 || failed > 0) {
+      toast.warning(`批量停止结果：${summary.join('，')}`)
+    } else {
+      toast.info(`没有可停止的实例${skipped > 0 ? `，跳过 ${skipped}` : ''}`)
+    }
     loadProfiles()
   }
 

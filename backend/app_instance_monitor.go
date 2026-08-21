@@ -10,6 +10,9 @@ import (
 
 func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonitor) {
 	err := monitor.Wait()
+	if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
+		return
+	}
 
 	log := logger.New("Browser")
 	debugPort := 0
@@ -17,6 +20,10 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 	shouldMonitorDetached := false
 
 	a.browserMgr.Mutex.Lock()
+	if !a.browserProcessMonitorIsCurrentLocked(profileId, monitor) {
+		a.browserMgr.Mutex.Unlock()
+		return
+	}
 	profile, exists := a.browserMgr.Profiles[profileId]
 	wasRunning := exists && profile.Running
 	if exists {
@@ -26,12 +33,15 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 	a.browserMgr.Mutex.Unlock()
 
 	if wasRunning && debugPort > 0 {
-		snapshot, changed := a.waitForBrowserDebugReady(profileId, debugPort, browserLauncherDetachGraceWindow)
-		if warningSnapshot, warningChanged := a.finalizeDeferredStartTargets(profileId, debugPort); warningSnapshot != nil {
+		snapshot, changed := a.waitForBrowserDebugReadyForMonitor(profileId, debugPort, browserLauncherDetachGraceWindow, monitor)
+		if warningSnapshot, warningChanged := a.finalizeDeferredStartTargetsForMonitor(profileId, debugPort, monitor); warningSnapshot != nil {
 			snapshot = warningSnapshot
 			changed = changed || warningChanged
 		}
 		if snapshot != nil && changed {
+			if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
+				return
+			}
 			log.Info("浏览器启动器进程退出后，调试接口延迟就绪",
 				logger.F("profile_id", profileId),
 				logger.F("debug_port", debugPort),
@@ -41,6 +51,10 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 
 		a.browserMgr.Mutex.Lock()
 		profile, exists = a.browserMgr.Profiles[profileId]
+		if !a.browserProcessMonitorIsCurrentLocked(profileId, monitor) {
+			a.browserMgr.Mutex.Unlock()
+			return
+		}
 		if exists && profile.Running && profile.DebugPort == debugPort && profile.DebugReady && canConnectDebugPort(debugPort, 250*time.Millisecond) {
 			delete(a.browserMgr.BrowserProcesses, profileId)
 			profile.Pid = 0
@@ -53,17 +67,24 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 				logger.F("profile_name", profileName),
 				logger.F("debug_port", debugPort),
 			)
-			a.waitDetachedBrowser(profileId, debugPort)
+			a.waitDetachedBrowser(profileId, debugPort, monitor)
 			return
 		}
 	}
 
 	a.browserMgr.Mutex.Lock()
+	if !a.browserProcessMonitorIsCurrentLocked(profileId, monitor) {
+		a.browserMgr.Mutex.Unlock()
+		return
+	}
 	profile, exists = a.browserMgr.Profiles[profileId]
 	wasRunning = exists && profile.Running
 	if exists {
 		profileName = profile.ProfileName
 		a.markProfileStoppedLocked(profileId, profile)
+	}
+	if wasRunning && err != nil && exists && profile != nil {
+		profile.LastError = fmt.Sprintf("实例运行异常退出：%s", err.Error())
 	}
 	a.browserMgr.Mutex.Unlock()
 
@@ -72,9 +93,6 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 	}
 
 	if wasRunning && err != nil {
-		if exists && profile != nil {
-			profile.LastError = fmt.Sprintf("实例运行异常退出：%s", err.Error())
-		}
 		log.Error("浏览器进程异常退出", logger.F("profile_id", profileId), logger.F("profile_name", profileName), logger.F("error", err))
 		runtime.EventsEmit(a.ctx, "browser:instance:crashed", map[string]interface{}{
 			"profileId":   profileId,
@@ -86,7 +104,7 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 	}
 }
 
-func (a *App) waitDetachedBrowser(profileId string, debugPort int) {
+func (a *App) waitDetachedBrowser(profileId string, debugPort int, monitor *browserProcessMonitor) {
 	const (
 		pollInterval = 500 * time.Millisecond
 		maxMisses    = 3
@@ -95,6 +113,9 @@ func (a *App) waitDetachedBrowser(profileId string, debugPort int) {
 	log := logger.New("Browser")
 	misses := 0
 	for {
+		if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
+			return
+		}
 		if canConnectDebugPort(debugPort, 250*time.Millisecond) {
 			misses = 0
 			time.Sleep(pollInterval)
@@ -109,6 +130,10 @@ func (a *App) waitDetachedBrowser(profileId string, debugPort int) {
 
 		profileName := profileId
 		a.browserMgr.Mutex.Lock()
+		if !a.browserProcessMonitorIsCurrentLocked(profileId, monitor) {
+			a.browserMgr.Mutex.Unlock()
+			return
+		}
 		profile, exists := a.browserMgr.Profiles[profileId]
 		if !exists || !profile.Running || profile.DebugPort != debugPort {
 			a.browserMgr.Mutex.Unlock()

@@ -1,8 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
 """Generate the Ant Chrome tray icon (multi-size ICO, PNG-compressed frames).
 
-Design: single ant avatar tuned for small tray sizes (16-64px).
-Draws each frame directly at its target size for pixel-true edges.
+Design: transparent blue fingerprint line art, rendered directly at each
+tray size for pixel-true edges.
 Usage:
     python tools/gen_tray_icon.py [--out PATH] [--preview DIR] [--sizes 16,20,24,32,40,48,64]
 """
@@ -11,6 +11,8 @@ import io
 import struct
 
 from PIL import Image, ImageDraw
+
+from ant_logo import render_logo
 
 # ---- palette -----------------------------------------------------------------
 BG_TOP = (24, 54, 102)       # #183666
@@ -347,7 +349,7 @@ def draw_avatar(size):
 
 
 def draw_ant(size):
-    return draw_avatar(size)
+    return render_logo(size)
 
 
 def build_ico(frames):

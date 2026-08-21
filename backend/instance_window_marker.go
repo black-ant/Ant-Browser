@@ -2,23 +2,49 @@ package backend
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
 const profileWindowMarkerSeparator = " " + string(rune(0x00b7)) + " "
 const profileWindowMarkerLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const profileWindowMarkerOverlayReapplyInterval = 5 * time.Second
 
 type profileWindowMarkerWindowState struct {
-	originalBigIcon           uintptr
-	originalSmallIcon         uintptr
-	originalBigIconCaptured   bool
-	originalSmallIconCaptured bool
-	markerBigIconApplied      bool
-	markerSmallIconApplied    bool
-	processID                 uint32
+	originalBigIcon             uintptr
+	originalSmallIcon           uintptr
+	originalBigIconCaptured     bool
+	originalSmallIconCaptured   bool
+	fallbackBigIconApplied      bool
+	fallbackSmallIconApplied    bool
+	decoratedBigIcon            uintptr
+	decoratedSmallIcon          uintptr
+	decoratedBigIconApplied     bool
+	decoratedSmallIconApplied   bool
+	taskbarOverlayIcon          uintptr
+	taskbarOverlayIconApplied   bool
+	taskbarOverlayLastAppliedAt time.Time
+	chromeBigIcon               uintptr
+	chromeSmallIcon             uintptr
+	chromeIconPath              string
+	chromeIconApplied           bool
+	appUserModelID              string
+	appUserModelIDApplied       bool
+	relaunchIconResource        string
+	relaunchIconResourceApplied bool
+	processID                   uint32
+}
+
+func (state *profileWindowMarkerWindowState) taskbarOverlayNeedsReapply() bool {
+	if state == nil || !state.taskbarOverlayIconApplied {
+		return true
+	}
+	return time.Since(state.taskbarOverlayLastAppliedAt) >= profileWindowMarkerOverlayReapplyInterval
 }
 
 type profileWindowMarker struct {
@@ -33,19 +59,24 @@ type profileWindowMarker struct {
 }
 
 type profileWindowMarkerTarget struct {
-	profileID   string
-	profileName string
-	pid         int
-	debugPort   int
-	userDataDir string
+	profileID        string
+	profileName      string
+	pid              int
+	debugPort        int
+	userDataDir      string
+	chromeBinaryPath string
+	iconResourcePath string
 }
 
 func nextProfileWindowMarkerCode(used map[string]struct{}) string {
 	for index := 0; ; index++ {
-		code := ""
-		if index < len(profileWindowMarkerLetters) {
-			code = string(profileWindowMarkerLetters[index])
-		} else {
+		var code string
+		switch {
+		case index < 10:
+			code = strconv.Itoa(index + 1)
+		case index < 10+len(profileWindowMarkerLetters):
+			code = string(profileWindowMarkerLetters[index-10])
+		default:
 			code = strconv.Itoa(index - len(profileWindowMarkerLetters) + 1)
 		}
 		if _, exists := used[code]; !exists {
@@ -108,6 +139,51 @@ func profileWindowMarkerPrefix(markerCode, profileName string) string {
 	return fmt.Sprintf("[%s] %s%s", code, name, profileWindowMarkerSeparator)
 }
 
+func profileWindowMarkerAppUserModelID(profileID, markerCode string) string {
+	suffix := sanitizeProfileWindowMarkerAppUserModelIDSuffix(profileID)
+	if suffix == "" {
+		suffix = sanitizeProfileWindowMarkerAppUserModelIDSuffix(markerCode)
+	}
+	if suffix == "" {
+		suffix = "unknown"
+	}
+	appID := "AntBrowser.Instance." + suffix
+	if len(appID) > 128 {
+		appID = appID[:128]
+		appID = strings.TrimRight(appID, ".-_")
+	}
+	return appID
+}
+
+func sanitizeProfileWindowMarkerAppUserModelIDSuffix(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var builder strings.Builder
+	lastSeparator := false
+	for _, char := range value {
+		valid := (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')
+		if valid {
+			builder.WriteRune(char)
+			lastSeparator = false
+			continue
+		}
+		if char == '-' || char == '_' || char == '.' {
+			if builder.Len() > 0 && !lastSeparator {
+				builder.WriteRune(char)
+				lastSeparator = true
+			}
+			continue
+		}
+		if builder.Len() > 0 && !lastSeparator {
+			builder.WriteByte('.')
+			lastSeparator = true
+		}
+	}
+	return strings.Trim(builder.String(), ".-_")
+}
+
 func applyProfileWindowMarkerTitle(currentTitle, markerCode, profileName string) string {
 	pageTitle := stripProfileWindowMarkerTitle(currentTitle)
 	if pageTitle == "" {
@@ -153,20 +229,43 @@ func (a *App) currentProfileWindowMarkerTarget(profileID string) (profileWindowM
 	}
 
 	a.browserMgr.Mutex.Lock()
-	defer a.browserMgr.Mutex.Unlock()
 
 	profile, exists := a.browserMgr.Profiles[profileID]
 	if !exists || profile == nil || !profile.Running {
+		a.browserMgr.Mutex.Unlock()
 		return profileWindowMarkerTarget{}, false
 	}
+	profileSnapshot := *profile
+	userDataDir := a.browserMgr.ResolveUserDataDir(profile)
+	a.browserMgr.Mutex.Unlock()
+
+	chromeBinaryPath, _ := a.browserMgr.ResolveChromeBinary(&profileSnapshot)
 
 	return profileWindowMarkerTarget{
-		profileID:   profile.ProfileId,
-		profileName: profile.ProfileName,
-		pid:         profile.Pid,
-		debugPort:   profile.DebugPort,
-		userDataDir: a.browserMgr.ResolveUserDataDir(profile),
+		profileID:        profileSnapshot.ProfileId,
+		profileName:      profileSnapshot.ProfileName,
+		pid:              profileSnapshot.Pid,
+		debugPort:        profileSnapshot.DebugPort,
+		userDataDir:      userDataDir,
+		chromeBinaryPath: chromeBinaryPath,
+		iconResourcePath: profileWindowMarkerIconResourcePath(a.appRoot),
 	}, true
+}
+
+func profileWindowMarkerIconResourcePath(appRoot string) string {
+	candidates := []string{
+		filepath.Join(appRoot, "AntBrowser.ico"),
+		filepath.Join(appRoot, "build", "windows", "icon.ico"),
+	}
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func (a *App) startProfileWindowMarkerLocked(profileID string, profile *BrowserProfile) {
@@ -180,6 +279,7 @@ func (a *App) startProfileWindowMarkerLocked(profileID string, profile *BrowserP
 	}
 	if marker, exists := a.profileWindowMarkers[profileID]; exists {
 		marker.setPID(profile.Pid)
+		profile.WindowMarkerCode = marker.code
 		a.profileWindowMarkersMu.Unlock()
 		return
 	}
@@ -192,6 +292,7 @@ func (a *App) startProfileWindowMarkerLocked(profileID string, profile *BrowserP
 		windowRefs: make(map[uintptr]profileWindowMarkerWindowState),
 	}
 	a.profileWindowMarkers[profileID] = marker
+	profile.WindowMarkerCode = marker.code
 	a.profileWindowMarkersMu.Unlock()
 
 	go runProfileWindowMarker(a, marker)

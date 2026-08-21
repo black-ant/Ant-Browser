@@ -19,8 +19,9 @@ import { SnapshotTab } from '../components/SnapshotTab'
 import { resolveActionErrorMessage, resolveActionFeedback } from '../utils/actionErrors'
 import { warmupProfileProxyBeforeStart } from '../utils/proxyWarmup'
 
-const resolveRuntimeStatus = (running: boolean, debugReady: boolean) => {
-  if (!running) return { variant: 'warning' as const, label: '已停止' }
+const resolveRuntimeStatus = (running: boolean, debugReady: boolean, lastError = '') => {
+  if (!running && lastError.trim()) return { variant: 'error' as const, label: '异常' }
+  if (!running) return { variant: 'default' as const, label: '已停止' }
   if (!debugReady) return { variant: 'info' as const, label: '运行中（待就绪）' }
   return { variant: 'success' as const, label: '运行中' }
 }
@@ -134,8 +135,8 @@ export function BrowserDetailPage() {
       if (startedProfile) {
         setProfile(startedProfile)
       }
-      if (startedProfile?.running && !startedProfile.debugReady && startedProfile.runtimeWarning) {
-        toast.warning(startedProfile.runtimeWarning)
+      if (startedProfile?.runtimeWarning || (startedProfile?.running && !startedProfile.debugReady)) {
+        toast.warning(startedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
       } else {
         toast.success('实例已启动')
       }
@@ -176,7 +177,11 @@ export function BrowserDetailPage() {
       if (restartedProfile) {
         setProfile(restartedProfile)
       }
-      toast.success('实例已重启')
+      if (restartedProfile?.runtimeWarning || (restartedProfile?.running && !restartedProfile.debugReady)) {
+        toast.warning(restartedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
+      } else {
+        toast.success('实例已重启')
+      }
     } catch (error: any) {
       const feedback = resolveActionFeedback(error, '实例重启失败')
       if (feedback.tone === 'warning') {
@@ -206,7 +211,7 @@ export function BrowserDetailPage() {
   const isStopping = pendingAction === 'stopping'
   const isRestarting = pendingAction === 'restarting'
   const isBusy = pendingAction !== null
-  const runtimeStatus = resolveRuntimeStatus(profile.running, profile.debugReady)
+  const runtimeStatus = resolveRuntimeStatus(profile.running, profile.debugReady, profile.lastError)
 
   return (
     <div className="space-y-5 animate-fade-in">
