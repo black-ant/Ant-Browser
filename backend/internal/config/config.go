@@ -111,12 +111,12 @@ type BrowserConfig struct {
 	LightStartEnabled          *bool                  `yaml:"light_start_enabled,omitempty"`
 	RestoreLastSession         bool                   `yaml:"restore_last_session"`
 	MemorySaverEnabled         bool                   `yaml:"memory_saver,omitempty"`
-	LivePerfEnabled            *bool                  `yaml:"live_perf_enabled,omitempty"`    // 直播多开性能模式(nil=默认开):LivePerfArgs + 性能 Preferences
-	LivePerfAggressive         bool                   `yaml:"live_perf_aggressive,omitempty"` // B级激进(默认关):合并站点隔离,牺牲隔离安全性
-	SpeedAutoTestEnabled       *bool                  `yaml:"speed_autotest_enabled,omitempty"` // 后台自动测速(nil=默认关;手动测速不受影响)
-	MemoryReclaimEnabled       *bool                  `yaml:"memory_reclaim_enabled,omitempty"`     // 定时主动内存回收(nil=默认开)
-	MemoryReclaimIntervalMs    int                    `yaml:"memory_reclaim_interval_ms,omitempty"` // 回收间隔ms(默认 600000)
-	MemoryReclaimLevel         string                 `yaml:"memory_reclaim_level,omitempty"`       // moderate(默认) | critical
+	LivePerfEnabled            *bool                  `yaml:"live_perf_enabled,omitempty"`              // 直播多开性能模式(nil=默认开):LivePerfArgs + 性能 Preferences
+	LivePerfAggressive         bool                   `yaml:"live_perf_aggressive,omitempty"`           // B级激进(默认关):合并站点隔离,牺牲隔离安全性
+	SpeedAutoTestEnabled       *bool                  `yaml:"speed_autotest_enabled,omitempty"`         // 后台自动测速(nil=默认关;手动测速不受影响)
+	MemoryReclaimEnabled       *bool                  `yaml:"memory_reclaim_enabled,omitempty"`         // 定时主动内存回收(nil=默认开)
+	MemoryReclaimIntervalMs    int                    `yaml:"memory_reclaim_interval_ms,omitempty"`     // 回收间隔ms(默认 600000)
+	MemoryReclaimLevel         string                 `yaml:"memory_reclaim_level,omitempty"`           // moderate(默认) | critical
 	LiveKeepAliveEnabled       *bool                  `yaml:"live_keepalive_enabled,omitempty"`         // 直播/视频防挂机:定时向运行中的实例注入可信输入(nil=默认开)
 	LiveKeepAliveIntervalMinMs int                    `yaml:"live_keepalive_interval_min_ms,omitempty"` // 随机保活间隔下界ms(默认 60000)
 	LiveKeepAliveIntervalMaxMs int                    `yaml:"live_keepalive_interval_max_ms,omitempty"` // 随机保活间隔上界ms(默认 90000);每实例在[min,max]内独立随机、彼此错峰
@@ -137,8 +137,8 @@ type BrowserConfig struct {
 	// KernelDistribution 新建实例在多内核间的加权分布(内核大版本→权重)。
 	// 默认 {"148":70,"144":30}:贴近真实 Chrome 人群(绝大多数最新版 + 少数未更新尾部)。
 	// 仅在"自动分布"模式下使用;用户显式指定内核时忽略。
-	KernelDistribution        map[string]int         `yaml:"kernel_distribution,omitempty"`
-	Environments               []BrowserEnvironment   `yaml:"environments,omitempty"`
+	KernelDistribution map[string]int       `yaml:"kernel_distribution,omitempty"`
+	Environments       []BrowserEnvironment `yaml:"environments,omitempty"`
 }
 
 type BrowserCore struct {

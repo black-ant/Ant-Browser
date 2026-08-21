@@ -89,8 +89,9 @@ func LivePerfArgs() []string {
 // --disable-site-isolation-trials:跨站 iframe(广告 / 埋点)并进同一渲染进程,
 // 每实例再省 1-4 个进程。它【不改任何 JS 可见指纹面】(crossOriginIsolated 由
 // COOP/COEP 决定,与站点隔离无关),真实代价是:
-//   ① 放弃站点隔离安全性(Spectre 类跨站内存读取)
-//   ② 同进程内广告 iframe 崩溃会带走整页
+//
+//	① 放弃站点隔离安全性(Spectre 类跨站内存读取)
+//	② 同进程内广告 iframe 崩溃会带走整页
 //
 // 结论:只开固定直播平台的专用挂机墙可接受;什么站都开的通用环境不要开。
 func LivePerfAggressiveArgs() []string {

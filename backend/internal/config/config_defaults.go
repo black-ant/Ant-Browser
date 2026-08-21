@@ -304,9 +304,9 @@ func DefaultConfig() *Config {
 			MemoryReclaimEnabled:    boolPtr(true),
 			MemoryReclaimIntervalMs: 600000,
 			MemoryReclaimLevel:      "moderate",
-			StartReadyTimeoutMs:    3000,
-			StartStableWindowMs:    1200,
-			DefaultConnectorType:   BrowserConnectorXray,
+			StartReadyTimeoutMs:     3000,
+			StartStableWindowMs:     1200,
+			DefaultConnectorType:    BrowserConnectorXray,
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,

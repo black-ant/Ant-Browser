@@ -25,17 +25,17 @@ func TestAssertNoForbiddenArgsAllowsCleanSet(t *testing.T) {
 // 每一条红线都要有覆盖:一类漏了,以后就会有人加进来。
 func TestAssertNoForbiddenArgsCoversEachCategory(t *testing.T) {
 	cases := map[string]string{
-		"指纹面":       "--fingerprint-platform=windows",
-		"GPU管线":     "--disable-gpu-compositing",
-		"JS可见API":   "--disable-notifications",
-		"插件面":       "--disable-plugins",
-		"网络指纹":      "--disable-quic",
-		"字体":        "--disable-remote-fonts",
-		"播放行为面":     "--autoplay-policy=no-user-gesture-required",
-		"打断CDP":     "--single-process",
-		"自动化标识":     "--enable-automation",
-		"安全":        "--no-sandbox",
-		"codec特性":   "--disable-features=PlatformHEVCDecoderSupport",
+		"指纹面":            "--fingerprint-platform=windows",
+		"GPU管线":          "--disable-gpu-compositing",
+		"JS可见API":        "--disable-notifications",
+		"插件面":            "--disable-plugins",
+		"网络指纹":           "--disable-quic",
+		"字体":             "--disable-remote-fonts",
+		"播放行为面":          "--autoplay-policy=no-user-gesture-required",
+		"打断CDP":          "--single-process",
+		"自动化标识":          "--enable-automation",
+		"安全":             "--no-sandbox",
+		"codec特性":        "--disable-features=PlatformHEVCDecoderSupport",
 		"PrivacySandbox": "--disable-features=BrowsingTopics",
 	}
 	for name, arg := range cases {

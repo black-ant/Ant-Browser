@@ -14,6 +14,7 @@ import (
 //   - browser.check_default_browser = false : 去掉"设为默认浏览器"提示(与 --no-default-browser-check 双保险)。
 //   - 删除 browser.window_placement / app_window_placement : 否则 Chrome 会用上次保存的(常为最大化)
 //     窗口状态覆盖命令行 --window-size,导致窗口开成真机工作区大小、指纹检测 Window Size 对不上。
+//
 // livePerf=true 时额外关闭一批纯后台的浏览器服务(见函数末尾)。
 // 仅在实例未运行(启动前)调用,读改写合并,用 UseNumber 保留数字类型,避免破坏 Preferences 其他字段。
 func ensureLaunchPreferences(userDataDir string, livePerf bool) {
