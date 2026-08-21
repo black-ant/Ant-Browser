@@ -82,6 +82,8 @@ export function BookmarkSyncToProfiles():Promise<backend.BookmarkSyncResult>;
 
 export function BrowserClearCookies(arg1:string):Promise<void>;
 
+export function BrowserCoreBackendOptions():Promise<Array<backend.BrowserCoreBackendOption>>;
+
 export function BrowserCoreDelete(arg1:string):Promise<void>;
 
 export function BrowserCoreDownload(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -103,6 +105,8 @@ export function BrowserCoreScan():Promise<Array<config.BrowserCore>>;
 export function BrowserCoreSetDefault(arg1:string):Promise<void>;
 
 export function BrowserCoreValidate(arg1:string):Promise<browser.CoreValidateResult>;
+
+export function BrowserCoreValidateForBackend(arg1:string,arg2:string):Promise<browser.CoreValidateResult>;
 
 export function BrowserExportCookies(arg1:string):Promise<string>;
 

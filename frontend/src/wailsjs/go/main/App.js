@@ -146,6 +146,10 @@ export function BrowserClearCookies(arg1) {
   return window['go']['main']['App']['BrowserClearCookies'](arg1);
 }
 
+export function BrowserCoreBackendOptions() {
+  return window['go']['main']['App']['BrowserCoreBackendOptions']();
+}
+
 export function BrowserCoreDelete(arg1) {
   return window['go']['main']['App']['BrowserCoreDelete'](arg1);
 }
@@ -188,6 +192,10 @@ export function BrowserCoreSetDefault(arg1) {
 
 export function BrowserCoreValidate(arg1) {
   return window['go']['main']['App']['BrowserCoreValidate'](arg1);
+}
+
+export function BrowserCoreValidateForBackend(arg1, arg2) {
+  return window['go']['main']['App']['BrowserCoreValidateForBackend'](arg1, arg2);
 }
 
 export function BrowserExportCookies(arg1) {

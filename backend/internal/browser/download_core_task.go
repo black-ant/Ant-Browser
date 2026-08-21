@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -21,10 +22,12 @@ func (m *Manager) DownloadAndExtractCore(ctx context.Context, coreName string, t
 	for _, core := range m.ListCores() {
 		if strings.EqualFold(core.CoreName, coreName) || filepath.Base(core.CorePath) == coreName {
 			m.downloadAndExtractCore(ctx, CoreInput{
-				CoreId:    core.CoreId,
-				CoreName:  core.CoreName,
-				CorePath:  core.CorePath,
-				IsDefault: core.IsDefault,
+				CoreId:      core.CoreId,
+				CoreName:    core.CoreName,
+				CorePath:    core.CorePath,
+				IsDefault:   core.IsDefault,
+				CoreBackend: core.CoreBackend,
+				CoreEnv:     core.CoreEnv,
 			}, targetUrl, proxyConfig, false)
 			return
 		}
@@ -40,10 +43,12 @@ func (m *Manager) RedownloadCore(ctx context.Context, coreId string, targetUrl s
 		return
 	}
 	m.downloadAndExtractCore(ctx, CoreInput{
-		CoreId:    core.CoreId,
-		CoreName:  core.CoreName,
-		CorePath:  core.CorePath,
-		IsDefault: core.IsDefault,
+		CoreId:      core.CoreId,
+		CoreName:    core.CoreName,
+		CorePath:    core.CorePath,
+		IsDefault:   core.IsDefault,
+		CoreBackend: core.CoreBackend,
+		CoreEnv:     core.CoreEnv,
 	}, targetUrl, proxyConfig, true)
 }
 
@@ -171,8 +176,17 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 		return
 	}
 
-	if !m.ValidateCorePath(tempExtractDir).Valid {
-		sendEvent("error", 0, fmt.Sprintf("解压后未找到当前平台可用的浏览器可执行文件（当前平台 %s，候选：%s），请检查压缩包内容！", CoreExecutablePlatform(), strings.Join(CoreExecutableCandidates(), ", ")))
+	// 已知内核后端时（例如重新下载）按该后端校验，能更早发现"下错包"；
+	// 新增下载还没确定后端，接受所有后端候选名。
+	expectedBackend := strings.TrimSpace(coreInput.CoreBackend)
+	if !m.ValidateCorePathForBackend(tempExtractDir, expectedBackend).Valid {
+		candidates := CoreExecutableCandidatesAnyBackend()
+		backendHint := ""
+		if expectedBackend != "" {
+			candidates = CoreExecutableCandidatesForBackend(expectedBackend)
+			backendHint = fmt.Sprintf("，内核后端 %s", CoreBackendLabel(expectedBackend))
+		}
+		sendEvent("error", 0, fmt.Sprintf("解压后未找到当前平台可用的浏览器可执行文件（当前平台 %s%s，候选：%s），请检查压缩包内容！", CoreExecutablePlatform(), backendHint, strings.Join(candidates, ", ")))
 		return
 	}
 
@@ -182,11 +196,18 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 	}
 	cleanupTempExtract = false
 
+	coreBackend := config.NormalizeCoreBackend(coreInput.CoreBackend)
+	if strings.TrimSpace(coreInput.CoreBackend) == "" {
+		// 新下载的内核没有显式后端时，按解压结果推断一次。
+		coreBackend = DetectCoreBackend(targetDir)
+	}
 	coreToSave := CoreInput{
-		CoreId:    strings.TrimSpace(coreInput.CoreId),
-		CoreName:  coreName,
-		CorePath:  targetCorePath,
-		IsDefault: coreInput.IsDefault,
+		CoreId:      strings.TrimSpace(coreInput.CoreId),
+		CoreName:    coreName,
+		CorePath:    targetCorePath,
+		IsDefault:   coreInput.IsDefault,
+		CoreBackend: coreBackend,
+		CoreEnv:     coreInput.CoreEnv,
 	}
 	if coreToSave.CoreId == "" {
 		coreToSave.CoreId = uuid.NewString()

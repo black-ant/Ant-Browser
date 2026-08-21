@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/config"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ type BrowserFingerprintCapabilityReport struct {
 	ProfileId     string                            `json:"profileId"`
 	CoreId        string                            `json:"coreId"`
 	CoreName      string                            `json:"coreName"`
+	CoreBackend   string                            `json:"coreBackend"`
 	ChromeVersion string                            `json:"chromeVersion"`
 	ChromeMajor   int                               `json:"chromeMajor"`
 	VersionStatus string                            `json:"versionStatus"`
@@ -132,17 +134,31 @@ func (a *App) buildBrowserFingerprintCapabilityReport(profileId string, coreId s
 		core, coreFound = a.resolveBrowserCoreForFingerprintReport(coreId)
 	}
 
+	coreBackend := config.NormalizeCoreBackend(core.CoreBackend)
 	chromeVersion := ""
 	if coreFound {
-		chromeVersion = a.browserMgr.GetChromeVersion(core.CorePath)
+		chromeVersion = a.browserMgr.GetCoreVersion(core.CorePath, coreBackend)
 	}
 
-	plan := buildBrowserFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+	var plan browserFingerprintLaunchPlan
+	versionStatus := fingerprintVersionStatus(chromeVersion)
+	if coreBackend == config.CoreBackendCloak {
+		plan = buildCloakFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+		// Chrome 144 门槛是 fingerprint-chromium 的实测结论，对 Cloak 没有意义，
+		// 这里只区分"版本已识别 / 未识别"。
+		versionStatus = "cloak"
+		if parseChromeMajor(chromeVersion) <= 0 {
+			versionStatus = "unknown"
+		}
+	} else {
+		plan = buildBrowserFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+	}
 	report := BrowserFingerprintCapabilityReport{
 		ProfileId:     profileId,
+		CoreBackend:   coreBackend,
 		ChromeVersion: chromeVersion,
 		ChromeMajor:   parseChromeMajor(chromeVersion),
-		VersionStatus: fingerprintVersionStatus(chromeVersion),
+		VersionStatus: versionStatus,
 		RawArgs:       normalizeNonEmptyStrings(fingerprintArgs),
 		LaunchArgs:    append([]string{}, plan.launchArgs...),
 		Rows:          append([]BrowserFingerprintCapabilityRow{}, plan.rows...),

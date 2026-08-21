@@ -218,6 +218,16 @@ var migrations = []migration{
 			`ALTER TABLE browser_profiles ADD COLUMN memory_limit_mb INTEGER NOT NULL DEFAULT 0`,
 		},
 	},
+	{
+		// 注意：15/16/17 已被历史插件相关迁移占用（部分用户库里已记录），
+		// 这里从 18 开始，避免版本号撞车导致本迁移被当成"已执行"而跳过。
+		version: 18,
+		desc:    "内核表添加后端类型与环境变量字段",
+		stmts: []string{
+			`ALTER TABLE browser_cores ADD COLUMN core_backend TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_cores ADD COLUMN core_env TEXT NOT NULL DEFAULT '[]'`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,
@@ -299,7 +309,75 @@ func (db *DB) Migrate() error {
 		}
 	}
 
+	// 版本水位（MAX(version)）只能反映"最大版本号"，无法反映"某个版本是否真的执行过"。
+	// 如果历史构建用过相同的版本号（分支合并、不同分发版本各自追加迁移），
+	// 新迁移会被当成已执行而静默跳过，之后代码引用新列就会报 "no such column"。
+	// 这里对纯新增列的迁移做一次补齐，保证 schema 与代码期望一致。
+	if err := db.ensureExpectedColumns(); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// expectedColumn 描述代码依赖的新增列，用于修复版本号撞车导致的漏执行。
+type expectedColumn struct {
+	table      string
+	column     string
+	definition string
+}
+
+// expectedColumns 只允许放"可安全重复添加的新增列"（带默认值、不改变已有语义）。
+var expectedColumns = []expectedColumn{
+	{table: "browser_cores", column: "core_backend", definition: `TEXT NOT NULL DEFAULT ''`},
+	{table: "browser_cores", column: "core_env", definition: `TEXT NOT NULL DEFAULT '[]'`},
+}
+
+func (db *DB) ensureExpectedColumns() error {
+	for _, expected := range expectedColumns {
+		exists, err := db.columnExists(expected.table, expected.column)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		stmt := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, expected.table, expected.column, expected.definition)
+		if _, err := db.conn.Exec(stmt); err != nil {
+			if isColumnExistsError(err) {
+				continue
+			}
+			return fmt.Errorf("补齐缺失列 %s.%s 失败: %w", expected.table, expected.column, err)
+		}
+	}
+	return nil
+}
+
+// columnExists 判断表中是否存在指定列；表不存在时返回 false 而非报错。
+func (db *DB) columnExists(table string, column string) (bool, error) {
+	rows, err := db.conn.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return false, fmt.Errorf("读取表结构失败 (%s): %w", table, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			dfltValue  sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &dfltValue, &primaryKey); err != nil {
+			return false, fmt.Errorf("读取表结构行失败 (%s): %w", table, err)
+		}
+		if strings.EqualFold(name, column) {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // applyMigration 在事务内执行单个版本的所有语句，并记录版本号

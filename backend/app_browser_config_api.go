@@ -77,6 +77,31 @@ func (a *App) BrowserCoreValidate(corePath string) BrowserCoreValidateResult {
 	return a.browserMgr.ValidateCorePath(corePath)
 }
 
+// BrowserCoreValidateForBackend 按指定内核后端验证路径。
+// backend 传空串时等价于 BrowserCoreValidate（接受所有后端候选名）。
+func (a *App) BrowserCoreValidateForBackend(corePath string, coreBackend string) BrowserCoreValidateResult {
+	return a.browserMgr.ValidateCorePathForBackend(corePath, coreBackend)
+}
+
+// BrowserCoreBackendOption 内核后端选项，用于前端下拉框。
+type BrowserCoreBackendOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// BrowserCoreBackendOptions 返回可选的内核后端列表。
+func (a *App) BrowserCoreBackendOptions() []BrowserCoreBackendOption {
+	backends := config.KnownCoreBackends()
+	options := make([]BrowserCoreBackendOption, 0, len(backends))
+	for _, backend := range backends {
+		options = append(options, BrowserCoreBackendOption{
+			Value: backend,
+			Label: browser.CoreBackendLabel(backend),
+		})
+	}
+	return options
+}
+
 func (a *App) BrowserCoreExtendedInfo() []BrowserCoreExtendedInfo {
 	return a.browserMgr.GetCoresExtendedInfo()
 }
@@ -157,7 +182,7 @@ func (a *App) importLocalBrowserCoreArchive(archivePath string) (*BrowserCore, e
 	}
 	a.emitBrowserCoreImportProgress("validating", 90, "正在校验内核可执行文件...")
 	if _, _, ok := browser.FindCoreExecutable(tempExtractDir); !ok {
-		err := fmt.Errorf("所选归档不是当前平台可用的内核包：当前平台 %s，未找到浏览器可执行文件（候选：%s）", browser.CoreExecutablePlatform(), strings.Join(browser.CoreExecutableCandidates(), ", "))
+		err := fmt.Errorf("所选归档不是当前平台可用的内核包：当前平台 %s，未找到浏览器可执行文件（候选：%s）", browser.CoreExecutablePlatform(), strings.Join(browser.CoreExecutableCandidatesAnyBackend(), ", "))
 		a.emitBrowserCoreImportProgress("error", 0, err.Error())
 		return nil, err
 	}
@@ -219,7 +244,7 @@ func (a *App) BrowserCoreImportLocalDirectory() (*BrowserCore, error) {
 	}
 
 	selectedDir, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title: "选择已解压的 Chrome 内核目录",
+		Title: "选择已解压的浏览器内核目录",
 	})
 	if err != nil {
 		return nil, err
@@ -234,7 +259,7 @@ func (a *App) BrowserCoreImportLocalDirectory() (*BrowserCore, error) {
 		return nil, err
 	}
 	if _, _, ok := browser.FindCoreExecutable(absDir); !ok {
-		return nil, fmt.Errorf("所选目录不是当前平台可用的内核目录：当前平台 %s，未找到浏览器可执行文件（候选：%s）", browser.CoreExecutablePlatform(), strings.Join(browser.CoreExecutableCandidates(), ", "))
+		return nil, fmt.Errorf("所选目录不是当前平台可用的内核目录：当前平台 %s，未找到浏览器可执行文件（候选：%s）", browser.CoreExecutablePlatform(), strings.Join(browser.CoreExecutableCandidatesAnyBackend(), ", "))
 	}
 
 	corePath := a.relativeCorePathIfPossible(absDir)
@@ -249,10 +274,12 @@ func (a *App) BrowserCoreImportLocalDirectory() (*BrowserCore, error) {
 		}
 	}
 
+	// 后端按目录特征推断；推断不准时用户可在内核管理里改。
 	input := browser.CoreInput{
-		CoreName:  coreName,
-		CorePath:  corePath,
-		IsDefault: len(a.browserMgr.ListCores()) == 0,
+		CoreName:    coreName,
+		CorePath:    corePath,
+		IsDefault:   len(a.browserMgr.ListCores()) == 0,
+		CoreBackend: browser.DetectCoreBackend(absDir),
 	}
 	if err := a.browserMgr.SaveCore(input); err != nil {
 		return nil, err
