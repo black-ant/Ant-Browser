@@ -4,6 +4,7 @@ import (
 	"ant-chrome/backend/internal/config"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"testing"
 )
 
@@ -12,18 +13,48 @@ func TestCloakVersionFromDirName(t *testing.T) {
 		name string
 		want string
 	}{
+		// wrapper get_binary_dir 产出的实际目录名
 		{name: "chromium-146.0.7680.177.5", want: "146.0.7680.177.5"},
 		{name: "chromium-148.0.7778.215", want: "148.0.7778.215"},
+		// Pro 构建带 -pro 后缀，版本号本身不含该后缀
+		{name: "chromium-148.0.7778.215.3-pro", want: "148.0.7778.215.3"},
+		{name: "chromium-151.0.7922.108.2-pro", want: "151.0.7922.108.2"},
+		// release tag 的 v 前缀写法，容错
+		{name: "chromium-v146.0.7680.177.5", want: "146.0.7680.177.5"},
+		{name: "chromium-v150.0.7871.114.6-pro", want: "150.0.7871.114.6"},
 		{name: "CHROMIUM-146.0.1", want: "146.0.1"},
 		{name: "chromium-foo", want: ""},
 		{name: "chromium-", want: ""},
 		{name: "chromium-148", want: ""}, // 无点号，不认为是版本目录
+		{name: "chromium-pro", want: ""},
 		{name: "chrome-142", want: ""},
 		{name: "", want: ""},
 	}
 	for _, item := range cases {
 		if got := cloakVersionFromDirName(item.name); got != item.want {
 			t.Fatalf("cloakVersionFromDirName(%q) = %q, want %q", item.name, got, item.want)
+		}
+	}
+}
+
+// Cloak 候选名按 wrapper get_binary_path 收窄：每个平台只有一个预期文件名。
+func TestCloakExecutableCandidatesAreNarrow(t *testing.T) {
+	candidates := CoreExecutableCandidatesForBackend(config.CoreBackendCloak)
+	if len(candidates) != 1 {
+		t.Fatalf("cloak candidates = %#v, want exactly one entry per platform", candidates)
+	}
+	switch goruntime.GOOS {
+	case "windows":
+		if candidates[0] != "chrome.exe" {
+			t.Fatalf("windows cloak candidate = %q, want chrome.exe", candidates[0])
+		}
+	case "linux":
+		if candidates[0] != "chrome" {
+			t.Fatalf("linux cloak candidate = %q, want chrome", candidates[0])
+		}
+	case "darwin":
+		if candidates[0] != "Chromium.app/Contents/MacOS/Chromium" {
+			t.Fatalf("darwin cloak candidate = %q, want the Chromium.app bundle path", candidates[0])
 		}
 	}
 }
@@ -38,6 +69,38 @@ func TestCloakCoreVersionPicksHighestNestedVersion(t *testing.T) {
 
 	if got, want := cloakCoreVersion(baseDir), "148.0.7778.215"; got != want {
 		t.Fatalf("cloakCoreVersion = %q, want %q", got, want)
+	}
+}
+
+// 复现 Cloak 缓存目录的真实布局（含 -pro 后缀和实际可执行文件），
+// 验证版本识别、后端推断和可执行文件查找三者一致。
+func TestCloakRealCacheLayoutIsResolvable(t *testing.T) {
+	cacheDir := t.TempDir()
+	versionDir := filepath.Join(cacheDir, "chromium-148.0.7778.215.3-pro")
+
+	// 按 wrapper get_binary_path 在对应平台落一个可执行文件
+	candidate := CoreExecutableCandidatesForBackend(config.CoreBackendCloak)[0]
+	exePath := filepath.Join(versionDir, filepath.FromSlash(candidate))
+	if err := os.MkdirAll(filepath.Dir(exePath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(exePath, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("write executable: %v", err)
+	}
+
+	if got, want := cloakCoreVersion(cacheDir), "148.0.7778.215.3"; got != want {
+		t.Fatalf("cloakCoreVersion = %q, want %q", got, want)
+	}
+	if got, want := DetectCoreBackend(cacheDir), config.CoreBackendCloak; got != want {
+		t.Fatalf("DetectCoreBackend = %q, want %q", got, want)
+	}
+	// 内核路径注册的是缓存根目录时，仍应能递归找到版本目录里的可执行文件
+	if _, _, ok := FindCoreExecutableForBackend(cacheDir, config.CoreBackendCloak); !ok {
+		t.Fatalf("FindCoreExecutableForBackend failed to locate %s", exePath)
+	}
+	// 直接注册版本目录也应可用
+	if _, _, ok := FindCoreExecutableForBackend(versionDir, config.CoreBackendCloak); !ok {
+		t.Fatalf("FindCoreExecutableForBackend failed on version dir %s", versionDir)
 	}
 }
 
