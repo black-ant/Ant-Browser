@@ -234,12 +234,12 @@ export function BrowserListPage() {
     if (pending > 0) summary.push(`待接管 ${pending}`)
     if (failed > 0) summary.push(`失败 ${failed}`)
     if (skipped > 0) summary.push(`跳过 ${skipped}`)
-    if (success > 0 && pending === 0 && failed === 0 && skipped === 0) {
-      toast.success(`批量启动完成：${summary.join('，')}`)
-    } else if (failed > 0 && success === 0 && pending === 0) {
+    if (failed > 0 && success === 0 && pending === 0) {
       toast.error(`批量启动失败：${summary.join('，')}`)
-    } else if (success > 0 || pending > 0 || failed > 0) {
+    } else if (failed > 0 || pending > 0 || skipped > 0) {
       toast.warning(`批量启动结果：${summary.join('，')}`)
+    } else if (success > 0) {
+      toast.success(`批量启动完成：${summary.join('，')}`)
     } else {
       toast.info(`没有可启动的实例${skipped > 0 ? `，跳过 ${skipped}` : ''}`)
     }
@@ -286,12 +286,12 @@ export function BrowserListPage() {
     const summary = [`成功 ${success}`]
     if (failed > 0) summary.push(`失败 ${failed}`)
     if (skipped > 0) summary.push(`跳过 ${skipped}`)
-    if (success > 0 && failed === 0 && skipped === 0) {
-      toast.success(`批量停止完成：${summary.join('，')}`)
-    } else if (failed > 0 && success === 0) {
+    if (failed > 0 && success === 0) {
       toast.error(`批量停止失败：${summary.join('，')}`)
-    } else if (success > 0 || failed > 0) {
+    } else if (failed > 0 || skipped > 0) {
       toast.warning(`批量停止结果：${summary.join('，')}`)
+    } else if (success > 0) {
+      toast.success(`批量停止完成：${summary.join('，')}`)
     } else {
       toast.info(`没有可停止的实例${skipped > 0 ? `，跳过 ${skipped}` : ''}`)
     }

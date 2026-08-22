@@ -41,6 +41,10 @@ export function useBrowserProfileActions({
   mergeProfileState,
   loadProfiles,
 }: UseBrowserProfileActionsOptions) {
+  const refreshProfilesInBackground = () => {
+    void loadProfiles({ silent: true, syncRuntimeState: true }).catch(() => undefined)
+  }
+
   const handleStart = async (profileId: string) => {
     const profile = profiles.find(p => p.profileId === profileId)
     updatePendingIds(setStartingIds, profileId, true)
@@ -51,6 +55,7 @@ export function useBrowserProfileActions({
           setProxyErrorMsg(result.errorMsg)
           setPendingStartId(profileId)
           setProxyErrorModal(true)
+          updatePendingIds(setStartingIds, profileId, false)
           return
         }
       }
@@ -58,22 +63,20 @@ export function useBrowserProfileActions({
       await warmupProfileProxyBeforeStart(profile)
       const startedProfile = await startBrowserInstance(profileId)
       mergeProfileState(startedProfile)
+      updatePendingIds(setStartingIds, profileId, false)
       if (startedProfile?.runtimeWarning) {
         toast.warning(startedProfile.runtimeWarning)
-      } else {
-        toast.success(`实例已启动${startedProfile?.profileName ? `：${startedProfile.profileName}` : ''}`)
       }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
+      refreshProfilesInBackground()
     } catch (error: any) {
+      updatePendingIds(setStartingIds, profileId, false)
       const feedback = resolveActionFeedback(error, '实例启动失败')
       if (feedback.tone === 'warning') {
         toast.warning(feedback.message)
       } else {
         toast.error(feedback.message)
       }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
-      updatePendingIds(setStartingIds, profileId, false)
+      refreshProfilesInBackground()
     }
   }
 
@@ -82,15 +85,15 @@ export function useBrowserProfileActions({
     try {
       const startedProfile = await startBrowserInstanceDirect(profileId)
       mergeProfileState(startedProfile)
+      updatePendingIds(setStartingIds, profileId, false)
       setProxyErrorModal(false)
       setPendingStartId(null)
       if (startedProfile?.runtimeWarning) {
         toast.warning(startedProfile.runtimeWarning)
-      } else {
-        toast.success(`实例已直连启动${startedProfile?.profileName ? `：${startedProfile.profileName}` : ''}`)
       }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
+      refreshProfilesInBackground()
     } catch (error: any) {
+      updatePendingIds(setStartingIds, profileId, false)
       setProxyErrorModal(false)
       setPendingStartId(null)
       const feedback = resolveActionFeedback(error, '实例直连启动失败')
@@ -99,9 +102,7 @@ export function useBrowserProfileActions({
       } else {
         toast.error(feedback.message)
       }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
-      updatePendingIds(setStartingIds, profileId, false)
+      refreshProfilesInBackground()
     }
   }
 
@@ -110,13 +111,12 @@ export function useBrowserProfileActions({
     try {
       const stoppedProfile = await stopBrowserInstance(profileId)
       mergeProfileState(stoppedProfile)
-      toast.success('实例已停止')
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } catch (error: any) {
-      toast.error(resolveActionErrorMessage(error, '实例停止失败'))
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
       updatePendingIds(setStoppingIds, profileId, false)
+      refreshProfilesInBackground()
+    } catch (error: any) {
+      updatePendingIds(setStoppingIds, profileId, false)
+      toast.error(resolveActionErrorMessage(error, '实例停止失败'))
+      refreshProfilesInBackground()
     }
   }
 
@@ -127,22 +127,20 @@ export function useBrowserProfileActions({
       await warmupProfileProxyBeforeStart(profile)
       const restartedProfile = await restartBrowserInstance(profileId)
       mergeProfileState(restartedProfile)
+      updatePendingIds(setStoppingIds, profileId, false)
       if (restartedProfile?.runtimeWarning || (restartedProfile?.running && !restartedProfile.debugReady)) {
         toast.warning(restartedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
-      } else {
-        toast.success(`实例已重启${restartedProfile?.profileName ? `：${restartedProfile.profileName}` : ''}`)
       }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
+      refreshProfilesInBackground()
     } catch (error: any) {
+      updatePendingIds(setStoppingIds, profileId, false)
       const feedback = resolveActionFeedback(error, '实例重启失败')
       if (feedback.tone === 'warning') {
         toast.warning(feedback.message)
       } else {
         setOpError(feedback.message)
       }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
-      updatePendingIds(setStoppingIds, profileId, false)
+      refreshProfilesInBackground()
     }
   }
 

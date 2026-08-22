@@ -211,8 +211,6 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
       const profile = await startBrowserInstanceByCode(normalized)
       if (profile?.runtimeWarning) {
         toast.warning(`实例「${profile.profileName || normalized}」已启动：${profile.runtimeWarning}`)
-      } else {
-        toast.success(profile?.running ? `实例「${profile.profileName}」已在运行` : `实例「${profile?.profileName || normalized}」已启动`)
       }
       onClose()
       return true

@@ -1,8 +1,8 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { BrowserRouter as Router } from "react-router-dom";
 import { ThemeProvider } from "./shared/theme";
 import { Layout } from "./shared/layout";
-import { ToastContainer, Modal, Button, Loading, toast } from "./shared/components";
+import { MODAL_EXIT_DURATION_MS, ToastContainer, Modal, Button, Loading, toast } from "./shared/components";
 import { AlertCircle } from "lucide-react";
 import { AppRoutes } from "./routes/AppRoutes";
 import { lazyNamed } from "./routes/lazyNamed";
@@ -154,11 +154,18 @@ function CloseConfirmModal() {
   const [quittingAction, setQuittingAction] = useState<
     "app-only" | "app-and-browser" | null
   >(null);
+  const closeActionTimerRef = useRef<number | null>(null);
   const importInProgress = useBackupStore((s) => s.importInProgress);
   const importProgress = useBackupStore((s) => s.importProgress);
   const importMessage = useBackupStore((s) => s.importMessage);
   const supportsTray = platform === "windows";
   const quitting = quittingAction !== null;
+
+  useEffect(() => () => {
+    if (closeActionTimerRef.current !== null) {
+      window.clearTimeout(closeActionTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const runtime = (window as any).runtime;
@@ -194,37 +201,52 @@ function CloseConfirmModal() {
     setOpen(false);
   };
 
+  const closeAfterAnimation = (action: () => void | Promise<void>) => {
+    if (closeActionTimerRef.current !== null) return;
+
+    setOpen(false);
+    closeActionTimerRef.current = window.setTimeout(() => {
+      closeActionTimerRef.current = null;
+      void action();
+    }, MODAL_EXIT_DURATION_MS);
+  };
+
   const handleMinimize = () => {
     if (quitting) return;
-    setOpen(false);
-    if (supportsTray) {
-      WindowHide();
-      return;
-    }
-    WindowMinimise();
+    closeAfterAnimation(() => {
+      if (supportsTray) {
+        WindowHide();
+        return;
+      }
+      WindowMinimise();
+    });
   };
 
-  const handleQuitAppOnly = async () => {
+  const handleQuitAppOnly = () => {
     setQuittingAction("app-only");
-    try {
-      await QuitAppOnlyApp();
-    } catch (error) {
-      console.error("QuitAppOnly failed", error);
-      setQuittingAction(null);
-    }
+    closeAfterAnimation(async () => {
+      try {
+        await QuitAppOnlyApp();
+      } catch (error) {
+        console.error("QuitAppOnly failed", error);
+        setQuittingAction(null);
+      }
+    });
   };
 
-  const handleQuitAppAndBrowsers = async () => {
+  const handleQuitAppAndBrowsers = () => {
     setQuittingAction("app-and-browser");
-    try {
-      await Promise.race([
-        ForceQuitApp(),
-        new Promise((resolve) => setTimeout(resolve, 1200)),
-      ]);
-    } catch (error) {
-      console.error("ForceQuit failed, falling back to runtime.Quit()", error);
-    }
-    Quit();
+    closeAfterAnimation(async () => {
+      try {
+        await Promise.race([
+          ForceQuitApp(),
+          new Promise((resolve) => setTimeout(resolve, 1200)),
+        ]);
+      } catch (error) {
+        console.error("ForceQuit failed, falling back to runtime.Quit()", error);
+      }
+      Quit();
+    });
   };
 
   return (

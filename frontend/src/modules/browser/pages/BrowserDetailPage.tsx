@@ -61,6 +61,10 @@ export function BrowserDetailPage() {
     setTabs(list)
   }
 
+  const refreshProfileInBackground = () => {
+    void loadProfile().catch(() => undefined)
+  }
+
   useEffect(() => { void loadProfile() }, [id])
   useEffect(() => { void loadTabs() }, [id])
 
@@ -137,8 +141,6 @@ export function BrowserDetailPage() {
       }
       if (startedProfile?.runtimeWarning || (startedProfile?.running && !startedProfile.debugReady)) {
         toast.warning(startedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
-      } else {
-        toast.success('实例已启动')
       }
     } catch (error: any) {
       const feedback = resolveActionFeedback(error, '实例启动失败')
@@ -148,7 +150,7 @@ export function BrowserDetailPage() {
         toast.error(feedback.message)
       }
     } finally {
-      await loadProfile()
+      refreshProfileInBackground()
       setPendingAction(null)
     }
   }
@@ -160,11 +162,10 @@ export function BrowserDetailPage() {
       if (stoppedProfile) {
         setProfile(stoppedProfile)
       }
-      toast.success('实例已停止')
     } catch (error: any) {
       toast.error(resolveActionErrorMessage(error, '实例停止失败'))
     } finally {
-      await loadProfile()
+      refreshProfileInBackground()
       setPendingAction(null)
     }
   }
@@ -179,8 +180,6 @@ export function BrowserDetailPage() {
       }
       if (restartedProfile?.runtimeWarning || (restartedProfile?.running && !restartedProfile.debugReady)) {
         toast.warning(restartedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
-      } else {
-        toast.success('实例已重启')
       }
     } catch (error: any) {
       const feedback = resolveActionFeedback(error, '实例重启失败')
@@ -190,7 +189,7 @@ export function BrowserDetailPage() {
         toast.error(feedback.message)
       }
     } finally {
-      await loadProfile()
+      refreshProfileInBackground()
       setPendingAction(null)
     }
   }

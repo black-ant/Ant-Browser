@@ -21,11 +21,12 @@ type ToastOptions = Omit<NotificationInput, 'type' | 'message'>
 
 const TOAST_DEDUPE_WINDOW_MS = 10_000
 const TOAST_BACKDROP_DURATIONS: Record<NotificationType, number> = {
-  success: 900,
+  success: 1_200,
   info: 1_500,
   warning: 3_000,
   error: 3_000,
 }
+const TOAST_BACKDROP_EXIT_DURATION = 320
 const TOAST_FOCUS_PRIORITY: Record<NotificationType, number> = {
   success: 1,
   info: 2,
@@ -43,6 +44,7 @@ const toastDedupeTimestamps = new Map<string, number>()
 interface ToastFocus {
   id: string
   type: NotificationType
+  phase: 'enter' | 'leave'
 }
 
 interface ToastStore {
@@ -182,6 +184,7 @@ export function ToastContainer() {
   const toasts = useToastStore((state) => state.toasts)
   const [focus, setFocus] = useState<ToastFocus | null>(null)
   const focusTimer = useRef<number | null>(null)
+  const focusExitTimer = useRef<number | null>(null)
   const focusRef = useRef<ToastFocus | null>(null)
   const visibleToastIds = useRef(new Set<string>())
 
@@ -194,11 +197,13 @@ export function ToastContainer() {
     const focusToast = selectToastFocus(toasts)
     if (!focusToast) return
 
-    const nextFocus: ToastFocus = { id: focusToast.id, type: focusToast.type }
+    const nextFocus: ToastFocus = { id: focusToast.id, type: focusToast.type, phase: 'enter' }
     setFocus((current) => {
       if (!current) return nextFocus
+      if (current.id === nextFocus.id && current.type === nextFocus.type) {
+        return current
+      }
       if (TOAST_FOCUS_PRIORITY[nextFocus.type] < TOAST_FOCUS_PRIORITY[current.type]) return current
-      if (current.id === nextFocus.id && current.type === nextFocus.type) return current
       return nextFocus
     })
   }, [toasts])
@@ -207,9 +212,27 @@ export function ToastContainer() {
     focusRef.current = focus
     if (!focus) return
 
+    if (focus.phase === 'leave') {
+      if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+      focusTimer.current = null
+      focusExitTimer.current = window.setTimeout(() => {
+        setFocus((current) => (current?.id === focus.id ? null : current))
+        focusExitTimer.current = null
+      }, TOAST_BACKDROP_EXIT_DURATION)
+
+      return () => {
+        if (focusExitTimer.current !== null) window.clearTimeout(focusExitTimer.current)
+        focusExitTimer.current = null
+      }
+    }
+
+    if (focusExitTimer.current !== null) window.clearTimeout(focusExitTimer.current)
+    focusExitTimer.current = null
     if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
     focusTimer.current = window.setTimeout(() => {
-      setFocus((current) => (current?.id === focus.id ? null : current))
+      setFocus((current) => (
+        current?.id === focus.id ? { ...current, phase: 'leave' } : current
+      ))
       focusTimer.current = null
     }, TOAST_BACKDROP_DURATIONS[focus.type])
 
@@ -221,6 +244,7 @@ export function ToastContainer() {
 
   useEffect(() => () => {
     if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+    if (focusExitTimer.current !== null) window.clearTimeout(focusExitTimer.current)
   }, [])
 
   const dismissFocus = useCallback((dismissedId: string) => {
@@ -229,7 +253,9 @@ export function ToastContainer() {
       window.clearTimeout(focusTimer.current)
       focusTimer.current = null
     }
-    setFocus(null)
+    setFocus((current) => (
+      current?.id === dismissedId ? { ...current, phase: 'leave' } : current
+    ))
   }, [])
 
   return (
@@ -238,7 +264,7 @@ export function ToastContainer() {
         <div
           key={`${focus.id}-${focus.type}`}
           aria-hidden="true"
-          className={`toast-focus-backdrop toast-focus-${focus.type} pointer-events-none fixed inset-0 z-[9995]`}
+          className={`toast-focus-backdrop toast-focus-${focus.type} pointer-events-none fixed inset-0 z-[9995] ${focus.phase === 'leave' ? 'toast-focus-leaving' : ''}`}
         />
       ) : null}
       <div className="pointer-events-none fixed right-3 top-3 z-[10000] flex max-h-[calc(100vh-1.5rem)] w-[min(480px,calc(100vw-1.5rem))] flex-col gap-3 overflow-y-auto overscroll-contain sm:right-4 sm:top-4 sm:w-[min(480px,calc(100vw-2rem))]">

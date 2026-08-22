@@ -165,6 +165,196 @@ input, select, textarea {
   animation: slideInRight 0.3s ease-out;
 }
 
+@keyframes modalBackdropIn {
+  from {
+    opacity: 0;
+    background-position: 42% 58%;
+    -webkit-backdrop-filter: blur(0) saturate(1);
+    backdrop-filter: blur(0) saturate(1);
+  }
+  28% {
+    opacity: 0.3;
+    background-position: 45% 55%;
+    -webkit-backdrop-filter: blur(0.6px) saturate(0.995);
+    backdrop-filter: blur(0.6px) saturate(0.995);
+  }
+  62% {
+    opacity: 0.78;
+    background-position: 48% 52%;
+    -webkit-backdrop-filter: blur(1.5px) saturate(0.985);
+    backdrop-filter: blur(1.5px) saturate(0.985);
+  }
+  84% {
+    opacity: 0.94;
+    background-position: 50% 50%;
+    -webkit-backdrop-filter: blur(2.2px) saturate(0.98);
+    backdrop-filter: blur(2.2px) saturate(0.98);
+  }
+  to {
+    opacity: 1;
+    background-position: 50% 50%;
+    -webkit-backdrop-filter: blur(2.5px) saturate(0.975);
+    backdrop-filter: blur(2.5px) saturate(0.975);
+  }
+}
+
+@keyframes modalBackdropOut {
+  from {
+    opacity: 1;
+    background-position: 50% 50%;
+    -webkit-backdrop-filter: blur(2.5px) saturate(0.975);
+    backdrop-filter: blur(2.5px) saturate(0.975);
+  }
+  24% {
+    opacity: 0.94;
+    background-position: 50.5% 49.5%;
+    -webkit-backdrop-filter: blur(2.1px) saturate(0.98);
+    backdrop-filter: blur(2.1px) saturate(0.98);
+  }
+  56% {
+    opacity: 0.7;
+    background-position: 51.5% 48.5%;
+    -webkit-backdrop-filter: blur(1.2px) saturate(0.99);
+    backdrop-filter: blur(1.2px) saturate(0.99);
+  }
+  82% {
+    opacity: 0.3;
+    background-position: 52.5% 47.5%;
+    -webkit-backdrop-filter: blur(0.4px) saturate(1);
+    backdrop-filter: blur(0.4px) saturate(1);
+  }
+  to {
+    opacity: 0;
+    background-position: 53% 47%;
+    -webkit-backdrop-filter: blur(0) saturate(1);
+    backdrop-filter: blur(0) saturate(1);
+  }
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    filter: blur(1px);
+    transform: translate3d(0, 10px, 0) scale(0.98);
+  }
+  45% {
+    opacity: 0.96;
+    filter: blur(0.2px);
+    transform: translate3d(0, 2px, 0) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes modalOut {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  45% {
+    opacity: 0.96;
+    filter: blur(0.05px);
+    transform: translate3d(0, 1px, 0) scale(0.998);
+  }
+  to {
+    opacity: 0;
+    filter: blur(0.6px);
+    transform: translate3d(0, 4px, 0) scale(0.99);
+  }
+}
+
+.modal-backdrop {
+  background:
+    linear-gradient(135deg, rgb(15 23 42 / 0.16), rgb(0 0 0 / 0.46) 54%, rgb(15 23 42 / 0.52));
+  background-size: 180% 180%;
+  background-position: 50% 50%;
+  -webkit-backdrop-filter: blur(2.5px) saturate(0.975);
+  backdrop-filter: blur(2.5px) saturate(0.975);
+  will-change: opacity, backdrop-filter, background-position;
+}
+
+.animate-modal-backdrop-in {
+  animation: modalBackdropIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-modal-backdrop-out {
+  animation: modalBackdropOut 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-modal-in {
+  animation: modalIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-modal-out {
+  animation: modalOut 0.38s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes modalSurfaceSheenIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-36%, 0, 0) scale(1.04);
+  }
+  45% {
+    opacity: 0.08;
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(36%, 0, 0) scale(1.04);
+  }
+}
+
+@keyframes modalSurfaceSheenOut {
+  from {
+    opacity: 0.03;
+    transform: translate3d(6%, 0, 0) scale(1.02);
+  }
+  48% {
+    opacity: 0.06;
+    transform: translate3d(24%, 0, 0) scale(1.02);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(42%, 0, 0) scale(1.02);
+  }
+}
+
+.modal-surface {
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.05), transparent 42%),
+    var(--color-bg-elevated);
+  isolation: isolate;
+  overflow: hidden;
+  will-change: opacity, transform, filter;
+}
+
+.modal-surface::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: linear-gradient(112deg, transparent 18%, rgb(255 255 255 / 0.08) 49%, transparent 82%);
+  content: '';
+  pointer-events: none;
+  transform: translate3d(-36%, 0, 0) scale(1.04);
+}
+
+.modal-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.animate-modal-in::after {
+  animation: modalSurfaceSheenIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-modal-out::after {
+  animation: modalSurfaceSheenOut 0.38s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
 /* 弹窗动效 */
 @keyframes toastIn {
   from {
@@ -186,7 +376,7 @@ input, select, textarea {
   }
   to {
     opacity: 0;
-    transform: translate3d(12px, -4px, 0) scale(0.98);
+    transform: translate3d(6px, -2px, 0) scale(0.99);
   }
 }
 
@@ -198,17 +388,64 @@ input, select, textarea {
   }
   to {
     opacity: 0;
-    filter: blur(2px);
-    transform: translate3d(0, -4px, 0) scale(0.98);
+    filter: blur(0.8px);
+    transform: translate3d(0, -2px, 0) scale(0.99);
   }
 }
 
 @keyframes toastFocusIn {
-  0% {
+  from {
     opacity: 0;
+    -webkit-backdrop-filter: blur(0) saturate(1);
+    backdrop-filter: blur(0) saturate(1);
   }
-  100% {
+  30% {
+    opacity: 0.28;
+    -webkit-backdrop-filter: blur(0.5px) saturate(0.995);
+    backdrop-filter: blur(0.5px) saturate(0.995);
+  }
+  64% {
+    opacity: 0.76;
+    -webkit-backdrop-filter: blur(1px) saturate(0.985);
+    backdrop-filter: blur(1px) saturate(0.985);
+  }
+  86% {
+    opacity: 0.94;
+    -webkit-backdrop-filter: blur(1.5px) saturate(0.98);
+    backdrop-filter: blur(1.5px) saturate(0.98);
+  }
+  to {
     opacity: 1;
+    -webkit-backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
+    backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
+  }
+}
+
+@keyframes toastFocusOut {
+  from {
+    opacity: 1;
+    -webkit-backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
+    backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
+  }
+  24% {
+    opacity: 0.94;
+    -webkit-backdrop-filter: blur(1.5px) saturate(0.985);
+    backdrop-filter: blur(1.5px) saturate(0.985);
+  }
+  56% {
+    opacity: 0.68;
+    -webkit-backdrop-filter: blur(0.8px) saturate(0.995);
+    backdrop-filter: blur(0.8px) saturate(0.995);
+  }
+  82% {
+    opacity: 0.28;
+    -webkit-backdrop-filter: blur(0.2px) saturate(1);
+    backdrop-filter: blur(0.2px) saturate(1);
+  }
+  to {
+    opacity: 0;
+    -webkit-backdrop-filter: blur(0) saturate(1);
+    backdrop-filter: blur(0) saturate(1);
   }
 }
 
@@ -282,41 +519,60 @@ input, select, textarea {
 }
 
 .toast-focus-backdrop {
-  background: rgb(15 23 42 / 0.08);
-  -webkit-backdrop-filter: blur(7px) saturate(0.9);
-  backdrop-filter: blur(7px) saturate(0.9);
-  animation: toastFocusIn 0.18s ease-out both;
+  --toast-focus-rgb: 15 23 42;
+  --toast-focus-alpha: 0.04;
+  --toast-focus-blur: 2px;
+  --toast-focus-saturate: 0.96;
+  background: rgb(var(--toast-focus-rgb) / var(--toast-focus-alpha));
+  -webkit-backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
+  backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
+  animation: toastFocusIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   will-change: opacity, backdrop-filter;
 }
 
+[data-theme='dark'] .toast-focus-backdrop {
+  --toast-focus-rgb: 0 0 0;
+}
+
+.toast-focus-backdrop.toast-focus-leaving {
+  animation: toastFocusOut 0.32s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
 .toast-focus-success {
-  background: rgb(15 23 42 / 0.025);
-  -webkit-backdrop-filter: blur(2px) saturate(1);
-  backdrop-filter: blur(2px) saturate(1);
+  --toast-focus-alpha: 0.035;
+  --toast-focus-blur: 2px;
+  --toast-focus-saturate: 0.98;
 }
 
 .toast-focus-info {
-  background: rgb(15 23 42 / 0.045);
-  -webkit-backdrop-filter: blur(4px) saturate(0.96);
-  backdrop-filter: blur(4px) saturate(0.96);
+  --toast-focus-alpha: 0.055;
+  --toast-focus-blur: 3px;
+  --toast-focus-saturate: 0.95;
 }
 
 .toast-focus-warning {
-  background: rgb(15 23 42 / 0.065);
-  -webkit-backdrop-filter: blur(6px) saturate(0.92);
-  backdrop-filter: blur(6px) saturate(0.92);
+  --toast-focus-alpha: 0.085;
+  --toast-focus-blur: 5px;
+  --toast-focus-saturate: 0.91;
 }
 
 .toast-focus-error {
-  background: rgb(15 23 42 / 0.08);
-  -webkit-backdrop-filter: blur(7px) saturate(0.9);
-  backdrop-filter: blur(7px) saturate(0.9);
+  --toast-focus-alpha: 0.12;
+  --toast-focus-blur: 7px;
+  --toast-focus-saturate: 0.88;
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-toast-in,
   .animate-toast-out,
   .animate-toast-success-out,
+  .animate-modal-backdrop-in,
+  .animate-modal-backdrop-out,
+  .animate-modal-in,
+  .animate-modal-out,
+  .animate-modal-in::after,
+  .animate-modal-out::after,
   .toast-focus-backdrop,
+  .toast-focus-backdrop.toast-focus-leaving,
   .toast-error::after {
     animation-duration: 0.01ms !important;
   }

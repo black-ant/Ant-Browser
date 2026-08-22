@@ -42,7 +42,7 @@ export const notificationTitles: Record<NotificationType, string> = {
 }
 
 export const notificationDurations: Record<NotificationType, number> = {
-  success: 3_000,
+  success: 5_000,
   error: 10_000,
   warning: 8_000,
   info: 5_000,
