@@ -46,7 +46,7 @@ interface ProxyImportModalViewProps {
   onDirectImportTextChange: (value: string) => void
   onDirectImportFormChange: import("react").Dispatch<import("react").SetStateAction<DirectImportForm>>
   onChainImportFormChange: import("react").Dispatch<import("react").SetStateAction<ChainImportForm>>
-  onUpdateChainHop: (hop: 'first' | 'second', field: keyof ChainHopForm, value: string) => void
+  onUpdateChainLanding: (field: keyof ChainHopForm, value: string) => void
   onFillDirectTemplate: () => void
   onCopyDirectTemplate: () => Promise<void>
   onApplyDirectText: () => void
@@ -89,7 +89,7 @@ export function ProxyImportModalView({
   onDirectImportTextChange,
   onDirectImportFormChange,
   onChainImportFormChange,
-  onUpdateChainHop,
+  onUpdateChainLanding,
   onFillDirectTemplate,
   onCopyDirectTemplate,
   onApplyDirectText,
@@ -278,72 +278,36 @@ export function ProxyImportModalView({
                 </FormItem>
               </div>
 
-              <div className="rounded-md border border-[var(--color-border)] p-3 space-y-3">
-                <h4 className="text-sm font-medium text-[var(--color-text-primary)]">第一层代理</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <FormItem label="协议">
-                    <Select
-                      value={chainImportForm.first.protocol}
-                      onChange={e => onUpdateChainHop('first', 'protocol', e.target.value)}
-                      options={[
-                        { value: 'http', label: 'HTTP' },
-                        { value: 'socks5', label: 'SOCKS5' },
-                      ]}
-                    />
-                  </FormItem>
-                  <FormItem label="代理地址" required>
-                    <Input
-                      value={chainImportForm.first.server}
-                      onChange={e => onUpdateChainHop('first', 'server', e.target.value)}
-                      placeholder="例如：s1.example.com"
-                    />
-                  </FormItem>
-                  <FormItem label="代理端口" required>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={65535}
-                      value={chainImportForm.first.port}
-                      onChange={e => onUpdateChainHop('first', 'port', e.target.value)}
-                      placeholder="例如：1080"
-                    />
-                  </FormItem>
-                  <FormItem label="账号（可选）">
-                    <Input
-                      value={chainImportForm.first.username}
-                      onChange={e => onUpdateChainHop('first', 'username', e.target.value)}
-                      placeholder="留空则不使用认证"
-                    />
-                  </FormItem>
-                  <FormItem label="密码（可选）">
-                    <Input
-                      type="password"
-                      value={chainImportForm.first.password}
-                      onChange={e => onUpdateChainHop('first', 'password', e.target.value)}
-                      placeholder="留空则不使用密码"
-                    />
-                  </FormItem>
-                </div>
-              </div>
+              <FormItem label="前置代理节点" required hint="可选择代理池中当前已导入、且现有内核支持的 VLESS / VMess / Trojan / SS / Hysteria2 / TUIC 等节点">
+                <Select
+                  value={chainImportForm.frontProxyId}
+                  onChange={e => onChainImportFormChange(prev => ({ ...prev, frontProxyId: e.target.value }))}
+                  options={[
+                    { value: '', label: '请选择前置节点' },
+                    ...fetchProxyOptions.map(proxy => ({ value: proxy.proxyId, label: proxy.proxyName || proxy.proxyId })),
+                  ]}
+                />
+              </FormItem>
 
               <div className="rounded-md border border-[var(--color-border)] p-3 space-y-3">
-                <h4 className="text-sm font-medium text-[var(--color-text-primary)]">第二层代理</h4>
+                <h4 className="text-sm font-medium text-[var(--color-text-primary)]">落地代理</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormItem label="协议">
                     <Select
-                      value={chainImportForm.second.protocol}
-                      onChange={e => onUpdateChainHop('second', 'protocol', e.target.value)}
+                      value={chainImportForm.landing.protocol}
+                      onChange={e => onUpdateChainLanding('protocol', e.target.value)}
                       options={[
                         { value: 'http', label: 'HTTP' },
+                        { value: 'https', label: 'HTTPS' },
                         { value: 'socks5', label: 'SOCKS5' },
                       ]}
                     />
                   </FormItem>
                   <FormItem label="代理地址" required>
                     <Input
-                      value={chainImportForm.second.server}
-                      onChange={e => onUpdateChainHop('second', 'server', e.target.value)}
-                      placeholder="例如：s2.example.com"
+                      value={chainImportForm.landing.server}
+                      onChange={e => onUpdateChainLanding('server', e.target.value)}
+                      placeholder="例如：tr.example.com"
                     />
                   </FormItem>
                   <FormItem label="代理端口" required>
@@ -351,23 +315,23 @@ export function ProxyImportModalView({
                       type="number"
                       min={1}
                       max={65535}
-                      value={chainImportForm.second.port}
-                      onChange={e => onUpdateChainHop('second', 'port', e.target.value)}
+                      value={chainImportForm.landing.port}
+                      onChange={e => onUpdateChainLanding('port', e.target.value)}
                       placeholder="例如：1081"
                     />
                   </FormItem>
                   <FormItem label="账号（可选）">
                     <Input
-                      value={chainImportForm.second.username}
-                      onChange={e => onUpdateChainHop('second', 'username', e.target.value)}
+                      value={chainImportForm.landing.username}
+                      onChange={e => onUpdateChainLanding('username', e.target.value)}
                       placeholder="留空则不使用认证"
                     />
                   </FormItem>
                   <FormItem label="密码（可选）">
                     <Input
                       type="password"
-                      value={chainImportForm.second.password}
-                      onChange={e => onUpdateChainHop('second', 'password', e.target.value)}
+                      value={chainImportForm.landing.password}
+                      onChange={e => onUpdateChainLanding('password', e.target.value)}
                       placeholder="留空则不使用密码"
                     />
                   </FormItem>

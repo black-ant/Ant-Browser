@@ -1,6 +1,6 @@
 import { Button, FormItem, Input, Modal, Select, Table, Textarea } from '../../../../shared/components'
 import type { TableColumn } from '../../../../shared/components/Table'
-import type { ProxyIPHealthResult } from '../../types'
+import type { BrowserProxy, ProxyIPHealthResult } from '../../types'
 
 import {
   type ChainImportForm,
@@ -100,6 +100,8 @@ interface ProxyPoolEditModalProps {
   editForm: ProxyEditFormValue
   chainEditMode: boolean
   chainEditForm: ChainImportForm
+  chainKernelOptions: Array<{ value: string; label: string }>
+  frontProxyOptions: BrowserProxy[]
   directEditMode: boolean
   directEditForm: DirectImportForm
   onClose: () => void
@@ -107,7 +109,7 @@ interface ProxyPoolEditModalProps {
   onChange: (patch: Partial<ProxyEditFormValue>) => void
   onChainEditFormChange: (patch: Partial<ChainImportForm>) => void
   onDirectEditFormChange: (patch: Partial<DirectImportForm>) => void
-  onChainEditHopChange: (hop: 'first' | 'second', field: keyof ChainImportForm['first'], value: string) => void
+  onChainEditLandingChange: (field: keyof ChainImportForm['landing'], value: string) => void
 }
 
 export function ProxyPoolEditModal({
@@ -117,6 +119,8 @@ export function ProxyPoolEditModal({
   editForm,
   chainEditMode,
   chainEditForm,
+  chainKernelOptions,
+  frontProxyOptions,
   directEditMode,
   directEditForm,
   onClose,
@@ -124,7 +128,7 @@ export function ProxyPoolEditModal({
   onChange,
   onChainEditFormChange,
   onDirectEditFormChange,
-  onChainEditHopChange,
+  onChainEditLandingChange,
 }: ProxyPoolEditModalProps) {
   return (
     <Modal
@@ -178,7 +182,7 @@ export function ProxyPoolEditModal({
           <Select
             value={editForm.preferredKernel || 'auto'}
             onChange={(event) => onChange({ preferredKernel: event.target.value })}
-            options={[
+            options={chainEditMode ? chainKernelOptions : [
               { value: 'auto', label: '自动' },
               { value: 'xray', label: 'Xray' },
               { value: 'sing-box', label: 'sing-box' },
@@ -198,23 +202,34 @@ export function ProxyPoolEditModal({
                 placeholder="留空自动分配"
               />
             </FormItem>
+            <FormItem label="前置代理节点" required>
+              <Select
+                value={chainEditForm.frontProxyId}
+                onChange={(event) => onChainEditFormChange({ frontProxyId: event.target.value })}
+                options={[
+                  { value: '', label: '请选择前置节点' },
+                  ...frontProxyOptions.map(proxy => ({ value: proxy.proxyId, label: proxy.proxyName || proxy.proxyId })),
+                ]}
+              />
+            </FormItem>
             <div className="rounded-md border border-[var(--color-border)] p-3 space-y-3">
-              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">第一层代理</h4>
+              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">落地代理</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormItem label="协议">
                   <Select
-                    value={chainEditForm.first.protocol}
-                    onChange={(event) => onChainEditHopChange('first', 'protocol', event.target.value)}
+                    value={chainEditForm.landing.protocol}
+                    onChange={(event) => onChainEditLandingChange('protocol', event.target.value)}
                     options={[
                       { value: 'http', label: 'HTTP' },
+                      { value: 'https', label: 'HTTPS' },
                       { value: 'socks5', label: 'SOCKS5' },
                     ]}
                   />
                 </FormItem>
                 <FormItem label="代理地址" required>
                   <Input
-                    value={chainEditForm.first.server}
-                    onChange={(event) => onChainEditHopChange('first', 'server', event.target.value)}
+                    value={chainEditForm.landing.server}
+                    onChange={(event) => onChainEditLandingChange('server', event.target.value)}
                   />
                 </FormItem>
                 <FormItem label="代理端口" required>
@@ -222,64 +237,21 @@ export function ProxyPoolEditModal({
                     type="number"
                     min={1}
                     max={65535}
-                    value={chainEditForm.first.port}
-                    onChange={(event) => onChainEditHopChange('first', 'port', event.target.value)}
+                    value={chainEditForm.landing.port}
+                    onChange={(event) => onChainEditLandingChange('port', event.target.value)}
                   />
                 </FormItem>
                 <FormItem label="账号（可选）">
                   <Input
-                    value={chainEditForm.first.username}
-                    onChange={(event) => onChainEditHopChange('first', 'username', event.target.value)}
+                    value={chainEditForm.landing.username}
+                    onChange={(event) => onChainEditLandingChange('username', event.target.value)}
                   />
                 </FormItem>
                 <FormItem label="密码（可选）">
                   <Input
                     type="password"
-                    value={chainEditForm.first.password}
-                    onChange={(event) => onChainEditHopChange('first', 'password', event.target.value)}
-                  />
-                </FormItem>
-              </div>
-            </div>
-            <div className="rounded-md border border-[var(--color-border)] p-3 space-y-3">
-              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">第二层代理</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <FormItem label="协议">
-                  <Select
-                    value={chainEditForm.second.protocol}
-                    onChange={(event) => onChainEditHopChange('second', 'protocol', event.target.value)}
-                    options={[
-                      { value: 'http', label: 'HTTP' },
-                      { value: 'socks5', label: 'SOCKS5' },
-                    ]}
-                  />
-                </FormItem>
-                <FormItem label="代理地址" required>
-                  <Input
-                    value={chainEditForm.second.server}
-                    onChange={(event) => onChainEditHopChange('second', 'server', event.target.value)}
-                  />
-                </FormItem>
-                <FormItem label="代理端口" required>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={65535}
-                    value={chainEditForm.second.port}
-                    onChange={(event) => onChainEditHopChange('second', 'port', event.target.value)}
-                  />
-                </FormItem>
-                <FormItem label="账号（可选）">
-                  <Input
-                    value={chainEditForm.second.username}
-                    onChange={(event) => onChainEditHopChange('second', 'username', event.target.value)}
-                  />
-                </FormItem>
-                <FormItem label="密码（可选）">
-                  <Input
-                    type="password"
-                    value={chainEditForm.second.password}
-                    onChange={(event) => onChainEditHopChange('second', 'password', event.target.value)}
+                    value={chainEditForm.landing.password}
+                    onChange={(event) => onChainEditLandingChange('password', event.target.value)}
                   />
                 </FormItem>
               </div>
@@ -336,7 +308,7 @@ export function ProxyPoolEditModal({
               value={editForm.proxyConfig}
               onChange={(event) => onChange({ proxyConfig: event.target.value })}
               rows={10}
-              placeholder="支持 Clash YAML、chain+socks5:// 或其它高级配置"
+              placeholder="支持 Clash YAML、chain+proxy://、chain+socks5:// 或其它高级配置"
             />
           </FormItem>
         )}

@@ -79,12 +79,17 @@ func (m *SingBoxManager) resolveBinary() (string, error) {
 	return "", fmt.Errorf("未找到 sing-box 可执行文件。请将 sing-box 放到 bin/%s/ 或 bin/ 目录，或在配置中设置 SingBoxBinaryPath", platformDir)
 }
 
-func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}, port int) (string, error) {
+func (m *SingBoxManager) buildConfig(key string, outbounds []interface{}, routeOutbound string, port int) (string, error) {
 	baseDir := m.resolveWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return "", err
 	}
 
+	if strings.TrimSpace(routeOutbound) == "" {
+		routeOutbound = "proxy-out"
+	}
+	runtimeOutbounds := cloneInterfaceSlice(outbounds)
+	runtimeOutbounds = append(runtimeOutbounds, map[string]interface{}{"type": "direct", "tag": "direct"})
 	cfg := map[string]interface{}{
 		"log": map[string]interface{}{
 			"level":     "warn",
@@ -100,13 +105,7 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 				"listen_port": port,
 			},
 		},
-		"outbounds": []interface{}{
-			outbound,
-			map[string]interface{}{
-				"type": "direct",
-				"tag":  "direct",
-			},
-		},
+		"outbounds": runtimeOutbounds,
 		"route": map[string]interface{}{
 			"default_domain_resolver": "public-dns",
 			"rules": []interface{}{
@@ -116,7 +115,7 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 				},
 				map[string]interface{}{
 					"inbound":  []string{"socks-in"},
-					"outbound": "proxy-out",
+					"outbound": routeOutbound,
 				},
 			},
 		},

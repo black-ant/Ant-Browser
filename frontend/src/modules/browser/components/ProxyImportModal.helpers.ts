@@ -1,6 +1,6 @@
 import yaml from 'js-yaml'
 import type { BrowserProxy } from '../types'
-import { CHAIN_SOCKS5_PREFIX, type ChainImportForm, type ChainHopForm, type ChainSocks5Config, type ChainSocks5HopConfig, type ClashProxy, type DirectImportForm, type ImportCandidate, type ProxyDisplayInfo } from './ProxyImportModal.types'
+import { CHAIN_PROXY_PREFIX, CHAIN_SOCKS5_PREFIX, type ChainImportForm, type ChainHopForm, type ChainProxyConfig, type ChainSocks5Config, type ChainSocks5HopConfig, type ClashProxy, type DirectImportForm, type ImportCandidate, type ProxyDisplayInfo } from './ProxyImportModal.types'
 
 function parseChainSocks5Config(proxyConfig: string): ChainSocks5Config | null {
   const cfg = proxyConfig.trim()
@@ -16,7 +16,7 @@ function parseChainSocks5Config(proxyConfig: string): ChainSocks5Config | null {
     if (!raw || typeof raw !== 'object') return null
     const hop = raw as Record<string, unknown>
     const protocol = String(hop.protocol || '').trim().toLowerCase()
-    if (protocol && protocol !== 'socks5' && protocol !== 'http') return null
+    if (protocol && protocol !== 'socks5' && protocol !== 'http' && protocol !== 'https') return null
 
     const server = String(hop.server || '').trim()
     if (!server) return null
@@ -29,7 +29,7 @@ function parseChainSocks5Config(proxyConfig: string): ChainSocks5Config | null {
     if (password && !username) return null
 
     return {
-      protocol: protocol === 'http' ? 'http' : 'socks5',
+      protocol: protocol === 'http' || protocol === 'https' ? protocol : 'socks5',
       server,
       port: portVal,
       username: username || undefined,
@@ -67,6 +67,15 @@ export function parseProxyInfo(proxyConfig: string): { type: string; server: str
   const chain = parseChainSocks5Config(cfg)
   if (chain) {
     return { type: 'chain-socks5', server: '127.0.0.1', port: chain.localPort || 0 }
+  }
+
+  if (cfg.toLowerCase().startsWith(CHAIN_PROXY_PREFIX)) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(cfg.slice(CHAIN_PROXY_PREFIX.length))) as ChainProxyConfig
+      return { type: 'chain-proxy', server: parsed.landing?.server || '-', port: Number(parsed.localPort || 0) }
+    } catch {
+      return { type: 'chain-proxy', server: '-', port: 0 }
+    }
   }
 
   const urlMatch = cfg.match(/^([a-zA-Z0-9+\-]+):\/\//)
@@ -271,7 +280,7 @@ export function buildDirectImportCandidate(form: DirectImportForm): ImportCandid
 
 export function buildChainImportCandidate(form: ChainImportForm): ImportCandidate {
   const parseHop = (label: string, hop: ChainHopForm): ChainSocks5HopConfig => {
-    const protocol = hop.protocol === 'socks5' ? 'socks5' : 'http'
+    const protocol = hop.protocol
     const server = hop.server.trim()
     if (!server) {
       throw new Error(`请输入${label}代理地址`)
@@ -317,17 +326,22 @@ export function buildChainImportCandidate(form: ChainImportForm): ImportCandidat
     throw new Error('本地监听端口必须在 1-65535 之间')
   }
 
-  const payload: ChainSocks5Config = {
-    first: parseHop('第一层', form.first),
-    second: parseHop('第二层', form.second),
+  const frontProxyId = form.frontProxyId.trim()
+  if (!frontProxyId) {
+    throw new Error('请选择前置代理节点')
+  }
+  const payload: ChainProxyConfig = {
+    version: 2,
+    frontProxyId,
+    landing: parseHop('落地', form.landing),
     localPort: localPort > 0 ? localPort : undefined,
   }
 
   const encodedPayload = encodeURIComponent(JSON.stringify(payload))
-  const proxyConfig = `${CHAIN_SOCKS5_PREFIX}${encodedPayload}`
+  const proxyConfig = `${CHAIN_PROXY_PREFIX}${encodedPayload}`
 
   return {
-    proxyName: form.proxyName.trim() || `链式代理-${payload.first.server}-${payload.second.server}`,
+    proxyName: form.proxyName.trim() || `链式代理-${payload.landing.server}`,
     proxyConfig,
   }
 }

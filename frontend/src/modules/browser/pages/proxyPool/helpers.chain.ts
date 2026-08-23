@@ -1,5 +1,15 @@
-import type { ChainHopForm, ChainImportForm, ChainSocks5Config, ChainSocks5HopConfig, ImportCandidate } from './helpers.types'
-import { CHAIN_SOCKS5_PREFIX } from './helpers.types'
+import type { ChainHopForm, ChainImportForm, ChainProxyConfig, ChainSocks5Config, ChainSocks5HopConfig, ImportCandidate } from './helpers.types'
+import { CHAIN_PROXY_PREFIX, CHAIN_SOCKS5_PREFIX } from './helpers.types'
+
+export function parseChainProxyConfig(proxyConfig: string): ChainProxyConfig | null {
+  const raw = proxyConfig.trim()
+  if (!raw.toLowerCase().startsWith(CHAIN_PROXY_PREFIX)) return null
+  try {
+    const cfg = JSON.parse(decodeURIComponent(raw.slice(CHAIN_PROXY_PREFIX.length))) as ChainProxyConfig
+    if (!cfg.frontProxyId || !cfg.landing?.server || !cfg.landing?.port) return null
+    return cfg
+  } catch { return null }
+}
 
 export function parseChainSocks5Config(proxyConfig: string): ChainSocks5Config | null {
   const cfg = proxyConfig.trim()
@@ -61,35 +71,28 @@ export function parseChainSocks5Config(proxyConfig: string): ChainSocks5Config |
 }
 
 export function toChainImportForm(proxyName: string, proxyConfig: string): ChainImportForm | null {
-  const cfg = parseChainSocks5Config(proxyConfig)
-  if (!cfg) {
-    return null
-  }
-
-  return {
-    proxyName,
-    localPort: cfg.localPort ? String(cfg.localPort) : '',
-    first: {
-      protocol: cfg.first.protocol,
-      server: cfg.first.server,
-      port: String(cfg.first.port),
-      username: cfg.first.username || '',
-      password: cfg.first.password || '',
-    },
-    second: {
-      protocol: cfg.second.protocol,
-      server: cfg.second.server,
-      port: String(cfg.second.port),
-      username: cfg.second.username || '',
-      password: cfg.second.password || '',
-    },
-  }
+  const cfg = parseChainProxyConfig(proxyConfig)
+  if (!cfg) return null
+  try {
+    return {
+      proxyName,
+      localPort: cfg.localPort ? String(cfg.localPort) : '',
+      frontProxyId: cfg.frontProxyId,
+      landing: {
+        protocol: cfg.landing.protocol,
+        server: cfg.landing.server,
+        port: String(cfg.landing.port),
+        username: cfg.landing.username || '',
+        password: cfg.landing.password || '',
+      },
+    }
+  } catch { return null }
 }
 
 
 export function buildChainImportCandidate(form: ChainImportForm): ImportCandidate {
   const parseHop = (label: string, hop: ChainHopForm): ChainSocks5HopConfig => {
-    const protocol = hop.protocol === 'socks5' ? 'socks5' : 'http'
+    const protocol = hop.protocol
     const server = hop.server.trim()
     if (!server) {
       throw new Error(`请输入${label}代理地址`)
@@ -135,15 +138,18 @@ export function buildChainImportCandidate(form: ChainImportForm): ImportCandidat
     throw new Error('本地监听端口必须在 1-65535 之间')
   }
 
-  const payload: ChainSocks5Config = {
-    first: parseHop('第一层', form.first),
-    second: parseHop('第二层', form.second),
+  const frontProxyId = form.frontProxyId.trim()
+  if (!frontProxyId) throw new Error('请选择前置代理节点')
+  const payload: ChainProxyConfig = {
+    version: 2,
+    frontProxyId,
+    landing: parseHop('落地', form.landing),
     localPort: localPort > 0 ? localPort : undefined,
   }
 
   return {
-    proxyName: form.proxyName.trim() || `链式代理-${payload.first.server}-${payload.second.server}`,
-    proxyConfig: `${CHAIN_SOCKS5_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`,
+    proxyName: form.proxyName.trim() || `链式代理-${payload.landing.server}`,
+    proxyConfig: `${CHAIN_PROXY_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`,
   }
 }
 
@@ -165,8 +171,8 @@ function parseChainQuickImportHop(raw: unknown, label: string): ChainSocks5HopCo
 
   const hop = raw as Record<string, unknown>
   const protocol = String(hop.protocol || 'socks5').trim().toLowerCase()
-  if (protocol !== 'socks5' && protocol !== 'http') {
-    throw new Error(`${label}仅支持 http / socks5`)
+  if (protocol !== 'socks5' && protocol !== 'http' && protocol !== 'https') {
+    throw new Error(`${label}仅支持 http / https / socks5`)
   }
 
   const server = String(hop.server || '').trim()
@@ -186,7 +192,7 @@ function parseChainQuickImportHop(raw: unknown, label: string): ChainSocks5HopCo
   }
 
   return {
-    protocol: protocol === 'http' ? 'http' : 'socks5',
+    protocol: protocol as ChainSocks5HopConfig['protocol'],
     server,
     port: portValue,
     username: username || undefined,
@@ -211,8 +217,9 @@ export function parseChainImportJSON(raw: string): { form: ChainImportForm; grou
     throw new Error('JSON 根节点必须是对象')
   }
 
-  const first = parseChainQuickImportHop(payload.first, '第一层')
-  const second = parseChainQuickImportHop(payload.second, '第二层')
+  const frontProxyId = String(payload.frontProxyId || '').trim()
+  if (!frontProxyId) throw new Error('缺少 frontProxyId')
+  const landing = parseChainQuickImportHop(payload.landing, '落地')
   const localPort = parseOptionalChainPort(payload.localPort, 'localPort')
   const proxyName = String(payload.name ?? payload.proxyName ?? '').trim()
   const groupName = String(payload.group ?? payload.groupName ?? '').trim()
@@ -221,19 +228,13 @@ export function parseChainImportJSON(raw: string): { form: ChainImportForm; grou
     form: {
       proxyName,
       localPort: localPort ? String(localPort) : '',
-      first: {
-        protocol: first.protocol,
-        server: first.server,
-        port: String(first.port),
-        username: first.username || '',
-        password: first.password || '',
-      },
-      second: {
-        protocol: second.protocol,
-        server: second.server,
-        port: String(second.port),
-        username: second.username || '',
-        password: second.password || '',
+      frontProxyId,
+      landing: {
+        protocol: landing.protocol,
+        server: landing.server,
+        port: String(landing.port),
+        username: landing.username || '',
+        password: landing.password || '',
       },
     },
     groupName,

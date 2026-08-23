@@ -92,7 +92,7 @@ export function ProxyEditModal({
               value={editConfig}
               onChange={e => setEditConfig(e.target.value)}
               rows={6}
-              placeholder="支持 http://、https://、socks5://、chain+socks5://"
+              placeholder="支持 http://、https://、socks5://、chain+proxy://、chain+socks5://"
             />
           </FormItem>
         )}

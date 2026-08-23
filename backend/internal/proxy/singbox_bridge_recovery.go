@@ -30,7 +30,10 @@ func (m *SingBoxManager) restartBridgeOnSamePort(log *logger.Logger, key string,
 		m.mu.Unlock()
 		return errSingBoxBridgeRestartNotNeeded
 	}
-	if len(bridge.Outbound) == 0 {
+	if len(bridge.Outbounds) == 0 && len(bridge.Outbound) > 0 {
+		bridge.Outbounds = []interface{}{cloneStringInterfaceMap(bridge.Outbound)}
+	}
+	if len(bridge.Outbounds) == 0 {
 		m.mu.Unlock()
 		return fmt.Errorf("sing-box 桥接缺少重启上下文")
 	}
@@ -45,7 +48,7 @@ func (m *SingBoxManager) restartBridgeOnSamePort(log *logger.Logger, key string,
 		logger.F("key", key[:8]),
 		logger.F("port", bridge.Port),
 	)
-	restarted, err := m.launchBridgeOnPort(log, key, binaryPath, cloneStringInterfaceMap(bridge.Outbound), bridge.Port, 1)
+	restarted, err := m.launchBridgeOnPort(log, key, binaryPath, cloneInterfaceSlice(bridge.Outbounds), bridge.RouteOutbound, bridge.Port, 1)
 	if err != nil {
 		return err
 	}

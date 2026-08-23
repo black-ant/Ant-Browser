@@ -26,7 +26,7 @@ export interface DirectImportForm {
 }
 
 export interface ChainHopForm {
-  protocol: 'http' | 'socks5'
+  protocol: 'http' | 'https' | 'socks5'
   server: string
   port: string
   username: string
@@ -36,12 +36,12 @@ export interface ChainHopForm {
 export interface ChainImportForm {
   proxyName: string
   localPort: string
-  first: ChainHopForm
-  second: ChainHopForm
+  frontProxyId: string
+  landing: ChainHopForm
 }
 
 export interface ChainSocks5HopConfig {
-  protocol: 'http' | 'socks5'
+  protocol: 'http' | 'https' | 'socks5'
   server: string
   port: number
   username?: string
@@ -55,20 +55,22 @@ export interface ChainSocks5Config {
 }
 
 export const CHAIN_SOCKS5_PREFIX = 'chain+socks5://'
+export const CHAIN_PROXY_PREFIX = 'chain+proxy://'
+
+export interface ChainProxyConfig {
+  version: 2
+  frontProxyId: string
+  landing: ChainSocks5HopConfig
+  localPort?: number
+}
 
 export const CHAIN_QUICK_IMPORT_TEMPLATE = `{
   "name": "",
   "group": "",
   "localPort": "",
-  "first": {
-    "protocol": "http",
-    "server": "",
-    "port": "",
-    "username": "",
-    "password": ""
-  },
-  "second": {
-    "protocol": "http",
+  "frontProxyId": "从代理池选择或填写节点 ID",
+  "landing": {
+    "protocol": "socks5",
     "server": "",
     "port": "",
     "username": "",
@@ -104,15 +106,9 @@ export const INITIAL_DIRECT_IMPORT_FORM: DirectImportForm = {
 export const INITIAL_CHAIN_IMPORT_FORM: ChainImportForm = {
   proxyName: '',
   localPort: '',
-  first: {
-    protocol: 'http',
-    server: '',
-    port: '',
-    username: '',
-    password: '',
-  },
-  second: {
-    protocol: 'http',
+  frontProxyId: '',
+  landing: {
+    protocol: 'socks5',
     server: '',
     port: '',
     username: '',
@@ -123,8 +119,7 @@ export const INITIAL_CHAIN_IMPORT_FORM: ChainImportForm = {
 export function createInitialChainImportForm(): ChainImportForm {
   return {
     ...INITIAL_CHAIN_IMPORT_FORM,
-    first: { ...INITIAL_CHAIN_IMPORT_FORM.first },
-    second: { ...INITIAL_CHAIN_IMPORT_FORM.second },
+    landing: { ...INITIAL_CHAIN_IMPORT_FORM.landing },
   }
 }
 

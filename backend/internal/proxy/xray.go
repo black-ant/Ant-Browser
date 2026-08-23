@@ -80,6 +80,16 @@ func ValidateProxyConfig(proxyConfig string, proxies []config.BrowserProxy, prox
 		}
 		return true, ""
 	}
+	if IsChainProxy(src) {
+		cfg, err := ParseChainProxyConfig(src)
+		if err != nil {
+			return false, fmt.Sprintf("链式代理配置解析失败: %v", err)
+		}
+		if _, err := resolveChainFront(cfg, proxies, proxyId); err != nil {
+			return false, err.Error()
+		}
+		return true, ""
+	}
 	if IsSingBoxProtocol(src) {
 		if _, err := BuildSingBoxOutbound(src); err != nil {
 			return false, fmt.Sprintf("代理配置解析失败: %v", err)
@@ -116,6 +126,9 @@ func RequiresBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId s
 		return false
 	}
 	if IsChainSocks5Proxy(src) {
+		return true
+	}
+	if IsChainProxy(src) {
 		return true
 	}
 	if IsSingBoxProtocol(src) {
