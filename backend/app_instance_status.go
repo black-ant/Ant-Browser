@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"ant-chrome/backend/internal/logger"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) BrowserInstanceStatus(profileId string) (*BrowserProfile, error) {
@@ -76,9 +74,7 @@ func (a *App) BrowserInstanceOpenUrl(profileId string, targetUrl string) (bool, 
 			logger.F("debug_port", staleDebugPort),
 			logger.F("pid", stalePID),
 		)
-		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "browser:instance:stopped", profileId)
-		}
+		a.emitRuntimeEvent("browser:instance:stopped", profileId)
 		return false, fmt.Errorf("%s", profile.LastError)
 	}
 

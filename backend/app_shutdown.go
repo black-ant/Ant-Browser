@@ -6,12 +6,11 @@ import (
 	"os/exec"
 	goruntime "runtime"
 	"strings"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) shutdown(ctx context.Context) {
 	log := logger.New("App")
+	a.stopRuntimeEvents()
 	if a.shouldStopRuntimeServicesOnShutdown() {
 		log.Info("应用正在关闭...")
 		a.stopRuntimeServices()
@@ -28,18 +27,16 @@ func (a *App) GetInterceptor() *logger.MethodInterceptor {
 // ForceQuit 设置强制退出标志并调用 runtime.Quit
 func (a *App) ForceQuit() {
 	a.setQuitMode(quitModeFull)
+	a.stopRuntimeEvents()
 	a.stopRuntimeServices()
-	if a.ctx != nil {
-		runtime.Quit(a.ctx)
-	}
+	a.runtimeQuit()
 }
 
 // QuitAppOnly 仅退出应用本身，保留当前已打开的浏览器实例。
 func (a *App) QuitAppOnly() {
 	a.setQuitMode(quitModeAppOnly)
-	if a.ctx != nil {
-		runtime.Quit(a.ctx)
-	}
+	a.stopRuntimeEvents()
+	a.runtimeQuit()
 }
 
 func Start(a *App, ctx context.Context) {
@@ -74,7 +71,7 @@ func ShouldBlockClose(a *App, ctx context.Context) bool {
 	if !platformSupportsTrayCloseFlow() {
 		return false
 	}
-	runtime.EventsEmit(ctx, "app:request-close")
+	a.emitRuntimeEventWithContext(ctx, "app:request-close")
 	return true
 }
 

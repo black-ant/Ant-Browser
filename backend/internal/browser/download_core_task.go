@@ -36,7 +36,7 @@ func (m *Manager) DownloadAndExtractCore(ctx context.Context, coreName string, t
 func (m *Manager) RedownloadCore(ctx context.Context, coreId string, targetUrl string, proxyConfig string) {
 	core, ok := m.GetCore(coreId)
 	if !ok {
-		runtime.EventsEmit(ctx, "download:progress", DownloadProgress{Phase: "error", Progress: 0, Message: "内核不存在"})
+		m.emitRuntimeEvent(ctx, "download:progress", DownloadProgress{Phase: "error", Progress: 0, Message: "内核不存在"})
 		return
 	}
 	m.downloadAndExtractCore(ctx, CoreInput{
@@ -52,7 +52,7 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 	t := time.Now()
 
 	sendEvent := func(phase string, progress int, msg string) {
-		runtime.EventsEmit(ctx, "download:progress", DownloadProgress{
+		m.emitRuntimeEvent(ctx, "download:progress", DownloadProgress{
 			Phase:    phase,
 			Progress: progress,
 			Message:  msg,
@@ -203,6 +203,16 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 	} else {
 		sendEvent("done", 100, "内核下载与配置成功！")
 		log.Info("内核下载配置入库成功", logger.F("core_name", coreName))
+	}
+}
+
+func (m *Manager) emitRuntimeEvent(ctx context.Context, eventName string, optionalData ...interface{}) {
+	if m.EventEmitter != nil {
+		m.EventEmitter(eventName, optionalData...)
+		return
+	}
+	if ctx != nil {
+		runtime.EventsEmit(ctx, eventName, optionalData...)
 	}
 }
 

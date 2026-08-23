@@ -12,8 +12,6 @@ import (
 	"ant-chrome/backend/internal/apppath"
 	"ant-chrome/backend/internal/fsutil"
 	"ant-chrome/backend/internal/logger"
-
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type ProxyCoreDownloadRequest struct {
@@ -207,7 +205,7 @@ func normalizeProxyCoreSpec(core string) (proxyCoreSpec, error) {
 func (a *App) downloadProxyCore(ctx context.Context, spec proxyCoreSpec, target proxyCoreTarget, proxyConfig string, version string) {
 	log := logger.New("ProxyCore")
 	send := func(phase string, progress int, message string) {
-		wailsruntime.EventsEmit(ctx, "proxy-core:download:progress", ProxyCoreDownloadProgress{Core: spec.Core, GOOS: target.GOOS, GOARCH: target.GOARCH, Phase: phase, Progress: progress, Message: message})
+		a.emitRuntimeEvent("proxy-core:download:progress", ProxyCoreDownloadProgress{Core: spec.Core, GOOS: target.GOOS, GOARCH: target.GOARCH, Phase: phase, Progress: progress, Message: message})
 	}
 	client, proxyLabel, err := proxyCoreHTTPClient(90*time.Second, proxyConfig)
 	if err != nil {

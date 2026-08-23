@@ -105,6 +105,13 @@ func (a *App) BrowserExtensionInstallManualDownloadFile(fileName string) (backen
 }
 
 func main() {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logLifecyclePanic(appRoot, "process.panic", recovered)
+			panic(recovered)
+		}
+	}()
+
 	// 确定应用根目录：
 	// 1. 生产环境：exe 所在目录（快捷方式启动时 CWD 可能不对，需要修正）
 	// 2. dev 环境：wails dev 时 exe 可能在 temp 目录或 build/bin 目录，使用当前工作目录
@@ -152,18 +159,24 @@ func main() {
 	}
 	if err := backend.EnsureRuntimeLayout(appRoot); err != nil {
 		log.Printf("准备用户数据目录失败: %v", err)
+		lifecycleLog(appRoot, "runtime_layout.error", map[string]interface{}{"error": err.Error()})
 	}
+	lifecycleLog(appRoot, "process.start", map[string]interface{}{"dev": isDevMode})
 	singleInstance, primaryInstance, err := acquireSingleInstance(appRoot)
 	if err != nil {
 		log.Printf("单实例检查失败: %v", err)
+		lifecycleLog(appRoot, "single_instance.error", map[string]interface{}{"error": err.Error()})
 	}
+	lifecycleLog(appRoot, "single_instance.checked", map[string]interface{}{"primary": primaryInstance})
 	if !primaryInstance {
+		lifecycleLog(appRoot, "process.exit.non_primary", nil)
 		if startupDebugEnabled {
 			log.Printf("检测到已有应用实例，已请求唤醒并退出当前进程")
 		}
 		return
 	}
 	defer singleInstance.Close()
+	defer lifecycleLog(appRoot, "process.defer_exit", nil)
 	if startupDebugEnabled && backend.RuntimeUsesDetachedState(appRoot) {
 		log.Printf("检测到安装目录需要只读运行，状态目录切换到: %s", backend.RuntimeStateRoot(appRoot))
 	}
@@ -188,8 +201,10 @@ func main() {
 	cfg, err := backend.LoadConfig(backend.ResolveRuntimePath(appRoot, "config.yaml"))
 	if err != nil {
 		log.Printf("加载配置失败，使用默认配置: %v", err)
+		lifecycleLog(appRoot, "config.error", map[string]interface{}{"error": err.Error()})
 		cfg = backend.DefaultConfig()
 	}
+	lifecycleLog(appRoot, "config.loaded", map[string]interface{}{"path": backend.ResolveRuntimePath(appRoot, "config.yaml")})
 
 	// 创建应用实例
 	app := NewApp(appRoot, buildVersion)
@@ -258,6 +273,7 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 245, G: 247, B: 250, A: 255},
 		OnStartup: func(ctx context.Context) {
+			lifecycleLog(appRoot, "wails.on_startup.begin", nil)
 			close(startupReached)
 			if startupDebugEnabled {
 				log.Printf("Wails OnStartup 已触发，GUI 宿主已创建")
@@ -266,34 +282,47 @@ func main() {
 			runtime.WindowCenter(wailsCtx)
 			backend.ApplyMainApplicationWindowIcon(appRoot, cfg.App.Name)
 			// 启动系统托盘（非阻塞）
-			go backend.RunTray(backend.TrayCallbacks{
+			go runTraySafely(appRoot, backend.TrayCallbacks{
 				OnShow: func() {
+					lifecycleLog(appRoot, "tray.show", nil)
 					runtime.WindowShow(wailsCtx)
 					runtime.WindowUnminimise(wailsCtx)
 					activateExistingSingleInstanceWindow(os.Getpid())
 				},
 				OnQuitAppOnly: func() {
+					lifecycleLog(appRoot, "tray.quit_app_only", nil)
 					app.QuitAppOnly()
 				},
 				OnQuit: func() {
+					lifecycleLog(appRoot, "tray.quit", nil)
 					app.ForceQuit()
 				},
+				OnExit: func() {
+					lifecycleLog(appRoot, "tray.exit", nil)
+				},
 			})
+			lifecycleLog(appRoot, "tray.start.requested", nil)
 			app.startup(ctx)
+			lifecycleLog(appRoot, "wails.on_startup.complete", nil)
 			if startupDebugEnabled {
 				log.Printf("后端 startup 已完成")
 			}
 		},
 		OnShutdown: func(ctx context.Context) {
+			lifecycleLog(appRoot, "wails.on_shutdown.begin", nil)
 			if startupDebugEnabled {
 				log.Printf("Wails OnShutdown 已触发")
 			}
 			backend.QuitTray()
 			app.shutdown(ctx)
+			lifecycleLog(appRoot, "wails.on_shutdown.complete", nil)
 		},
 		// 拦截关闭按钮事件，由前端处理自定义对话框
 		OnBeforeClose: func(ctx context.Context) bool {
-			return app.shouldBlockClose(ctx)
+			lifecycleLog(appRoot, "wails.on_before_close.begin", nil)
+			blocked := app.shouldBlockClose(ctx)
+			lifecycleLog(appRoot, "wails.on_before_close.result", map[string]interface{}{"blocked": blocked})
+			return blocked
 		},
 		Bind: []interface{}{
 			app,
@@ -310,8 +339,10 @@ func main() {
 	})
 
 	if err != nil {
+		lifecycleLog(appRoot, "wails.run.error", map[string]interface{}{"error": err.Error()})
 		log.Fatal("启动应用失败:", err)
 	}
+	lifecycleLog(appRoot, "wails.run.returned", nil)
 	if startupDebugEnabled {
 		log.Printf("wails.Run 已退出")
 	}

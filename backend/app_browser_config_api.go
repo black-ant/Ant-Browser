@@ -192,7 +192,7 @@ func (a *App) emitBrowserCoreImportProgress(phase string, progress int, message 
 	if a == nil || a.ctx == nil {
 		return
 	}
-	wailsruntime.EventsEmit(a.ctx, "core-import:progress", map[string]interface{}{
+	a.emitRuntimeEvent("core-import:progress", map[string]interface{}{
 		"phase":    phase,
 		"progress": progress,
 		"message":  message,

@@ -4,8 +4,6 @@ import (
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonitor) {
@@ -88,19 +86,15 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 	}
 	a.browserMgr.Mutex.Unlock()
 
-	if a.ctx == nil {
-		return
-	}
-
 	if wasRunning && err != nil {
 		log.Error("浏览器进程异常退出", logger.F("profile_id", profileId), logger.F("profile_name", profileName), logger.F("error", err))
-		runtime.EventsEmit(a.ctx, "browser:instance:crashed", map[string]interface{}{
+		a.emitRuntimeEvent("browser:instance:crashed", map[string]interface{}{
 			"profileId":   profileId,
 			"profileName": profileName,
 			"error":       err.Error(),
 		})
 	} else {
-		runtime.EventsEmit(a.ctx, "browser:instance:stopped", profileId)
+		a.emitRuntimeEvent("browser:instance:stopped", profileId)
 	}
 }
 
@@ -148,9 +142,7 @@ func (a *App) waitDetachedBrowser(profileId string, debugPort int, monitor *brow
 			logger.F("profile_name", profileName),
 			logger.F("debug_port", debugPort),
 		)
-		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "browser:instance:stopped", profileId)
-		}
+		a.emitRuntimeEvent("browser:instance:stopped", profileId)
 		return
 	}
 }

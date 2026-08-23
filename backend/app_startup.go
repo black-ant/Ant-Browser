@@ -18,7 +18,7 @@ import (
 
 // startup 应用启动时调用
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+	a.setRuntimeContext(ctx)
 	if err := apppath.EnsureWritableLayout(a.appRoot); err != nil {
 		runtime.LogFatal(ctx, fmt.Sprintf("初始化 Linux 用户数据目录失败: %v", err))
 		return
@@ -121,6 +121,7 @@ func (a *App) startupInitDatabase(cfg *config.Config) (*database.DB, error) {
 
 func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	a.browserMgr = browser.NewManager(cfg, a.appRoot)
+	a.browserMgr.EventEmitter = a.emitRuntimeEvent
 	a.xrayMgr = proxy.NewXrayManager(cfg, a.appRoot)
 	a.clashMgr = proxy.NewClashManager(cfg, a.appRoot)
 	a.singboxMgr = proxy.NewSingBoxManager(cfg, a.appRoot)
@@ -173,32 +174,39 @@ func (a *App) startupInitLaunchServer(log *logger.Logger) {
 
 func (a *App) startupInitAutomation() {
 	a.automationMgr = automation.NewManager(a.appRoot, a.config, func(event string, payload any) {
-		if a.ctx == nil {
-			return
-		}
-		runtime.EventsEmit(a.ctx, event, payload)
+		a.emitRuntimeEvent(event, payload)
 	}, automation.Options{})
 }
 
 func (a *App) startupInitBridgeHooks() {
 	a.xrayMgr.OnBridgeDied = func(key string, err error) {
-		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "proxy:bridge:died", map[string]interface{}{
-				"engine": "xray",
-				"key":    key[:8],
-				"error":  err.Error(),
-			})
-		}
+		a.emitRuntimeEvent("proxy:bridge:died", map[string]interface{}{
+			"engine": "xray",
+			"key":    bridgeEventKey(key),
+			"error":  errorMessage(err),
+		})
 	}
 	a.singboxMgr.OnBridgeDied = func(key string, err error) {
-		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "proxy:bridge:died", map[string]interface{}{
-				"engine": "singbox",
-				"key":    key[:8],
-				"error":  err.Error(),
-			})
-		}
+		a.emitRuntimeEvent("proxy:bridge:died", map[string]interface{}{
+			"engine": "singbox",
+			"key":    bridgeEventKey(key),
+			"error":  errorMessage(err),
+		})
 	}
+}
+
+func bridgeEventKey(key string) string {
+	if len(key) <= 8 {
+		return key
+	}
+	return key[:8]
+}
+
+func errorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func (a *App) startupInitSpeedScheduler() {

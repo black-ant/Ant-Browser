@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // BrowserProxyTestSpeed 手动触发单个代理测速并持久化结果
@@ -68,9 +66,7 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 				item := buildProxyTestResult(result)
 				results[job.Idx] = item
 
-				if a.ctx != nil {
-					runtime.EventsEmit(a.ctx, "proxy:speed:result", item)
-				}
+				a.emitRuntimeEvent("proxy:speed:result", item)
 			}
 		}()
 	}
@@ -102,9 +98,7 @@ func (a *App) BrowserProxyCheckIPHealth(proxyId string) ProxyIPHealthResult {
 	data, err := proxy.FetchIPHealthInfo(proxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, connectorType, a.proxyIPHealthConfig())
 	result := buildProxyIPHealthResult(proxyId, data, err)
 	a.persistProxyIPHealthResult(result)
-	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "proxy:iphealth:result", result)
-	}
+	a.emitRuntimeEvent("proxy:iphealth:result", result)
 	return result
 }
 
@@ -139,9 +133,7 @@ func (a *App) BrowserProxyBatchCheckIPHealth(proxyIds []string, concurrency int)
 				result := buildProxyIPHealthResult(job.ProxyId, data, err)
 				a.persistProxyIPHealthResult(result)
 				results[job.Idx] = result
-				if a.ctx != nil {
-					runtime.EventsEmit(a.ctx, "proxy:iphealth:result", result)
-				}
+				a.emitRuntimeEvent("proxy:iphealth:result", result)
 			}
 		}()
 	}

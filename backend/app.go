@@ -39,6 +39,8 @@ type App struct {
 
 	forceQuit              bool
 	quitMode               quitMode
+	runtimeMu              sync.RWMutex
+	runtimeStopped         bool
 	maintenanceMu          sync.Mutex
 	bridgeMu               sync.Mutex
 	profileBridgeRefs      map[string]profileProxyBridgeRef

@@ -141,6 +141,8 @@ type CodeProvider interface {
 	Remove(profileId string) error
 }
 
+type RuntimeEventEmitter func(eventName string, optionalData ...interface{})
+
 // Manager 浏览器管理器
 type Manager struct {
 	Config           *config.Config
@@ -150,6 +152,7 @@ type Manager struct {
 	BrowserProcesses map[string]*exec.Cmd
 	XrayBridges      map[string]*XrayBridge
 	CodeProvider     CodeProvider
+	EventEmitter     RuntimeEventEmitter
 
 	// DAO 层（注入后使用 SQLite 存储，未注入时降级到 config.yaml）
 	ProfileDAO   ProfileDAO

@@ -3,8 +3,6 @@ package backend
 import (
 	"strings"
 	"time"
-
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type backupProgressMeta struct {
@@ -42,7 +40,7 @@ func (a *App) backupEmitImportProgressMeta(phase string, progress int, message s
 }
 
 func (a *App) backupEmitProgress(eventName, phase string, progress int, message string, meta *backupProgressMeta) {
-	if a == nil || a.ctx == nil {
+	if a == nil {
 		return
 	}
 	if progress < 0 {
@@ -65,7 +63,7 @@ func (a *App) backupEmitProgress(eventName, phase string, progress int, message 
 		evt.EntryTotal = meta.EntryTotal
 	}
 
-	wailsruntime.EventsEmit(a.ctx, eventName, backupProgressEvent{
+	a.emitRuntimeEvent(eventName, backupProgressEvent{
 		Phase:         evt.Phase,
 		Progress:      evt.Progress,
 		Message:       evt.Message,
