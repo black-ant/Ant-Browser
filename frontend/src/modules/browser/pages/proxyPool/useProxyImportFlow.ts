@@ -35,8 +35,7 @@ interface UseProxyImportFlowOptions {
 function createInitialChainImportForm(): ChainImportForm {
   return {
     ...INITIAL_CHAIN_IMPORT_FORM,
-    first: { ...INITIAL_CHAIN_IMPORT_FORM.first },
-    second: { ...INITIAL_CHAIN_IMPORT_FORM.second },
+    landing: { ...INITIAL_CHAIN_IMPORT_FORM.landing },
   }
 }
 
@@ -73,11 +72,11 @@ export function useProxyImportFlow({
     setPreviewList(prev => prev.filter(item => item.proxyId !== proxyId))
   }
 
-  const updateChainImportHop = (hop: 'first' | 'second', field: keyof ChainImportForm['first'], value: string) => {
+  const updateChainImportLanding = (field: keyof ChainImportForm['landing'], value: string) => {
     setChainImportForm(prev => ({
       ...prev,
-      [hop]: {
-        ...prev[hop],
+      landing: {
+        ...prev.landing,
         [field]: value,
       },
     }))
@@ -284,10 +283,9 @@ export function useProxyImportFlow({
     ? !!importText.trim()
     : importMode === 'direct'
       ? !!directImportText.trim() || (!!directImportForm.server.trim() && !!directImportForm.port.trim())
-      : !!chainImportForm.first.server.trim()
-        && !!chainImportForm.first.port.trim()
-        && !!chainImportForm.second.server.trim()
-        && !!chainImportForm.second.port.trim()
+      : !!chainImportForm.frontProxyId.trim()
+        && !!chainImportForm.landing.server.trim()
+        && !!chainImportForm.landing.port.trim()
 
   return {
     importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importResolvedUrl, importText,
@@ -295,7 +293,7 @@ export function useProxyImportFlow({
     chainImportForm, directImportForm, previewModalOpen, setPreviewModalOpen, previewList, removedPreviewProxyNames,
     importing, fetchingImportUrl, canParseImport, setImportText, setImportDnsServers,
     setImportNamePrefix, setImportGroupName, setImportFetchProxyId, setChainImportText, setDirectImportText,
-    setChainImportForm, setDirectImportForm, handleRemovePreviewProxy, updateChainImportHop,
+    setChainImportForm, setDirectImportForm, handleRemovePreviewProxy, updateChainImportLanding,
     handleImportModeChange, handleFillChainTemplate, handleFillDirectTemplate, handleCopyChainTemplate,
     handleCopyDirectTemplate, handleApplyChainJSON, handleApplyDirectText, handleImportUrlChange,
     handleFetchImportURL, handleParseImport, handleConfirmImport,

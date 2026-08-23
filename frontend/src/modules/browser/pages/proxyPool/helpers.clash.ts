@@ -2,7 +2,7 @@ import yaml from 'js-yaml'
 import type { BrowserProxy } from '../../types'
 import type { ClashProxy, ImportCandidate, ProxyDisplayInfo } from './helpers.types'
 import { BUILTIN_PROXIES } from './helpers.types'
-import { parseChainSocks5Config } from './helpers.chain'
+import { parseChainProxyConfig, parseChainSocks5Config } from './helpers.chain'
 
 export function ensureBuiltinProxies(proxies: BrowserProxy[]): BrowserProxy[] {
   const result = [...proxies]
@@ -23,6 +23,15 @@ export function parseProxyInfo(proxyConfig: string): { type: string; server: str
     const firstHop = `${chain.first.server}:${chain.first.port}`
     const secondHop = `${chain.second.server}:${chain.second.port}`
     return { type: '链式', server: `${firstHop} → ${secondHop}`, port: chain.second.port }
+  }
+
+  const genericChain = parseChainProxyConfig(cfg)
+  if (genericChain) {
+    return {
+      type: '链式',
+      server: `${genericChain.frontProxyId} → ${genericChain.landing.server}:${genericChain.landing.port}`,
+      port: genericChain.localPort || 0,
+    }
   }
 
   const urlMatch = cfg.match(/^([a-zA-Z0-9+\-]+):\/\//)

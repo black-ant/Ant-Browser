@@ -30,7 +30,7 @@ export interface DirectImportForm {
 }
 
 export interface ChainHopForm {
-  protocol: 'http' | 'socks5'
+  protocol: 'http' | 'https' | 'socks5'
   server: string
   port: string
   username: string
@@ -40,8 +40,8 @@ export interface ChainHopForm {
 export interface ChainImportForm {
   proxyName: string
   localPort: string
-  first: ChainHopForm
-  second: ChainHopForm
+  frontProxyId: string
+  landing: ChainHopForm
 }
 
 export const DIRECT_PROXY_PROTOCOL_OPTIONS = [
@@ -62,14 +62,8 @@ export const INITIAL_DIRECT_IMPORT_FORM: DirectImportForm = {
 export const INITIAL_CHAIN_IMPORT_FORM: ChainImportForm = {
   proxyName: '',
   localPort: '',
-  first: {
-    protocol: 'http',
-    server: '',
-    port: '',
-    username: '',
-    password: '',
-  },
-  second: {
+  frontProxyId: '',
+  landing: {
     protocol: 'http',
     server: '',
     port: '',
@@ -95,9 +89,10 @@ export interface ProxyDisplayInfo {
 }
 
 export const CHAIN_SOCKS5_PREFIX = 'chain+socks5://'
+export const CHAIN_PROXY_PREFIX = 'chain+proxy://'
 
 export interface ChainSocks5HopConfig {
-  protocol: 'http' | 'socks5'
+  protocol: 'http' | 'https' | 'socks5'
   server: string
   port: number
   username?: string
@@ -108,4 +103,11 @@ export interface ChainSocks5Config {
   localPort?: number
   first: ChainSocks5HopConfig
   second: ChainSocks5HopConfig
+}
+
+export interface ChainProxyConfig {
+  version: 2
+  frontProxyId: string
+  landing: ChainSocks5HopConfig
+  localPort?: number
 }

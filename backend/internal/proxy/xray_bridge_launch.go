@@ -35,7 +35,18 @@ func (m *XrayManager) ensureBridge(proxyConfig string, proxies []config.BrowserP
 		preferredPort int
 	)
 
-	if IsChainSocks5Proxy(src) {
+	if IsChainProxy(src) {
+		chainCfg, err := ParseChainProxyConfig(src)
+		if err != nil {
+			log.Error("通用链式节点解析失败", logger.F("error", err))
+			return "", "", err
+		}
+		outbounds, routes, err = buildXrayChainOutbounds(chainCfg, proxies, proxyId)
+		if err != nil {
+			return "", "", err
+		}
+		preferredPort = chainCfg.LocalPort
+	} else if IsChainSocks5Proxy(src) {
 		chainCfg, err := ParseChainSocks5Config(src)
 		if err != nil {
 			log.Error("链式节点解析失败", logger.F("error", err))

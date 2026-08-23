@@ -94,19 +94,40 @@ func (m *ClashManager) ensureNodeBridge(proxyConfig string, proxies []config.Bro
 	if err != nil {
 		return "", "", err
 	}
-	node, err := buildMihomoNode(src)
-	if err != nil {
-		return "", "", err
+	var nodes []interface{}
+	targetName := ""
+	preferredPort := 0
+	if IsChainProxy(src) {
+		chainCfg, err := ParseChainProxyConfig(src)
+		if err != nil {
+			return "", "", err
+		}
+		nodes, targetName, err = buildMihomoChainNodes(chainCfg, proxies, proxyId)
+		if err != nil {
+			return "", "", err
+		}
+		preferredPort = chainCfg.LocalPort
+	} else {
+		node, err := buildMihomoNode(src)
+		if err != nil {
+			return "", "", err
+		}
+		nodes = []interface{}{node}
+		targetName = strings.TrimSpace(getMapString(node, "name"))
 	}
-	port, err := nextAvailablePort()
-	if err != nil {
-		return "", "", err
+	port := preferredPort
+	if port <= 0 {
+		var err error
+		port, err = nextAvailablePort()
+		if err != nil {
+			return "", "", err
+		}
 	}
 	controllerPort, err := nextAvailablePort()
 	if err != nil {
 		return "", "", err
 	}
-	cfgPath, err := m.buildMihomoNodeConfig(key, node, port, controllerPort)
+	cfgPath, err := m.buildMihomoNodesConfig(key, nodes, targetName, port, controllerPort)
 	if err != nil {
 		return "", "", err
 	}
@@ -315,14 +336,26 @@ func (m *ClashManager) lockLaunchForKey(key string) func() {
 }
 
 func (m *ClashManager) buildMihomoNodeConfig(key string, node map[string]interface{}, port int, controllerPort int) (string, error) {
+	return m.buildMihomoNodesConfig(key, []interface{}{node}, strings.TrimSpace(getMapString(node, "name")), port, controllerPort)
+}
+
+func (m *ClashManager) buildMihomoNodesConfig(key string, nodes []interface{}, targetName string, port int, controllerPort int) (string, error) {
 	baseDir := m.resolveMihomoWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return "", err
 	}
-	name := strings.TrimSpace(getMapString(node, "name"))
+	if len(nodes) == 0 {
+		return "", fmt.Errorf("mihomo 节点配置为空")
+	}
+	name := strings.TrimSpace(targetName)
 	if name == "" {
-		name = "node"
-		node["name"] = name
+		if node, ok := nodes[0].(map[string]interface{}); ok {
+			name = strings.TrimSpace(getMapString(node, "name"))
+			if name == "" {
+				name = "node"
+				node["name"] = name
+			}
+		}
 	}
 	payload := map[string]interface{}{
 		"mixed-port":          port,
@@ -333,7 +366,7 @@ func (m *ClashManager) buildMihomoNodeConfig(key string, node map[string]interfa
 		"ipv6":                true,
 		"unified-delay":       true,
 		"tcp-concurrent":      false,
-		"proxies":             []interface{}{node},
+		"proxies":             nodes,
 		"proxy-groups": []interface{}{
 			map[string]interface{}{
 				"name":    "proxy-out",

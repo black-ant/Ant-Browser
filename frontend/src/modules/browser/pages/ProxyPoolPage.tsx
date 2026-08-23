@@ -9,6 +9,7 @@ import {
   createInitialChainImportForm,
   INITIAL_DIRECT_IMPORT_FORM,
   ensureBuiltinProxies,
+  parseProxyInfo,
   toChainImportForm,
   toDirectImportForm,
   toDisplayList,
@@ -16,6 +17,7 @@ import {
   type DirectImportForm,
   type ProxyDisplayInfo,
 } from './proxyPool/helpers'
+
 import {
   ProxyPoolEditModal,
   ProxyPoolIPHealthDetailModal,
@@ -37,6 +39,21 @@ import { useProxyGlobalRefreshConfig } from './proxyPool/useProxyGlobalRefreshCo
 import { useProxyDeleteFlow } from './proxyPool/useProxyDeleteFlow'
 import { useProxyCoreDownload } from './proxyPool/useProxyCoreDownload'
 import { useProxyPoolFilter } from './proxyPool/useProxyPoolFilter'
+
+type KernelOption = { value: string; label: string }
+
+function resolveChainKernelOptions(form: ChainImportForm, proxies: BrowserProxy[]): KernelOption[] {
+  const front = proxies.find(proxy => proxy.proxyId === form.frontProxyId)
+  const protocol = front ? parseProxyInfo(front.proxyConfig).type.toLowerCase() : ''
+  const automatic: KernelOption = { value: 'auto', label: '自动（推荐）' }
+  if (['hysteria', 'hysteria2', 'tuic', 'anytls'].includes(protocol)) {
+    return [automatic, { value: 'sing-box', label: 'sing-box' }]
+  }
+  if (['mieru', 'wireguard'].includes(protocol)) {
+    return [automatic, { value: 'mihomo', label: 'Mihomo' }]
+  }
+  return [automatic, { value: 'xray', label: 'Xray' }]
+}
 
 export function ProxyPoolPage() {
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
@@ -119,7 +136,7 @@ export function ProxyPoolPage() {
     chainImportForm, directImportForm, previewModalOpen, setPreviewModalOpen, previewList, removedPreviewProxyNames,
     importing, fetchingImportUrl, canParseImport, setImportText, setImportDnsServers,
     setImportNamePrefix, setImportGroupName, setImportFetchProxyId, setChainImportText, setDirectImportText,
-    setChainImportForm, setDirectImportForm, handleRemovePreviewProxy, updateChainImportHop,
+    setChainImportForm, setDirectImportForm, handleRemovePreviewProxy, updateChainImportLanding,
     handleImportModeChange, handleFillChainTemplate, handleFillDirectTemplate, handleCopyChainTemplate,
     handleCopyDirectTemplate, handleApplyChainJSON, handleApplyDirectText, handleImportUrlChange,
     handleFetchImportURL, handleParseImport, handleConfirmImport,
@@ -239,11 +256,11 @@ export function ProxyPoolPage() {
     removeSelectedId,
   } = useProxySelection({ proxies, filteredList, saveProxies })
 
-  const updateChainEditHop = (hop: 'first' | 'second', field: keyof ChainImportForm['first'], value: string) => {
+  const updateChainEditLanding = (field: keyof ChainImportForm['landing'], value: string) => {
     setChainEditForm(prev => ({
       ...prev,
-      [hop]: {
-        ...prev[hop],
+      landing: {
+        ...prev.landing,
         [field]: value,
       },
     }))
@@ -253,14 +270,18 @@ export function ProxyPoolPage() {
     const proxy = proxies.find(p => p.proxyId === record.proxyId)
     if (proxy) {
       setEditingProxy(proxy)
+      const nextChainForm = toChainImportForm(proxy.proxyName, proxy.proxyConfig)
+      const allowedKernels = nextChainForm
+        ? resolveChainKernelOptions(nextChainForm, proxies).map(option => option.value)
+        : []
+      const preferredKernel = proxy.preferredKernel || 'auto'
       setEditForm({
         proxyName: proxy.proxyName,
         proxyConfig: proxy.proxyConfig,
-        preferredKernel: proxy.preferredKernel || 'auto',
+        preferredKernel: nextChainForm && !allowedKernels.includes(preferredKernel) ? 'auto' : preferredKernel,
         dnsServers: proxy.dnsServers || '',
         groupName: proxy.groupName || '',
       })
-      const nextChainForm = toChainImportForm(proxy.proxyName, proxy.proxyConfig)
       const nextDirectForm = nextChainForm ? null : toDirectImportForm(proxy.proxyName, proxy.proxyConfig)
       if (nextChainForm) {
         setChainEditMode(true)
@@ -429,7 +450,10 @@ export function ProxyPoolPage() {
         chainImportForm={chainImportForm}
         directImportForm={directImportForm}
         fetchingImportUrl={fetchingImportUrl}
-        fetchProxyOptions={proxies.filter(proxy => proxy.proxyConfig.trim() && !proxy.proxyConfig.trim().toLowerCase().startsWith('direct://'))}
+        fetchProxyOptions={proxies.filter(proxy => {
+          const config = proxy.proxyConfig.trim().toLowerCase()
+          return !!config && !config.startsWith('direct://') && !config.startsWith('chain+proxy://') && !config.startsWith('chain+socks5://')
+        })}
         canParseImport={canParseImport}
         onClose={() => setImportModalOpen(false)}
         onParse={handleParseImport}
@@ -446,7 +470,7 @@ export function ProxyPoolPage() {
         onApplyChainJSON={handleApplyChainJSON}
         onApplyDirectText={handleApplyDirectText}
         onChainImportFormChange={(patch) => setChainImportForm((prev) => ({ ...prev, ...patch }))}
-        onChainImportHopChange={updateChainImportHop}
+        onChainImportLandingChange={updateChainImportLanding}
         onFillChainTemplate={handleFillChainTemplate}
         onCopyChainTemplate={() => void handleCopyChainTemplate()}
         onFillDirectTemplate={handleFillDirectTemplate}
@@ -477,6 +501,8 @@ export function ProxyPoolPage() {
         editForm={editForm}
         chainEditMode={chainEditMode}
         chainEditForm={chainEditForm}
+        chainKernelOptions={resolveChainKernelOptions(chainEditForm, proxies)}
+        frontProxyOptions={proxies.filter(proxy => proxy.proxyId !== editingProxy?.proxyId && !proxy.proxyConfig.trim().toLowerCase().startsWith('direct://') && !proxy.proxyConfig.trim().toLowerCase().startsWith('chain+'))}
         directEditMode={directEditMode}
         directEditForm={directEditForm}
         onClose={() => setEditModalOpen(false)}
@@ -484,7 +510,7 @@ export function ProxyPoolPage() {
         onChange={(patch) => setEditForm((prev) => ({ ...prev, ...patch }))}
         onChainEditFormChange={(patch) => setChainEditForm((prev) => ({ ...prev, ...patch }))}
         onDirectEditFormChange={(patch) => setDirectEditForm((prev) => ({ ...prev, ...patch }))}
-        onChainEditHopChange={updateChainEditHop}
+        onChainEditLandingChange={updateChainEditLanding}
       />
 
       <ProxyPoolIPHealthDetailModal

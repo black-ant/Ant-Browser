@@ -82,11 +82,11 @@ export function ProxyImportModal({
     }
   }
 
-  const updateChainHop = (hop: 'first' | 'second', field: keyof ChainHopForm, value: string) => {
+  const updateChainLanding = (field: keyof ChainHopForm, value: string) => {
     setChainImportForm(prev => ({
       ...prev,
-      [hop]: {
-        ...prev[hop],
+      landing: {
+        ...prev.landing,
         [field]: value,
       },
     }))
@@ -251,10 +251,9 @@ export function ProxyImportModal({
     ? !!importText.trim()
     : importMode === 'direct'
       ? !!directImportText.trim() || (!!directImportForm.server.trim() && !!directImportForm.port.trim())
-      : !!chainImportForm.first.server.trim()
-        && !!chainImportForm.first.port.trim()
-        && !!chainImportForm.second.server.trim()
-        && !!chainImportForm.second.port.trim()
+      : !!chainImportForm.frontProxyId.trim()
+        && !!chainImportForm.landing.server.trim()
+        && !!chainImportForm.landing.port.trim()
 
   const previewColumns = useMemo<TableColumn<ProxyDisplayInfo>[]>(() => [
     { key: 'proxyName', title: '代理名称', width: '200px' },
@@ -295,7 +294,10 @@ export function ProxyImportModal({
       directImportForm={directImportForm}
       chainImportForm={chainImportForm}
       groups={groups}
-      fetchProxyOptions={existingProxies.filter(proxy => proxy.proxyConfig.trim() && !proxy.proxyConfig.trim().toLowerCase().startsWith('direct://'))}
+      fetchProxyOptions={existingProxies.filter(proxy => {
+        const config = proxy.proxyConfig.trim().toLowerCase()
+        return !!config && !config.startsWith('direct://') && !config.startsWith('chain+proxy://') && !config.startsWith('chain+socks5://')
+      })}
       previewModalOpen={previewModalOpen}
       previewList={previewList}
       importing={importing}
@@ -313,7 +315,7 @@ export function ProxyImportModal({
       onDirectImportTextChange={setDirectImportText}
       onDirectImportFormChange={setDirectImportForm}
       onChainImportFormChange={setChainImportForm}
-      onUpdateChainHop={updateChainHop}
+      onUpdateChainLanding={updateChainLanding}
       onFillDirectTemplate={handleFillDirectTemplate}
       onCopyDirectTemplate={handleCopyDirectTemplate}
       onApplyDirectText={handleApplyDirectText}
