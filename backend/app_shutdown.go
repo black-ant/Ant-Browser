@@ -56,16 +56,26 @@ func platformSupportsTrayCloseFlowForOS(goos string) bool {
 }
 
 func (a *App) setQuitMode(mode quitMode) {
+	a.quitMu.Lock()
+	defer a.quitMu.Unlock()
 	a.forceQuit = true
 	a.quitMode = mode
 }
 
+func (a *App) isQuitRequested() bool {
+	a.quitMu.RLock()
+	defer a.quitMu.RUnlock()
+	return a.forceQuit
+}
+
 func (a *App) shouldStopRuntimeServicesOnShutdown() bool {
+	a.quitMu.RLock()
+	defer a.quitMu.RUnlock()
 	return a.quitMode != quitModeAppOnly
 }
 
 func ShouldBlockClose(a *App, ctx context.Context) bool {
-	if a.forceQuit {
+	if a.isQuitRequested() {
 		return false
 	}
 	if !platformSupportsTrayCloseFlow() {

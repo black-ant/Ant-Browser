@@ -32,19 +32,11 @@ Unicode True
   FileWrite ${HANDLE} "    $$_.ExecutablePath -and $$_.ExecutablePath.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) -and ($$exclude -eq '' -or -not $$_.ExecutablePath.Equals($$exclude, [System.StringComparison]::OrdinalIgnoreCase))$\r$\n"
   FileWrite ${HANDLE} "  })$\r$\n"
   FileWrite ${HANDLE} "}$\r$\n"
-  FileWrite ${HANDLE} "$$deadline = (Get-Date).AddSeconds(10)$\r$\n"
-  FileWrite ${HANDLE} "do {$\r$\n"
-  FileWrite ${HANDLE} "  $$procs = Get-AntBrowserProcesses$\r$\n"
-  FileWrite ${HANDLE} "  if (-not $$procs -or $$procs.Count -eq 0) { exit 0 }$\r$\n"
-  FileWrite ${HANDLE} "  foreach ($$p in $$procs) { try { Stop-Process -Id $$p.ProcessId -Force -ErrorAction Stop } catch {} }$\r$\n"
-  FileWrite ${HANDLE} "  Start-Sleep -Milliseconds 400$\r$\n"
-  FileWrite ${HANDLE} "} while ((Get-Date) -lt $$deadline)$\r$\n"
-  FileWrite ${HANDLE} "$$left = Get-AntBrowserProcesses$\r$\n"
-  FileWrite ${HANDLE} "if ($$left -and $$left.Count -gt 0) {$\r$\n"
-  FileWrite ${HANDLE} "  $$names = ($$left | ForEach-Object { $$_.Name + '#' + $$_.ProcessId }) -join ', '$\r$\n"
-  FileWrite ${HANDLE} "  Write-Host ('still running: ' + $$names)$\r$\n"
-  FileWrite ${HANDLE} "  exit 1$\r$\n"
-  FileWrite ${HANDLE} "}$\r$\n"
+  FileWrite ${HANDLE} "$$procs = @(Get-AntBrowserProcesses)$\r$\n"
+  FileWrite ${HANDLE} "if (-not $$procs -or $$procs.Count -eq 0) { exit 0 }$\r$\n"
+  FileWrite ${HANDLE} "$$names = ($$procs | ForEach-Object { $$_.Name + '#' + $$_.ProcessId }) -join ', '$\r$\n"
+  FileWrite ${HANDLE} "Write-Host ('running: ' + $$names)$\r$\n"
+  FileWrite ${HANDLE} "exit 1$\r$\n"
   FileWrite ${HANDLE} "exit 0$\r$\n"
 !macroend
 
@@ -61,7 +53,7 @@ retry_powershell:
   !insertmacro WriteCloseProcessScript $1
   FileClose $1
 
-  DetailPrint "正在关闭安装目录中的残留进程: $INSTDIR"
+  DetailPrint "检查安装目录中的运行进程: $INSTDIR"
   ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$0" -InstallDir "$INSTDIR" -ExcludePath ""' $2
   Delete $0
 
@@ -69,17 +61,14 @@ retry_powershell:
     Goto done
   ${EndIf}
 
-  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到旧版本仍有进程占用安装目录。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n点击“重试”将再次尝试关闭残留进程，点击“取消”将终止本次安装。" IDRETRY retry_powershell IDCANCEL install_abort
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到安装目录中仍有运行进程。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n请先从窗口或托盘菜单正常退出应用，再点击“重试”重新检查；点击“取消”将终止本次安装。" IDRETRY retry_powershell IDCANCEL install_abort
 
 install_abort:
   Abort "安装已取消：安装目录中的旧进程仍未退出。"
 
 fallback_taskkill:
-  DetailPrint "PowerShell 不可用，回退到 taskkill 清理主进程和代理进程..."
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM ${PRODUCT_EXE}' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM xray.exe' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM sing-box.exe' $2
-  Sleep 1500
+  MessageBox MB_OK|MB_ICONSTOP "无法安全检查安装目录中的运行进程。为避免强制中断，安装已取消。"
+  Abort "安装已取消：无法安全检查安装目录中的运行进程。"
 
 done:
 FunctionEnd
@@ -97,7 +86,7 @@ retry_powershell:
   !insertmacro WriteCloseProcessScript $1
   FileClose $1
 
-  DetailPrint "正在关闭安装目录中的残留进程: $INSTDIR"
+  DetailPrint "检查安装目录中的运行进程: $INSTDIR"
   ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$0" -InstallDir "$INSTDIR" -ExcludePath "$INSTDIR\Uninstall.exe"' $2
   Delete $0
 
@@ -105,18 +94,34 @@ retry_powershell:
     Goto done
   ${EndIf}
 
-  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到安装目录中仍有旧进程占用文件。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n点击“重试”将再次尝试关闭残留进程，点击“取消”将终止本次卸载。" IDRETRY retry_powershell IDCANCEL uninstall_abort
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到安装目录中仍有运行进程。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n请先从窗口或托盘菜单正常退出应用，再点击“重试”重新检查；点击“取消”将终止本次卸载。" IDRETRY retry_powershell IDCANCEL uninstall_abort
 
 uninstall_abort:
   Abort "卸载已取消：安装目录中的旧进程仍未退出。"
 
 fallback_taskkill:
-  DetailPrint "PowerShell 不可用，回退到 taskkill 清理主进程和代理进程..."
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM ${PRODUCT_EXE}' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM xray.exe' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM sing-box.exe' $2
-  Sleep 1500
+  MessageBox MB_OK|MB_ICONSTOP "无法安全检查安装目录中的运行进程。为避免强制中断，卸载已取消。"
+  Abort "卸载已取消：无法安全检查安装目录中的运行进程。"
 
+done:
+FunctionEnd
+
+Function RegisterDiagnosticsWatcher
+  IfFileExists "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" 0 done
+  DetailPrint "Registering read-only diagnostics watcher"
+  ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" -InstallDir "$INSTDIR"' $0
+  ${If} $0 == 0
+    DetailPrint "Diagnostics watcher registered"
+  ${Else}
+    DetailPrint "Warning: diagnostics watcher registration failed"
+  ${EndIf}
+done:
+FunctionEnd
+
+Function un.UnregisterDiagnosticsWatcher
+  IfFileExists "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" 0 done
+  DetailPrint "Removing read-only diagnostics watcher"
+  ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" -InstallDir "$INSTDIR" -Uninstall' $0
 done:
 FunctionEnd
 
@@ -216,6 +221,9 @@ Section "Ant Browser (required)" SecMain
   SetOutPath "$INSTDIR"
 !endif
   CreateDirectory "$INSTDIR\data"
+  SetOutPath "$INSTDIR\data\diagnostics"
+  File /r "${STAGINGDIR}\data\diagnostics\*"
+  SetOutPath "$INSTDIR"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName"     "${PRODUCT_NAME}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion"  "${VERSION}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher"       "Ant Chrome Team"
@@ -225,6 +233,7 @@ Section "Ant Browser (required)" SecMain
   WriteRegStr HKLM "${UNINSTALL_KEY}" "NoModify"        "1"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "NoRepair"        "1"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+  Call RegisterDiagnosticsWatcher
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}" "" "$INSTDIR\${PRODUCT_ICON}"
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\${PRODUCT_ICON}"
@@ -249,6 +258,7 @@ SectionEnd
 
 Section "Uninstall"
   Call un.CloseInstalledProcesses
+  Call un.UnregisterDiagnosticsWatcher
 
   Delete /REBOOTOK "$INSTDIR\${PRODUCT_EXE}"
   Delete /REBOOTOK "$INSTDIR\${PRODUCT_ICON}"

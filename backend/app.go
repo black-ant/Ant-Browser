@@ -39,6 +39,7 @@ type App struct {
 
 	forceQuit              bool
 	quitMode               quitMode
+	quitMu                 sync.RWMutex
 	runtimeMu              sync.RWMutex
 	runtimeStopped         bool
 	maintenanceMu          sync.Mutex

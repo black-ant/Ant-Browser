@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v2"
+	wailslogger "github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
@@ -264,6 +265,7 @@ func main() {
 	}
 	err = wails.Run(&options.App{
 		Title:     cfg.App.Name,
+		Logger:    newWailsLifecycleLogger(appRoot),
 		Width:     windowBounds.Width,
 		Height:    windowBounds.Height,
 		MinWidth:  windowBounds.MinWidth,
@@ -333,9 +335,12 @@ func main() {
 			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
 		},
 		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
+			WebviewIsTransparent:                false,
+			WindowIsTranslucent:                 false,
+			WebviewGpuIsDisabled:                true,
+			WebviewDisableRendererCodeIntegrity: true,
 		},
+		LogLevelProduction: wailslogger.ERROR,
 	})
 
 	if err != nil {

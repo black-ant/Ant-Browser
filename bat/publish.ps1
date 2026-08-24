@@ -311,7 +311,7 @@ function Build-WindowsBinary {
         finally {
             Pop-Location
         }
-        Invoke-NativeCommand -FilePath "wails" -Arguments @("build")
+        Invoke-NativeCommand -FilePath "wails" -Arguments @("build", "-tags", "native_webview2loader")
     }
     finally {
         $env:GOPROXY = $previousGoProxy
@@ -521,6 +521,20 @@ function New-WindowsStaging {
     Write-Host "✓ 复制 bin\（xray.exe, sing-box.exe）"
 
     Copy-WindowsChromePayload -ChromeRoot $chromeRoot -StagingDir $stagingDir
+
+    $stagingDiagnosticsDir = Join-Path $stagingDir 'data\diagnostics'
+    New-Item -ItemType Directory -Path $stagingDiagnosticsDir -Force | Out-Null
+    foreach ($diagnosticsScript in @(
+        'ant-chrome-diagnostics-watcher.ps1',
+        'install-ant-chrome-diagnostics-watcher.ps1'
+    )) {
+        $diagnosticsSource = Join-Path $repoRoot (Join-Path 'tools' $diagnosticsScript)
+        if (-not (Test-Path -LiteralPath $diagnosticsSource -PathType Leaf)) {
+            throw ('Missing diagnostics script: ' + $diagnosticsScript)
+        }
+        Copy-Item -LiteralPath $diagnosticsSource -Destination (Join-Path $stagingDiagnosticsDir $diagnosticsScript) -Force
+    }
+    Write-Host '[Diagnostics] copied read-only watcher scripts to data\diagnostics'
 
     New-Item -ItemType Directory -Path (Join-Path $stagingDir "data") -Force | Out-Null
     Write-Host "✓ 创建空 data 目录（不打包 app.db，首次启动自动初始化）"

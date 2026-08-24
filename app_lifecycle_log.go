@@ -56,6 +56,32 @@ func logLifecyclePanic(appRoot string, event string, recovered interface{}) {
 	})
 }
 
+type wailsLifecycleLogger struct {
+	appRoot string
+}
+
+func newWailsLifecycleLogger(appRoot string) *wailsLifecycleLogger {
+	return &wailsLifecycleLogger{appRoot: appRoot}
+}
+
+func (l *wailsLifecycleLogger) write(level string, message string) {
+	lifecycleLog(l.appRoot, "wails.log", map[string]interface{}{
+		"level":   level,
+		"message": message,
+	})
+}
+
+func (l *wailsLifecycleLogger) Print(message string)   { l.write("print", message) }
+func (l *wailsLifecycleLogger) Trace(message string)   { l.write("trace", message) }
+func (l *wailsLifecycleLogger) Debug(message string)   { l.write("debug", message) }
+func (l *wailsLifecycleLogger) Info(message string)    { l.write("info", message) }
+func (l *wailsLifecycleLogger) Warning(message string) { l.write("warning", message) }
+func (l *wailsLifecycleLogger) Error(message string)   { l.write("error", message) }
+func (l *wailsLifecycleLogger) Fatal(message string) {
+	l.write("fatal", message)
+	os.Exit(1)
+}
+
 func runTraySafely(appRoot string, callbacks backend.TrayCallbacks) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
