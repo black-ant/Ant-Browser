@@ -85,14 +85,15 @@ func BuildScope(opts BuildOptions) (Scope, error) {
 	})
 
 	corePaths := collectExtraCorePaths(cfg.Browser.Cores, appRootAbs, chromeRoot)
-	for idx, corePath := range corePaths {
+	for idx, core := range corePaths {
 		coreID := fmt.Sprintf("external-%02d", idx+1)
 		builder.add(ScopeEntry{
 			ID:          "browser_core_external_" + coreID,
 			Category:    CategoryCoreData,
 			EntryType:   EntryTypeDir,
 			Required:    false,
-			SourcePath:  corePath,
+			CoreId:      core.CoreId,
+			SourcePath:  core.Path,
 			ArchivePath: "payload/browser/cores/external/" + coreID + "/",
 			Description: "额外内核目录（来自配置 cores）",
 		})
@@ -177,6 +178,7 @@ func BuildManifest(scope Scope, appName, appVersion string, createdAt time.Time)
 			Category:    item.Category,
 			EntryType:   item.EntryType,
 			Required:    item.Required,
+			CoreId:      item.CoreId,
 			ArchivePath: item.ArchivePath,
 			Description: item.Description,
 		})
@@ -198,8 +200,13 @@ func BuildManifest(scope Scope, appName, appVersion string, createdAt time.Time)
 	}
 }
 
-func collectExtraCorePaths(cores []config.BrowserCore, appRootAbs, defaultChromeRoot string) []string {
-	result := make([]string, 0)
+type extraCorePath struct {
+	CoreId string
+	Path   string
+}
+
+func collectExtraCorePaths(cores []config.BrowserCore, appRootAbs, defaultChromeRoot string) []extraCorePath {
+	result := make([]extraCorePath, 0)
 	seen := make(map[string]struct{})
 	for _, core := range cores {
 		corePath := strings.TrimSpace(core.CorePath)
@@ -215,9 +222,14 @@ func collectExtraCorePaths(cores []config.BrowserCore, appRootAbs, defaultChrome
 			continue
 		}
 		seen[key] = struct{}{}
-		result = append(result, coreAbs)
+		result = append(result, extraCorePath{
+			CoreId: strings.TrimSpace(core.CoreId),
+			Path:   coreAbs,
+		})
 	}
-	sort.Strings(result)
+	sort.Slice(result, func(i, j int) bool {
+		return normalizeForCompare(result[i].Path) < normalizeForCompare(result[j].Path)
+	})
 	return result
 }
 

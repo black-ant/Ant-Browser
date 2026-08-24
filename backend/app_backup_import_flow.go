@@ -13,7 +13,9 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 		return nil, err
 	}
 	defer os.RemoveAll(extractRoot)
-	a.backupStopRuntimeForMaintenance()
+	if err := a.backupStopRuntimeForMaintenance(); err != nil {
+		return nil, fmt.Errorf("停止运行时失败，已中止备份导入: %w", err)
+	}
 	a.backupEmitImportProgress("preparing", 20, "备份包校验通过，开始导入数据...")
 
 	componentEntries := backupDetectPresentManifestEntries(extractRoot, manifest)
@@ -56,7 +58,7 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 
 	if dbSrc := backupFindDatabaseFile(payloadRoot); dbSrc != "" {
 		a.backupEmitImportProgress("importing", 76, "正在合并数据库数据...")
-		if err := a.backupMergeDatabaseFromSource(dbSrc, resetFirst, stats); err != nil {
+		if err := a.backupMergeDatabaseFromSource(dbSrc, incomingCfg, resetFirst, stats); err != nil {
 			issueTracker.RecordIssue("database_sqlite_main", "SQLite 主数据库", err)
 		}
 	} else if _, ok := componentEntries["database_sqlite_main"]; ok {
@@ -64,7 +66,7 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 	}
 
 	a.backupEmitImportProgress("importing", 86, "正在同步文件数据...")
-	a.backupImportFileTrees(payloadRoot, incomingCfg, resetFirst, stats, issueTracker.RecordIssue)
+	a.backupImportFileTrees(payloadRoot, incomingCfg, manifest, resetFirst, stats, issueTracker.RecordIssue)
 
 	a.backupEmitImportProgress("importing", 92, "正在修复插件迁移路径...")
 	repairIssues, err := a.backupRepairExtensionPathsAfterImport()

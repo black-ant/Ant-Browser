@@ -5,6 +5,7 @@ import (
 	"ant-chrome/backend/internal/config"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -96,8 +97,56 @@ func TestBackupNormalizeImportedConfigPaths(t *testing.T) {
 	if normalized.Browser.Cores[0].CorePath != filepath.Join("chrome", "external", "core-1") {
 		t.Fatalf("core path = %q, want local fallback", normalized.Browser.Cores[0].CorePath)
 	}
-	if normalized.Browser.Profiles[0].UserDataDir != filepath.Join("data", "profile-1") {
-		t.Fatalf("profile path = %q, want local fallback", normalized.Browser.Profiles[0].UserDataDir)
+	if normalized.Browser.Profiles[0].UserDataDir != "profile-1" {
+		t.Fatalf("profile path = %q, want user-data-root relative fallback", normalized.Browser.Profiles[0].UserDataDir)
+	}
+}
+
+func TestBackupNormalizeImportedRelativeProfilePath(t *testing.T) {
+	root := t.TempDir()
+	app := &App{appRoot: filepath.Join(root, "current")}
+	incoming := config.DefaultConfig()
+	incoming.Browser.UserDataRoot = "data"
+	incoming.Browser.Profiles = []config.BrowserProfileConfig{{
+		ProfileId:   "profile-1",
+		UserDataDir: filepath.Join("data", "profile-1"),
+	}}
+
+	normalized := app.backupNormalizeImportedConfigPaths(incoming, config.DefaultConfig())
+	if normalized.Browser.Profiles[0].UserDataDir != "profile-1" {
+		t.Fatalf("profile path = %q, want profile-1", normalized.Browser.Profiles[0].UserDataDir)
+	}
+}
+
+func TestBackupNormalizeImportedProfilePathRejectsTraversal(t *testing.T) {
+	root := t.TempDir()
+	app := &App{appRoot: filepath.Join(root, "current")}
+	incoming := config.DefaultConfig()
+	incoming.Browser.UserDataRoot = "data"
+	incoming.Browser.Profiles = []config.BrowserProfileConfig{{
+		ProfileId:   "profile-1",
+		UserDataDir: filepath.Join("..", "outside"),
+	}}
+
+	normalized := app.backupNormalizeImportedConfigPaths(incoming, config.DefaultConfig())
+	if normalized.Browser.Profiles[0].UserDataDir != "outside" {
+		t.Fatalf("profile path = %q, want fallback outside", normalized.Browser.Profiles[0].UserDataDir)
+	}
+}
+
+func TestBackupNormalizeImportedCorePathRejectsTraversal(t *testing.T) {
+	root := t.TempDir()
+	app := &App{appRoot: filepath.Join(root, "current")}
+	incoming := config.DefaultConfig()
+	incoming.Browser.CoreRoot = "chrome"
+	incoming.Browser.Cores = []config.BrowserCore{{
+		CoreId:   "core-1",
+		CorePath: filepath.Join("..", "outside"),
+	}}
+
+	normalized := app.backupNormalizeImportedConfigPaths(incoming, config.DefaultConfig())
+	if normalized.Browser.Cores[0].CorePath != filepath.Join("chrome", "external", "core-1") {
+		t.Fatalf("core path = %q, want chrome/external/core-1", normalized.Browser.Cores[0].CorePath)
 	}
 }
 
@@ -138,5 +187,35 @@ func TestBackupPackageAcceptsEmptyRequiredDirectory(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Fatal("empty required directory was not restored as a directory")
+	}
+}
+
+func TestBackupManifestStoresExternalCoreID(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Browser.Cores = []config.BrowserCore{
+		{CoreId: "core-b", CorePath: filepath.Join(root, "z-core")},
+		{CoreId: "core-a", CorePath: filepath.Join(root, "a-core")},
+	}
+
+	scope, err := backup.BuildScope(backup.BuildOptions{AppRoot: root, Config: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := backup.BuildManifest(scope, "test", "1.7.0", time.Unix(0, 0))
+	coreIDs := make(map[string]string)
+	for _, entry := range manifest.Entries {
+		if !strings.HasPrefix(entry.ArchivePath, "payload/browser/cores/external/") {
+			continue
+		}
+		coreIDs[entry.ArchivePath] = entry.CoreId
+	}
+	if len(coreIDs) != 2 {
+		t.Fatalf("external core manifest entries = %d, want 2", len(coreIDs))
+	}
+	for archivePath, coreID := range coreIDs {
+		if coreID == "" {
+			t.Fatalf("external core manifest entry %q has no core ID", archivePath)
+		}
 	}
 }

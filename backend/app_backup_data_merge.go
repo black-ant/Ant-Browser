@@ -2,6 +2,7 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/config"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +16,9 @@ func (a *App) backupMergeProxiesFile(payloadRoot string, resetFirst bool, stats 
 	if _, err := os.Stat(srcPath); err != nil {
 		if os.IsNotExist(err) {
 			if resetFirst {
-				_ = os.Remove(dstPath)
+				if removeErr := os.Remove(dstPath); removeErr != nil && !os.IsNotExist(removeErr) {
+					return fmt.Errorf("删除现有代理配置失败: %w", removeErr)
+				}
 			}
 			return nil
 		}
@@ -79,20 +82,43 @@ func backupFindDatabaseFile(payloadRoot string) string {
 	return ""
 }
 
-func (a *App) backupMergeDatabaseFromSource(srcDBPath string, resetFirst bool, stats *backupMergeStats) error {
+func (a *App) backupMergeDatabaseFromSource(srcDBPath string, incomingCfg *config.Config, resetFirst bool, stats *backupMergeStats) error {
 	if a.db == nil || a.db.GetConn() == nil {
 		return fmt.Errorf("数据库未初始化")
 	}
-	tx, err := a.db.GetConn().Begin()
+	dbConn := a.db.GetConn()
+	tx, err := dbConn.Begin()
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	committed := false
+	sourceAttached := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+		if sourceAttached {
+			_, _ = dbConn.Exec(`DETACH DATABASE src`)
+		}
+	}()
 
 	if _, err := tx.Exec(`ATTACH DATABASE ? AS src`, srcDBPath); err != nil {
 		return fmt.Errorf("挂载备份数据库失败: %w", err)
 	}
-	defer tx.Exec(`DETACH DATABASE src`)
+	sourceAttached = true
+
+	var existingCoreIDs map[string]struct{}
+	var existingProfileIDs map[string]struct{}
+	if !resetFirst {
+		existingCoreIDs, err = backupListTargetIDs(tx, "browser_cores", "core_id")
+		if err != nil {
+			return err
+		}
+		existingProfileIDs, err = backupListTargetIDs(tx, "browser_profiles", "profile_id")
+		if err != nil {
+			return err
+		}
+	}
 
 	mergeTables := []struct {
 		name       string
@@ -279,6 +305,25 @@ WHERE NOT EXISTS (
 				}
 			}
 		}
+		if item.name == "browser_proxies" {
+			item.insertAll, item.insertSafe, err = backupBuildProxyMergeSQL(tx)
+			if err != nil {
+				return err
+			}
+		}
+		if item.name == "browser_profiles" {
+			item.insertAll, item.insertSafe, err = backupBuildProfileMergeSQL(tx)
+			if err != nil {
+				return err
+			}
+		}
+		if item.name == "browser_proxies" || item.name == "browser_profiles" {
+			if resetFirst {
+				sqlText = item.insertAll
+			} else {
+				sqlText = item.insertSafe
+			}
+		}
 		if item.name == "browser_extensions" {
 			var hasIconDataURL bool
 			var hasInstallMode bool
@@ -352,7 +397,211 @@ WHERE NOT EXISTS (
 		}
 	}
 
-	return tx.Commit()
+	if err := a.backupNormalizeImportedDatabasePaths(tx, incomingCfg, resetFirst, existingCoreIDs, existingProfileIDs); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	if _, err := dbConn.Exec(`DETACH DATABASE src`); err != nil {
+		return fmt.Errorf("卸载备份数据库失败: %w", err)
+	}
+	sourceAttached = false
+	return nil
+}
+
+type backupSourceColumnSpec struct {
+	name     string
+	fallback string
+}
+
+func backupBuildProxyMergeSQL(tx *sql.Tx) (string, string, error) {
+	return backupBuildTableMergeSQL(
+		tx,
+		"browser_proxies",
+		[]backupSourceColumnSpec{
+			{name: "proxy_id", fallback: "''"},
+			{name: "proxy_name", fallback: "''"},
+			{name: "proxy_config", fallback: "''"},
+			{name: "preferred_kernel", fallback: "''"},
+			{name: "dns_servers", fallback: "''"},
+			{name: "group_name", fallback: "''"},
+			{name: "source_id", fallback: "''"},
+			{name: "source_url", fallback: "''"},
+			{name: "source_name_prefix", fallback: "''"},
+			{name: "source_auto_refresh", fallback: "0"},
+			{name: "source_refresh_interval_m", fallback: "0"},
+			{name: "source_last_refresh_at", fallback: "''"},
+			{name: "last_latency_ms", fallback: "-1"},
+			{name: "last_test_ok", fallback: "0"},
+			{name: "last_tested_at", fallback: "''"},
+			{name: "last_ip_health_json", fallback: "''"},
+			{name: "sort_order", fallback: "0"},
+			{name: "created_at", fallback: "CURRENT_TIMESTAMP"},
+		},
+		`NOT EXISTS (
+  SELECT 1 FROM browser_proxies t
+  WHERE t.proxy_id = s.proxy_id OR lower(t.proxy_config) = lower(s.proxy_config)
+)`,
+	)
+}
+
+func backupBuildProfileMergeSQL(tx *sql.Tx) (string, string, error) {
+	return backupBuildTableMergeSQL(
+		tx,
+		"browser_profiles",
+		[]backupSourceColumnSpec{
+			{name: "profile_id", fallback: "''"},
+			{name: "profile_name", fallback: "''"},
+			{name: "user_data_dir", fallback: "''"},
+			{name: "core_id", fallback: "''"},
+			{name: "fingerprint_args", fallback: "'[]'"},
+			{name: "proxy_id", fallback: "''"},
+			{name: "proxy_config", fallback: "''"},
+			{name: "proxy_bind_source_id", fallback: "''"},
+			{name: "proxy_bind_source_url", fallback: "''"},
+			{name: "proxy_bind_name", fallback: "''"},
+			{name: "proxy_bind_updated_at", fallback: "''"},
+			{name: "memory_limit_mb", fallback: "0"},
+			{name: "launch_args", fallback: "'[]'"},
+			{name: "tags", fallback: "'[]'"},
+			{name: "keywords", fallback: "'[]'"},
+			{name: "group_id", fallback: "''"},
+			{name: "created_at", fallback: "CURRENT_TIMESTAMP"},
+			{name: "updated_at", fallback: "CURRENT_TIMESTAMP"},
+			{name: "restore_last_session", fallback: "''"},
+			{name: "deleted_at", fallback: "''"},
+		},
+		`NOT EXISTS (
+  SELECT 1 FROM browser_profiles t
+  WHERE t.profile_id = s.profile_id OR lower(t.user_data_dir) = lower(s.user_data_dir)
+)`,
+	)
+}
+
+func backupBuildTableMergeSQL(tx *sql.Tx, table string, specs []backupSourceColumnSpec, safeWhere string) (string, string, error) {
+	columns := make([]string, 0, len(specs))
+	expressions := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		columns = append(columns, spec.name)
+		expression, err := backupSourceColumnExpression(tx, table, "s", spec.name, spec.fallback)
+		if err != nil {
+			return "", "", err
+		}
+		expressions = append(expressions, expression)
+	}
+
+	insertPrefix := fmt.Sprintf(
+		"INSERT INTO %s (%s)\nSELECT %s\nFROM src.%s s",
+		table,
+		strings.Join(columns, ", "),
+		strings.Join(expressions, ", "),
+		table,
+	)
+	return insertPrefix, insertPrefix + "\nWHERE " + safeWhere, nil
+}
+
+func backupSourceColumnExpression(tx *sql.Tx, table, alias, column, fallback string) (string, error) {
+	exists, err := backupSrcColumnExists(tx, table, column)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return fallback, nil
+	}
+	return fmt.Sprintf("COALESCE(%s.%s,%s)", alias, column, fallback), nil
+}
+
+func backupListTargetIDs(tx *sql.Tx, table, column string) (map[string]struct{}, error) {
+	rows, err := tx.Query(fmt.Sprintf("SELECT %s FROM %s", column, table))
+	if err != nil {
+		return nil, fmt.Errorf("读取现有数据标识失败(%s): %w", table, err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]struct{})
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, fmt.Errorf("读取现有数据标识失败(%s): %w", table, err)
+		}
+		if key := strings.ToLower(strings.TrimSpace(value)); key != "" {
+			result[key] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("读取现有数据标识失败(%s): %w", table, err)
+	}
+	return result, nil
+}
+
+func (a *App) backupNormalizeImportedDatabasePaths(tx *sql.Tx, incomingCfg *config.Config, resetFirst bool, existingCoreIDs, existingProfileIDs map[string]struct{}) error {
+	if incomingCfg == nil {
+		return nil
+	}
+
+	corePaths := make(map[string]string)
+	for _, core := range incomingCfg.Browser.Cores {
+		id := strings.TrimSpace(core.CoreId)
+		path := strings.TrimSpace(core.CorePath)
+		if id != "" && path != "" {
+			corePaths[strings.ToLower(id)] = path
+		}
+	}
+	if len(corePaths) > 0 {
+		exists, err := backupSrcTableExists(tx, "browser_cores")
+		if err != nil {
+			return err
+		}
+		if exists {
+			for id, path := range corePaths {
+				if !resetFirst {
+					if _, alreadyExists := existingCoreIDs[id]; alreadyExists {
+						continue
+					}
+				}
+				if _, err := tx.Exec(`UPDATE browser_cores
+SET core_path = ?
+WHERE lower(core_id) = ?
+  AND EXISTS (SELECT 1 FROM src.browser_cores s WHERE lower(s.core_id) = ?)`, path, id, id); err != nil {
+					return fmt.Errorf("归一化内核路径失败(%s): %w", id, err)
+				}
+			}
+		}
+	}
+
+	profilePaths := make(map[string]string)
+	for _, profile := range incomingCfg.Browser.Profiles {
+		id := strings.TrimSpace(profile.ProfileId)
+		path := strings.TrimSpace(profile.UserDataDir)
+		if id != "" && path != "" {
+			profilePaths[strings.ToLower(id)] = path
+		}
+	}
+	if len(profilePaths) > 0 {
+		exists, err := backupSrcTableExists(tx, "browser_profiles")
+		if err != nil {
+			return err
+		}
+		if exists {
+			for id, path := range profilePaths {
+				if !resetFirst {
+					if _, alreadyExists := existingProfileIDs[id]; alreadyExists {
+						continue
+					}
+				}
+				if _, err := tx.Exec(`UPDATE browser_profiles
+SET user_data_dir = ?
+WHERE lower(profile_id) = ?
+  AND EXISTS (SELECT 1 FROM src.browser_profiles s WHERE lower(s.profile_id) = ?)`, path, id, id); err != nil {
+					return fmt.Errorf("归一化实例数据路径失败(%s): %w", id, err)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func qualifyBackupExpression(expression string, tableAlias string) string {

@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -68,6 +69,39 @@ func TestBackupStopRuntimeForMaintenanceKeepsSpeedScheduler(t *testing.T) {
 
 	if app.speedScheduler != scheduler {
 		t.Fatal("维护流程不应停止或置空测速调度器")
+	}
+}
+
+func TestBackupStopRuntimeForMaintenanceKeepsStateWhenTerminationFails(t *testing.T) {
+	oldTryClose := backupTryCloseBrowserViaCDP
+	oldTerminate := backupTerminateBrowserProcessesByUserDataDir
+	backupTryCloseBrowserViaCDP = func(int, time.Duration) bool { return false }
+	backupTerminateBrowserProcessesByUserDataDir = func(string, time.Duration) (bool, error) {
+		return false, errors.New("termination blocked")
+	}
+	t.Cleanup(func() {
+		backupTryCloseBrowserViaCDP = oldTryClose
+		backupTerminateBrowserProcessesByUserDataDir = oldTerminate
+	})
+
+	root := t.TempDir()
+	manager := browser.NewManager(config.DefaultConfig(), root)
+	profile := &browser.Profile{
+		ProfileId:   "profile-1",
+		UserDataDir: "profile-1",
+		Running:     true,
+		Pid:         1234,
+		DebugPort:   9222,
+	}
+	manager.Profiles[profile.ProfileId] = profile
+	app := NewApp(root)
+	app.browserMgr = manager
+
+	if err := app.backupStopRuntimeForMaintenance(); err == nil {
+		t.Fatal("runtime stop returned nil despite process termination failure")
+	}
+	if !profile.Running || profile.Pid != 1234 || profile.DebugPort != 9222 {
+		t.Fatalf("runtime state was cleared after stop failure: %+v", profile)
 	}
 }
 

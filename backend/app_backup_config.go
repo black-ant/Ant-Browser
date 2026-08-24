@@ -90,7 +90,7 @@ func (a *App) backupNormalizeImportedConfigPaths(incoming, current *config.Confi
 	if current != nil && strings.TrimSpace(current.Browser.UserDataRoot) != "" {
 		currentUserDataRoot = strings.TrimSpace(current.Browser.UserDataRoot)
 	}
-	normalized.Browser.UserDataRoot = a.backupNormalizePortablePath(
+	normalized.Browser.UserDataRoot = a.backupNormalizeImportedRootPath(
 		normalized.Browser.UserDataRoot,
 		currentUserDataRoot,
 	)
@@ -103,14 +103,15 @@ func (a *App) backupNormalizeImportedConfigPaths(incoming, current *config.Confi
 			}
 		}
 	}
-	normalized.Browser.CoreRoot = a.backupNormalizePortablePath(normalized.Browser.CoreRoot, "chrome")
+	normalized.Browser.CoreRoot = a.backupNormalizeImportedRootPath(normalized.Browser.CoreRoot, "chrome")
 	coreRoot := strings.TrimSpace(normalized.Browser.CoreRoot)
 	if coreRoot == "" {
 		coreRoot = "chrome"
 	}
 	for i := range normalized.Browser.Cores {
 		core := &normalized.Browser.Cores[i]
-		if !filepath.IsAbs(strings.TrimSpace(core.CorePath)) {
+		corePath := strings.TrimSpace(core.CorePath)
+		if corePath == "" {
 			continue
 		}
 		fallback := currentCores[strings.TrimSpace(core.CoreId)]
@@ -121,7 +122,7 @@ func (a *App) backupNormalizeImportedConfigPaths(incoming, current *config.Confi
 			}
 			fallback = filepath.Join(coreRoot, "external", coreID)
 		}
-		core.CorePath = a.backupNormalizePortablePath(core.CorePath, fallback)
+		core.CorePath = a.backupNormalizeImportedRuntimePath(corePath, fallback)
 	}
 	currentProfiles := make(map[string]string)
 	if current != nil {
@@ -133,21 +134,22 @@ func (a *App) backupNormalizeImportedConfigPaths(incoming, current *config.Confi
 	}
 	for i := range normalized.Browser.Profiles {
 		profile := &normalized.Browser.Profiles[i]
-		if !filepath.IsAbs(strings.TrimSpace(profile.UserDataDir)) {
+		profilePath := strings.TrimSpace(profile.UserDataDir)
+		if profilePath == "" {
 			continue
 		}
 		fallback := currentProfiles[strings.TrimSpace(profile.ProfileId)]
 		if fallback == "" {
-			base := filepath.Base(filepath.Clean(profile.UserDataDir))
-			if base == "." || base == string(filepath.Separator) || base == "" {
+			base := filepath.Base(filepath.Clean(filepath.FromSlash(strings.ReplaceAll(profilePath, "\\", "/"))))
+			if base == "." || base == ".." || base == string(filepath.Separator) || base == "" {
 				base = strings.TrimSpace(profile.ProfileId)
 			}
 			if base == "" {
 				base = fmt.Sprintf("profile-%02d", i+1)
 			}
-			fallback = filepath.Join(normalized.Browser.UserDataRoot, base)
+			fallback = base
 		}
-		profile.UserDataDir = a.backupNormalizePortablePath(profile.UserDataDir, fallback)
+		profile.UserDataDir = a.backupNormalizeImportedProfilePath(profilePath, normalized.Browser.UserDataRoot, fallback)
 	}
 
 	if current != nil {
@@ -168,12 +170,94 @@ func (a *App) backupNormalizeImportedConfigPaths(incoming, current *config.Confi
 	return &normalized
 }
 
+func (a *App) backupNormalizeImportedRootPath(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if filepath.IsAbs(value) {
+		return a.backupNormalizePortablePath(value, fallback)
+	}
+
+	clean := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(value, "\\", "/")))
+	if clean == "." || !a.backupPathWithinRuntimeRoots(a.resolveAppPath(clean)) {
+		return strings.TrimSpace(fallback)
+	}
+	return filepath.ToSlash(clean)
+}
+
+func (a *App) backupNormalizeImportedRuntimePath(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if filepath.IsAbs(value) {
+		return a.backupNormalizePortablePath(value, fallback)
+	}
+
+	clean := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(value, "\\", "/")))
+	if clean == "." || !a.backupPathWithinRuntimeRoots(a.resolveAppPath(clean)) {
+		return strings.TrimSpace(fallback)
+	}
+	return filepath.ToSlash(clean)
+}
+
 func (a *App) backupNormalizePortablePath(value, fallback string) string {
 	value = strings.TrimSpace(value)
 	if value == "" || !filepath.IsAbs(value) {
 		return value
 	}
-	if rel, err := filepath.Rel(filepath.Clean(a.appRoot), filepath.Clean(value)); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if rel, ok := a.backupRelativeRuntimePath(value); ok {
+		return rel
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func (a *App) backupPathWithinRuntimeRoots(path string) bool {
+	for _, root := range backupUniqueNonEmpty([]string{a.appStateRootAbs(), a.appRootAbs()}) {
+		if backupPathWithin(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) backupRelativeRuntimePath(path string) (string, bool) {
+	for _, root := range backupUniqueNonEmpty([]string{a.appStateRootAbs(), a.appRootAbs()}) {
+		rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return filepath.ToSlash(rel), true
+	}
+	return "", false
+}
+
+func (a *App) backupNormalizeImportedProfilePath(value, userDataRoot, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	value = filepath.Clean(filepath.FromSlash(strings.ReplaceAll(value, "\\", "/")))
+	if !filepath.IsAbs(value) && (value == ".." || strings.HasPrefix(value, ".."+string(filepath.Separator))) {
+		return strings.TrimSpace(fallback)
+	}
+
+	root := strings.TrimSpace(userDataRoot)
+	if root == "" {
+		root = "data"
+	}
+	rootAbs := a.resolveAppPath(root)
+	if !filepath.IsAbs(value) && !filepath.IsAbs(root) {
+		if rel, err := filepath.Rel(filepath.Clean(filepath.FromSlash(root)), value); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return filepath.ToSlash(rel)
+		}
+		return filepath.ToSlash(value)
+	}
+	if !filepath.IsAbs(value) {
+		return filepath.ToSlash(value)
+	}
+	if rel, err := filepath.Rel(filepath.Clean(rootAbs), filepath.Clean(value)); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return filepath.ToSlash(rel)
 	}
 	return strings.TrimSpace(fallback)

@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
+	"errors"
 	"os/exec"
 	"sort"
 	"strings"
@@ -35,7 +36,7 @@ func (a *App) backupRunningProfileNames() []string {
 	return names
 }
 
-func (a *App) backupStopRuntimeForMaintenance() {
+func (a *App) backupStopRuntimeForMaintenance() error {
 	// 维护期间只阻断浏览器内核与代理内核（VPN 网络），
 	// 不停止自动化任务与测速调度器等其它运行态服务。
 	type runtimeProfile struct {
@@ -46,6 +47,7 @@ func (a *App) backupStopRuntimeForMaintenance() {
 	profiles := make([]runtimeProfile, 0)
 	commands := make([]*exec.Cmd, 0)
 	seenCommands := make(map[*exec.Cmd]struct{})
+	var stopErrors []error
 	if a.browserMgr != nil {
 		a.browserMgr.Mutex.Lock()
 		profileIDs := make(map[string]struct{}, len(a.browserMgr.Profiles)+len(a.browserMgr.BrowserProcesses))
@@ -86,13 +88,32 @@ func (a *App) backupStopRuntimeForMaintenance() {
 		}
 	}
 	for _, cmd := range commands {
-		_ = a.stopProcessCmd(cmd)
+		if err := a.stopProcessCmd(cmd); err != nil {
+			stopErrors = append(stopErrors, err)
+		}
 	}
 	for _, profile := range profiles {
 		if profile.userDataDir != "" {
-			_, _ = backupTerminateBrowserProcessesByUserDataDir(profile.userDataDir, 5*time.Second)
+			if _, err := backupTerminateBrowserProcessesByUserDataDir(profile.userDataDir, 5*time.Second); err != nil {
+				stopErrors = append(stopErrors, err)
+			}
 		}
 	}
+
+	if err := errors.Join(stopErrors...); err != nil {
+		return err
+	}
+
+	if a.xrayMgr != nil {
+		a.xrayMgr.StopAll()
+	}
+	if a.clashMgr != nil {
+		a.clashMgr.StopAll()
+	}
+	if a.singboxMgr != nil {
+		a.singboxMgr.StopAll()
+	}
+	a.clearProfileProxyBridges()
 
 	if a.browserMgr != nil {
 		a.browserMgr.Mutex.Lock()
@@ -108,17 +129,7 @@ func (a *App) backupStopRuntimeForMaintenance() {
 		a.browserProcessMonitors = make(map[string]*browserProcessMonitor)
 		a.browserMgr.Mutex.Unlock()
 	}
-
-	if a.xrayMgr != nil {
-		a.xrayMgr.StopAll()
-	}
-	if a.clashMgr != nil {
-		a.clashMgr.StopAll()
-	}
-	if a.singboxMgr != nil {
-		a.singboxMgr.StopAll()
-	}
-	a.clearProfileProxyBridges()
+	return nil
 }
 
 func (a *App) backupReloadAfterMutation() error {

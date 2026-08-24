@@ -32,6 +32,7 @@ type ScopeEntry struct {
 	Category    Category  `json:"category"`
 	EntryType   EntryType `json:"entryType"`
 	Required    bool      `json:"required"`
+	CoreId      string    `json:"coreId,omitempty"`
 	SourcePath  string    `json:"sourcePath"`
 	ArchivePath string    `json:"archivePath"`
 	Exists      bool      `json:"exists"`
@@ -66,6 +67,7 @@ type ManifestEntry struct {
 	Category    Category  `json:"category"`
 	EntryType   EntryType `json:"entryType"`
 	Required    bool      `json:"required"`
+	CoreId      string    `json:"coreId,omitempty"`
 	ArchivePath string    `json:"archivePath"`
 	FileCount   int       `json:"fileCount,omitempty"`
 	ByteSize    int64     `json:"byteSize,omitempty"`

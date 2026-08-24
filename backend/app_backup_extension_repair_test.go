@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/backup"
 	"ant-chrome/backend/internal/database"
 	"crypto/sha256"
 	"encoding/hex"
@@ -33,7 +34,7 @@ func TestBackupRepairExtensionPathsAfterImportRelocatesManagedArtifacts(t *testi
 	payloadRoot := writeBackupExtensionPayload(t, t.TempDir(), backupTestExtensionID, packageData, true, oldBackupPath)
 
 	stats := &backupMergeStats{}
-	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	app.backupImportFileTrees(payloadRoot, nil, backup.Manifest{}, false, stats, nil)
 	if _, err := app.backupRepairExtensionPathsAfterImport(); err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned error: %v", err)
 	}
@@ -81,7 +82,7 @@ func TestBackupRepairExtensionPathsClearsMissingManagedPackage(t *testing.T) {
 	writeBackupExtensionPayload(t, payloadRoot, backupTestExtensionID, nil, false, "")
 
 	stats := &backupMergeStats{}
-	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	app.backupImportFileTrees(payloadRoot, nil, backup.Manifest{}, false, stats, nil)
 	if _, err := app.backupRepairExtensionPathsAfterImport(); err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned error: %v", err)
 	}
@@ -107,7 +108,7 @@ func TestBackupRepairExtensionPathsClearsMissingManagedDirectory(t *testing.T) {
 
 	insertBackupTestExtension(t, app, backupTestExtensionID, oldInstallDir, "", "")
 	stats := &backupMergeStats{}
-	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	app.backupImportFileTrees(payloadRoot, nil, backup.Manifest{}, false, stats, nil)
 	if _, err := app.backupRepairExtensionPathsAfterImport(); err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned error: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestBackupRepairExtensionPathsRollsBackAllUpdatesOnFailure(t *testing.T) {
 	}
 
 	stats := &backupMergeStats{}
-	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	app.backupImportFileTrees(payloadRoot, nil, backup.Manifest{}, false, stats, nil)
 	if _, err := app.backupRepairExtensionPathsAfterImport(); err == nil {
 		t.Fatal("backupRepairExtensionPathsAfterImport returned nil, want forced failure")
 	}
@@ -166,7 +167,7 @@ func TestBackupRepairExtensionPathsInvalidIDDoesNotBlockOthers(t *testing.T) {
 	writeBackupExtensionPayload(t, payloadRoot, backupTestExtensionID, nil, false, "")
 
 	stats := &backupMergeStats{}
-	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	app.backupImportFileTrees(payloadRoot, nil, backup.Manifest{}, false, stats, nil)
 	issues, err := app.backupRepairExtensionPathsAfterImport()
 	if err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned hard error: %v", err)
@@ -200,7 +201,7 @@ func TestBackupRepairExtensionPathsReportsCorruptManifest(t *testing.T) {
 	}
 
 	stats := &backupMergeStats{}
-	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	app.backupImportFileTrees(payloadRoot, nil, backup.Manifest{}, false, stats, nil)
 	issues, err := app.backupRepairExtensionPathsAfterImport()
 	if err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned hard error: %v", err)
@@ -227,7 +228,7 @@ func TestBackupRepairExtensionPathsReportsCorruptCRX(t *testing.T) {
 	writeBackupExtensionPayload(t, payloadRoot, backupTestExtensionID, []byte("not-a-crx"), true, "")
 
 	stats := &backupMergeStats{}
-	app.backupImportFileTrees(payloadRoot, nil, false, stats, nil)
+	app.backupImportFileTrees(payloadRoot, nil, backup.Manifest{}, false, stats, nil)
 	issues, err := app.backupRepairExtensionPathsAfterImport()
 	if err != nil {
 		t.Fatalf("backupRepairExtensionPathsAfterImport returned hard error: %v", err)
