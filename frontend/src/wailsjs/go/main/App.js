@@ -126,6 +126,30 @@ export function BackupInitializeSystem() {
   return window['go']['main']['App']['BackupInitializeSystem']();
 }
 
+export function BackupScheduledGetSettings() {
+  return window['go']['main']['App']['BackupScheduledGetSettings']();
+}
+
+export function BackupScheduledSaveSettings(arg1) {
+  return window['go']['main']['App']['BackupScheduledSaveSettings'](arg1);
+}
+
+export function BackupOpenListList(arg1) {
+  return window['go']['main']['App']['BackupOpenListList'](arg1);
+}
+
+export function BackupOpenListRestore(arg1, arg2, arg3) {
+  return window['go']['main']['App']['BackupOpenListRestore'](arg1, arg2, arg3);
+}
+
+export function BackupOpenListTest(arg1) {
+  return window['go']['main']['App']['BackupOpenListTest'](arg1);
+}
+
+export function BackupOpenListUpload(arg1) {
+  return window['go']['main']['App']['BackupOpenListUpload'](arg1);
+}
+
 export function BookmarkList() {
   return window['go']['main']['App']['BookmarkList']();
 }

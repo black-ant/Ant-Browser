@@ -24,9 +24,16 @@ import type { AutomationNodeSource, AutomationRuntimeCheck, AutomationState, Aut
 import { defaultSettings } from './types'
 import { AutomationSettingsCard } from './components/AutomationSettingsCard'
 import { BackupImportModal, BackupSettingsCard } from './components/BackupSettingsCard'
+import { OpenListBackupModal } from './components/OpenListBackupModal'
+import { ScheduledBackupModal } from './components/ScheduledBackupModal'
 import { SettingsAdvancedCard, SettingsBasicFeatureCards } from './components/SettingsGeneralCards'
 import type { AutomationRuntimeProgress, BackupExportLogItem, BackupExportProgress } from './progress'
 import { useSettingsProgressEffects } from './hooks/useSettingsProgressEffects'
+import {
+  defaultScheduledBackupSettings,
+  fetchScheduledBackupSettings,
+} from './openListApi'
+import type { ScheduledBackupSettings } from './openListApi'
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
@@ -46,6 +53,12 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [openListModalOpen, setOpenListModalOpen] = useState(false)
+  const [openListModalMode, setOpenListModalMode] = useState<'backup' | 'history'>('backup')
+  const [remoteBackupBusy, setRemoteBackupBusy] = useState(false)
+  const [scheduledBackupModalOpen, setScheduledBackupModalOpen] = useState(false)
+  const [scheduledBackupBusy, setScheduledBackupBusy] = useState(false)
+  const [scheduledBackup, setScheduledBackup] = useState<ScheduledBackupSettings>(defaultScheduledBackupSettings)
   const [actionLoading, setActionLoading] = useState<'none' | 'init' | 'export' | 'import-reset' | 'import-merge'>('none')
   const [exportProgress, setExportProgress] = useState<BackupExportProgress | null>(null)
   const [importProgress, setImportProgress] = useState<BackupExportProgress | null>(null)
@@ -54,6 +67,13 @@ export function SettingsPage() {
 
   useEffect(() => {
     loadSettings()
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void fetchScheduledBackupSettings().then(setScheduledBackup).catch(() => {})
+    }, 30_000)
+    return () => window.clearInterval(timer)
   }, [])
 
   useSettingsProgressEffects({
@@ -78,16 +98,18 @@ export function SettingsPage() {
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const [data, automation, launchServer] = await Promise.all([
+      const [data, automation, launchServer, scheduled] = await Promise.all([
         fetchSettings(),
         fetchAutomationState(),
         fetchLaunchServerSettings(),
+        fetchScheduledBackupSettings(),
       ])
       setSettings(data)
       setAutomationState(automation)
       setLaunchServerPortDraft(String(launchServer.preferredPort || launchServer.port || 19876))
       setLaunchServerBaseUrl(launchServer.baseUrl)
       setLaunchServerReady(launchServer.ready)
+      setScheduledBackup(scheduled)
     } finally {
       setLoading(false)
     }
@@ -421,6 +443,17 @@ export function SettingsPage() {
           setImportProgress(null)
           setImportModalOpen(true)
         }}
+        onOpenOpenListBackup={() => {
+          setOpenListModalMode('backup')
+          setOpenListModalOpen(true)
+        }}
+        onOpenOpenListHistory={() => {
+          setOpenListModalMode('history')
+          setOpenListModalOpen(true)
+        }}
+        onOpenScheduledBackup={() => setScheduledBackupModalOpen(true)}
+        scheduledBackup={scheduledBackup}
+        remoteBusy={remoteBackupBusy || scheduledBackupBusy}
       />
 
       {/* 主题设置 */}
@@ -476,6 +509,20 @@ export function SettingsPage() {
           setImportProgress(null)
         }}
         onImport={(resetFirst) => { void handleImportSystem(resetFirst) }}
+      />
+
+      <OpenListBackupModal
+        open={openListModalOpen}
+        mode={openListModalMode}
+        onClose={() => setOpenListModalOpen(false)}
+        onBusyChange={setRemoteBackupBusy}
+      />
+
+      <ScheduledBackupModal
+        open={scheduledBackupModalOpen}
+        onClose={() => setScheduledBackupModalOpen(false)}
+        onSaved={setScheduledBackup}
+        onBusyChange={setScheduledBackupBusy}
       />
 
     </div>

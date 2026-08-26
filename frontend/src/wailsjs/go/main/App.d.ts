@@ -72,6 +72,18 @@ export function BackupImportPackage(arg1:boolean):Promise<Record<string, any>>;
 
 export function BackupInitializeSystem():Promise<Record<string, any>>;
 
+export function BackupScheduledGetSettings():Promise<Record<string, any>>;
+
+export function BackupScheduledSaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
+
+export function BackupOpenListList(arg1:Record<string, string>):Promise<Array<Record<string, any>>>;
+
+export function BackupOpenListRestore(arg1:Record<string, string>,arg2:string,arg3:boolean):Promise<Record<string, any>>;
+
+export function BackupOpenListTest(arg1:Record<string, string>):Promise<Record<string, any>>;
+
+export function BackupOpenListUpload(arg1:Record<string, string>):Promise<Record<string, any>>;
+
 export function BookmarkList():Promise<Array<config.BrowserBookmark>>;
 
 export function BookmarkReset():Promise<void>;

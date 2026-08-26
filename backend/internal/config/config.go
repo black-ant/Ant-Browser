@@ -51,6 +51,7 @@ type Config struct {
 	ProxyCheck   ProxyCheckConfig   `yaml:"proxy_check"`
 	LaunchServer LaunchServerConfig `yaml:"launch_server"`
 	Automation   AutomationConfig   `yaml:"automation"`
+	Backup       BackupConfig       `yaml:"backup"`
 }
 
 type ProxyCheckConfig struct {
@@ -77,6 +78,22 @@ type DatabaseConfig struct {
 
 type SQLiteConfig struct {
 	Path string `yaml:"path"`
+}
+
+type BackupConfig struct {
+	OpenList OpenListBackupConfig `yaml:"openlist"`
+	Schedule BackupScheduleConfig `yaml:"schedule"`
+}
+
+type OpenListBackupConfig struct {
+	BaseURL    string `yaml:"base_url,omitempty"`
+	RemotePath string `yaml:"remote_path,omitempty"`
+	Username   string `yaml:"username,omitempty"`
+}
+
+type BackupScheduleConfig struct {
+	Enabled   bool   `yaml:"enabled"`
+	DailyTime string `yaml:"daily_time"`
 }
 
 type AppConfig struct {

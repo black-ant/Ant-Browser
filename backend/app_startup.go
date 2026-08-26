@@ -55,6 +55,7 @@ func (a *App) startup(ctx context.Context) {
 	a.startupInitAutomation()
 	a.startupInitBridgeHooks()
 	a.startupInitSpeedScheduler()
+	a.startupInitBackupScheduler()
 
 	log.Info("应用启动成功")
 }

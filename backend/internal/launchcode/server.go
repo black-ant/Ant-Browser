@@ -104,29 +104,33 @@ type LaunchCallRecord struct {
 
 // LaunchServer 本地 HTTP 唤起服务
 type LaunchServer struct {
-	service    *LaunchCodeService
-	starter    BrowserStarter
-	browserMgr *browser.Manager
-	port       int
-	server     *http.Server
-	mu         sync.Mutex
-	authMu     sync.RWMutex
-	logMu      sync.Mutex
-	callLogs   []LaunchCallRecord
-	activeMu   sync.RWMutex
-	activePort int
-	activeID   string
-	activeName string
-	apiAuth    APIAuthConfig
+	service     *LaunchCodeService
+	starter     BrowserStarter
+	browserMgr  *browser.Manager
+	port        int
+	server      *http.Server
+	mu          sync.Mutex
+	authMu      sync.RWMutex
+	logMu       sync.Mutex
+	callLogs    []LaunchCallRecord
+	taskMu      sync.Mutex
+	activeTasks map[string]*launchTaskState
+	nextTaskID  uint64
+	activeMu    sync.RWMutex
+	activePort  int
+	activeID    string
+	activeName  string
+	apiAuth     APIAuthConfig
 }
 
 // NewLaunchServer 创建 LaunchServer
 func NewLaunchServer(service *LaunchCodeService, starter BrowserStarter, mgr *browser.Manager, port int) *LaunchServer {
 	srv := &LaunchServer{
-		service:    service,
-		starter:    starter,
-		browserMgr: mgr,
-		port:       port,
+		service:     service,
+		starter:     starter,
+		browserMgr:  mgr,
+		port:        port,
+		activeTasks: make(map[string]*launchTaskState),
 	}
 	srv.SetAPIAuthConfig(APIAuthConfig{})
 	return srv

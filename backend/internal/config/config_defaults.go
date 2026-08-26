@@ -172,6 +172,21 @@ func normalizeConfig(config *Config) {
 		config.LaunchServer.Auth.Header = defaultConfig.LaunchServer.Auth.Header
 	}
 
+	if strings.TrimSpace(config.Backup.OpenList.BaseURL) != "" {
+		config.Backup.OpenList.BaseURL = strings.TrimSpace(config.Backup.OpenList.BaseURL)
+	}
+	if strings.TrimSpace(config.Backup.OpenList.RemotePath) == "" {
+		config.Backup.OpenList.RemotePath = defaultConfig.Backup.OpenList.RemotePath
+	} else {
+		config.Backup.OpenList.RemotePath = strings.TrimSpace(config.Backup.OpenList.RemotePath)
+	}
+	config.Backup.OpenList.Username = strings.TrimSpace(config.Backup.OpenList.Username)
+	if strings.TrimSpace(config.Backup.Schedule.DailyTime) == "" {
+		config.Backup.Schedule.DailyTime = defaultConfig.Backup.Schedule.DailyTime
+	} else {
+		config.Backup.Schedule.DailyTime = strings.TrimSpace(config.Backup.Schedule.DailyTime)
+	}
+
 	automationUnset := !config.Automation.Enabled &&
 		!config.Automation.HeadlessDefault &&
 		!config.Automation.KeepRuntimeOnDisable &&
@@ -314,6 +329,15 @@ func DefaultConfig() *Config {
 			SystemNodePath:        "",
 			NodeVersion:           DefaultAutomationNodeVersion,
 			PlaywrightCoreVersion: DefaultAutomationPWVersion,
+		},
+		Backup: BackupConfig{
+			OpenList: OpenListBackupConfig{
+				RemotePath: "ant-chrome/backups",
+			},
+			Schedule: BackupScheduleConfig{
+				Enabled:   false,
+				DailyTime: "02:00",
+			},
 		},
 	}
 }

@@ -1,9 +1,10 @@
 import type { RefObject } from 'react'
-import { AlertTriangle, CheckCircle2, Download, RotateCcw, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Download, History, RotateCcw, Upload } from 'lucide-react'
 
 import { Button, Card, Modal, Progress } from '../../../shared/components'
 
 import type { BackupExportLogItem, BackupExportProgress } from '../progress'
+import type { ScheduledBackupSettings } from '../openListApi'
 
 type BackupActionLoading = 'none' | 'init' | 'export' | 'import-reset' | 'import-merge'
 
@@ -22,6 +23,11 @@ interface BackupSettingsCardProps {
   onInitialize: () => void
   onExport: () => void
   onOpenImport: () => void
+  onOpenOpenListBackup: () => void
+  onOpenOpenListHistory: () => void
+  onOpenScheduledBackup: () => void
+  scheduledBackup: ScheduledBackupSettings
+  remoteBusy: boolean
 }
 
 interface BackupImportModalProps {
@@ -106,7 +112,22 @@ export function BackupSettingsCard({
   onInitialize,
   onExport,
   onOpenImport,
+  onOpenOpenListBackup,
+  onOpenOpenListHistory,
+  onOpenScheduledBackup,
+  scheduledBackup,
+  remoteBusy,
 }: BackupSettingsCardProps) {
+  const scheduleStatus = scheduledBackup.status === 'success'
+    ? scheduledBackup.lastSuccessAt ? `上次成功：${new Date(scheduledBackup.lastSuccessAt).toLocaleString('zh-CN', { hour12: false })}` : '最近一次成功'
+    : scheduledBackup.status === 'running'
+      ? '执行中'
+      : scheduledBackup.status === 'skipped'
+        ? '上次跳过：实例仍在运行'
+        : scheduledBackup.status === 'failed'
+          ? scheduledBackup.lastError || '上次失败'
+          : '尚未执行'
+
   return (
     <Card title="全局备份与恢复" subtitle="管理应用配置、数据库和浏览器数据">
       <div className="space-y-3">
@@ -123,7 +144,7 @@ export function BackupSettingsCard({
             size="sm"
             onClick={onInitialize}
             loading={actionLoading === 'init'}
-            disabled={actionLoading !== 'none' && actionLoading !== 'init'}
+            disabled={remoteBusy || (actionLoading !== 'none' && actionLoading !== 'init')}
           >
             <RotateCcw className="w-4 h-4" />
             初始化系统
@@ -133,15 +154,40 @@ export function BackupSettingsCard({
             size="sm"
             onClick={onExport}
             loading={actionLoading === 'export'}
-            disabled={actionLoading !== 'none' && actionLoading !== 'export'}
+            disabled={remoteBusy || (actionLoading !== 'none' && actionLoading !== 'export')}
           >
             <Download className="w-4 h-4" />
             导出全量备份
           </Button>
-          <Button size="sm" onClick={onOpenImport} disabled={actionLoading !== 'none'}>
+          <Button size="sm" onClick={onOpenImport} disabled={remoteBusy || actionLoading !== 'none'}>
             <Upload className="w-4 h-4" />
             导入备份
           </Button>
+          <Button size='sm' variant='secondary' onClick={onOpenOpenListBackup} disabled={remoteBusy || actionLoading !== 'none'}>
+            <Upload className='w-4 h-4' />
+            备份到 OpenList
+          </Button>
+          <Button size='sm' variant='ghost' onClick={onOpenOpenListHistory} disabled={remoteBusy || actionLoading !== 'none'}>
+            <History className='w-4 h-4' />
+            OpenList 历史
+          </Button>
+          <Button size='sm' variant='ghost' onClick={onOpenScheduledBackup} disabled={remoteBusy || actionLoading !== 'none'}>
+            <Clock3 className='w-4 h-4' />
+            定时备份
+          </Button>
+        </div>
+        <div className='flex items-center justify-between gap-3 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-secondary)] px-3 py-2 text-xs'>
+          <div className='min-w-0'>
+            <div className='font-medium text-[var(--color-text-secondary)]'>
+              {scheduledBackup.enabled ? `每日 ${scheduledBackup.dailyTime} 自动上传` : '定时备份未启用'}
+            </div>
+            <div className={`mt-1 truncate ${scheduledBackup.status === 'failed' ? 'text-[var(--color-error)]' : scheduledBackup.status === 'success' ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]'}`} title={scheduleStatus}>
+              {scheduleStatus}
+            </div>
+          </div>
+          {scheduledBackup.enabled && scheduledBackup.username && !scheduledBackup.passwordConfigured && (
+            <span className='shrink-0 text-[var(--color-warning)]'>待输入密码</span>
+          )}
         </div>
         {exportProgress && (
           <BackupProgressPanel

@@ -11,6 +11,7 @@ import (
 func (a *App) shutdown(ctx context.Context) {
 	log := logger.New("App")
 	a.stopRuntimeEvents()
+	a.stopBackupScheduler()
 	if a.shouldStopRuntimeServicesOnShutdown() {
 		log.Info("应用正在关闭...")
 		a.stopRuntimeServices()
