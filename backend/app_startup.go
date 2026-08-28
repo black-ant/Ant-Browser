@@ -30,6 +30,9 @@ func (a *App) startup(ctx context.Context) {
 
 	log := a.startupInitLogger(ctx, cfg)
 	a.startupLogEnvironment(log, cfg)
+	if err := a.prepareBackupLocalConfig(); err != nil {
+		log.Error("本地备份配置初始化失败", logger.F("error", err))
+	}
 
 	if err := os.MkdirAll(a.resolveAppPath("data"), 0o755); err != nil {
 		log.Error("创建 data 目录失败", logger.F("error", err))

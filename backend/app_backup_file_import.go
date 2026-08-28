@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Config, manifest backup.Manifest, resetFirst bool, stats *backupMergeStats, onIssue func(componentID, componentName string, err error)) {
+func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Config, manifest backup.Manifest, stats *backupMergeStats, onIssue func(componentID, componentName string, err error)) {
 	report := func(componentID, componentName string, err error) {
 		if onIssue != nil && err != nil {
 			onIssue(componentID, componentName, err)
@@ -19,69 +19,25 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 
 	appDataSrc := filepath.Join(payloadRoot, "app", "data")
 	appDataDst := a.resolveAppPath("data")
-	dbPath := a.backupResolveDBPath(a.config)
-	keepDB := map[string]struct{}{
-		backupNormalizePath(dbPath):          {},
-		backupNormalizePath(dbPath + "-wal"): {},
-		backupNormalizePath(dbPath + "-shm"): {},
-	}
-
 	if backupPathExists(appDataSrc) {
-		if resetFirst {
-			if err := backupRemoveContentsExcept(appDataDst, keepDB); err != nil {
-				report("app_data_root", "应用数据目录（含数据库、快照及默认浏览器数据）", err)
-			} else if err := backupSyncDir(appDataSrc, appDataDst, true, stats, backupShouldSkipAppDBFile); err != nil {
-				report("app_data_root", "应用数据目录（含数据库、快照及默认浏览器数据）", err)
-			}
-		} else {
-			if err := backupSyncDir(appDataSrc, appDataDst, false, stats, backupShouldSkipAppDBFile); err != nil {
-				report("app_data_root", "应用数据目录（含数据库、快照及默认浏览器数据）", err)
-			}
+		if err := backupSyncDir(appDataSrc, appDataDst, stats, backupShouldSkipAppDBFile); err != nil {
+			report("app_data_root", "应用数据目录（含数据库、快照及默认浏览器数据）", err)
 		}
 	}
 
 	userDataSrc := filepath.Join(payloadRoot, "browser", "user-data")
 	userDataDst := a.backupResolveUserDataRoot(a.config)
 	if backupPathExists(userDataSrc) {
-		userDataOverlapsAppData := backupSamePath(userDataDst, appDataDst) ||
-			backupPathWithin(userDataDst, appDataDst) ||
-			backupPathWithin(appDataDst, userDataDst)
-		if resetFirst {
-			if !userDataOverlapsAppData {
-				if err := os.RemoveAll(userDataDst); err != nil {
-					report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
-				} else if err := os.MkdirAll(userDataDst, 0755); err != nil {
-					report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
-				} else if err := backupSyncDir(userDataSrc, userDataDst, true, stats, backupShouldSkipAppDBFile); err != nil {
-					report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
-				}
-			} else if err := os.MkdirAll(userDataDst, 0755); err != nil {
-				report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
-			} else if err := backupSyncDir(userDataSrc, userDataDst, true, stats, backupShouldSkipAppDBFile); err != nil {
-				report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
-			}
-		} else {
-			if err := backupSyncDir(userDataSrc, userDataDst, false, stats, nil); err != nil {
-				report("browser_user_data_root", "浏览器用户数据根目录（若与 data 重合则自动去重）", err)
-			}
+		if err := backupSyncDir(userDataSrc, userDataDst, stats, nil); err != nil {
+			report("browser_user_data_root", "浏览器用户数据根目录", err)
 		}
 	}
 
 	chromeSrc := filepath.Join(payloadRoot, "browser", "cores", "chrome")
 	chromeDst := a.resolveAppPath("chrome")
 	if backupPathExists(chromeSrc) {
-		if resetFirst {
-			if err := os.RemoveAll(chromeDst); err != nil {
-				report("browser_core_root", "默认内核目录", err)
-			} else if err := os.MkdirAll(chromeDst, 0755); err != nil {
-				report("browser_core_root", "默认内核目录", err)
-			} else if err := backupSyncDir(chromeSrc, chromeDst, true, stats, nil); err != nil {
-				report("browser_core_root", "默认内核目录", err)
-			}
-		} else {
-			if err := backupSyncDir(chromeSrc, chromeDst, false, stats, nil); err != nil {
-				report("browser_core_root", "默认内核目录", err)
-			}
+		if err := backupSyncDir(chromeSrc, chromeDst, stats, nil); err != nil {
+			report("browser_core_root", "默认内核目录", err)
 		}
 	}
 
@@ -123,24 +79,9 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 				report(componentID, "额外内核目录（来自配置 cores）", fmt.Errorf("目标配置缺失，无法导入该外部内核目录"))
 				continue
 			}
-			if resetFirst {
-				if err := os.RemoveAll(dst); err != nil {
-					report(componentID, "额外内核目录（来自配置 cores）", err)
-					continue
-				}
-				if err := os.MkdirAll(dst, 0755); err != nil {
-					report(componentID, "额外内核目录（来自配置 cores）", err)
-					continue
-				}
-				if err := backupSyncDir(src, dst, true, stats, nil); err != nil {
-					report(componentID, "额外内核目录（来自配置 cores）", err)
-					continue
-				}
-			} else {
-				if err := backupSyncDir(src, dst, false, stats, nil); err != nil {
-					report(componentID, "额外内核目录（来自配置 cores）", err)
-					continue
-				}
+			if err := backupSyncDir(src, dst, stats, nil); err != nil {
+				report(componentID, "额外内核目录（来自配置 cores）", err)
+				continue
 			}
 		}
 	}

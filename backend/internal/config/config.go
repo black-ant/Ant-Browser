@@ -1,5 +1,11 @@
 package config
 
+import (
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
 const (
 	DefaultLaunchServerPort         = 19876
 	DefaultLaunchServerAPIKeyHeader = "X-Ant-Api-Key"
@@ -81,14 +87,47 @@ type SQLiteConfig struct {
 }
 
 type BackupConfig struct {
-	OpenList OpenListBackupConfig `yaml:"openlist"`
+	Channels BackupChannelsConfig `yaml:"channels"`
 	Schedule BackupScheduleConfig `yaml:"schedule"`
 }
 
-type OpenListBackupConfig struct {
-	BaseURL    string `yaml:"base_url,omitempty"`
-	RemotePath string `yaml:"remote_path,omitempty"`
-	Username   string `yaml:"username,omitempty"`
+type BackupChannelsConfig struct {
+	OpenList OpenListChannelConfig `yaml:"openlist"`
+}
+
+type OpenListChannelConfig struct {
+	BaseURL             string `yaml:"base_url,omitempty"`
+	RemotePath          string `yaml:"remote_path,omitempty"`
+	Token               string `yaml:"token,omitempty"`
+	UploadRateLimitMBps int    `yaml:"upload_rate_limit_mbps,omitempty"`
+}
+
+func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
+	var decoded struct {
+		Channels BackupChannelsConfig  `yaml:"channels"`
+		OpenList OpenListChannelConfig `yaml:"openlist"`
+		Schedule BackupScheduleConfig  `yaml:"schedule"`
+	}
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+
+	openList := decoded.Channels.OpenList
+	if strings.TrimSpace(openList.BaseURL) == "" {
+		openList.BaseURL = decoded.OpenList.BaseURL
+	}
+	if strings.TrimSpace(openList.RemotePath) == "" {
+		openList.RemotePath = decoded.OpenList.RemotePath
+	}
+	if strings.TrimSpace(openList.Token) == "" {
+		openList.Token = decoded.OpenList.Token
+	}
+	if openList.UploadRateLimitMBps == 0 {
+		openList.UploadRateLimitMBps = decoded.OpenList.UploadRateLimitMBps
+	}
+	c.Channels = BackupChannelsConfig{OpenList: openList}
+	c.Schedule = decoded.Schedule
+	return nil
 }
 
 type BackupScheduleConfig struct {

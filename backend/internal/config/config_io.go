@@ -30,7 +30,9 @@ func Load(configPath string) (*Config, error) {
 
 // Save 保存配置到文件
 func (c *Config) Save(configPath string) error {
-	data, err := yaml.Marshal(c)
+	safeConfig := *c
+	safeConfig.Backup = sanitizeBackupConfig(c.Backup)
+	data, err := yaml.Marshal(&safeConfig)
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
@@ -43,6 +45,11 @@ func (c *Config) Save(configPath string) error {
 	}
 
 	return nil
+}
+
+func sanitizeBackupConfig(value BackupConfig) BackupConfig {
+	value.Channels.OpenList.Token = ""
+	return value
 }
 
 // ProxyStore 代理数据文件结构

@@ -21,47 +21,72 @@ func TestBackupScheduleMatchesTime(t *testing.T) {
 	}
 }
 
-func TestBackupScheduledSaveSettingsDoesNotPersistPassword(t *testing.T) {
+func TestBackupScheduledSaveSettingsStoresTokenLocally(t *testing.T) {
 	appRoot := t.TempDir()
 	app := NewApp(appRoot)
 	app.config = config.DefaultConfig()
 	scheduler := newBackupScheduler(app)
 
-	result, err := scheduler.save(map[string]string{
-		"enabled":    "true",
-		"dailyTime":  "03:15",
+	result, err := scheduler.saveOpenList(map[string]string{
 		"baseURL":    "http://127.0.0.1:5244/dav",
 		"remotePath": "ant-chrome/backups",
-		"username":   "user",
-		"password":   "secret-password",
+		"token":      "secret-token",
 	})
 	if err != nil {
 		t.Fatalf("save returned error: %v", err)
 	}
-	if configured, ok := result["passwordConfigured"].(bool); !ok || !configured {
-		t.Fatalf("passwordConfigured = %#v, want true", result["passwordConfigured"])
+	if configured, ok := result["tokenConfigured"].(bool); !ok || !configured {
+		t.Fatalf("tokenConfigured = %#v, want true", result["tokenConfigured"])
 	}
-	if _, ok := result["password"]; ok {
-		t.Fatal("scheduled settings response must not include password")
+	if _, ok := result["token"]; ok {
+		t.Fatal("scheduled settings response must not include token")
 	}
-
-	data, err := os.ReadFile(filepath.Join(appRoot, "config.yaml"))
+	result, err = scheduler.saveSchedule(map[string]string{
+		"enabled":   "true",
+		"dailyTime": "03:15",
+	})
 	if err != nil {
-		t.Fatalf("read config: %v", err)
-	}
-	if string(data) == "" || containsString(string(data), "secret-password") {
-		t.Fatal("OpenList password must not be written to config.yaml")
+		t.Fatalf("schedule save returned error: %v", err)
 	}
 
-	if _, err := scheduler.save(map[string]string{
-		"enabled":    "true",
-		"dailyTime":  "03:15",
-		"baseURL":    "http://127.0.0.1:5244/dav",
-		"remotePath": "ant-chrome/backups",
-		"username":   "another-user",
-		"password":   "",
-	}); err == nil {
-		t.Fatal("changing the username without a new password must be rejected")
+	localData, err := os.ReadFile(filepath.Join(appRoot, backupLocalConfigFileName))
+	if err != nil {
+		t.Fatalf("read local backup config: %v", err)
+	}
+	if string(localData) == "" || !containsString(string(localData), "secret-token") {
+		t.Fatal("OpenList token must be written to the local backup config")
+	}
+	if containsString(string(localData), "127.0.0.1:5244") || containsString(string(localData), "03:15") {
+		t.Fatal("local backup config must only contain the OpenList token")
+	}
+
+	configData, err := os.ReadFile(filepath.Join(appRoot, "config.yaml"))
+	if err == nil {
+		if !containsString(string(configData), "127.0.0.1:5244") {
+			t.Fatal("OpenList address must be written to config.yaml")
+		}
+		if containsString(string(configData), "secret-token") {
+			t.Fatal("OpenList token must not be written to config.yaml")
+		}
+	}
+
+	persistedConfig, err := config.Load(filepath.Join(appRoot, "config.yaml"))
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	reloadedScheduler := newBackupScheduler(&App{appRoot: appRoot, config: persistedConfig})
+	if err := reloadedScheduler.loadLocalConfig(); err != nil {
+		t.Fatalf("reload local backup config: %v", err)
+	}
+	if reloadedScheduler.settings.Channels.OpenList.Token != "secret-token" {
+		t.Fatalf("reloaded token = %q, want persisted token", reloadedScheduler.settings.Channels.OpenList.Token)
+	}
+
+	if _, err := scheduler.saveSchedule(map[string]string{
+		"enabled":   "true",
+		"dailyTime": "03:15",
+	}); err != nil {
+		t.Fatalf("saving with an empty token should reuse the stored token: %v", err)
 	}
 }
 
@@ -72,11 +97,38 @@ func TestBackupScheduledSettingsDefaults(t *testing.T) {
 	if settings["dailyTime"] != "02:00" {
 		t.Fatalf("dailyTime = %#v, want 02:00", settings["dailyTime"])
 	}
-	if settings["remotePath"] != "ant-chrome/backups" {
-		t.Fatalf("remotePath = %#v, want default path", settings["remotePath"])
+	if settings["tokenConfigured"] != false {
+		t.Fatalf("tokenConfigured = %#v, want false", settings["tokenConfigured"])
 	}
-	if settings["passwordConfigured"] != false {
-		t.Fatalf("passwordConfigured = %#v, want false", settings["passwordConfigured"])
+	if _, ok := settings["baseURL"]; ok {
+		t.Fatal("scheduled settings must not include OpenList base URL")
+	}
+	if _, ok := settings["remotePath"]; ok {
+		t.Fatal("scheduled settings must not include OpenList remote path")
+	}
+}
+
+func TestOpenListRemotePathCanBeClearedToUseRoot(t *testing.T) {
+	next := config.DefaultConfig().Backup
+	next.Channels.OpenList.RemotePath = "ant-chrome/backups"
+
+	if err := applyOpenListInput(&next, map[string]string{"remotePath": ""}); err != nil {
+		t.Fatalf("apply OpenList input: %v", err)
+	}
+	if next.Channels.OpenList.RemotePath != "" {
+		t.Fatalf("remote path = %q, want empty root path", next.Channels.OpenList.RemotePath)
+	}
+
+	app := NewApp(t.TempDir())
+	app.config = config.DefaultConfig()
+	app.config.Backup.Channels.OpenList.BaseURL = "http://127.0.0.1:5244/dav"
+	app.config.Backup.Channels.OpenList.Token = "secret-token"
+	resolved, err := app.backupResolvedOpenListConfig(map[string]string{"remotePath": ""})
+	if err != nil {
+		t.Fatalf("resolve OpenList config: %v", err)
+	}
+	if resolved.RemotePath != "" {
+		t.Fatalf("resolved remote path = %q, want empty root path", resolved.RemotePath)
 	}
 }
 

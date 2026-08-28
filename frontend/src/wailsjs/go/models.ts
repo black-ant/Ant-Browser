@@ -1058,6 +1058,7 @@ export namespace backup {
 	    category: string;
 	    entryType: string;
 	    required: boolean;
+	    coreId?: string;
 	    archivePath: string;
 	    fileCount?: number;
 	    byteSize?: number;
@@ -1074,6 +1075,7 @@ export namespace backup {
 	        this.category = source["category"];
 	        this.entryType = source["entryType"];
 	        this.required = source["required"];
+	        this.coreId = source["coreId"];
 	        this.archivePath = source["archivePath"];
 	        this.fileCount = source["fileCount"];
 	        this.byteSize = source["byteSize"];
@@ -1140,6 +1142,7 @@ export namespace backup {
 	    category: string;
 	    entryType: string;
 	    required: boolean;
+	    coreId?: string;
 	    sourcePath: string;
 	    archivePath: string;
 	    exists: boolean;
@@ -1155,6 +1158,7 @@ export namespace backup {
 	        this.category = source["category"];
 	        this.entryType = source["entryType"];
 	        this.required = source["required"];
+	        this.coreId = source["coreId"];
 	        this.sourcePath = source["sourcePath"];
 	        this.archivePath = source["archivePath"];
 	        this.exists = source["exists"];

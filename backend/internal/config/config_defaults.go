@@ -172,15 +172,18 @@ func normalizeConfig(config *Config) {
 		config.LaunchServer.Auth.Header = defaultConfig.LaunchServer.Auth.Header
 	}
 
-	if strings.TrimSpace(config.Backup.OpenList.BaseURL) != "" {
-		config.Backup.OpenList.BaseURL = strings.TrimSpace(config.Backup.OpenList.BaseURL)
+	if strings.TrimSpace(config.Backup.Channels.OpenList.BaseURL) != "" {
+		config.Backup.Channels.OpenList.BaseURL = strings.TrimSpace(config.Backup.Channels.OpenList.BaseURL)
 	}
-	if strings.TrimSpace(config.Backup.OpenList.RemotePath) == "" {
-		config.Backup.OpenList.RemotePath = defaultConfig.Backup.OpenList.RemotePath
+	if strings.TrimSpace(config.Backup.Channels.OpenList.RemotePath) == "" {
+		config.Backup.Channels.OpenList.RemotePath = defaultConfig.Backup.Channels.OpenList.RemotePath
 	} else {
-		config.Backup.OpenList.RemotePath = strings.TrimSpace(config.Backup.OpenList.RemotePath)
+		config.Backup.Channels.OpenList.RemotePath = strings.TrimSpace(config.Backup.Channels.OpenList.RemotePath)
 	}
-	config.Backup.OpenList.Username = strings.TrimSpace(config.Backup.OpenList.Username)
+	config.Backup.Channels.OpenList.Token = strings.TrimSpace(config.Backup.Channels.OpenList.Token)
+	if config.Backup.Channels.OpenList.UploadRateLimitMBps < 0 {
+		config.Backup.Channels.OpenList.UploadRateLimitMBps = defaultConfig.Backup.Channels.OpenList.UploadRateLimitMBps
+	}
 	if strings.TrimSpace(config.Backup.Schedule.DailyTime) == "" {
 		config.Backup.Schedule.DailyTime = defaultConfig.Backup.Schedule.DailyTime
 	} else {
@@ -331,8 +334,10 @@ func DefaultConfig() *Config {
 			PlaywrightCoreVersion: DefaultAutomationPWVersion,
 		},
 		Backup: BackupConfig{
-			OpenList: OpenListBackupConfig{
-				RemotePath: "ant-chrome/backups",
+			Channels: BackupChannelsConfig{
+				OpenList: OpenListChannelConfig{
+					RemotePath: "ant-chrome/backups",
+				},
 			},
 			Schedule: BackupScheduleConfig{
 				Enabled:   false,

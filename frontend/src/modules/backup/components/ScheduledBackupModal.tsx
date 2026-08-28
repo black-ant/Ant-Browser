@@ -6,26 +6,23 @@ import {
   defaultScheduledBackupSettings,
   fetchScheduledBackupSettings,
   saveScheduledBackupSettings,
-} from '../openListApi'
-import type { ScheduledBackupDraft, ScheduledBackupSettings } from '../openListApi'
+} from '../schedule/api'
+import type { ScheduledBackupDraft, ScheduledBackupSettings } from '../schedule/api'
 
 interface ScheduledBackupModalProps {
   open: boolean
   onClose: () => void
   onSaved: (settings: ScheduledBackupSettings) => void
+  onRequestOpenListConfig?: () => void
   onBusyChange?: (busy: boolean) => void
 }
 
-type ScheduledBackupField = 'dailyTime' | 'baseURL' | 'remotePath' | 'username' | 'password'
+type ScheduledBackupField = 'dailyTime'
 type ScheduledBackupErrors = Partial<Record<ScheduledBackupField, string>>
 
 const emptyDraft: ScheduledBackupDraft = {
   enabled: false,
   dailyTime: '02:00',
-  baseURL: '',
-  remotePath: 'ant-chrome/backups',
-  username: '',
-  password: '',
 }
 
 function formatDate(value: string) {
@@ -36,40 +33,10 @@ function formatDate(value: string) {
     : value
 }
 
-function validateDraft(draft: ScheduledBackupDraft, passwordConfigured: boolean): ScheduledBackupErrors {
+function validateDraft(draft: ScheduledBackupDraft): ScheduledBackupErrors {
   const errors: ScheduledBackupErrors = {}
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.dailyTime.trim())) {
     errors.dailyTime = '请输入有效的时间'
-  }
-  if (!draft.enabled) return errors
-
-  const baseURL = draft.baseURL.trim()
-  if (!baseURL) {
-    errors.baseURL = '请输入 WebDAV 地址'
-  } else {
-    try {
-      const parsed = new URL(baseURL)
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        errors.baseURL = '地址必须使用 http 或 https'
-      } else if (!parsed.hostname) {
-        errors.baseURL = '地址缺少主机名'
-      } else if (parsed.search || parsed.hash) {
-        errors.baseURL = '地址不能包含查询参数或片段'
-      }
-    } catch {
-      errors.baseURL = '请输入有效的 WebDAV 地址'
-    }
-  }
-
-  if (draft.remotePath.trim().replace(/\\/g, '/').split('/').some(segment => segment.trim() === '..')) {
-    errors.remotePath = '远程目录不能包含 ..'
-  }
-
-  const username = draft.username.trim()
-  if (username && !draft.password && !passwordConfigured) {
-    errors.password = '请输入密码；应用重启后需要重新输入'
-  } else if (!username && draft.password) {
-    errors.username = '请输入用户名，或清空密码'
   }
   return errors
 }
@@ -89,7 +56,7 @@ function statusLabel(settings: ScheduledBackupSettings) {
   }
 }
 
-export function ScheduledBackupModal({ open, onClose, onSaved, onBusyChange }: ScheduledBackupModalProps) {
+export function ScheduledBackupModal({ open, onClose, onSaved, onRequestOpenListConfig, onBusyChange }: ScheduledBackupModalProps) {
   const [draft, setDraft] = useState<ScheduledBackupDraft>(emptyDraft)
   const [settings, setSettings] = useState<ScheduledBackupSettings>(defaultScheduledBackupSettings)
   const [errors, setErrors] = useState<ScheduledBackupErrors>({})
@@ -110,10 +77,6 @@ export function ScheduledBackupModal({ open, onClose, onSaved, onBusyChange }: S
         setDraft({
           enabled: next.enabled,
           dailyTime: next.dailyTime,
-          baseURL: next.baseURL,
-          remotePath: next.remotePath,
-          username: next.username,
-          password: '',
         })
       })
       .catch(loadError => {
@@ -139,9 +102,13 @@ export function ScheduledBackupModal({ open, onClose, onSaved, onBusyChange }: S
   }
 
   const handleSave = async () => {
-    const nextErrors = validateDraft(draft, settings.passwordConfigured)
+    const nextErrors = validateDraft(draft)
     if (Object.values(nextErrors).some(Boolean)) {
       setErrors(nextErrors)
+      return
+    }
+    if (draft.enabled && !settings.tokenConfigured) {
+      setError('请先配置 OpenList Token')
       return
     }
 
@@ -191,6 +158,13 @@ export function ScheduledBackupModal({ open, onClose, onSaved, onBusyChange }: S
             </div>
           </FormItem>
 
+          {!settings.tokenConfigured && onRequestOpenListConfig && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-3 py-2 text-sm">
+              <span className="text-[var(--color-text-secondary)]">OpenList 尚未配置</span>
+              <Button variant="secondary" size="sm" onClick={onRequestOpenListConfig} disabled={saving}>去配置</Button>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <FormItem label="每日执行时间" required error={errors.dailyTime}>
               <Input
@@ -211,51 +185,8 @@ export function ScheduledBackupModal({ open, onClose, onSaved, onBusyChange }: S
             </FormItem>
           </div>
 
-          <FormItem label="WebDAV 地址" required={draft.enabled} error={errors.baseURL}>
-            <Input
-              value={draft.baseURL}
-              onChange={event => updateDraft('baseURL', event.target.value)}
-              placeholder="http://127.0.0.1:5244/dav"
-              error={Boolean(errors.baseURL)}
-              disabled={saving}
-            />
-          </FormItem>
-          <FormItem label="远程目录" error={errors.remotePath}>
-            <Input
-              value={draft.remotePath}
-              onChange={event => updateDraft('remotePath', event.target.value)}
-              placeholder="ant-chrome/backups"
-              error={Boolean(errors.remotePath)}
-              disabled={saving}
-            />
-          </FormItem>
-          <div className="grid grid-cols-2 gap-3">
-            <FormItem label="用户名" error={errors.username}>
-              <Input
-                value={draft.username}
-                onChange={event => updateDraft('username', event.target.value)}
-                autoComplete="username"
-                error={Boolean(errors.username)}
-                disabled={saving}
-              />
-            </FormItem>
-            <FormItem label="密码" hint="密码不会写入配置文件，只保存在本次运行期间。应用重启后需要重新输入。" error={errors.password}>
-              <Input
-                type="password"
-                value={draft.password}
-                onChange={event => updateDraft('password', event.target.value)}
-                placeholder={settings.passwordConfigured ? '留空沿用当前运行密码' : ''}
-                autoComplete="current-password"
-                error={Boolean(errors.password)}
-                disabled={saving}
-              />
-            </FormItem>
-          </div>
 
           {error && <p role="alert" className="text-sm text-[var(--color-error)]">{error}</p>}
-          {draft.enabled && !settings.passwordConfigured && draft.username.trim() && (
-            <p className="text-xs text-[var(--color-warning)]">当前运行实例尚未保存 OpenList 密码；启用账号认证时请在密码框输入。</p>
-          )}
         </div>
       )}
     </Modal>

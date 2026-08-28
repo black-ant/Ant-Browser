@@ -97,7 +97,7 @@ export function BrowserListHeader({
           <Button variant="secondary" size="sm" onClick={onImportProfiles} loading={importingProfiles}>
             <Upload className="w-4 h-4" />导入实例
           </Button>
-          <Link to="/settings">
+          <Link to="/system/backup">
             <Button variant="secondary" size="sm" title="打开全局备份与恢复">
               <Archive className="w-4 h-4" />全局备份
             </Button>

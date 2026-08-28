@@ -62,27 +62,33 @@ export function AutomationScriptRunWithOptions(arg1:automation.ScriptRunRequest)
 
 export function AutomationScriptSave(arg1:automation.ScriptRecord):Promise<automation.ScriptRecord>;
 
+export function BackupCreatePackage(arg1:Record<string, string>):Promise<Record<string, any>>;
+
 export function BackupExportPackage():Promise<Record<string, any>>;
 
 export function BackupGetManifestTemplate():Promise<backup.Manifest>;
 
 export function BackupGetScopeDefinition():Promise<backup.Scope>;
 
-export function BackupImportPackage(arg1:boolean):Promise<Record<string, any>>;
+export function BackupImportPackage():Promise<Record<string, any>>;
 
-export function BackupInitializeSystem():Promise<Record<string, any>>;
-
-export function BackupScheduledGetSettings():Promise<Record<string, any>>;
-
-export function BackupScheduledSaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
+export function BackupOpenListGetSettings():Promise<Record<string, any>>;
 
 export function BackupOpenListList(arg1:Record<string, string>):Promise<Array<Record<string, any>>>;
 
-export function BackupOpenListRestore(arg1:Record<string, string>,arg2:string,arg3:boolean):Promise<Record<string, any>>;
+export function BackupOpenListRestore(arg1:Record<string, string>,arg2:string):Promise<Record<string, any>>;
+
+export function BackupOpenListSaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
 
 export function BackupOpenListTest(arg1:Record<string, string>):Promise<Record<string, any>>;
 
 export function BackupOpenListUpload(arg1:Record<string, string>):Promise<Record<string, any>>;
+
+export function BackupRestoreLocalPackage(arg1:string):Promise<Record<string, any>>;
+
+export function BackupScheduledGetSettings():Promise<Record<string, any>>;
+
+export function BackupScheduledSaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
 
 export function BookmarkList():Promise<Array<config.BrowserBookmark>>;
 
@@ -284,6 +290,8 @@ export function GetAppLogs():Promise<Array<logger.MemoryLogEntry>>;
 
 export function GetAutomationState():Promise<Record<string, any>>;
 
+export function GetBackupFileInfo(arg1:string):Promise<Record<string, any>>;
+
 export function GetBrowserSettings():Promise<browser.Settings>;
 
 export function GetDashboardStats():Promise<Record<string, any>>;
@@ -305,6 +313,8 @@ export function InstallAutomationRuntime():Promise<Record<string, any>>;
 export function ListGroups():Promise<Array<browser.GroupWithCount>>;
 
 export function MoveInstancesToGroup(arg1:Array<string>,arg2:string):Promise<void>;
+
+export function OpenBackupPath(arg1:string):Promise<void>;
 
 export function OpenCorePath(arg1:string):Promise<void>;
 

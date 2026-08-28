@@ -1,4 +1,4 @@
-package backupremote
+package openlist
 
 import (
 	"io"
@@ -36,8 +36,7 @@ func (store *memoryWebDAV) hasFile(name string) bool {
 }
 
 func (store *memoryWebDAV) handle(w http.ResponseWriter, r *http.Request) {
-	username, password, ok := r.BasicAuth()
-	if !ok || username != `user` || password != `secret` {
+	if r.Header.Get(`Authorization`) != `Bearer secret` {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}

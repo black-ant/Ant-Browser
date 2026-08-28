@@ -32,6 +32,7 @@ func backupWritePackageZip(zipPath string, scope backup.Scope, manifest backup.M
 	includedEntries := 0
 	skippedEntries := 0
 	fileCount := 0
+	metadataPath := backupMetadataPath(zipPath)
 
 	writeErr := func() error {
 		totalEntries := len(scope.Entries)
@@ -62,14 +63,14 @@ func backupWritePackageZip(zipPath string, scope backup.Scope, manifest backup.M
 			entryStats := newBackupArchiveStats()
 			if info.IsDir() {
 				var err error
-				entryStats, err = backupZipAddDir(w, entry.SourcePath, entry.ArchivePath, zipPath)
+				entryStats, err = backupZipAddDir(w, entry.SourcePath, entry.ArchivePath, zipPath, metadataPath)
 				if err != nil {
 					return fmt.Errorf("写入目录失败(%s): %w", entry.ID, err)
 				}
 				fileCount += entryStats.fileCount
 				entryAddedFiles = entryStats.fileCount
 			} else {
-				if backupSamePath(entry.SourcePath, zipPath) {
+				if backupSamePath(entry.SourcePath, zipPath) || backupSamePath(entry.SourcePath, zipPath+".tmp") || backupSamePath(entry.SourcePath, metadataPath) || backupSamePath(entry.SourcePath, metadataPath+".tmp") {
 					skippedEntries++
 					progress := 20 + int(float64(i+1)/float64(totalEntries)*70)
 					emit("writing", progress, fmt.Sprintf("组件跳过：%s（导出文件本身）", meta.ComponentName), meta)
@@ -132,11 +133,14 @@ func backupWritePackageZip(zipPath string, scope backup.Scope, manifest backup.M
 		_ = os.Remove(tmpPath)
 		return 0, 0, 0, fmt.Errorf("写入导出文件失败: %w", err)
 	}
-	emit("done", 100, "导出完成", nil)
+	if _, err := backupWriteMetadata(zipPath, manifest, includedEntries, skippedEntries); err != nil {
+		emit("error", 100, err.Error(), nil)
+		return 0, 0, 0, err
+	}
 	return includedEntries, skippedEntries, fileCount, nil
 }
 
-func backupZipAddDir(w *zip.Writer, srcDir, archiveBase, outputZipPath string) (backupArchiveStats, error) {
+func backupZipAddDir(w *zip.Writer, srcDir, archiveBase, outputZipPath, outputMetadataPath string) (backupArchiveStats, error) {
 	base := strings.TrimSuffix(filepath.ToSlash(strings.TrimSpace(archiveBase)), "/")
 	if base == "" {
 		return backupArchiveStats{}, fmt.Errorf("archive base 不能为空")
@@ -149,7 +153,7 @@ func backupZipAddDir(w *zip.Writer, srcDir, archiveBase, outputZipPath string) (
 		if err != nil {
 			return err
 		}
-		if backupSamePath(path, outputZipPath) || backupSamePath(path, outputZipPath+".tmp") {
+		if backupSamePath(path, outputZipPath) || backupSamePath(path, outputZipPath+".tmp") || backupSamePath(path, outputMetadataPath) || backupSamePath(path, outputMetadataPath+".tmp") {
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {

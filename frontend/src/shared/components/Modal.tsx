@@ -102,6 +102,7 @@ interface ConfirmModalProps {
   open: boolean
   onClose: () => void
   onConfirm: () => void
+  onConfirmStart?: () => void
   title?: string
   content: ReactNode
   confirmText?: string
@@ -113,6 +114,7 @@ export function ConfirmModal({
   open,
   onClose,
   onConfirm,
+  onConfirmStart,
   title = '确认',
   content,
   confirmText = '确定',
@@ -134,6 +136,7 @@ export function ConfirmModal({
     if (confirming) return
 
     setConfirming(true)
+    onConfirmStart?.()
     onClose()
     confirmTimerRef.current = window.setTimeout(() => {
       confirmTimerRef.current = null

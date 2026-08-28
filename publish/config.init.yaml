@@ -58,3 +58,12 @@ automation:
   system_node_path: ""
   node_version: 22.15.1
   playwright_core_version: 1.59.0
+
+backup:
+  channels:
+    openlist:
+      remote_path: ant-chrome/backups
+      upload_rate_limit_mbps: 0
+  schedule:
+    enabled: false
+    daily_time: "02:00"

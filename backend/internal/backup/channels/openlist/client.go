@@ -1,6 +1,7 @@
-package backupremote
+package openlist
 
 import (
+	"ant-chrome/backend/internal/backup/channels"
 	"bytes"
 	"context"
 	"encoding/xml"
@@ -22,21 +23,22 @@ const (
 	methodMOVE     = `MOVE`
 	methodPROPFIND = `PROPFIND`
 	propfindBody   = `<?xml version='1.0' encoding='utf-8'?><d:propfind xmlns:d='DAV:'><d:prop><d:displayname/><d:getcontentlength/><d:getlastmodified/><d:resourcetype/></d:prop></d:propfind>`
+
+	TransferTimeout            = 2 * time.Hour
+	ControlTimeout             = time.Minute
+	DefaultUploadRateLimitMBps = 0
+	maxUploadRateLimitMBps     = 1024 * 1024
+	bytesPerMegabyte           = 1024 * 1024
 )
 
 type Config struct {
-	BaseURL    string
-	RemotePath string
-	Username   string
-	Password   string
+	BaseURL             string
+	RemotePath          string
+	Token               string
+	UploadRateLimitMBps int
 }
 
-type File struct {
-	Name       string
-	Size       int64
-	ModifiedAt string
-	Directory  bool
-}
+type File = channels.File
 
 type Client struct {
 	config     Config
@@ -44,10 +46,21 @@ type Client struct {
 	httpClient *http.Client
 }
 
+func (c *Client) ID() channels.ID {
+	return channels.OpenList
+}
+
 func NewClient(cfg Config) (*Client, error) {
 	baseURL, err := normalizeBaseURL(cfg.BaseURL)
 	if err != nil {
 		return nil, err
+	}
+	cfg.Token = strings.TrimSpace(cfg.Token)
+	if cfg.Token == "" {
+		return nil, fmt.Errorf(`OpenList token is empty`)
+	}
+	if cfg.UploadRateLimitMBps < 0 || cfg.UploadRateLimitMBps > maxUploadRateLimitMBps {
+		return nil, fmt.Errorf(`OpenList upload rate limit must be between 0 and %d MB/s`, maxUploadRateLimitMBps)
 	}
 	remotePath, err := cleanRelativePath(cfg.RemotePath, true)
 	if err != nil {
@@ -58,7 +71,7 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{
 		config:     cfg,
 		baseURL:    baseURL,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: TransferTimeout},
 	}, nil
 }
 
@@ -110,12 +123,24 @@ func (c *Client) Upload(ctx context.Context, localPath, fileName string) (File, 
 	if err != nil {
 		return File{}, err
 	}
+	return c.uploadFile(ctx, localPath, cleanName, `backup`)
+}
+
+func (c *Client) UploadMetadata(ctx context.Context, localPath, fileName string) (File, error) {
+	cleanName, err := cleanMetadataFileName(fileName)
+	if err != nil {
+		return File{}, err
+	}
+	return c.uploadFile(ctx, localPath, cleanName, `backup metadata`)
+}
+
+func (c *Client) uploadFile(ctx context.Context, localPath, cleanName, artifactName string) (File, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
-		return File{}, fmt.Errorf(`stat local backup failed: %w`, err)
+		return File{}, fmt.Errorf(`stat local %s failed: %w`, artifactName, err)
 	}
 	if info.IsDir() {
-		return File{}, fmt.Errorf(`local backup path is a directory`)
+		return File{}, fmt.Errorf(`local %s path is a directory`, artifactName)
 	}
 	if err := c.ensureRemoteDirectory(ctx); err != nil {
 		return File{}, err
@@ -129,19 +154,19 @@ func (c *Client) Upload(ctx context.Context, localPath, fileName string) (File, 
 	temporaryName := cleanName + `.uploading`
 	if err := c.put(ctx, temporaryName, file, info.Size()); err != nil {
 		_ = c.delete(ctx, temporaryName)
-		return File{}, fmt.Errorf(`upload backup failed: %w`, err)
+		return File{}, fmt.Errorf(`upload %s failed: %w`, artifactName, err)
 	}
 	if err := c.move(ctx, temporaryName, cleanName); err != nil {
 		_ = c.delete(ctx, temporaryName)
-		return File{}, fmt.Errorf(`finalize remote backup failed: %w`, err)
+		return File{}, fmt.Errorf(`finalize remote %s failed: %w`, artifactName, err)
 	}
 	remoteFile, err := c.stat(ctx, cleanName)
 	if err != nil {
-		return File{}, fmt.Errorf(`verify remote backup failed: %w`, err)
+		return File{}, fmt.Errorf(`verify remote %s failed: %w`, artifactName, err)
 	}
 	if remoteFile.Size != info.Size() {
 		_ = c.delete(ctx, cleanName)
-		return File{}, fmt.Errorf(`remote backup size mismatch: local=%d remote=%d`, info.Size(), remoteFile.Size)
+		return File{}, fmt.Errorf(`remote %s size mismatch: local=%d remote=%d`, artifactName, info.Size(), remoteFile.Size)
 	}
 	return remoteFile, nil
 }
@@ -221,6 +246,10 @@ func (c *Client) ensureRemoteDirectory(ctx context.Context) error {
 }
 
 func (c *Client) put(ctx context.Context, remotePath string, body io.Reader, size int64) error {
+	if c.config.UploadRateLimitMBps > 0 {
+		bytesPerSecond := int64(c.config.UploadRateLimitMBps) * bytesPerMegabyte
+		body = channels.NewRateLimitedReader(ctx, body, bytesPerSecond)
+	}
 	response, err := c.request(ctx, http.MethodPut, remotePath, body, size, nil)
 	if err != nil {
 		return err
@@ -317,8 +346,8 @@ func (c *Client) requestAtPath(ctx context.Context, method, remotePath string, b
 	for key, value := range headers {
 		request.Header.Set(key, value)
 	}
-	if c.config.Username != `` {
-		request.SetBasicAuth(c.config.Username, c.config.Password)
+	if token := strings.TrimSpace(c.config.Token); token != `` {
+		request.Header.Set(`Authorization`, `Bearer `+token)
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {
@@ -416,6 +445,17 @@ func cleanFileName(value string) (string, error) {
 	}
 	if !strings.HasSuffix(strings.ToLower(name), `.zip`) {
 		return ``, fmt.Errorf(`remote backup file must use .zip suffix`)
+	}
+	return name, nil
+}
+
+func cleanMetadataFileName(value string) (string, error) {
+	name := strings.TrimSpace(strings.ReplaceAll(value, `\`, `/`))
+	if name == `` || name == `.` || name == `..` || strings.Contains(name, `/`) {
+		return ``, fmt.Errorf(`invalid remote backup metadata file name`)
+	}
+	if !strings.HasSuffix(strings.ToLower(name), `.json`) {
+		return ``, fmt.Errorf(`remote backup metadata file must use .json suffix`)
 	}
 	return name, nil
 }

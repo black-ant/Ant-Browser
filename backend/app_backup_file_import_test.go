@@ -34,7 +34,7 @@ func TestBackupImportFileTreesPreservesAppDataWhenUserDataOverlaps(t *testing.T)
 	app := &App{appRoot: appRoot, config: config.DefaultConfig()}
 	stats := &backupMergeStats{}
 	var issues []error
-	app.backupImportFileTrees(payloadRoot, app.config, backup.Manifest{}, true, stats, func(_ string, _ string, err error) {
+	app.backupImportFileTrees(payloadRoot, app.config, backup.Manifest{}, stats, func(_ string, _ string, err error) {
 		issues = append(issues, err)
 	})
 	if len(issues) > 0 {
@@ -42,6 +42,9 @@ func TestBackupImportFileTreesPreservesAppDataWhenUserDataOverlaps(t *testing.T)
 	}
 	if _, err := os.Stat(filepath.Join(appRoot, "data", "restored.txt")); err != nil {
 		t.Fatalf("restored app data was removed by overlapping user data import: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(appRoot, "data", "stale", "old.txt")); err != nil {
+		t.Fatalf("existing app data was removed by backup import: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(appRoot, "data", "Profile", "Preferences")); err != nil {
 		t.Fatalf("browser user data was not imported: %v", err)
@@ -77,7 +80,7 @@ func TestBackupImportExternalCoresUsesManifestCoreIDs(t *testing.T) {
 	app := &App{appRoot: appRoot, config: config.DefaultConfig()}
 	stats := &backupMergeStats{}
 	var issues []error
-	app.backupImportFileTrees(payloadRoot, incoming, manifest, true, stats, func(_ string, _ string, err error) {
+	app.backupImportFileTrees(payloadRoot, incoming, manifest, stats, func(_ string, _ string, err error) {
 		issues = append(issues, err)
 	})
 	if len(issues) > 0 {

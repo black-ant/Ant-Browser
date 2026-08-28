@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func backupSyncDir(src, dst string, overwrite bool, stats *backupMergeStats, shouldSkip func(rel string) bool) error {
+func backupSyncDir(src, dst string, stats *backupMergeStats, shouldSkip func(rel string) bool) error {
 	if !backupPathExists(src) {
 		return nil
 	}
@@ -51,14 +51,6 @@ func backupSyncDir(src, dst string, overwrite bool, stats *backupMergeStats, sho
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
-		}
-
-		if overwrite {
-			if err := backupCopyFile(path, target); err != nil {
-				return err
-			}
-			stats.Imported++
-			return nil
 		}
 
 		if _, err := os.Stat(target); os.IsNotExist(err) {
@@ -154,28 +146,4 @@ func backupSHA256File(path string) (string, error) {
 func backupShouldSkipAppDBFile(rel string) bool {
 	r := strings.TrimSpace(filepath.ToSlash(rel))
 	return r == "app.db" || r == "app.db-wal" || r == "app.db-shm"
-}
-
-func backupRemoveContentsExcept(dir string, keep map[string]struct{}) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return nil
-	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		p := filepath.Join(dir, entry.Name())
-		if backupPathInSet(p, keep) {
-			continue
-		}
-		if err := os.RemoveAll(p); err != nil {
-			return err
-		}
-	}
-	return nil
 }

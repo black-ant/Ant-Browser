@@ -106,6 +106,10 @@ export function AutomationScriptSave(arg1) {
   return window['go']['main']['App']['AutomationScriptSave'](arg1);
 }
 
+export function BackupCreatePackage(arg1) {
+  return window['go']['main']['App']['BackupCreatePackage'](arg1);
+}
+
 export function BackupExportPackage() {
   return window['go']['main']['App']['BackupExportPackage']();
 }
@@ -118,28 +122,24 @@ export function BackupGetScopeDefinition() {
   return window['go']['main']['App']['BackupGetScopeDefinition']();
 }
 
-export function BackupImportPackage(arg1) {
-  return window['go']['main']['App']['BackupImportPackage'](arg1);
+export function BackupImportPackage() {
+  return window['go']['main']['App']['BackupImportPackage']();
 }
 
-export function BackupInitializeSystem() {
-  return window['go']['main']['App']['BackupInitializeSystem']();
-}
-
-export function BackupScheduledGetSettings() {
-  return window['go']['main']['App']['BackupScheduledGetSettings']();
-}
-
-export function BackupScheduledSaveSettings(arg1) {
-  return window['go']['main']['App']['BackupScheduledSaveSettings'](arg1);
+export function BackupOpenListGetSettings() {
+  return window['go']['main']['App']['BackupOpenListGetSettings']();
 }
 
 export function BackupOpenListList(arg1) {
   return window['go']['main']['App']['BackupOpenListList'](arg1);
 }
 
-export function BackupOpenListRestore(arg1, arg2, arg3) {
-  return window['go']['main']['App']['BackupOpenListRestore'](arg1, arg2, arg3);
+export function BackupOpenListRestore(arg1, arg2) {
+  return window['go']['main']['App']['BackupOpenListRestore'](arg1, arg2);
+}
+
+export function BackupOpenListSaveSettings(arg1) {
+  return window['go']['main']['App']['BackupOpenListSaveSettings'](arg1);
 }
 
 export function BackupOpenListTest(arg1) {
@@ -148,6 +148,18 @@ export function BackupOpenListTest(arg1) {
 
 export function BackupOpenListUpload(arg1) {
   return window['go']['main']['App']['BackupOpenListUpload'](arg1);
+}
+
+export function BackupRestoreLocalPackage(arg1) {
+  return window['go']['main']['App']['BackupRestoreLocalPackage'](arg1);
+}
+
+export function BackupScheduledGetSettings() {
+  return window['go']['main']['App']['BackupScheduledGetSettings']();
+}
+
+export function BackupScheduledSaveSettings(arg1) {
+  return window['go']['main']['App']['BackupScheduledSaveSettings'](arg1);
 }
 
 export function BookmarkList() {
@@ -550,6 +562,10 @@ export function GetAutomationState() {
   return window['go']['main']['App']['GetAutomationState']();
 }
 
+export function GetBackupFileInfo(arg1) {
+  return window['go']['main']['App']['GetBackupFileInfo'](arg1);
+}
+
 export function GetBrowserSettings() {
   return window['go']['main']['App']['GetBrowserSettings']();
 }
@@ -592,6 +608,10 @@ export function ListGroups() {
 
 export function MoveInstancesToGroup(arg1, arg2) {
   return window['go']['main']['App']['MoveInstancesToGroup'](arg1, arg2);
+}
+
+export function OpenBackupPath(arg1) {
+  return window['go']['main']['App']['OpenBackupPath'](arg1);
 }
 
 export function OpenCorePath(arg1) {

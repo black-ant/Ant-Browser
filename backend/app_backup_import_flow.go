@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[string]interface{}, error) {
+func (a *App) backupImportFromPathLocked(zipPath string) (map[string]interface{}, error) {
 	a.backupEmitImportProgress("preparing", 10, "正在解压并校验备份包...")
 	extractRoot, manifest, err := backupExtractAndValidate(zipPath)
 	if err != nil {
@@ -23,14 +23,6 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 
 	stats := &backupMergeStats{}
 
-	if resetFirst {
-		a.backupEmitImportProgress("preparing", 30, "正在初始化系统数据...")
-		if _, err := a.backupInitializeLocked(false); err != nil {
-			return nil, err
-		}
-		a.backupEmitImportProgress("preparing", 40, "初始化完成，继续加载备份内容...")
-	}
-
 	payloadRoot := filepath.Join(extractRoot, "payload")
 	a.backupEmitImportProgress("importing", 50, "正在解析备份配置...")
 	incomingCfg, hasIncomingCfg, err := backupLoadIncomingConfig(payloadRoot)
@@ -39,26 +31,22 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 		incomingCfg = nil
 		hasIncomingCfg = false
 	}
-	if resetFirst && !hasIncomingCfg {
-		issueTracker.RecordIssue("system_config_main", "主配置文件", fmt.Errorf("备份包缺少 payload/system/config.yaml，已保留默认配置继续加载其余模块"))
-	}
-
 	if hasIncomingCfg {
 		a.backupEmitImportProgress("importing", 58, "正在应用系统配置...")
 		incomingCfg = a.backupNormalizeImportedConfigPaths(incomingCfg, a.config)
-		if err := a.backupApplyIncomingConfig(incomingCfg, resetFirst); err != nil {
+		if err := a.backupApplyIncomingConfig(incomingCfg); err != nil {
 			issueTracker.RecordIssue("system_config_main", "主配置文件", err)
 		}
 	}
 
 	a.backupEmitImportProgress("importing", 66, "正在合并代理配置...")
-	if err := a.backupMergeProxiesFile(payloadRoot, resetFirst, stats); err != nil {
+	if err := a.backupMergeProxiesFile(payloadRoot, stats); err != nil {
 		issueTracker.RecordIssue("system_config_proxies", "代理配置文件", err)
 	}
 
 	if dbSrc := backupFindDatabaseFile(payloadRoot); dbSrc != "" {
 		a.backupEmitImportProgress("importing", 76, "正在合并数据库数据...")
-		if err := a.backupMergeDatabaseFromSource(dbSrc, incomingCfg, resetFirst, stats); err != nil {
+		if err := a.backupMergeDatabaseFromSource(dbSrc, incomingCfg, stats); err != nil {
 			issueTracker.RecordIssue("database_sqlite_main", "SQLite 主数据库", err)
 		}
 	} else if _, ok := componentEntries["database_sqlite_main"]; ok {
@@ -66,7 +54,7 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 	}
 
 	a.backupEmitImportProgress("importing", 86, "正在同步文件数据...")
-	a.backupImportFileTrees(payloadRoot, incomingCfg, manifest, resetFirst, stats, issueTracker.RecordIssue)
+	a.backupImportFileTrees(payloadRoot, incomingCfg, manifest, stats, issueTracker.RecordIssue)
 
 	a.backupEmitImportProgress("importing", 92, "正在修复插件迁移路径...")
 	repairIssues, err := a.backupRepairExtensionPathsAfterImport()
@@ -92,7 +80,6 @@ func (a *App) backupImportFromPathLocked(zipPath string, resetFirst bool) (map[s
 	return map[string]interface{}{
 		"cancelled":        false,
 		"zipPath":          zipPath,
-		"resetFirst":       resetFirst,
 		"imported":         stats.Imported,
 		"skipped":          stats.Skipped,
 		"conflicts":        stats.Conflicts,

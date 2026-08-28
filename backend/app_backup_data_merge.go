@@ -9,24 +9,15 @@ import (
 	"strings"
 )
 
-func (a *App) backupMergeProxiesFile(payloadRoot string, resetFirst bool, stats *backupMergeStats) error {
+func (a *App) backupMergeProxiesFile(payloadRoot string, stats *backupMergeStats) error {
 	srcPath := filepath.Join(payloadRoot, "system", "proxies.yaml")
 	dstPath := a.resolveAppPath("proxies.yaml")
 
 	if _, err := os.Stat(srcPath); err != nil {
 		if os.IsNotExist(err) {
-			if resetFirst {
-				if removeErr := os.Remove(dstPath); removeErr != nil && !os.IsNotExist(removeErr) {
-					return fmt.Errorf("删除现有代理配置失败: %w", removeErr)
-				}
-			}
 			return nil
 		}
 		return err
-	}
-
-	if resetFirst {
-		return backupCopyFile(srcPath, dstPath)
 	}
 
 	incoming, err := config.LoadProxies(srcPath)
@@ -82,7 +73,7 @@ func backupFindDatabaseFile(payloadRoot string) string {
 	return ""
 }
 
-func (a *App) backupMergeDatabaseFromSource(srcDBPath string, incomingCfg *config.Config, resetFirst bool, stats *backupMergeStats) error {
+func (a *App) backupMergeDatabaseFromSource(srcDBPath string, incomingCfg *config.Config, stats *backupMergeStats) error {
 	if a.db == nil || a.db.GetConn() == nil {
 		return fmt.Errorf("数据库未初始化")
 	}
@@ -107,28 +98,21 @@ func (a *App) backupMergeDatabaseFromSource(srcDBPath string, incomingCfg *confi
 	}
 	sourceAttached = true
 
-	var existingCoreIDs map[string]struct{}
-	var existingProfileIDs map[string]struct{}
-	if !resetFirst {
-		existingCoreIDs, err = backupListTargetIDs(tx, "browser_cores", "core_id")
-		if err != nil {
-			return err
-		}
-		existingProfileIDs, err = backupListTargetIDs(tx, "browser_profiles", "profile_id")
-		if err != nil {
-			return err
-		}
+	existingCoreIDs, err := backupListTargetIDs(tx, "browser_cores", "core_id")
+	if err != nil {
+		return err
+	}
+	existingProfileIDs, err := backupListTargetIDs(tx, "browser_profiles", "profile_id")
+	if err != nil {
+		return err
 	}
 
 	mergeTables := []struct {
 		name       string
-		insertAll  string
 		insertSafe string
 	}{
 		{
 			name: "browser_groups",
-			insertAll: `INSERT INTO browser_groups (group_id, group_name, parent_id, sort_order, created_at, updated_at)
-SELECT group_id, group_name, parent_id, sort_order, created_at, updated_at FROM src.browser_groups`,
 			insertSafe: `INSERT INTO browser_groups (group_id, group_name, parent_id, sort_order, created_at, updated_at)
 SELECT s.group_id, s.group_name, s.parent_id, s.sort_order, s.created_at, s.updated_at
 FROM src.browser_groups s
@@ -139,8 +123,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_cores",
-			insertAll: `INSERT INTO browser_cores (core_id, core_name, core_path, is_default, sort_order, created_at)
-SELECT core_id, core_name, core_path, is_default, sort_order, created_at FROM src.browser_cores`,
 			insertSafe: `INSERT INTO browser_cores (core_id, core_name, core_path, is_default, sort_order, created_at)
 SELECT s.core_id, s.core_name, s.core_path, s.is_default, s.sort_order, s.created_at
 FROM src.browser_cores s
@@ -151,9 +133,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_proxies",
-			insertAll: `INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, dns_servers, group_name, source_id, source_url, source_name_prefix, source_auto_refresh, source_refresh_interval_m, source_last_refresh_at, last_latency_ms, last_test_ok, last_tested_at, last_ip_health_json, sort_order, created_at)
-SELECT proxy_id, proxy_name, proxy_config, dns_servers, COALESCE(group_name,''), COALESCE(source_id,''), COALESCE(source_url,''), COALESCE(source_name_prefix,''), COALESCE(source_auto_refresh,0), COALESCE(source_refresh_interval_m,0), COALESCE(source_last_refresh_at,''), COALESCE(last_latency_ms,-1), COALESCE(last_test_ok,0), COALESCE(last_tested_at,''), COALESCE(last_ip_health_json,''), sort_order, created_at
-FROM src.browser_proxies`,
 			insertSafe: `INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, dns_servers, group_name, source_id, source_url, source_name_prefix, source_auto_refresh, source_refresh_interval_m, source_last_refresh_at, last_latency_ms, last_test_ok, last_tested_at, last_ip_health_json, sort_order, created_at)
 SELECT s.proxy_id, s.proxy_name, s.proxy_config, s.dns_servers, COALESCE(s.group_name,''), COALESCE(s.source_id,''), COALESCE(s.source_url,''), COALESCE(s.source_name_prefix,''), COALESCE(s.source_auto_refresh,0), COALESCE(s.source_refresh_interval_m,0), COALESCE(s.source_last_refresh_at,''), COALESCE(s.last_latency_ms,-1), COALESCE(s.last_test_ok,0), COALESCE(s.last_tested_at,''), COALESCE(s.last_ip_health_json,''), s.sort_order, s.created_at
 FROM src.browser_proxies s
@@ -164,9 +143,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_profiles",
-			insertAll: `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at)
-SELECT profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, COALESCE(group_id,''), created_at, updated_at
-FROM src.browser_profiles`,
 			insertSafe: `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at)
 SELECT s.profile_id, s.profile_name, s.user_data_dir, s.core_id, s.fingerprint_args, s.proxy_id, s.proxy_config, s.launch_args, s.tags, s.keywords, COALESCE(s.group_id,''), s.created_at, s.updated_at
 FROM src.browser_profiles s
@@ -177,8 +153,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_bookmarks",
-			insertAll: `INSERT INTO browser_bookmarks (name, url, sort_order)
-SELECT name, url, sort_order FROM src.browser_bookmarks`,
 			insertSafe: `INSERT INTO browser_bookmarks (name, url, sort_order)
 SELECT s.name, s.url, s.sort_order
 FROM src.browser_bookmarks s
@@ -188,8 +162,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_extensions",
-			insertAll: `INSERT INTO browser_extensions (extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, default_install, installed_at, updated_at)
-SELECT extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, COALESCE(default_install, 0), installed_at, updated_at FROM src.browser_extensions`,
 			insertSafe: `INSERT INTO browser_extensions (extension_id, name, version, description, manifest_json, source_url, install_dir, enabled, default_install, installed_at, updated_at)
 SELECT s.extension_id, s.name, s.version, s.description, s.manifest_json, s.source_url, s.install_dir, s.enabled, COALESCE(s.default_install, 0), s.installed_at, s.updated_at
 FROM src.browser_extensions s
@@ -199,8 +171,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_profile_extension_settings",
-			insertAll: `INSERT INTO browser_profile_extension_settings (profile_id, configured, updated_at)
-SELECT profile_id, configured, updated_at FROM src.browser_profile_extension_settings`,
 			insertSafe: `INSERT INTO browser_profile_extension_settings (profile_id, configured, updated_at)
 SELECT s.profile_id, s.configured, s.updated_at
 FROM src.browser_profile_extension_settings s
@@ -210,8 +180,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_profile_extensions",
-			insertAll: `INSERT INTO browser_profile_extensions (profile_id, extension_id, enabled, created_at, updated_at)
-SELECT profile_id, extension_id, enabled, created_at, updated_at FROM src.browser_profile_extensions`,
 			insertSafe: `INSERT INTO browser_profile_extensions (profile_id, extension_id, enabled, created_at, updated_at)
 SELECT s.profile_id, s.extension_id, s.enabled, s.created_at, s.updated_at
 FROM src.browser_profile_extensions s
@@ -221,8 +189,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "browser_profile_extension_runtime",
-			insertAll: `INSERT INTO browser_profile_extension_runtime (profile_id, extension_id, runtime_extension_id, install_mode, installed_version, package_hash, status, backup_path, last_verified_at, last_error, created_at, updated_at)
-SELECT profile_id, extension_id, runtime_extension_id, install_mode, installed_version, package_hash, status, backup_path, last_verified_at, last_error, created_at, updated_at FROM src.browser_profile_extension_runtime`,
 			insertSafe: `INSERT INTO browser_profile_extension_runtime (profile_id, extension_id, runtime_extension_id, install_mode, installed_version, package_hash, status, backup_path, last_verified_at, last_error, created_at, updated_at)
 SELECT s.profile_id, s.extension_id, s.runtime_extension_id, s.install_mode, s.installed_version, s.package_hash, s.status, s.backup_path, s.last_verified_at, s.last_error, s.created_at, s.updated_at
 FROM src.browser_profile_extension_runtime s
@@ -232,8 +198,6 @@ WHERE NOT EXISTS (
 		},
 		{
 			name: "launch_codes",
-			insertAll: `INSERT INTO launch_codes (profile_id, code, created_at, updated_at)
-SELECT profile_id, code, created_at, updated_at FROM src.launch_codes`,
 			insertSafe: `INSERT INTO launch_codes (profile_id, code, created_at, updated_at)
 SELECT s.profile_id, s.code, s.created_at, s.updated_at
 FROM src.launch_codes s
@@ -261,27 +225,19 @@ WHERE NOT EXISTS (
 			continue
 		}
 
-		sqlText := item.insertAll
-		if !resetFirst {
-			sqlText = item.insertSafe
-		}
+		sqlText := item.insertSafe
 		if item.name == "browser_bookmarks" {
 			hasOpenOnStart, err := backupSrcColumnExists(tx, item.name, "open_on_start")
 			if err != nil {
 				return err
 			}
 			if hasOpenOnStart {
-				if resetFirst {
-					sqlText = `INSERT INTO browser_bookmarks (name, url, open_on_start, sort_order)
-SELECT name, url, COALESCE(open_on_start,0), sort_order FROM src.browser_bookmarks`
-				} else {
-					sqlText = `INSERT INTO browser_bookmarks (name, url, open_on_start, sort_order)
+				sqlText = `INSERT INTO browser_bookmarks (name, url, open_on_start, sort_order)
 SELECT s.name, s.url, COALESCE(s.open_on_start,0), s.sort_order
 FROM src.browser_bookmarks s
 WHERE NOT EXISTS (
   SELECT 1 FROM browser_bookmarks t WHERE lower(t.url) = lower(s.url)
 )`
-				}
 			}
 		}
 		if item.name == "browser_profiles" {
@@ -290,38 +246,25 @@ WHERE NOT EXISTS (
 				return err
 			}
 			if hasRestoreLastSession {
-				if resetFirst {
-					sqlText = `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at, restore_last_session)
-SELECT profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, COALESCE(group_id,''), created_at, updated_at, COALESCE(restore_last_session,'')
-FROM src.browser_profiles`
-				} else {
-					sqlText = `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at, restore_last_session)
+				sqlText = `INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, launch_args, tags, keywords, group_id, created_at, updated_at, restore_last_session)
 SELECT s.profile_id, s.profile_name, s.user_data_dir, s.core_id, s.fingerprint_args, s.proxy_id, s.proxy_config, s.launch_args, s.tags, s.keywords, COALESCE(s.group_id,''), s.created_at, s.updated_at, COALESCE(s.restore_last_session,'')
 FROM src.browser_profiles s
 WHERE NOT EXISTS (
   SELECT 1 FROM browser_profiles t
   WHERE t.profile_id = s.profile_id OR lower(t.user_data_dir) = lower(s.user_data_dir)
 )`
-				}
 			}
 		}
 		if item.name == "browser_proxies" {
-			item.insertAll, item.insertSafe, err = backupBuildProxyMergeSQL(tx)
+			sqlText, err = backupBuildProxyMergeSQL(tx)
 			if err != nil {
 				return err
 			}
 		}
 		if item.name == "browser_profiles" {
-			item.insertAll, item.insertSafe, err = backupBuildProfileMergeSQL(tx)
+			sqlText, err = backupBuildProfileMergeSQL(tx)
 			if err != nil {
 				return err
-			}
-		}
-		if item.name == "browser_proxies" || item.name == "browser_profiles" {
-			if resetFirst {
-				sqlText = item.insertAll
-			} else {
-				sqlText = item.insertSafe
 			}
 		}
 		if item.name == "browser_extensions" {
@@ -370,17 +313,12 @@ WHERE NOT EXISTS (
 			if hasDefaultInstall {
 				defaultInstallExpression = `COALESCE(default_install, 0)`
 			}
-			if resetFirst {
-				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at)
-SELECT extension_id, name, version, description, %s, manifest_json, source_url, install_dir, %s, %s, %s, enabled, %s, installed_at, updated_at FROM src.browser_extensions`, iconExpression, installModeExpression, packagePathExpression, packageHashExpression, defaultInstallExpression)
-			} else {
-				sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at)
+			sqlText = fmt.Sprintf(`INSERT INTO browser_extensions (extension_id, name, version, description, icon_data_url, manifest_json, source_url, install_dir, install_mode, package_path, package_hash, enabled, default_install, installed_at, updated_at)
 SELECT s.extension_id, s.name, s.version, s.description, %s, s.manifest_json, s.source_url, s.install_dir, %s, %s, %s, s.enabled, %s, s.installed_at, s.updated_at
 FROM src.browser_extensions s
 WHERE NOT EXISTS (
   SELECT 1 FROM browser_extensions t WHERE t.extension_id = s.extension_id
 )`, qualifyBackupExpression(iconExpression, "s"), qualifyBackupExpression(installModeExpression, "s"), qualifyBackupExpression(packagePathExpression, "s"), qualifyBackupExpression(packageHashExpression, "s"), qualifyBackupExpression(defaultInstallExpression, "s"))
-			}
 		}
 		res, err := tx.Exec(sqlText)
 		if err != nil {
@@ -392,12 +330,12 @@ WHERE NOT EXISTS (
 			inserted = total
 		}
 		stats.Imported += inserted
-		if !resetFirst && total > inserted {
+		if total > inserted {
 			stats.Skipped += total - inserted
 		}
 	}
 
-	if err := a.backupNormalizeImportedDatabasePaths(tx, incomingCfg, resetFirst, existingCoreIDs, existingProfileIDs); err != nil {
+	if err := a.backupNormalizeImportedDatabasePaths(tx, incomingCfg, existingCoreIDs, existingProfileIDs); err != nil {
 		return err
 	}
 
@@ -417,7 +355,7 @@ type backupSourceColumnSpec struct {
 	fallback string
 }
 
-func backupBuildProxyMergeSQL(tx *sql.Tx) (string, string, error) {
+func backupBuildProxyMergeSQL(tx *sql.Tx) (string, error) {
 	return backupBuildTableMergeSQL(
 		tx,
 		"browser_proxies",
@@ -448,7 +386,7 @@ func backupBuildProxyMergeSQL(tx *sql.Tx) (string, string, error) {
 	)
 }
 
-func backupBuildProfileMergeSQL(tx *sql.Tx) (string, string, error) {
+func backupBuildProfileMergeSQL(tx *sql.Tx) (string, error) {
 	return backupBuildTableMergeSQL(
 		tx,
 		"browser_profiles",
@@ -481,14 +419,14 @@ func backupBuildProfileMergeSQL(tx *sql.Tx) (string, string, error) {
 	)
 }
 
-func backupBuildTableMergeSQL(tx *sql.Tx, table string, specs []backupSourceColumnSpec, safeWhere string) (string, string, error) {
+func backupBuildTableMergeSQL(tx *sql.Tx, table string, specs []backupSourceColumnSpec, safeWhere string) (string, error) {
 	columns := make([]string, 0, len(specs))
 	expressions := make([]string, 0, len(specs))
 	for _, spec := range specs {
 		columns = append(columns, spec.name)
 		expression, err := backupSourceColumnExpression(tx, table, "s", spec.name, spec.fallback)
 		if err != nil {
-			return "", "", err
+			return "", err
 		}
 		expressions = append(expressions, expression)
 	}
@@ -500,7 +438,7 @@ func backupBuildTableMergeSQL(tx *sql.Tx, table string, specs []backupSourceColu
 		strings.Join(expressions, ", "),
 		table,
 	)
-	return insertPrefix, insertPrefix + "\nWHERE " + safeWhere, nil
+	return insertPrefix + "\nWHERE " + safeWhere, nil
 }
 
 func backupSourceColumnExpression(tx *sql.Tx, table, alias, column, fallback string) (string, error) {
@@ -537,7 +475,7 @@ func backupListTargetIDs(tx *sql.Tx, table, column string) (map[string]struct{},
 	return result, nil
 }
 
-func (a *App) backupNormalizeImportedDatabasePaths(tx *sql.Tx, incomingCfg *config.Config, resetFirst bool, existingCoreIDs, existingProfileIDs map[string]struct{}) error {
+func (a *App) backupNormalizeImportedDatabasePaths(tx *sql.Tx, incomingCfg *config.Config, existingCoreIDs, existingProfileIDs map[string]struct{}) error {
 	if incomingCfg == nil {
 		return nil
 	}
@@ -557,10 +495,8 @@ func (a *App) backupNormalizeImportedDatabasePaths(tx *sql.Tx, incomingCfg *conf
 		}
 		if exists {
 			for id, path := range corePaths {
-				if !resetFirst {
-					if _, alreadyExists := existingCoreIDs[id]; alreadyExists {
-						continue
-					}
+				if _, alreadyExists := existingCoreIDs[id]; alreadyExists {
+					continue
 				}
 				if _, err := tx.Exec(`UPDATE browser_cores
 SET core_path = ?
@@ -587,10 +523,8 @@ WHERE lower(core_id) = ?
 		}
 		if exists {
 			for id, path := range profilePaths {
-				if !resetFirst {
-					if _, alreadyExists := existingProfileIDs[id]; alreadyExists {
-						continue
-					}
+				if _, alreadyExists := existingProfileIDs[id]; alreadyExists {
+					continue
 				}
 				if _, err := tx.Exec(`UPDATE browser_profiles
 SET user_data_dir = ?

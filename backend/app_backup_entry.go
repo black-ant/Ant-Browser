@@ -3,19 +3,13 @@ package backend
 import (
 	"ant-chrome/backend/internal/backup"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-// BackupInitializeSystem 初始化系统到最开始状态。
-func (a *App) BackupInitializeSystem() (map[string]interface{}, error) {
-	a.maintenanceMu.Lock()
-	defer a.maintenanceMu.Unlock()
-
-	return a.backupInitializeLocked(true)
-}
 
 // BackupExportPackage 导出全量配置与数据到 ZIP。
 func (a *App) BackupExportPackage() (map[string]interface{}, error) {
@@ -67,6 +61,7 @@ func (a *App) BackupExportPackage() (map[string]interface{}, error) {
 		a.backupEmitExportProgress("error", 100, fmt.Sprintf("导出失败: %v", err))
 		return nil, err
 	}
+	a.backupEmitExportProgress("done", 100, "导出完成")
 
 	return map[string]interface{}{
 		"cancelled":       false,
@@ -78,10 +73,8 @@ func (a *App) BackupExportPackage() (map[string]interface{}, error) {
 	}, nil
 }
 
-// BackupImportPackage 从 ZIP 导入配置与数据。
-// resetFirst=true: 先初始化，再全量导入。
-// resetFirst=false: 直接导入并执行判重合并。
-func (a *App) BackupImportPackage(resetFirst bool) (map[string]interface{}, error) {
+// BackupImportPackage 从 ZIP 导入配置与数据，仅支持判重合并导入。
+func (a *App) BackupImportPackage() (map[string]interface{}, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 
@@ -109,9 +102,50 @@ func (a *App) BackupImportPackage(resetFirst bool) (map[string]interface{}, erro
 	}
 	a.backupEmitImportProgress("preparing", 5, "正在校验备份包...")
 
-	result, importErr := a.backupImportFromPathLocked(zipPath, resetFirst)
+	result, importErr := a.backupImportFromPathLocked(zipPath)
 	if importErr != nil {
 		a.backupEmitImportProgress("error", 100, fmt.Sprintf("导入失败: %v", importErr))
+		return nil, importErr
+	}
+	return result, nil
+}
+
+// BackupRestoreLocalPackage 从历史路径恢复本地 ZIP 备份，仅支持判重合并恢复。
+func (a *App) BackupRestoreLocalPackage(zipPath string) (map[string]interface{}, error) {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+
+	zipPath = strings.TrimSpace(zipPath)
+	if zipPath == "" {
+		err := fmt.Errorf("本地备份路径为空")
+		a.backupEmitImportProgress("error", 100, fmt.Sprintf("本地备份恢复失败: %v", err))
+		return nil, err
+	}
+	if !strings.EqualFold(filepath.Ext(zipPath), ".zip") {
+		err := fmt.Errorf("本地备份必须是 ZIP 文件")
+		a.backupEmitImportProgress("error", 100, fmt.Sprintf("本地备份恢复失败: %v", err))
+		return nil, err
+	}
+	info, err := os.Stat(zipPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = fmt.Errorf("本地备份文件不存在: %s", zipPath)
+		} else {
+			err = fmt.Errorf("读取本地备份文件失败: %w", err)
+		}
+		a.backupEmitImportProgress("error", 100, fmt.Sprintf("本地备份恢复失败: %v", err))
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		err := fmt.Errorf("本地备份路径不是普通文件: %s", zipPath)
+		a.backupEmitImportProgress("error", 100, fmt.Sprintf("本地备份恢复失败: %v", err))
+		return nil, err
+	}
+
+	a.backupEmitImportProgress("preparing", 5, "正在校验本地备份包...")
+	result, importErr := a.backupImportFromPathLocked(zipPath)
+	if importErr != nil {
+		a.backupEmitImportProgress("error", 100, fmt.Sprintf("本地备份恢复失败: %v", importErr))
 		return nil, importErr
 	}
 	return result, nil

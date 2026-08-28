@@ -1,4 +1,4 @@
-package backupremote
+package openlist
 
 import (
 	"context"
@@ -10,7 +10,7 @@ func TestClientRejectsInvalidInput(t *testing.T) {
 	if _, err := NewClient(Config{BaseURL: `ftp://example.test`}); err == nil {
 		t.Fatal(`expected invalid scheme error`)
 	}
-	client, err := NewClient(Config{BaseURL: `https://example.test/dav`})
+	client, err := NewClient(Config{BaseURL: `https://example.test/dav`, Token: `secret`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,8 +26,7 @@ func TestClientUploadListDownload(t *testing.T) {
 	client, err := NewClient(Config{
 		BaseURL:    server.URL + `/dav`,
 		RemotePath: `backups`,
-		Username:   `user`,
-		Password:   `secret`,
+		Token:      `secret`,
 	})
 	if err != nil {
 		t.Fatal(err)

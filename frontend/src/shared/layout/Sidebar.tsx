@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   Activity,
+  Archive,
   Bookmark,
   BookOpen,
   FileText,
@@ -36,6 +37,7 @@ const iconMap: Record<string, LucideIcon> = {
   Monitor,
   ListChecks,
   Activity,
+  Archive,
   FileText,
   Cpu,
   Globe,

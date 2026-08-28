@@ -78,7 +78,7 @@ restore_last_session, deleted_at
 	app := NewApp(root)
 	app.db = targetDB
 	stats := &backupMergeStats{}
-	if err := app.backupMergeDatabaseFromSource(sourcePath, incoming, true, stats); err != nil {
+	if err := app.backupMergeDatabaseFromSource(sourcePath, incoming, stats); err != nil {
 		t.Fatal(err)
 	}
 
@@ -151,10 +151,10 @@ VALUES ('core-source', 'Source Core', 'chrome/external/core-source')`); err != n
 
 	app := NewApp(root)
 	app.db = targetDB
-	if err := app.backupMergeDatabaseFromSource(sourcePath, nil, true, &backupMergeStats{}); err != nil {
+	if err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.backupMergeDatabaseFromSource(sourcePath, nil, false, &backupMergeStats{}); err != nil {
+	if err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
 		t.Fatalf("second database merge failed after source detach: %v", err)
 	}
 }
@@ -221,7 +221,7 @@ updated_at DATETIME NOT NULL
 
 	app := NewApp(root)
 	app.db = targetDB
-	if err := app.backupMergeDatabaseFromSource(sourcePath, nil, true, &backupMergeStats{}); err != nil {
+	if err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -98,6 +98,7 @@ tmp-debug-port*/
 !.env.example
 
 # Local sensitive configs / accounts
+backup.local.yaml
 *.ovpn
 clash.yaml
 mihomo.yaml

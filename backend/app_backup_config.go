@@ -30,27 +30,7 @@ func (a *App) backupResolveUserDataRoot(cfg *config.Config) string {
 	return a.resolveAppPath(root)
 }
 
-func (a *App) backupClearBusinessTables() error {
-	if a.db == nil || a.db.GetConn() == nil {
-		return fmt.Errorf("数据库未初始化")
-	}
-	tx, err := a.db.GetConn().Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
-	defer tx.Rollback()
-
-	tables := []string{"launch_codes", "browser_profiles", "browser_proxies", "browser_cores", "browser_bookmarks", "browser_groups", "browser_extensions", "browser_profile_extension_settings", "browser_profile_extensions", "browser_profile_extension_runtime"}
-	for _, table := range tables {
-		if _, err := tx.Exec("DELETE FROM " + table); err != nil && !backupIsNoSuchTableError(err) {
-			return fmt.Errorf("清空数据表失败(%s): %w", table, err)
-		}
-	}
-	_, _ = tx.Exec(`DELETE FROM sqlite_sequence WHERE name IN ('browser_bookmarks')`)
-	return tx.Commit()
-}
-
-func (a *App) backupApplyIncomingConfig(incoming *config.Config, resetFirst bool) error {
+func (a *App) backupApplyIncomingConfig(incoming *config.Config) error {
 	if incoming == nil {
 		return nil
 	}
@@ -60,14 +40,9 @@ func (a *App) backupApplyIncomingConfig(incoming *config.Config, resetFirst bool
 	}
 	incoming = a.backupNormalizeImportedConfigPaths(incoming, current)
 
-	var target *config.Config
-	if resetFirst {
-		cloned := *incoming
-		target = &cloned
-	} else {
-		target = backupMergeConfig(current, incoming)
-	}
+	target := backupMergeConfig(current, incoming)
 	target.Database = current.Database
+	target.Backup = current.Backup
 
 	if err := target.Save(a.resolveAppPath("config.yaml")); err != nil {
 		return fmt.Errorf("保存导入配置失败: %w", err)
