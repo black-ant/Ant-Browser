@@ -93,6 +93,7 @@ type BackupConfig struct {
 
 type BackupChannelsConfig struct {
 	OpenList OpenListChannelConfig `yaml:"openlist"`
+	S3       S3ChannelConfig       `yaml:"s3,omitempty"`
 }
 
 type OpenListChannelConfig struct {
@@ -100,6 +101,17 @@ type OpenListChannelConfig struct {
 	RemotePath          string `yaml:"remote_path,omitempty"`
 	Token               string `yaml:"token,omitempty"`
 	UploadRateLimitMBps int    `yaml:"upload_rate_limit_mbps,omitempty"`
+}
+
+type S3ChannelConfig struct {
+	Endpoint        string `yaml:"endpoint,omitempty"`
+	Region          string `yaml:"region,omitempty"`
+	Bucket          string `yaml:"bucket,omitempty"`
+	Prefix          string `yaml:"prefix,omitempty"`
+	AccessKeyID     string `yaml:"access_key_id,omitempty"`
+	SecretAccessKey string `yaml:"secret_access_key,omitempty"`
+	SessionToken    string `yaml:"session_token,omitempty"`
+	ForcePathStyle  bool   `yaml:"force_path_style,omitempty"`
 }
 
 func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
@@ -112,7 +124,8 @@ func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 
-	openList := decoded.Channels.OpenList
+	channels := decoded.Channels
+	openList := channels.OpenList
 	if strings.TrimSpace(openList.BaseURL) == "" {
 		openList.BaseURL = decoded.OpenList.BaseURL
 	}
@@ -125,7 +138,8 @@ func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
 	if openList.UploadRateLimitMBps == 0 {
 		openList.UploadRateLimitMBps = decoded.OpenList.UploadRateLimitMBps
 	}
-	c.Channels = BackupChannelsConfig{OpenList: openList}
+	channels.OpenList = openList
+	c.Channels = channels
 	c.Schedule = decoded.Schedule
 	return nil
 }

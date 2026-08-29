@@ -38,6 +38,15 @@ function normalizeBackupProgress(
   const componentName = typeof payload.componentName === 'string' ? payload.componentName.trim() : ''
   const entryIndex = Number.isFinite(payload.entryIndex) ? Math.max(0, Math.round(payload.entryIndex || 0)) : 0
   const entryTotal = Number.isFinite(payload.entryTotal) ? Math.max(0, Math.round(payload.entryTotal || 0)) : 0
+  const bytesTransferred = Number.isFinite(payload.bytesTransferred)
+    ? Math.max(0, Math.round(payload.bytesTransferred || 0))
+    : undefined
+  const totalBytes = Number.isFinite(payload.totalBytes)
+    ? Math.max(0, Math.round(payload.totalBytes || 0))
+    : undefined
+  const bytesPerSecond = Number.isFinite(payload.bytesPerSecond)
+    ? Math.max(0, payload.bytesPerSecond || 0)
+    : undefined
   const timestamp = typeof payload.timestamp === 'string' && payload.timestamp.trim()
     ? payload.timestamp.trim()
     : new Date().toLocaleTimeString('zh-CN', { hour12: false })
@@ -46,6 +55,9 @@ function normalizeBackupProgress(
     phase,
     progress,
     message,
+    bytesTransferred,
+    totalBytes,
+    bytesPerSecond,
     componentId: componentId || undefined,
     componentName: componentName || undefined,
     entryIndex: entryIndex || undefined,
@@ -79,6 +91,11 @@ export function useBackupProgressEffects({
       }
 
       setExportProgress(next)
+
+      const isTransferUpdate = next.phase === 'uploading' && typeof next.bytesTransferred === 'number'
+      if (isTransferUpdate) {
+        return
+      }
 
       const prefix = next.componentName ? `[${next.componentName}] ` : next.componentId ? `[${next.componentId}] ` : ''
       const text = `${prefix}${next.message}`

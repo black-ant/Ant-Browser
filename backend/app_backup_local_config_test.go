@@ -55,3 +55,106 @@ func TestLoadBackupLocalConfigMigratesLegacySettings(t *testing.T) {
 		t.Fatal("rewritten local config must only contain the token")
 	}
 }
+
+func TestBackupLocalConfigStoresFullS3Config(t *testing.T) {
+	path := filepath.Join(t.TempDir(), backupLocalConfigFileName)
+	base := config.DefaultConfig().Backup
+	base.Channels.S3.Endpoint = "https://s3.example.com"
+	base.Channels.S3.Region = "us-west-2"
+	base.Channels.S3.Bucket = "backup-bucket"
+	base.Channels.S3.Prefix = "ant-chrome/backups"
+	base.Channels.S3.AccessKeyID = "access-key"
+	base.Channels.S3.SecretAccessKey = "secret-key"
+	base.Channels.S3.SessionToken = "session-token"
+	base.Channels.S3.ForcePathStyle = true
+
+	if err := saveBackupLocalConfig(path, base); err != nil {
+		t.Fatalf("save S3 local config: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read S3 local config: %v", err)
+	}
+	text := string(data)
+	for _, publicValue := range []string{"s3.example.com", "us-west-2", "backup-bucket", "ant-chrome/backups", "force_path_style: true"} {
+		if !strings.Contains(text, publicValue) {
+			t.Fatalf("local S3 config must contain %q: %s", publicValue, text)
+		}
+	}
+	for _, secret := range []string{"access-key", "secret-key", "session-token"} {
+		if !strings.Contains(text, secret) {
+			t.Fatalf("local S3 config must contain %q: %s", secret, text)
+		}
+	}
+
+	loaded, exists, err := loadBackupLocalConfig(path, config.DefaultConfig().Backup)
+	if err != nil {
+		t.Fatalf("load S3 local config: %v", err)
+	}
+	if !exists {
+		t.Fatal("S3 local config should be detected")
+	}
+	if loaded.Channels.S3.Endpoint != "https://s3.example.com" || loaded.Channels.S3.Region != "us-west-2" || loaded.Channels.S3.Bucket != "backup-bucket" || loaded.Channels.S3.Prefix != "ant-chrome/backups" ||
+		loaded.Channels.S3.AccessKeyID != "access-key" || loaded.Channels.S3.SecretAccessKey != "secret-key" || loaded.Channels.S3.SessionToken != "session-token" || !loaded.Channels.S3.ForcePathStyle {
+		t.Fatalf("loaded S3 credentials = %+v", loaded.Channels.S3)
+	}
+}
+
+func TestPrepareBackupLocalConfigMovesS3ConfigOutOfConfigFile(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Backup.Channels.S3.Endpoint = "https://s3.example.com"
+	cfg.Backup.Channels.S3.Region = "us-west-2"
+	cfg.Backup.Channels.S3.Bucket = "backup-bucket"
+	cfg.Backup.Channels.S3.Prefix = "s3-only-prefix"
+	cfg.Backup.Channels.S3.AccessKeyID = "access-key"
+	cfg.Backup.Channels.S3.SecretAccessKey = "secret-key"
+	cfg.Backup.Channels.S3.SessionToken = "session-token"
+	cfg.Backup.Channels.S3.ForcePathStyle = true
+
+	app := NewApp(root)
+	app.config = cfg
+	if err := app.prepareBackupLocalConfig(); err != nil {
+		t.Fatalf("prepare backup local config: %v", err)
+	}
+
+	configData, err := os.ReadFile(filepath.Join(root, "config.yaml"))
+	if err != nil {
+		t.Fatalf("read sanitized config: %v", err)
+	}
+	configText := string(configData)
+	for _, value := range []string{
+		"https://s3.example.com",
+		"us-west-2",
+		"backup-bucket",
+		"s3-only-prefix",
+		"access-key",
+		"secret-key",
+		"session-token",
+		"s3:",
+	} {
+		if strings.Contains(configText, value) {
+			t.Fatalf("S3 value %q leaked into config.yaml: %s", value, configText)
+		}
+	}
+
+	localData, err := os.ReadFile(filepath.Join(root, backupLocalConfigFileName))
+	if err != nil {
+		t.Fatalf("read local S3 config: %v", err)
+	}
+	localText := string(localData)
+	for _, value := range []string{
+		"https://s3.example.com",
+		"us-west-2",
+		"backup-bucket",
+		"s3-only-prefix",
+		"access-key",
+		"secret-key",
+		"session-token",
+		"force_path_style: true",
+	} {
+		if !strings.Contains(localText, value) {
+			t.Fatalf("S3 value %q missing from backup.local.yaml: %s", value, localText)
+		}
+	}
+}

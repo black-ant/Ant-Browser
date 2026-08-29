@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Clock3, Settings2, Upload } from 'lucide-react'
 
 import { Button, Progress, toast } from '../../shared/components'
 import { BackupImportModal } from './components/BackupImportModal'
 import { ScheduledBackupModal } from './components/ScheduledBackupModal'
+import { BackupChannelConfigModal } from './components/BackupChannelConfigModal'
 import { OpenListConfigModal } from './channels/openlist/OpenListConfigModal'
 import type { BackupExportLogItem, BackupExportProgress } from './progress'
 import {
@@ -19,9 +21,30 @@ import { useBackupProgressEffects } from './hooks/useBackupProgressEffects'
 
 type BackupActionLoading = 'none' | 'export' | 'import-merge'
 
+function formatBackupBytes(value?: number) {
+  const bytes = Math.max(0, Number(value) || 0)
+  if (bytes < 1024) return `${Math.round(bytes)} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let amount = bytes
+  let unitIndex = -1
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024
+    unitIndex += 1
+  }
+  return `${amount.toFixed(2)} ${units[unitIndex]}`
+}
+
+function formatBackupRate(value?: number) {
+  const rate = Math.max(0, Number(value) || 0)
+  if (rate <= 0) return '计算中'
+  return `${formatBackupBytes(rate)}/s`
+}
+
 export function BackupPage() {
+  const navigate = useNavigate()
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [backupTypeModalOpen, setBackupTypeModalOpen] = useState(false)
+  const [channelConfigModalOpen, setChannelConfigModalOpen] = useState(false)
   const [openListConfigModalOpen, setOpenListConfigModalOpen] = useState(false)
   const [openListConnection, setOpenListConnection] = useState<OpenListConnection | null>(null)
   const [pendingBackupTypes, setPendingBackupTypes] = useState<BackupTypeSelection | null>(null)
@@ -206,6 +229,14 @@ export function BackupPage() {
             status={exportProgress.phase === 'error' ? 'error' : exportProgress.phase === 'done' ? 'success' : 'normal'}
             showInfo={false}
           />
+          {exportProgress.phase === 'uploading' && exportProgress.totalBytes && exportProgress.totalBytes > 0 && (
+            <div className="flex items-center justify-between gap-3 text-xs text-[var(--color-text-muted)]">
+              <span>
+                已上传 {formatBackupBytes(exportProgress.bytesTransferred)} / {formatBackupBytes(exportProgress.totalBytes)}
+              </span>
+              <span>速度 {formatBackupRate(exportProgress.bytesPerSecond)}</span>
+            </div>
+          )}
           {exportLogs.length > 0 && (
             <div ref={exportLogsRef} className="max-h-28 overflow-y-auto border-t border-[var(--color-border-muted)] pt-2 font-mono text-xs leading-5 text-[var(--color-text-muted)]">
               {exportLogs.map(item => (
@@ -256,13 +287,13 @@ export function BackupPage() {
               onClick={() => {
                 openListConfigurationCompletedRef.current = false
                 setPendingBackupTypes(null)
-                setOpenListConfigModalOpen(true)
+                setChannelConfigModalOpen(true)
               }}
               disabled={remoteBackupBusy || scheduledBackupBusy || actionLoading !== 'none'}
-              title="配置 OpenList 连接"
+              title="配置备份渠道"
             >
               <Settings2 className="h-4 w-4" />
-              配置
+              渠道
             </Button>
             <Button
               variant="secondary"
@@ -287,6 +318,21 @@ export function BackupPage() {
           setImportProgress(null)
         }}
         onImport={() => { void handleImportSystem() }}
+      />
+
+      <BackupChannelConfigModal
+        open={channelConfigModalOpen}
+        onClose={() => setChannelConfigModalOpen(false)}
+        onSelect={channelId => {
+          setChannelConfigModalOpen(false)
+          if (channelId === 's3') {
+            navigate('/system/backup/s3')
+            return
+          }
+          if (channelId === 'openlist') {
+            setOpenListConfigModalOpen(true)
+          }
+        }}
       />
 
       <BackupTypeModal

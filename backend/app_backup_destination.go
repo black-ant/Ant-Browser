@@ -85,12 +85,12 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 
 	if openListEnabled {
 		fileName := filepath.Base(packagePath)
-		uploadMessage, uploadErr := backupOpenListUploadProgressMessage(packagePath, "备份文件", openListConfig.UploadRateLimitMBps)
+		uploadMessage, uploadSize, uploadErr := backupOpenListUploadProgressMessage(packagePath, "备份文件", openListConfig.UploadRateLimitMBps)
 		var remoteFile channels.File
 		if uploadErr == nil {
-			a.backupEmitExportProgress("uploading", 96, uploadMessage)
+			a.backupEmitExportProgressTransfer("uploading", 96, uploadMessage, channels.UploadProgress{TotalBytes: uploadSize})
 			ctx, cancel := a.backupOpenListContext(openlist.TransferTimeout)
-			remoteFile, uploadErr = openListClient.Upload(ctx, packagePath, fileName)
+			remoteFile, uploadErr = backupUploadWithProgress(ctx, openListClient, packagePath, fileName, a.backupOpenListUploadProgressCallback("备份文件", 96, 98))
 			cancel()
 		}
 		if uploadErr != nil {
@@ -110,11 +110,11 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 
 		metadataPath := backupMetadataPath(packagePath)
 		metadataName := filepath.Base(metadataPath)
-		metadataMessage, metadataErr := backupOpenListUploadProgressMessage(metadataPath, "备份元数据", openListConfig.UploadRateLimitMBps)
+		metadataMessage, metadataSize, metadataErr := backupOpenListUploadProgressMessage(metadataPath, "备份元数据", openListConfig.UploadRateLimitMBps)
 		if metadataErr == nil {
-			a.backupEmitExportProgress("uploading", 98, metadataMessage)
+			a.backupEmitExportProgressTransfer("uploading", 98, metadataMessage, channels.UploadProgress{TotalBytes: metadataSize})
 			metadataContext, metadataCancel := a.backupOpenListContext(openlist.TransferTimeout)
-			_, metadataErr = openListClient.UploadMetadata(metadataContext, metadataPath, metadataName)
+			_, metadataErr = backupUploadMetadataWithProgress(metadataContext, openListClient, metadataPath, metadataName, a.backupOpenListUploadProgressCallback("备份元数据", 98, 99))
 			metadataCancel()
 		}
 		if metadataErr != nil {

@@ -135,7 +135,56 @@ async function submitPrompt(page, selector, timeoutMs) {
   return { step: 'submit_prompt', selector: '', submitMode: 'keyboard-enter' }
 }
 
-async function waitForGeneratedImage(page, selector, timeoutMs, onProgress) {
+async function collectImageSources(page, selector) {
+  const locator = page.locator(selector)
+  const count = await locator.count().catch(() => 0)
+  const sources = new Set()
+  for (let index = 0; index < count; index += 1) {
+    const source = await locator.nth(index).evaluate((element) => {
+      if (element.tagName.toLowerCase() !== 'img') {
+        return ''
+      }
+      return element.currentSrc || element.src || ''
+    }).catch(() => '')
+    if (source) {
+      sources.add(source)
+    }
+  }
+  return sources
+}
+
+async function findFreshVisibleImage(page, selector, existingSources) {
+  const locator = page.locator(selector)
+  const count = await locator.count().catch(() => 0)
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index)
+    if (!(await candidate.isVisible().catch(() => false))) {
+      continue
+    }
+    const imageInfo = await candidate.evaluate((element) => {
+      const tagName = element.tagName.toLowerCase()
+      const src = tagName === 'img' ? element.currentSrc || element.src || '' : ''
+      const rect = element.getBoundingClientRect()
+      return {
+        tagName,
+        src,
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      }
+    }).catch(() => null)
+    if (!imageInfo || !imageInfo.src || existingSources.has(imageInfo.src)) {
+      continue
+    }
+    const marker = `ant-gateway-generated-${Date.now()}-${index}`
+    await candidate.evaluate((element, value) => {
+      element.setAttribute('data-ant-gateway-image-candidate', value)
+    }, marker).catch(() => {})
+    return { ...imageInfo, marker }
+  }
+  return null
+}
+
+async function waitForGeneratedImage(page, selector, timeoutMs, onProgress, existingSources = new Set()) {
   const locator = page.locator(selector)
   const deadline = Date.now() + timeoutMs
   const startedAt = Date.now()
@@ -143,9 +192,9 @@ async function waitForGeneratedImage(page, selector, timeoutMs, onProgress) {
   const loginRequiredPattern = /requires you to be logged in|需要登录|登录以获取|登录以|log in|sign in/i
   while (Date.now() < deadline) {
     const matchedCount = await locator.count().catch(() => 0)
-    const firstVisible = matchedCount > 0 && await locator.first().isVisible().catch(() => false)
-    if (firstVisible) {
-      break
+    const imageInfo = await findFreshVisibleImage(page, selector, existingSources)
+    if (imageInfo) {
+      return { step: 'wait_image', selector, imageInfo }
     }
     const now = Date.now()
     if (typeof onProgress === 'function' && now - lastProgressAt >= 10000) {
@@ -154,7 +203,7 @@ async function waitForGeneratedImage(page, selector, timeoutMs, onProgress) {
         elapsedMs: now - startedAt,
         remainingMs: Math.max(0, deadline - now),
         matchedCount,
-        firstVisible,
+        firstVisible: false,
       })
     }
     const bodyText = await page.locator('body').innerText({ timeout: 1000 }).catch(() => '')
@@ -168,19 +217,13 @@ async function waitForGeneratedImage(page, selector, timeoutMs, onProgress) {
     }
     await page.waitForTimeout(1500)
   }
-  const visibleLocator = await firstVisibleLocator(page, selector, Math.max(1000, deadline - Date.now()), 'generatedImage')
-  const imageInfo = await visibleLocator.evaluate((element) => {
-    const tagName = element.tagName.toLowerCase()
-    const src = tagName === 'img' ? element.currentSrc || element.src || '' : ''
-    const rect = element.getBoundingClientRect()
-    return {
-      tagName,
-      src,
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-    }
-  })
-  return { step: 'wait_image', selector, imageInfo }
+  return {
+    step: 'wait_image',
+    selector,
+    ok: false,
+    status: 'timeout',
+    summary: '等待新的图片生成结果超时。',
+  }
 }
 
 function fileSize(pathname) {
@@ -197,8 +240,11 @@ async function downloadByButton(page, selector, timeoutMs) {
   return downloadPromise
 }
 
-async function downloadByImageURL(page, imageSelector, timeoutMs, outputPath) {
-  const locator = await firstVisibleLocator(page, imageSelector, timeoutMs, 'generatedImage')
+async function downloadByImageURL(page, imageSelector, timeoutMs, outputPath, candidateMarker) {
+  const selector = normalizeText(candidateMarker)
+    ? `[data-ant-gateway-image-candidate="${candidateMarker}"]`
+    : imageSelector
+  const locator = await firstVisibleLocator(page, selector, timeoutMs, 'generatedImage')
   const imageUrl = await locator.evaluate((element) => {
     if (element.tagName.toLowerCase() !== 'img') {
       return ''
@@ -347,6 +393,8 @@ exports.run = async function run({ useBrowser, params = {}, artifact, artifactsD
     writeLog('new-session:skipped', step)
   }
 
+  const existingImageSources = await collectImageSources(page, selectors.generatedImage)
+
   writeLog('prompt-input:start', { selector: selectors.promptInput, promptLength: prompt.length })
   const promptStep = await fillPrompt(page, selectors.promptInput, prompt, timeoutMs)
   steps.push(promptStep)
@@ -360,12 +408,12 @@ exports.run = async function run({ useBrowser, params = {}, artifact, artifactsD
   writeLog('wait-image:start', { selector: selectors.generatedImage, timeoutMs })
   const generatedImageStep = await waitForGeneratedImage(page, selectors.generatedImage, timeoutMs, (progress) => {
     writeLog('wait-image:progress', progress)
-  })
+  }, existingImageSources)
   steps.push(generatedImageStep)
   writeLog('wait-image:done', generatedImageStep)
   if (generatedImageStep && generatedImageStep.ok === false) {
     writeLog('wait-image:failed', generatedImageStep)
-    const screenshotPath = await captureScreenshotIfNeeded(page, true, path.dirname(outputPath), 'needs-login')
+    const screenshotPath = await captureScreenshotIfNeeded(page, true, path.dirname(outputPath), generatedImageStep.status || 'failed')
     writeLog('screenshot:capture', { reason: generatedImageStep.status || 'failed', screenshotPath })
     return {
       ok: false,
@@ -393,7 +441,7 @@ exports.run = async function run({ useBrowser, params = {}, artifact, artifactsD
     }
   } else {
     writeLog('download:start', { mode: 'image-url', selector: selectors.generatedImage, outputPath })
-    downloadInfo = await downloadByImageURL(page, selectors.generatedImage, timeoutMs, outputPath)
+    downloadInfo = await downloadByImageURL(page, selectors.generatedImage, timeoutMs, outputPath, generatedImageStep.imageInfo && generatedImageStep.imageInfo.marker)
   }
   const downloadStep = { step: 'download_image', outputPath, bytes: fileSize(outputPath), ...downloadInfo }
   steps.push(downloadStep)

@@ -123,7 +123,15 @@ func (c *Client) Upload(ctx context.Context, localPath, fileName string) (File, 
 	if err != nil {
 		return File{}, err
 	}
-	return c.uploadFile(ctx, localPath, cleanName, `backup`)
+	return c.uploadFile(ctx, localPath, cleanName, `backup`, nil)
+}
+
+func (c *Client) UploadWithProgress(ctx context.Context, localPath, fileName string, progress channels.UploadProgressFunc) (File, error) {
+	cleanName, err := cleanFileName(fileName)
+	if err != nil {
+		return File{}, err
+	}
+	return c.uploadFile(ctx, localPath, cleanName, `backup`, progress)
 }
 
 func (c *Client) UploadMetadata(ctx context.Context, localPath, fileName string) (File, error) {
@@ -131,10 +139,18 @@ func (c *Client) UploadMetadata(ctx context.Context, localPath, fileName string)
 	if err != nil {
 		return File{}, err
 	}
-	return c.uploadFile(ctx, localPath, cleanName, `backup metadata`)
+	return c.uploadFile(ctx, localPath, cleanName, `backup metadata`, nil)
 }
 
-func (c *Client) uploadFile(ctx context.Context, localPath, cleanName, artifactName string) (File, error) {
+func (c *Client) UploadMetadataWithProgress(ctx context.Context, localPath, fileName string, progress channels.UploadProgressFunc) (File, error) {
+	cleanName, err := cleanMetadataFileName(fileName)
+	if err != nil {
+		return File{}, err
+	}
+	return c.uploadFile(ctx, localPath, cleanName, `backup metadata`, progress)
+}
+
+func (c *Client) uploadFile(ctx context.Context, localPath, cleanName, artifactName string, progress channels.UploadProgressFunc) (File, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
 		return File{}, fmt.Errorf(`stat local %s failed: %w`, artifactName, err)
@@ -152,7 +168,7 @@ func (c *Client) uploadFile(ctx context.Context, localPath, cleanName, artifactN
 	defer file.Close()
 
 	temporaryName := cleanName + `.uploading`
-	if err := c.put(ctx, temporaryName, file, info.Size()); err != nil {
+	if err := c.put(ctx, temporaryName, file, info.Size(), progress); err != nil {
 		_ = c.delete(ctx, temporaryName)
 		return File{}, fmt.Errorf(`upload %s failed: %w`, artifactName, err)
 	}
@@ -245,11 +261,12 @@ func (c *Client) ensureRemoteDirectory(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) put(ctx context.Context, remotePath string, body io.Reader, size int64) error {
+func (c *Client) put(ctx context.Context, remotePath string, body io.Reader, size int64, progress channels.UploadProgressFunc) error {
 	if c.config.UploadRateLimitMBps > 0 {
 		bytesPerSecond := int64(c.config.UploadRateLimitMBps) * bytesPerMegabyte
 		body = channels.NewRateLimitedReader(ctx, body, bytesPerSecond)
 	}
+	body = channels.NewUploadProgressReader(body, size, progress)
 	response, err := c.request(ctx, http.MethodPut, remotePath, body, size, nil)
 	if err != nil {
 		return err
@@ -566,6 +583,9 @@ func hrefBaseName(value string) string {
 func responseError(response *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
 	message := strings.TrimSpace(string(body))
+	if response.StatusCode == http.StatusRequestEntityTooLarge {
+		return fmt.Errorf(`remote request failed: HTTP 413 Request Entity Too Large：远端反向代理拒绝了过大的请求体（通常是 OpenResty/Nginx 的 client_max_body_size），请将其调大到超过备份文件大小；客户端限速和超时无法绕过此限制`)
+	}
 	if message == `` {
 		message = http.StatusText(response.StatusCode)
 	}

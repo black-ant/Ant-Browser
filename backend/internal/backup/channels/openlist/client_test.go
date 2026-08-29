@@ -1,8 +1,13 @@
 package openlist
 
 import (
+	"ant-chrome/backend/internal/backup/channels"
+	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +71,58 @@ func TestClientUploadListDownload(t *testing.T) {
 	}
 	if string(downloaded) != string(content) {
 		t.Fatalf(`downloaded content = %q, want %q`, downloaded, content)
+	}
+}
+
+func TestClientUploadWithProgressReportsTransfer(t *testing.T) {
+	store := newMemoryWebDAV()
+	server := store.server()
+	defer server.Close()
+	client, err := NewClient(Config{
+		BaseURL:    server.URL + `/dav`,
+		RemotePath: `backups`,
+		Token:      `secret`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localPath := t.TempDir() + `/source.zip`
+	content := bytes.Repeat([]byte("x"), 256*1024)
+	if err := os.WriteFile(localPath, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updates := make([]channels.UploadProgress, 0, 1)
+	_, err = client.UploadWithProgress(context.Background(), localPath, `ant-chrome-progress.zip`, func(progress channels.UploadProgress) {
+		updates = append(updates, progress)
+	})
+	if err != nil {
+		t.Fatalf(`upload failed: %v`, err)
+	}
+	if len(updates) == 0 || updates[len(updates)-1].BytesTransferred != int64(len(content)) {
+		t.Fatalf(`progress updates = %+v, want completed transfer`, updates)
+	}
+}
+
+func TestClientUploadExplainsRequestEntityTooLarge(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPut {
+			response.WriteHeader(http.StatusRequestEntityTooLarge)
+			_, _ = response.Write([]byte(`<html><center>openresty</center></html>`))
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{BaseURL: server.URL + `/dav`, Token: `secret`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localPath := t.TempDir() + `/source.zip`
+	if err := os.WriteFile(localPath, []byte(`content`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Upload(context.Background(), localPath, `ant-chrome-413.zip`)
+	if err == nil || !strings.Contains(err.Error(), `client_max_body_size`) {
+		t.Fatalf(`upload error = %v, want client_max_body_size guidance`, err)
 	}
 }

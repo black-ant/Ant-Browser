@@ -74,14 +74,14 @@ func (a *App) backupOpenListUploadLocked(input map[string]string) (map[string]in
 	if err != nil {
 		return nil, err
 	}
-	uploadMessage, err := backupOpenListUploadProgressMessage(localPath, `备份文件`, openListConfig.UploadRateLimitMBps)
+	uploadMessage, uploadSize, err := backupOpenListUploadProgressMessage(localPath, `备份文件`, openListConfig.UploadRateLimitMBps)
 	if err != nil {
 		a.backupEmitExportProgress(`error`, 100, err.Error())
 		return nil, err
 	}
-	a.backupEmitExportProgress(`uploading`, 96, uploadMessage)
+	a.backupEmitExportProgressTransfer(`uploading`, 96, uploadMessage, channels.UploadProgress{TotalBytes: uploadSize})
 	ctx, cancel := a.backupOpenListContext(openlist.TransferTimeout)
-	remoteFile, err := client.Upload(ctx, localPath, fileName)
+	remoteFile, err := backupUploadWithProgress(ctx, client, localPath, fileName, a.backupOpenListUploadProgressCallback(`备份文件`, 96, 98))
 	cancel()
 	if err != nil {
 		a.backupEmitExportProgress(`error`, 100, err.Error())
@@ -91,14 +91,14 @@ func (a *App) backupOpenListUploadLocked(input map[string]string) (map[string]in
 	result[`remoteSize`] = remoteFile.Size
 	metadataPath := backupMetadataPath(localPath)
 	metadataName := filepath.Base(metadataPath)
-	metadataMessage, err := backupOpenListUploadProgressMessage(metadataPath, `备份元数据`, openListConfig.UploadRateLimitMBps)
+	metadataMessage, metadataSize, err := backupOpenListUploadProgressMessage(metadataPath, `备份元数据`, openListConfig.UploadRateLimitMBps)
 	if err != nil {
 		a.backupEmitExportProgress(`error`, 100, err.Error())
 		return nil, err
 	}
-	a.backupEmitExportProgress(`uploading`, 98, metadataMessage)
+	a.backupEmitExportProgressTransfer(`uploading`, 98, metadataMessage, channels.UploadProgress{TotalBytes: metadataSize})
 	metadataContext, metadataCancel := a.backupOpenListContext(openlist.TransferTimeout)
-	if _, err := client.UploadMetadata(metadataContext, metadataPath, metadataName); err != nil {
+	if _, err := backupUploadMetadataWithProgress(metadataContext, client, metadataPath, metadataName, a.backupOpenListUploadProgressCallback(`备份元数据`, 98, 99)); err != nil {
 		metadataCancel()
 		a.backupEmitExportProgress(`error`, 100, err.Error())
 		return nil, err
@@ -192,19 +192,19 @@ func (a *App) backupResolvedOpenListConfig(input map[string]string) (config.Open
 	return settings, nil
 }
 
-func backupOpenListUploadProgressMessage(localPath, artifactName string, uploadRateLimitMBps int) (string, error) {
+func backupOpenListUploadProgressMessage(localPath, artifactName string, uploadRateLimitMBps int) (string, int64, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
-		return ``, fmt.Errorf(`读取%s大小失败: %w`, artifactName, err)
+		return ``, 0, fmt.Errorf(`读取%s大小失败: %w`, artifactName, err)
 	}
 	if info.IsDir() {
-		return ``, fmt.Errorf(`%s路径是目录`, artifactName)
+		return ``, 0, fmt.Errorf(`%s路径是目录`, artifactName)
 	}
 	rateDescription := `不限速`
 	if uploadRateLimitMBps > 0 {
 		rateDescription = fmt.Sprintf(`%d MB/s`, uploadRateLimitMBps)
 	}
-	return fmt.Sprintf(`准备上传%s到 OpenList：文件大小 %s（%d bytes），上传限速 %s`, artifactName, formatBackupFileSize(info.Size()), info.Size(), rateDescription), nil
+	return fmt.Sprintf(`准备上传%s到 OpenList：文件大小 %s（%d bytes），上传限速 %s`, artifactName, formatBackupFileSize(info.Size()), info.Size(), rateDescription), info.Size(), nil
 }
 
 func formatBackupFileSize(size int64) string {
@@ -222,6 +222,43 @@ func formatBackupFileSize(size int64) string {
 		unitIndex++
 	}
 	return fmt.Sprintf(`%.2f %s`, value, units[unitIndex])
+}
+
+func formatBackupTransferRate(bytesPerSecond float64) string {
+	if bytesPerSecond <= 0 {
+		return `计算中`
+	}
+	value := bytesPerSecond
+	units := []string{`B/s`, `KB/s`, `MB/s`, `GB/s`, `TB/s`}
+	unitIndex := 0
+	for value >= 1024 && unitIndex < len(units)-1 {
+		value /= 1024
+		unitIndex++
+	}
+	if unitIndex == 0 {
+		return fmt.Sprintf(`%.0f %s`, value, units[unitIndex])
+	}
+	return fmt.Sprintf(`%.2f %s`, value, units[unitIndex])
+}
+
+func (a *App) backupOpenListUploadProgressCallback(artifactName string, startProgress, endProgress int) channels.UploadProgressFunc {
+	return func(progress channels.UploadProgress) {
+		a.backupEmitExportUploadProgress(artifactName, startProgress, endProgress, progress)
+	}
+}
+
+func backupUploadWithProgress(ctx context.Context, client channels.Client, localPath, fileName string, progress channels.UploadProgressFunc) (channels.File, error) {
+	if progressClient, ok := client.(channels.ProgressClient); ok {
+		return progressClient.UploadWithProgress(ctx, localPath, fileName, progress)
+	}
+	return client.Upload(ctx, localPath, fileName)
+}
+
+func backupUploadMetadataWithProgress(ctx context.Context, client channels.Client, localPath, fileName string, progress channels.UploadProgressFunc) (channels.File, error) {
+	if progressClient, ok := client.(channels.ProgressClient); ok {
+		return progressClient.UploadMetadataWithProgress(ctx, localPath, fileName, progress)
+	}
+	return client.UploadMetadata(ctx, localPath, fileName)
 }
 
 func (a *App) backupStoredOpenListConfig() config.OpenListChannelConfig {

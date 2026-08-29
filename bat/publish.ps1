@@ -482,6 +482,58 @@ function Copy-WindowsChromePayload {
     }
 }
 
+function Assert-ReleaseConfigPrivacy {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigPath
+    )
+
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        throw "发布配置不存在: $ConfigPath"
+    }
+
+    $configText = [System.IO.File]::ReadAllText($ConfigPath, [System.Text.Encoding]::UTF8)
+    $hasS3Section = $configText -match '(?im)^\s*s3\s*:'
+    $hasS3Credential = $configText -match '(?im)^\s*(access_key_id|secret_access_key|session_token)\s*:'
+    $hasS3Setting = $configText -match '(?im)^\s*(endpoint|bucket|prefix|force_path_style)\s*:'
+    if ($hasS3Section -or $hasS3Credential -or $hasS3Setting) {
+        throw "发布配置包含 S3 配置或凭据，禁止进入 Windows 产物: $ConfigPath"
+    }
+}
+
+function Test-LocalBackupArtifact {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File
+    )
+
+    return $File.Name -match '(?i)(?:\.zip|\.jar|\.7z|\.rar|\.tar|\.tar\.gz|\.tgz|\.tar\.xz|\.txz|\.tar\.bz2|\.tbz2|\.bak|\.backup|\.old|\.orig)$'
+}
+
+function Assert-WindowsStagingPrivacy {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$StagingDir
+    )
+
+    if (-not (Test-Path -LiteralPath $StagingDir -PathType Container)) {
+        throw "Windows staging 目录不存在: $StagingDir"
+    }
+
+    $files = @(Get-ChildItem -LiteralPath $StagingDir -File -Recurse -Force)
+    foreach ($file in $files) {
+        $relativePath = $file.FullName.Substring($StagingDir.Length).TrimStart('\', '/')
+        if ($file.Name -ieq 'backup.local.yaml' -or
+            $file.Name -match '(?i)\.local\.(?:yaml|yml|json)$' -or
+            (Test-LocalBackupArtifact -File $file) -or
+            $relativePath -match '(?i)(^|[\\/])(?:\.local-backup|backup|backups)(?:[\\/]|$)') {
+            throw "Windows staging 包含本地配置或备份文件，已阻止打包: $relativePath"
+        }
+    }
+
+    Assert-ReleaseConfigPrivacy -ConfigPath (Join-Path $StagingDir 'config.yaml')
+}
+
 function New-WindowsStaging {
     Write-Host "[Windows] 组装 staging 目录..."
 
@@ -505,6 +557,7 @@ function New-WindowsStaging {
     if (-not (Test-Path -LiteralPath $releaseConfig -PathType Leaf)) {
         throw "未找到发布配置模板: publish\config.init.yaml"
     }
+    Assert-ReleaseConfigPrivacy -ConfigPath $releaseConfig
     Copy-Item -LiteralPath $releaseConfig -Destination (Join-Path $stagingDir "config.yaml") -Force
     Write-Host "✓ 复制发布配置模板 publish\config.init.yaml -> config.yaml"
 
@@ -538,6 +591,8 @@ function New-WindowsStaging {
 
     New-Item -ItemType Directory -Path (Join-Path $stagingDir "data") -Force | Out-Null
     Write-Host "✓ 创建空 data 目录（不打包 app.db，首次启动自动初始化）"
+    Assert-WindowsStagingPrivacy -StagingDir $stagingDir
+    Write-Host "✓ staging 隐私检查通过（不含 S3 配置、凭据和备份文件）"
     Write-Host ""
     Write-Host "✓ staging 目录组装完成"
     Write-Host ""

@@ -154,6 +154,18 @@ export function BackupRestoreLocalPackage(arg1) {
   return window['go']['main']['App']['BackupRestoreLocalPackage'](arg1);
 }
 
+export function BackupS3GetSettings() {
+  return window['go']['main']['App']['BackupS3GetSettings']();
+}
+
+export function BackupS3SaveSettings(arg1) {
+  return window['go']['main']['App']['BackupS3SaveSettings'](arg1);
+}
+
+export function BackupS3Test(arg1) {
+  return window['go']['main']['App']['BackupS3Test'](arg1);
+}
+
 export function BackupScheduledGetSettings() {
   return window['go']['main']['App']['BackupScheduledGetSettings']();
 }

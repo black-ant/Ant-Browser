@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Cloud, ExternalLink, RefreshCw } from 'lucide-react'
+import { Cloud, Database, ExternalLink, RefreshCw } from 'lucide-react'
 
 import { Button, Card, ConfirmModal, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components'
@@ -11,7 +11,7 @@ import {
 } from '../channels/openlist/api'
 import type { OpenListBackupFile, OpenListConnection } from '../channels/openlist/api'
 
-type BackupHistorySource = 'local' | 'openlist'
+type BackupHistorySource = 'local' | 'openlist' | 's3'
 type BackupHistoryFilter = 'all' | BackupHistorySource
 
 interface BackupHistoryItem {
@@ -221,6 +221,12 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+function sourceLabel(source: BackupHistorySource) {
+  if (source === 'local') return '本地'
+  if (source === 'openlist') return 'OpenList'
+  return 'S3'
+}
+
 export function BackupHistoryTable({ actions, configuredConnection, refreshToken = 0, onBusyChange }: BackupHistoryTableProps) {
   const [items, setItems] = useState<BackupHistoryItem[]>(buildInitialItems)
   const [filter, setFilter] = useState<BackupHistoryFilter>('all')
@@ -322,7 +328,7 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
           throw new Error('本地备份路径不可用，请重新导入该 ZIP 文件')
         }
         result = await restoreLocalSystemConfig(localPath)
-      } else {
+      } else if (item.source === 'openlist') {
         if (!item.remoteFile) {
           throw new Error('OpenList 备份文件信息不可用，请先刷新历史')
         }
@@ -330,14 +336,16 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
           throw new Error('请先点击“配置”连接 OpenList')
         }
         result = await restoreOpenListBackup(item.remoteFile.name, activeConnection)
+      } else {
+        throw new Error('S3 备份恢复尚未接入')
       }
       if (result.partial || Number(result.componentFailed || 0) > 0) {
         toast.warning('备份已恢复，但有部分模块失败，请查看导入结果')
       } else {
-        toast.success(item.source === 'local' ? '已从本地合并恢复' : '已从 OpenList 合并恢复')
+        toast.success(`已从${sourceLabel(item.source)}合并恢复`)
       }
     } catch (restoreError) {
-      const message = errorMessage(restoreError, `${item.source === 'local' ? '本地' : 'OpenList'}备份恢复失败`)
+      const message = errorMessage(restoreError, `${sourceLabel(item.source)}备份恢复失败`)
       setError(message)
       toast.error(message)
     } finally {
@@ -360,6 +368,10 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
       setError('请先点击“配置”连接 OpenList')
       return
     }
+    if (item.source === 's3') {
+      setError('S3 备份恢复尚未接入')
+      return
+    }
     setError('')
     setPendingRestoreItem(item)
   }
@@ -377,6 +389,9 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
         return
       }
 
+      if (item.source === 's3') {
+        throw new Error('S3 备份地址打开尚未接入')
+      }
       const location = item.location.trim()
       if (!location) {
         throw new Error('OpenList 备份地址不可用')
@@ -400,6 +415,7 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
     { key: 'all', label: '全部' },
     { key: 'local', label: '本地' },
     { key: 'openlist', label: 'OpenList' },
+    { key: 's3', label: 'S3' },
   ]
   const tableColumns: TableColumn<BackupHistoryItem>[] = [
     {
@@ -413,8 +429,12 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
       width: 120,
       render: value => (
         <span className="inline-flex items-center gap-1.5 text-[var(--color-text-secondary)]">
-          {value === 'openlist' ? <Cloud className="h-4 w-4" /> : <span className="h-2 w-2 rounded-full bg-[var(--color-text-muted)]" />}
-          {value === 'openlist' ? 'OpenList' : '本地'}
+          {value === 'openlist'
+            ? <Cloud className="h-4 w-4" />
+            : value === 's3'
+              ? <Database className="h-4 w-4" />
+              : <span className="h-2 w-2 rounded-full bg-[var(--color-text-muted)]" />}
+          {value === 'openlist' ? 'OpenList' : value === 's3' ? 'S3' : '本地'}
         </span>
       ),
     },
@@ -442,7 +462,7 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
             type="button"
             className="group inline-flex max-w-full min-w-0 items-center gap-1 text-left text-[var(--color-accent)] hover:underline disabled:cursor-wait disabled:opacity-60"
             title={`打开备份地址：${location}`}
-            aria-label={`打开${item.source === 'local' ? '本地' : 'OpenList'}备份地址`}
+             aria-label={`打开${sourceLabel(item.source)}备份地址`}
             onClick={() => { void handleOpenLocation(item) }}
             disabled={openingLocationId === item.id}
           >
@@ -507,7 +527,13 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
           data={filteredItems}
           rowKey="id"
           loading={busy === 'list' && items.length === 0}
-          emptyText={filter === 'all' ? '暂无备份历史' : filter === 'local' ? '暂无本地备份' : '暂无 OpenList 备份'}
+          emptyText={filter === 'all'
+            ? '暂无备份历史'
+            : filter === 'local'
+              ? '暂无本地备份'
+              : filter === 'openlist'
+                ? '暂无 OpenList 备份'
+                : 'S3 备份历史尚未接入'}
           className="min-w-[900px]"
           maxHeight="none"
         />

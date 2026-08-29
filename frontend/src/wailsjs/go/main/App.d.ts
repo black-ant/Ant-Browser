@@ -86,6 +86,12 @@ export function BackupOpenListUpload(arg1:Record<string, string>):Promise<Record
 
 export function BackupRestoreLocalPackage(arg1:string):Promise<Record<string, any>>;
 
+export function BackupS3GetSettings():Promise<Record<string, any>>;
+
+export function BackupS3SaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
+
+export function BackupS3Test(arg1:Record<string, string>):Promise<Record<string, any>>;
+
 export function BackupScheduledGetSettings():Promise<Record<string, any>>;
 
 export function BackupScheduledSaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;

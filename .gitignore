@@ -127,3 +127,18 @@ accounts.yml
 
 # Local backups
 .local-backup/
+*.zip
+*.jar
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.tar.xz
+*.txz
+*.tar.bz2
+*.tbz2
+*.bak
+*.backup
+*.old
+*.orig

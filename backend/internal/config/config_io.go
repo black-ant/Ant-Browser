@@ -49,6 +49,7 @@ func (c *Config) Save(configPath string) error {
 
 func sanitizeBackupConfig(value BackupConfig) BackupConfig {
 	value.Channels.OpenList.Token = ""
+	value.Channels.S3 = S3ChannelConfig{}
 	return value
 }
 

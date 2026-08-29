@@ -184,6 +184,16 @@ func normalizeConfig(config *Config) {
 	if config.Backup.Channels.OpenList.UploadRateLimitMBps < 0 {
 		config.Backup.Channels.OpenList.UploadRateLimitMBps = defaultConfig.Backup.Channels.OpenList.UploadRateLimitMBps
 	}
+	config.Backup.Channels.S3.Endpoint = strings.TrimSpace(config.Backup.Channels.S3.Endpoint)
+	config.Backup.Channels.S3.Region = strings.TrimSpace(config.Backup.Channels.S3.Region)
+	if config.Backup.Channels.S3.Region == "" {
+		config.Backup.Channels.S3.Region = defaultConfig.Backup.Channels.S3.Region
+	}
+	config.Backup.Channels.S3.Bucket = strings.TrimSpace(config.Backup.Channels.S3.Bucket)
+	config.Backup.Channels.S3.Prefix = strings.TrimSpace(config.Backup.Channels.S3.Prefix)
+	config.Backup.Channels.S3.AccessKeyID = strings.TrimSpace(config.Backup.Channels.S3.AccessKeyID)
+	config.Backup.Channels.S3.SecretAccessKey = strings.TrimSpace(config.Backup.Channels.S3.SecretAccessKey)
+	config.Backup.Channels.S3.SessionToken = strings.TrimSpace(config.Backup.Channels.S3.SessionToken)
 	if strings.TrimSpace(config.Backup.Schedule.DailyTime) == "" {
 		config.Backup.Schedule.DailyTime = defaultConfig.Backup.Schedule.DailyTime
 	} else {
@@ -337,6 +347,9 @@ func DefaultConfig() *Config {
 			Channels: BackupChannelsConfig{
 				OpenList: OpenListChannelConfig{
 					RemotePath: "ant-chrome/backups",
+				},
+				S3: S3ChannelConfig{
+					Region: "us-east-1",
 				},
 			},
 			Schedule: BackupScheduleConfig{

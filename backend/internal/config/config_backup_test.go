@@ -65,3 +65,83 @@ func TestBackupConfigLoadsLegacyOpenListSection(t *testing.T) {
 		t.Fatalf("legacy schedule = %+v", loaded.Backup.Schedule)
 	}
 }
+
+func TestBackupConfigExcludesS3Settings(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Backup.Channels.S3.Endpoint = "https://s3.example.com"
+	cfg.Backup.Channels.S3.Region = "us-west-2"
+	cfg.Backup.Channels.S3.Bucket = "backup-bucket"
+	cfg.Backup.Channels.S3.Prefix = "s3-only-prefix"
+	cfg.Backup.Channels.S3.AccessKeyID = "access-key"
+	cfg.Backup.Channels.S3.SecretAccessKey = "secret-key"
+	cfg.Backup.Channels.S3.SessionToken = "session-token"
+	cfg.Backup.Channels.S3.ForcePathStyle = true
+
+	if err := cfg.Save(configPath); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	text := string(data)
+	for _, value := range []string{
+		"https://s3.example.com",
+		"us-west-2",
+		"backup-bucket",
+		"s3-only-prefix",
+		"access-key",
+		"secret-key",
+		"session-token",
+		"force_path_style",
+	} {
+		if strings.Contains(text, value) {
+			t.Fatalf("S3 setting %q must not be written to config.yaml: %s", value, text)
+		}
+	}
+	if strings.Contains(text, "s3:") {
+		t.Fatalf("S3 channel must not be written to config.yaml: %s", text)
+	}
+
+	loaded, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if loaded.Backup.Channels.S3.Endpoint != "" || loaded.Backup.Channels.S3.Bucket != "" || loaded.Backup.Channels.S3.Prefix != "" ||
+		loaded.Backup.Channels.S3.AccessKeyID != "" || loaded.Backup.Channels.S3.SecretAccessKey != "" || loaded.Backup.Channels.S3.SessionToken != "" ||
+		loaded.Backup.Channels.S3.ForcePathStyle {
+		t.Fatalf("loaded S3 settings = %+v, want sanitized", loaded.Backup.Channels.S3)
+	}
+}
+
+func TestBackupConfigUnmarshalPreservesMultipleChannels(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	data := []byte(`backup:
+  channels:
+    openlist:
+      base_url: http://127.0.0.1:5244/dav
+    s3:
+      endpoint: https://s3.example.com
+      region: us-west-2
+      bucket: backup-bucket
+      prefix: ant-chrome/backups
+  schedule:
+    daily_time: "03:15"
+`)
+	if err := os.WriteFile(configPath, data, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loaded, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if loaded.Backup.Channels.OpenList.BaseURL != "http://127.0.0.1:5244/dav" {
+		t.Fatalf("OpenList settings = %+v, want preserved", loaded.Backup.Channels.OpenList)
+	}
+	s3 := loaded.Backup.Channels.S3
+	if s3.Endpoint != "https://s3.example.com" || s3.Region != "us-west-2" || s3.Bucket != "backup-bucket" || s3.Prefix != "ant-chrome/backups" {
+		t.Fatalf("S3 settings = %+v, want preserved", s3)
+	}
+}

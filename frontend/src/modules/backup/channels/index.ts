@@ -6,6 +6,7 @@ export interface BackupChannelDefinition {
   label: string
   description: string
   available: boolean
+  configurable: boolean
   icon: LucideIcon
 }
 
@@ -15,6 +16,7 @@ export const backupChannelDefinitions = [
     label: '本地备份',
     description: '保存备份文件到本机',
     available: true,
+    configurable: false,
     icon: HardDrive,
   },
   {
@@ -22,13 +24,15 @@ export const backupChannelDefinitions = [
     label: 'OpenList 备份',
     description: '上传备份文件到 OpenList',
     available: true,
+    configurable: true,
     icon: Cloud,
   },
   {
     id: 's3',
     label: 'S3 备份',
-    description: '对象存储备份',
+    description: '保存 S3 连接配置，备份能力待接入',
     available: false,
+    configurable: true,
     icon: Database,
   },
 ] as const satisfies readonly BackupChannelDefinition[]

@@ -14,9 +14,15 @@
                  "下载"
              ],
     "params":  {
-                   "prompt":  "A cinematic chrome ant browser mascot, premium product lighting"
+                   "pageUrl":  "https://chatgpt.com/",
+                   "prompt":  "A cinematic chrome ant browser mascot, premium product lighting",
+                   "outputFileName":  "generated-image.png",
+                   "timeoutMs":  300000,
+                   "waitAfterLoadMs":  1200,
+                   "settleMs":  2500,
+                   "captureScreenshot":  false
                },
-    "notes":  "脚本默认打开 ChatGPT，输入图片生成提示词并发送；页面选择器、下载文件名等由脚本内部默认值处理，公开接口只需要传实例、提示词和超时时间。",
+    "notes":  "脚本默认打开 ChatGPT，输入图片生成提示词并发送；每次运行会排除运行前已经存在的图片，避免 gateway 请求 n>1 时重复返回旧图。页面选择器、下载文件名等可以通过 params 覆盖。",
     "publicAPI":  {
                       "enabled":  true,
                       "method":  "POST",
