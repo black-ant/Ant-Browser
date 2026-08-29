@@ -118,6 +118,9 @@ type LaunchServer struct {
 	activeID   string
 	activeName string
 	apiAuth    APIAuthConfig
+	mcpMu      sync.RWMutex
+	mcpHandler http.Handler
+	mcpPath    string
 }
 
 // NewLaunchServer 创建 LaunchServer
@@ -291,4 +294,56 @@ func (s *LaunchServer) activeTarget() (int, string, string) {
 func (s *LaunchServer) ActiveProfile() (string, string, int) {
 	port, profileID, profileName := s.activeTarget()
 	return profileID, profileName, port
+}
+
+// SetMCPHandler 注册 MCP 端点。
+//
+// 必须在 Start() 之前调用：handler 链在 Start 时一次性构建。
+// handler 为 nil 表示不挂载 MCP 端点。
+func (s *LaunchServer) SetMCPHandler(path string, handler http.Handler) {
+	s.mcpMu.Lock()
+	s.mcpPath = normalizeMountPath(path)
+	s.mcpHandler = handler
+	s.mcpMu.Unlock()
+}
+
+func (s *LaunchServer) mcpMount() (string, http.Handler) {
+	s.mcpMu.RLock()
+	defer s.mcpMu.RUnlock()
+	return s.mcpPath, s.mcpHandler
+}
+
+// MCPPath 返回 MCP 端点的挂载路径，未启用时返回空串。
+func (s *LaunchServer) MCPPath() string {
+	path, handler := s.mcpMount()
+	if handler == nil {
+		return ""
+	}
+	return path
+}
+
+// MCPURL 返回 MCP 端点的完整地址，未启用或服务未就绪时返回空串。
+func (s *LaunchServer) MCPURL() string {
+	path := s.MCPPath()
+	if path == "" {
+		return ""
+	}
+	base := s.CDPURL()
+	if base == "" {
+		return ""
+	}
+	return base + path
+}
+
+// normalizeMountPath 保证挂载路径以 / 开头且不以 / 结尾。
+// 结尾斜杠会让 ServeMux 按子树匹配，从而吞掉所有同前缀路径。
+func normalizeMountPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	if !strings.HasPrefix(trimmed, "/") {
+		trimmed = "/" + trimmed
+	}
+	return strings.TrimRight(trimmed, "/")
 }

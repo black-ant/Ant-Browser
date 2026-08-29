@@ -161,6 +161,8 @@ func (a *App) startupInitLaunchServer(log *logger.Logger) {
 		APIKey:  a.config.LaunchServer.Auth.APIKey,
 		Header:  a.config.LaunchServer.Auth.Header,
 	})
+	// MCP 端点必须在 Start 之前注册：handler 链在 Start 时一次性构建。
+	a.applyMCPConfig()
 	if err := a.launchServer.Start(); err != nil {
 		log.Error("LaunchServer 启动失败", logger.F("error", err))
 		return
@@ -169,6 +171,9 @@ func (a *App) startupInitLaunchServer(log *logger.Logger) {
 		logger.F("url", fmt.Sprintf("http://127.0.0.1:%d", a.launchServer.Port())),
 		logger.F("preferred_port", port),
 	)
+	if mcpURL := a.launchServer.MCPURL(); mcpURL != "" {
+		log.Info("MCP 服务已启用", logger.F("url", mcpURL))
+	}
 }
 
 func (a *App) startupInitAutomation() {

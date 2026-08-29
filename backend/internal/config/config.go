@@ -7,6 +7,7 @@ const (
 	DefaultAutomationNodeSource     = "auto"
 	DefaultAutomationNodeVersion    = "22.15.1"
 	DefaultAutomationPWVersion      = "1.59.0"
+	DefaultMCPPath                  = "/mcp"
 )
 
 const (
@@ -25,6 +26,18 @@ type LaunchServerAuthConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	APIKey  string `yaml:"api_key"`
 	Header  string `yaml:"header"`
+}
+
+// MCPConfig MCP（Model Context Protocol）服务配置。
+//
+// 有意不设独立端口和独立 token：MCP 端点挂在 LaunchServer 上，
+// 复用其端口、localhost 限制和 API Key 鉴权，减少配置面和认知负担。
+type MCPConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Path    string `yaml:"path,omitempty" json:"path"`
+	// Stateless 为 true 时不维护会话状态，每个请求独立处理。
+	// 适合无状态代理场景；此时 GET / DELETE 会返回 405。
+	Stateless bool `yaml:"stateless,omitempty" json:"stateless"`
 }
 
 type AutomationConfig struct {
@@ -50,6 +63,7 @@ type Config struct {
 	Browser      BrowserConfig      `yaml:"browser"`
 	ProxyCheck   ProxyCheckConfig   `yaml:"proxy_check"`
 	LaunchServer LaunchServerConfig `yaml:"launch_server"`
+	MCP          MCPConfig          `yaml:"mcp"`
 	Automation   AutomationConfig   `yaml:"automation"`
 }
 
