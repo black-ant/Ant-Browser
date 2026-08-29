@@ -2,16 +2,14 @@
 const path = require('path');
 const {
   normalizeTimeout,
-  sleep,
   writeStream,
-  closeBrowserConnection,
-  buildConnectEndpoints,
   normalizePathUnderRoot,
-  requestJSON,
   toSerializable,
 } = require('./runner_shared.cjs');
+const { createBrowserGateway } = require('./runner_browser.cjs');
 const { normalizeOrigin, normalizePermissionList, normalizePageAPIRequest, executePageAPIRequest } = require('./runner_page_api.cjs');
 const { loadScriptModule } = require('./runner_script_loader.cjs');
+const { runPageSession } = require('./runner_page_session.cjs');
 
 const ALLOWED_WAIT_UNTIL = new Set(['load', 'domcontentloaded', 'networkidle', 'commit']);
 
@@ -67,49 +65,6 @@ function hasOpenPageIntent(options) {
   return false;
 }
 
-function buildLaunchRequestBody(defaultSelector, options) {
-  const launchOptions = options && typeof options === 'object' ? options : {};
-  const body = {};
-
-  for (const key of [
-    'code',
-    'key',
-    'profileId',
-    'profileName',
-    'keyword',
-    'keywords',
-    'tag',
-    'tags',
-    'groupId',
-    'matchMode',
-    'proxyId',
-    'proxyConfig',
-    'launchArgs',
-    'startUrls',
-    'skipDefaultStartUrls',
-  ]) {
-    if (Object.prototype.hasOwnProperty.call(launchOptions, key)) {
-      body[key] = launchOptions[key];
-    }
-  }
-
-  const selector =
-    launchOptions.selector &&
-    typeof launchOptions.selector === 'object' &&
-    !Array.isArray(launchOptions.selector)
-      ? launchOptions.selector
-      : defaultSelector;
-  if (selector && typeof selector === 'object' && !Array.isArray(selector) && Object.keys(selector).length > 0) {
-    body.selector = selector;
-  }
-
-  if (!Object.prototype.hasOwnProperty.call(body, 'skipDefaultStartUrls')) {
-    body.skipDefaultStartUrls = true;
-  }
-
-  return body;
-}
-
 async function runScriptTask(payload, chromium) {
   const scriptModule = await loadScriptModule(payload.scriptPath);
   if (!scriptModule || typeof scriptModule.run !== 'function') {
@@ -118,10 +73,10 @@ async function runScriptTask(payload, chromium) {
 
   const logs = [];
   const artifacts = [];
-  const connectedBrowsers = new Set();
-  const selector = payload.selector && typeof payload.selector === 'object' ? payload.selector : {};
   const params = payload.params && typeof payload.params === 'object' ? payload.params : {};
   const timeout = normalizeTimeout(params.timeoutMs, 30000);
+  const gateway = createBrowserGateway(payload, chromium, { defaultTimeout: timeout });
+  const { selector, launch, connect, resolveConnectionContext } = gateway;
   const startedAt = new Date().toISOString();
 
   const log = (...entries) => {
@@ -137,109 +92,6 @@ async function runScriptTask(payload, chromium) {
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     artifacts.push(targetPath);
     return targetPath;
-  };
-
-  const launchHeaders = {};
-  if (payload.launchAuthHeader && payload.launchAuthValue) {
-    launchHeaders[payload.launchAuthHeader] = payload.launchAuthValue;
-  }
-
-  const launch = async (options = {}) => {
-    const body = buildLaunchRequestBody(selector, options);
-
-    const response = await requestJSON(
-      'POST',
-      `${String(payload.launchBaseUrl || '').replace(/\/$/, '')}/api/launch`,
-      body,
-      launchHeaders
-    );
-
-    if (!(response.status >= 200 && response.status < 300) || response.body.ok === false) {
-      const errorText =
-        (response.body && response.body.error && String(response.body.error).trim()) ||
-        `launch api returned http ${response.status}`;
-      throw new Error(errorText);
-    }
-
-    return response.body;
-  };
-
-  const connect = async (session = {}, options = {}) => {
-    const connectOptions =
-      options && typeof options === 'object' && !Array.isArray(options) ? options : {};
-    const endpoints = buildConnectEndpoints(payload, session);
-    if (endpoints.length === 0) {
-      throw new Error(
-        `launch session does not contain a valid cdp endpoint (cdpUrl=${String(
-          session && session.cdpUrl ? session.cdpUrl : ''
-        )}, debugPort=${String(session && session.debugPort ? session.debugPort : '')})`
-      );
-    }
-
-    const connectTimeout = normalizeTimeout(connectOptions.timeoutMs, timeout);
-    const deadline = Date.now() + connectTimeout;
-    let lastError = null;
-
-    while (Date.now() <= deadline) {
-      for (const endpoint of endpoints) {
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) {
-          break;
-        }
-
-        try {
-          const browser = await chromium.connectOverCDP(endpoint, {
-            timeout: Math.max(1000, Math.min(remaining, connectTimeout)),
-          });
-          connectedBrowsers.add(browser);
-          const context = browser.contexts()[0] || null;
-          const page = context && context.pages().length > 0 ? context.pages()[0] : null;
-          return {
-            browser,
-            context,
-            page,
-            session: {
-              ...session,
-              cdpUrl: endpoint,
-            },
-          };
-        } catch (error) {
-          lastError = error;
-        }
-      }
-
-      if (Date.now() >= deadline) {
-        break;
-      }
-
-      await sleep(Math.min(500, Math.max(100, deadline - Date.now())));
-    }
-
-    const lastMessage =
-      lastError && lastError.message ? lastError.message : String(lastError || 'unknown error');
-    throw new Error(
-      `cdp endpoint is not ready after ${connectTimeout} ms (endpoints: ${endpoints.join(', ')}): ${lastMessage}`
-    );
-  };
-
-  const resolveConnectionContext = async (connection) => {
-    const browser = connection && connection.browser ? connection.browser : null;
-    if (!browser) {
-      throw new Error('browser connection is unavailable');
-    }
-
-    const context =
-      connection.context ||
-      browser.contexts()[0] ||
-      (typeof browser.newContext === 'function' ? await browser.newContext() : null);
-    if (!context) {
-      throw new Error('browser context is unavailable');
-    }
-
-    return {
-      browser,
-      context,
-    };
   };
 
   const grantPermissions = async (target, options = {}) => {
@@ -524,7 +376,7 @@ async function runScriptTask(payload, chromium) {
       result: null,
     };
   } finally {
-    await Promise.all(Array.from(connectedBrowsers, (browser) => closeBrowserConnection(browser)));
+    await gateway.closeAll();
   }
 }
 
@@ -542,6 +394,14 @@ async function main() {
 
   const { chromium } = require(path.join(runtimeDir, 'node_modules', 'playwright-core'));
   const taskType = String(payload.taskType || 'script').trim() || 'script';
+
+  // page-session 是常驻形态：连上 CDP 后不退出，转为从 stdin 读取 NDJSON 指令。
+  // 它自己管理退出时机，不走下面「跑完写一次 stdout 就退出」的路径。
+  if (taskType === 'page-session') {
+    await runPageSession(payload, chromium);
+    return;
+  }
+
   if (taskType !== 'script') {
     throw new Error(`unsupported automation task type: ${taskType}`);
   }

@@ -44,5 +44,11 @@ type ProxyProvider interface {
 	ListCores() ([]config.BrowserCore, error)
 }
 
+// PageProvider 提供 Playwright / CDP 页面操作能力。
+type PageProvider interface {
+	RunPageSteps(req launchcode.PageRequest) (*launchcode.PageResult, error)
+	ClosePageSession(selector launchcode.LaunchSelector) (string, error)
+}
+
 // 编译期确认 LaunchServer 满足全部能力接口。
 var _ Provider = (*launchcode.LaunchServer)(nil)
