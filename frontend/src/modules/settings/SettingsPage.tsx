@@ -7,8 +7,10 @@ import {
   automationProbeSystemNode,
   automationRuntimeSelfCheck,
   defaultAutomationState,
+  defaultMCPSettings,
   fetchAutomationState,
   fetchLaunchServerSettings,
+  fetchMCPSettings,
   fetchSettings,
   installAutomationRuntime,
   resetSettings,
@@ -16,10 +18,12 @@ import {
   saveAutomationScriptPackageSettings,
   saveAutomationSettings,
   saveLaunchServerSettings,
+  saveMCPSettings,
   saveSettings,
 } from './api'
-import type { AutomationNodeSource, AutomationRuntimeCheck, AutomationState, AutomationSystemNodeProbe } from './api'
+import type { AutomationNodeSource, AutomationRuntimeCheck, AutomationState, AutomationSystemNodeProbe, MCPServerSettings } from './api'
 import { AutomationSettingsCard } from './components/AutomationSettingsCard'
+import { MCPSettingsCard } from './components/MCPSettingsCard'
 import { useSettingsProgressEffects } from './hooks/useSettingsProgressEffects'
 import { SettingsAdvancedCard, SettingsBasicFeatureCards } from './components/SettingsGeneralCards'
 import { defaultSettings } from './types'
@@ -43,6 +47,8 @@ export function SettingsPage() {
   const [launchServerBaseUrl, setLaunchServerBaseUrl] = useState('')
   const [launchServerReady, setLaunchServerReady] = useState(false)
   const [launchServerSaving, setLaunchServerSaving] = useState(false)
+  const [mcp, setMcp] = useState<MCPServerSettings>(defaultMCPSettings)
+  const [mcpSaving, setMcpSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
@@ -66,16 +72,18 @@ export function SettingsPage() {
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const [data, automation, launchServer] = await Promise.all([
+      const [data, automation, launchServer, mcpSettings] = await Promise.all([
         fetchSettings(),
         fetchAutomationState(),
         fetchLaunchServerSettings(),
+        fetchMCPSettings(),
       ])
       setSettings(data)
       setAutomationState(automation)
       setLaunchServerPortDraft(String(launchServer.preferredPort || launchServer.port || 19876))
       setLaunchServerBaseUrl(launchServer.baseUrl)
       setLaunchServerReady(launchServer.ready)
+      setMcp(mcpSettings)
       setHasChanges(false)
     } catch (error: any) {
       toast.error(error?.message || '系统设置加载失败')
@@ -269,6 +277,19 @@ export function SettingsPage() {
     }
   }
 
+  const handleMCPEnabledChange = async (enabled: boolean) => {
+    setMcpSaving(true)
+    try {
+      const next = await saveMCPSettings(enabled)
+      setMcp(next)
+      toast.success(enabled ? 'MCP 服务已开启' : 'MCP 服务已关闭')
+    } catch (error: any) {
+      toast.error(error?.message || 'MCP 服务设置保存失败')
+    } finally {
+      setMcpSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -331,6 +352,11 @@ export function SettingsPage() {
         onSaveRuntimeSettings={() => { void handleAutomationRuntimeSettingsSave() }}
         onInstall={() => { void handleAutomationInstall() }}
         onSelfCheck={() => { void handleAutomationSelfCheck() }}
+      />
+      <MCPSettingsCard
+        mcp={mcp}
+        mcpSaving={mcpSaving}
+        onEnabledChange={(enabled) => { void handleMCPEnabledChange(enabled) }}
       />
       <SettingsAdvancedCard settings={settings} onChange={handleChange} />
     </div>
