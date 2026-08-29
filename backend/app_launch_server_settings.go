@@ -67,8 +67,9 @@ func (a *App) restartLaunchServer(port int) error {
 		APIKey:  a.config.LaunchServer.Auth.APIKey,
 		Header:  a.config.LaunchServer.Auth.Header,
 	})
-	// 这里是全新的 server 实例，必须重新挂载 MCP 端点，
-	// 否则改一次端口就会把 MCP 服务弄丢。
+	// 这里是全新的 server 实例，能力注入和 MCP 挂载都要重做，
+	// 否则改一次端口就会把这些能力弄丢。
+	server.SetProxyProvider(newAppProxyProvider(a))
 	applyMCPConfigTo(server, a.config, a.appVersion())
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("启动 LaunchServer 失败: %w", err)

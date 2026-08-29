@@ -10,26 +10,18 @@ import (
 // 代理池与内核能力。
 //
 // 与实例/自动化不同，这两个域此前没有 HTTP 层，proxy manager 也没有注入
-// LaunchServer。这里沿用本包既有的「可选接口 + 类型断言」惯例（见 server.go），
-// 宿主未实现时统一返回 Unavailable，而不是 panic 或静默返回空值。
+// LaunchServer。
+//
+// 这里没有沿用本包其他能力那套「对 starter 做类型断言」的做法：starter 在
+// 生产环境就是 *App，而 Wails 会把 *App 上所有导出方法都绑定给前端。若把这
+// 几个能力做成 App 的方法，前端就会凭空多出一批语义重复的绑定。改为显式注入
+// 一个小适配器，能力边界更清楚，也不污染前端 API。
 
-// ProxyLister 可选接口：提供代理池列表。
-type ProxyLister interface {
+// ProxyProvider 提供代理池与内核信息。由宿主显式注入。
+type ProxyProvider interface {
 	ListProxyNodes() []config.BrowserProxy
-}
-
-// ProxySpeedTester 可选接口：对单个代理测速并持久化结果。
-type ProxySpeedTester interface {
 	TestProxyNodeSpeed(proxyID string) ProxySpeedResult
-}
-
-// ProxyHealthChecker 可选接口：检测代理出口 IP 健康度。
-type ProxyHealthChecker interface {
 	CheckProxyNodeHealth(proxyID string) ProxyHealthResult
-}
-
-// CoreLister 可选接口：提供浏览器内核列表。
-type CoreLister interface {
 	ListBrowserCores() []config.BrowserCore
 }
 
@@ -63,11 +55,11 @@ const proxyAPIUnavailable = "proxy api is unavailable"
 
 // ListProxies 返回代理池中全部节点。
 func (s *LaunchServer) ListProxies() ([]config.BrowserProxy, error) {
-	lister, ok := s.starter.(ProxyLister)
-	if !ok {
+	provider := s.proxyProvider()
+	if provider == nil {
 		return nil, newServiceError(http.StatusServiceUnavailable, proxyAPIUnavailable)
 	}
-	return lister.ListProxyNodes(), nil
+	return provider.ListProxyNodes(), nil
 }
 
 // TestProxySpeed 对指定代理测速。
@@ -78,12 +70,12 @@ func (s *LaunchServer) TestProxySpeed(proxyID string) (*ProxySpeedResult, error)
 		return nil, newServiceError(http.StatusBadRequest, "proxyId is required")
 	}
 
-	tester, ok := s.starter.(ProxySpeedTester)
-	if !ok {
+	provider := s.proxyProvider()
+	if provider == nil {
 		return nil, newServiceError(http.StatusServiceUnavailable, proxyAPIUnavailable)
 	}
 
-	result := tester.TestProxyNodeSpeed(proxyID)
+	result := provider.TestProxyNodeSpeed(proxyID)
 	return &result, nil
 }
 
@@ -94,20 +86,33 @@ func (s *LaunchServer) CheckProxyHealth(proxyID string) (*ProxyHealthResult, err
 		return nil, newServiceError(http.StatusBadRequest, "proxyId is required")
 	}
 
-	checker, ok := s.starter.(ProxyHealthChecker)
-	if !ok {
+	provider := s.proxyProvider()
+	if provider == nil {
 		return nil, newServiceError(http.StatusServiceUnavailable, proxyAPIUnavailable)
 	}
 
-	result := checker.CheckProxyNodeHealth(proxyID)
+	result := provider.CheckProxyNodeHealth(proxyID)
 	return &result, nil
 }
 
 // ListCores 返回已登记的浏览器内核。
 func (s *LaunchServer) ListCores() ([]config.BrowserCore, error) {
-	lister, ok := s.starter.(CoreLister)
-	if !ok {
+	provider := s.proxyProvider()
+	if provider == nil {
 		return nil, newServiceError(http.StatusServiceUnavailable, "browser core api is unavailable")
 	}
-	return lister.ListBrowserCores(), nil
+	return provider.ListBrowserCores(), nil
+}
+
+// SetProxyProvider 注入代理池与内核能力。未注入时相关工具返回 Unavailable。
+func (s *LaunchServer) SetProxyProvider(provider ProxyProvider) {
+	s.proxyMu.Lock()
+	s.proxy = provider
+	s.proxyMu.Unlock()
+}
+
+func (s *LaunchServer) proxyProvider() ProxyProvider {
+	s.proxyMu.RLock()
+	defer s.proxyMu.RUnlock()
+	return s.proxy
 }

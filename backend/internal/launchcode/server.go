@@ -121,6 +121,8 @@ type LaunchServer struct {
 	mcpMu      sync.RWMutex
 	mcpHandler http.Handler
 	mcpPath    string
+	proxyMu    sync.RWMutex
+	proxy      ProxyProvider
 }
 
 // NewLaunchServer 创建 LaunchServer

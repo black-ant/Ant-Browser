@@ -150,6 +150,13 @@ func main() {
 	if startupDebugEnabled {
 		log.Printf("应用根目录: %s (dev=%v)", appRoot, isDevMode)
 	}
+
+	// MCP stdio 桥接必须在单实例检查之前处理：它是短命的辅助进程，
+	// 不参与 GUI 单实例竞争，否则会被判定为「已有实例」而直接退出。
+	if isMCPStdioInvocation(os.Args[1:]) {
+		os.Exit(runMCPStdioBridge(appRoot))
+	}
+
 	if err := backend.EnsureRuntimeLayout(appRoot); err != nil {
 		log.Printf("准备用户数据目录失败: %v", err)
 	}
