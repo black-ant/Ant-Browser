@@ -189,12 +189,16 @@ func normalizeConfig(config *Config) {
 		strings.TrimSpace(config.Automation.NodeSource) == "" &&
 		strings.TrimSpace(config.Automation.SystemNodePath) == "" &&
 		strings.TrimSpace(config.Automation.NodeVersion) == "" &&
-		strings.TrimSpace(config.Automation.PlaywrightCoreVersion) == ""
+		strings.TrimSpace(config.Automation.PlaywrightCoreVersion) == "" &&
+		config.Automation.PageSessionIdleMs == 0
 	if automationUnset {
 		config.Automation = defaultConfig.Automation
 	} else {
 		if strings.TrimSpace(config.Automation.InstallPolicy) == "" {
 			config.Automation.InstallPolicy = defaultConfig.Automation.InstallPolicy
+		}
+		if config.Automation.PageSessionIdleMs <= 0 {
+			config.Automation.PageSessionIdleMs = defaultConfig.Automation.PageSessionIdleMs
 		}
 		if strings.TrimSpace(config.Automation.NodeVersion) == "" {
 			config.Automation.NodeVersion = defaultConfig.Automation.NodeVersion
@@ -327,6 +331,7 @@ func DefaultConfig() *Config {
 			SystemNodePath:        "",
 			NodeVersion:           DefaultAutomationNodeVersion,
 			PlaywrightCoreVersion: DefaultAutomationPWVersion,
+			PageSessionIdleMs:     DefaultAutomationPageSessionIdleMs,
 		},
 	}
 }

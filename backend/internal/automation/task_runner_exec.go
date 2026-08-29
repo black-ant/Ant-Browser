@@ -49,6 +49,15 @@ func (m *Manager) RunScriptTask(ctx context.Context, req ScriptTaskRequest) (Scr
 		return ScriptTaskResult{}, fmt.Errorf("launchBaseUrl is required")
 	}
 
+	// 让位给脚本：同一实例上如果挂着常驻页面会话，先关掉它。
+	//
+	// 两个 Playwright 客户端连同一个浏览器本身能跑，但脚本结束时的
+	// closeBrowserConnection 会把常驻会话的连接一并带走，留下一个已死却仍在
+	// 会话表里的条目。主动让位比事后清理更可预期。
+	// 必须放在 registerTask 之前：ClosePageSession 走 pageMu，registerTask 走 m.mu，
+	// 反过来嵌套会形成锁序倒置。
+	m.ClosePageSession(req.TaskKey)
+
 	payload := taskRunnerPayload{
 		TaskType:         taskTypeScript,
 		RuntimeDir:       state.RuntimeDir,

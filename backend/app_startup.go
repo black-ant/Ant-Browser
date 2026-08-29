@@ -162,6 +162,7 @@ func (a *App) startupInitLaunchServer(log *logger.Logger) {
 		Header:  a.config.LaunchServer.Auth.Header,
 	})
 	a.launchServer.SetProxyProvider(newAppProxyProvider(a))
+	a.launchServer.SetPageDriver(newAppPageDriver(a))
 	// MCP 端点必须在 Start 之前注册：handler 链在 Start 时一次性构建。
 	a.applyMCPConfig()
 	if err := a.launchServer.Start(); err != nil {
