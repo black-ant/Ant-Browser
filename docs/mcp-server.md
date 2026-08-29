@@ -2,7 +2,7 @@
 
 Ant Browser 内置 MCP（[Model Context Protocol](https://modelcontextprotocol.io/)）服务，
 让 Claude Code、Claude Desktop、Cursor 等 AI 客户端可以直接管理浏览器实例、
-执行自动化脚本和查看代理池，不需要为每个客户端单独写 HTTP 调用胶水。
+驱动页面操作、执行自动化脚本和查看代理池，不需要为每个客户端单独写 HTTP 调用胶水。
 
 ## 快速开始
 
@@ -112,7 +112,37 @@ mcp:
 | `ant_runtime_status` | 查询运行态，不触发启动 |
 | `ant_runtime_active` | 查询当前挂在统一 CDP 入口上的实例 |
 
+### 页面操作（Playwright / CDP）
+
+直接驱动浏览器，不需要事先写好脚本。所有工具的 `selector` 都可省略，
+省略时作用于当前挂在统一 CDP 入口上的实例。
+
+| 工具 | 说明 |
+| --- | --- |
+| `ant_page_goto` | 导航到 URL，自动启动实例并接管 CDP |
+| `ant_page_snapshot` | 页面快照：URL、标题和全部可交互元素及其选择器 |
+| `ant_page_screenshot` | 截图，以图像内容返回给客户端 |
+| `ant_page_click` | 点击元素 |
+| `ant_page_fill` | 填写输入框，支持一次传多个字段 |
+| `ant_page_press` | 发送键盘按键 |
+| `ant_page_select` | 选择下拉框选项 |
+| `ant_page_wait` | 等待元素状态、URL 变化或加载完成 |
+| `ant_page_extract` | 抽取元素的文本、HTML 或属性 |
+| `ant_page_evaluate` | 在页面上下文里执行 JavaScript |
+| `ant_page_tabs` | 列出、新建、切换、关闭标签页 |
+| `ant_page_release` | 释放常驻页面会话 |
+
+推荐用 `ant_page_snapshot` 而不是 `ant_page_screenshot` 来决定下一步：
+它只返回能点能填的元素，比截图省上下文，而且给出的 `selector` 可以直接回传给
+`ant_page_click` / `ant_page_fill`，不需要自己猜 CSS。
+
+`ant_page_evaluate` 会在页面里执行任意 JavaScript。它没有突破既有权限边界
+（MCP 只监听 localhost 且受 API Key 保护，`ant_script_run` 早已能跑任意 Node 代码），
+但仍建议只在快照和抽取覆盖不到时使用。
+
 ### 自动化脚本
+
+脚本适合固定流程的批量任务；探索性的、需要边看边决定的操作用上面的页面工具。
 
 | 工具 | 说明 |
 | --- | --- |
@@ -155,17 +185,35 @@ mcp:
 - `matchMode` 默认 `unique`，命中多个会报错并列出候选；确实想取第一个时用 `first`
 - `ant_instance_list` 不走 selector，它的 `keyword` 是子串匹配，用于「筛一批」
 
-## 让 AI 接管浏览器
+## 让 AI 操作浏览器
 
 典型流程：
 
-1. 调 `ant_runtime_session`，传入目标实例的 selector
-2. 若返回 `ready=true`，用返回的 `cdpUrl` 交给浏览器自动化工具接管
-3. 若返回 `ready=false`，浏览器已启动但调试端口未就绪，稍后重试
-4. 用完调 `ant_instance_stop`
+1. `ant_page_goto` 打开目标页面（会自动启动实例并接管 CDP）
+2. `ant_page_snapshot` 看清页面上有什么可交互元素
+3. 用快照给出的 `selector` 调 `ant_page_click` / `ant_page_fill` 等工具
+4. 需要读数据时用 `ant_page_extract`，需要看版式时用 `ant_page_screenshot`
+5. 操作完调 `ant_page_release` 释放会话（不释放的话空闲一段时间后也会自动回收）
 
 注意统一 CDP 入口同一时刻只指向一个实例。切换目标前建议先用
 `ant_runtime_active` 确认当前挂的是哪个实例。
+
+### 页面会话模型
+
+页面工具背后是一个按实例常驻的 Node 进程：
+
+- **首次调用**慢一些（需要启动实例、握手 CDP），之后的调用复用同一个连接
+- **空闲回收**：默认 5 分钟无调用即自动关闭，可用 `config.yaml` 里的
+  `automation.page_session_idle_ms` 调整
+- **与脚本互斥**：在同一实例上执行 `ant_script_run` 会先关掉常驻会话让位，
+  脚本跑完后下次页面调用会重新建立
+- **实例停止即失效**：浏览器关闭或实例被停止时会话自动作废，
+  再次调用页面工具会重新建立
+
+释放会话只是断开 CDP 连接，浏览器和页面本身不受影响。
+
+页面工具依赖本地 automation runtime（Node + playwright-core），
+与自动化脚本共用同一套运行时，首次使用需要在 `设置 > 自动化支持` 中完成安装。
 
 ## 常见问题
 
@@ -183,6 +231,16 @@ mcp:
 **工具报「selector 命中多个实例」？**
 
 补充更精确的条件（`code` 或 `profileId`），或显式设置 `matchMode: "first"`。
+
+**页面工具报「自动化运行时尚未就绪」？**
+
+页面操作和自动化脚本共用 Node + playwright-core 运行时，
+需要先在 `设置 > 自动化支持` 里完成安装。
+
+**页面工具报「当前没有活动实例」？**
+
+省略 `selector` 时页面工具作用于当前挂在统一 CDP 入口上的实例。
+还没有实例挂上去时，显式传一次 `selector` 即可。
 
 **脚本执行失败？**
 
