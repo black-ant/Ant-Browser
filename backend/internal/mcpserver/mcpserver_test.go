@@ -24,8 +24,12 @@ type fakeProvider struct {
 	cores    []config.BrowserCore
 
 	// 记录最后一次收到的调用参数，用于断言翻译逻辑。
-	lastRunRequest automation.ScriptRunRequest
-	lastSelector   launchcode.LaunchSelector
+	lastRunRequest  automation.ScriptRunRequest
+	lastSelector    launchcode.LaunchSelector
+	lastPageRequest launchcode.PageRequest
+
+	// pageResult 非空时覆盖 RunPageSteps 的默认成功返回。
+	pageResult *launchcode.PageResult
 
 	sessionReady bool
 	failWith     error
@@ -200,6 +204,36 @@ func (f *fakeProvider) ListCores() ([]config.BrowserCore, error) {
 	return f.cores, nil
 }
 
+func (f *fakeProvider) RunPageSteps(req launchcode.PageRequest) (*launchcode.PageResult, error) {
+	f.lastPageRequest = req
+	f.lastSelector = req.Selector
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	if f.pageResult != nil {
+		return f.pageResult, nil
+	}
+
+	// 默认回一个成功结果，形状与真实驱动一致：每步一个 outcome。
+	steps := make([]launchcode.PageStepOutcome, 0, len(req.Steps))
+	for _, step := range req.Steps {
+		steps = append(steps, launchcode.PageStepOutcome{
+			Action: step.Action,
+			OK:     true,
+			Result: map[string]any{"url": "https://example.com/", "title": "Example"},
+		})
+	}
+	return &launchcode.PageResult{ProfileID: "p1", OK: true, Steps: steps}, nil
+}
+
+func (f *fakeProvider) ClosePageSession(selector launchcode.LaunchSelector) (string, error) {
+	f.lastSelector = selector
+	if f.failWith != nil {
+		return "", f.failWith
+	}
+	return "p1", nil
+}
+
 // newTestClient 建立一对内存传输的 client/server，返回已完成 initialize 的会话。
 func newTestClient(t *testing.T, provider Provider) *mcp.ClientSession {
 	t.Helper()
@@ -273,6 +307,10 @@ func TestToolsAreRegistered(t *testing.T) {
 		"ant_script_list", "ant_script_get", "ant_script_run", "ant_script_runs",
 		"ant_proxy_list", "ant_proxy_test_speed", "ant_proxy_check_health",
 		"ant_core_list",
+		"ant_page_goto", "ant_page_wait", "ant_page_tabs",
+		"ant_page_click", "ant_page_fill", "ant_page_press", "ant_page_select",
+		"ant_page_snapshot", "ant_page_screenshot", "ant_page_extract",
+		"ant_page_evaluate", "ant_page_release",
 	}
 	for _, name := range want {
 		if !got[name] {
@@ -303,9 +341,13 @@ func TestReadOnlyToolsAnnotated(t *testing.T) {
 		"ant_runtime_status": true, "ant_runtime_active": true,
 		"ant_script_list": true, "ant_script_get": true, "ant_script_runs": true,
 		"ant_proxy_list": true, "ant_core_list": true,
+		// 页面读取类：只观察页面，不改变它的状态。
+		"ant_page_snapshot": true, "ant_page_screenshot": true,
+		"ant_page_extract": true, "ant_page_wait": true,
 	}
 	destructiveTools := map[string]bool{
 		"ant_instance_delete": true, "ant_instance_stop": true,
+		"ant_page_release": true,
 	}
 
 	for _, tool := range result.Tools {
