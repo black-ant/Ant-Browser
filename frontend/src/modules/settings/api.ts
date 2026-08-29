@@ -71,6 +71,31 @@ export interface LaunchServerSettings {
   ready: boolean
 }
 
+export interface MCPServerSettings {
+  enabled: boolean
+  /** MCP 端点完整地址，服务未就绪时为空 */
+  url: string
+  path: string
+  ready: boolean
+  toolCount: number
+  /** MCP 与 Launch API 共用鉴权，开启后客户端需要带上 authHeader */
+  authEnabled: boolean
+  authHeader: string
+  /** 当前可执行文件路径，用于生成 stdio 客户端配置 */
+  executablePath: string
+}
+
+export const defaultMCPSettings: MCPServerSettings = {
+  enabled: false,
+  url: '',
+  path: '/mcp',
+  ready: false,
+  toolCount: 0,
+  authEnabled: false,
+  authHeader: 'X-Ant-Api-Key',
+  executablePath: '',
+}
+
 export const defaultAutomationState: AutomationState = {
   settings: {
     enabled: false,
@@ -334,4 +359,33 @@ export async function saveLaunchServerSettings(port: number): Promise<LaunchServ
     return normalizeLaunchServerSettings({ port, preferredPort: port, ready: false })
   }
   return normalizeLaunchServerSettings(await bindings.SaveLaunchServerSettings(port))
+}
+
+function normalizeMCPSettings(payload: any): MCPServerSettings {
+  return {
+    enabled: !!payload?.enabled,
+    url: String(payload?.url || ''),
+    path: String(payload?.path || '/mcp'),
+    ready: !!payload?.ready,
+    toolCount: Number(payload?.toolCount) || 0,
+    authEnabled: !!payload?.authEnabled,
+    authHeader: String(payload?.authHeader || 'X-Ant-Api-Key'),
+    executablePath: String(payload?.executablePath || ''),
+  }
+}
+
+export async function fetchMCPSettings(): Promise<MCPServerSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.GetMCPServerInfo) {
+    return normalizeMCPSettings(null)
+  }
+  return normalizeMCPSettings(await bindings.GetMCPServerInfo())
+}
+
+export async function saveMCPSettings(enabled: boolean): Promise<MCPServerSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.SaveMCPSettings) {
+    return normalizeMCPSettings({ enabled })
+  }
+  return normalizeMCPSettings(await bindings.SaveMCPSettings(enabled))
 }

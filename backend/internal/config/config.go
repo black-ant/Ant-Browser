@@ -7,6 +7,10 @@ const (
 	DefaultAutomationNodeSource     = "auto"
 	DefaultAutomationNodeVersion    = "22.15.1"
 	DefaultAutomationPWVersion      = "1.59.0"
+	DefaultMCPPath                  = "/mcp"
+
+	// DefaultAutomationPageSessionIdleMs 是常驻页面会话的默认空闲回收时间（5 分钟）。
+	DefaultAutomationPageSessionIdleMs = 300000
 )
 
 const (
@@ -27,6 +31,18 @@ type LaunchServerAuthConfig struct {
 	Header  string `yaml:"header"`
 }
 
+// MCPConfig MCP（Model Context Protocol）服务配置。
+//
+// 有意不设独立端口和独立 token：MCP 端点挂在 LaunchServer 上，
+// 复用其端口、localhost 限制和 API Key 鉴权，减少配置面和认知负担。
+type MCPConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Path    string `yaml:"path,omitempty" json:"path"`
+	// Stateless 为 true 时不维护会话状态，每个请求独立处理。
+	// 适合无状态代理场景；此时 GET / DELETE 会返回 405。
+	Stateless bool `yaml:"stateless,omitempty" json:"stateless"`
+}
+
 type AutomationConfig struct {
 	Enabled               bool   `yaml:"enabled"`
 	InstallPolicy         string `yaml:"install_policy,omitempty"`
@@ -39,6 +55,9 @@ type AutomationConfig struct {
 	SystemNodePath        string `yaml:"system_node_path,omitempty"`
 	NodeVersion           string `yaml:"node_version,omitempty"`
 	PlaywrightCoreVersion string `yaml:"playwright_core_version,omitempty"`
+	// PageSessionIdleMs 是 MCP 常驻页面会话的空闲回收时间。
+	// 会话常驻是为了省掉 CDP 握手，但挂着的 Node 进程也占资源。
+	PageSessionIdleMs int `yaml:"page_session_idle_ms,omitempty"`
 }
 
 // Config 应用配置
@@ -50,6 +69,7 @@ type Config struct {
 	Browser      BrowserConfig      `yaml:"browser"`
 	ProxyCheck   ProxyCheckConfig   `yaml:"proxy_check"`
 	LaunchServer LaunchServerConfig `yaml:"launch_server"`
+	MCP          MCPConfig          `yaml:"mcp"`
 	Automation   AutomationConfig   `yaml:"automation"`
 }
 

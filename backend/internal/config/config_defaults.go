@@ -172,6 +172,14 @@ func normalizeConfig(config *Config) {
 		config.LaunchServer.Auth.Header = defaultConfig.LaunchServer.Auth.Header
 	}
 
+	// 整段缺失时套用默认值，让老配置升级后也能拿到完整的 mcp 段；
+	// 否则零值会把 MCP 静默关掉，用户很难察觉。
+	if !config.MCP.Enabled && !config.MCP.Stateless && strings.TrimSpace(config.MCP.Path) == "" {
+		config.MCP = defaultConfig.MCP
+	} else {
+		config.MCP.Path = normalizeMCPPath(config.MCP.Path)
+	}
+
 	automationUnset := !config.Automation.Enabled &&
 		!config.Automation.HeadlessDefault &&
 		!config.Automation.KeepRuntimeOnDisable &&
@@ -181,12 +189,16 @@ func normalizeConfig(config *Config) {
 		strings.TrimSpace(config.Automation.NodeSource) == "" &&
 		strings.TrimSpace(config.Automation.SystemNodePath) == "" &&
 		strings.TrimSpace(config.Automation.NodeVersion) == "" &&
-		strings.TrimSpace(config.Automation.PlaywrightCoreVersion) == ""
+		strings.TrimSpace(config.Automation.PlaywrightCoreVersion) == "" &&
+		config.Automation.PageSessionIdleMs == 0
 	if automationUnset {
 		config.Automation = defaultConfig.Automation
 	} else {
 		if strings.TrimSpace(config.Automation.InstallPolicy) == "" {
 			config.Automation.InstallPolicy = defaultConfig.Automation.InstallPolicy
+		}
+		if config.Automation.PageSessionIdleMs <= 0 {
+			config.Automation.PageSessionIdleMs = defaultConfig.Automation.PageSessionIdleMs
 		}
 		if strings.TrimSpace(config.Automation.NodeVersion) == "" {
 			config.Automation.NodeVersion = defaultConfig.Automation.NodeVersion
@@ -302,6 +314,11 @@ func DefaultConfig() *Config {
 				Header:  DefaultLaunchServerAPIKeyHeader,
 			},
 		},
+		MCP: MCPConfig{
+			Enabled:   true,
+			Path:      DefaultMCPPath,
+			Stateless: false,
+		},
 		Automation: AutomationConfig{
 			Enabled:               false,
 			InstallPolicy:         DefaultAutomationInstallPolicy,
@@ -314,6 +331,7 @@ func DefaultConfig() *Config {
 			SystemNodePath:        "",
 			NodeVersion:           DefaultAutomationNodeVersion,
 			PlaywrightCoreVersion: DefaultAutomationPWVersion,
+			PageSessionIdleMs:     DefaultAutomationPageSessionIdleMs,
 		},
 	}
 }
@@ -389,6 +407,25 @@ func normalizeAutomationNodeSource(value string) string {
 	default:
 		return AutomationNodeSourceAuto
 	}
+}
+
+// normalizeMCPPath 保证挂载路径以 / 开头且不以 / 结尾。
+//
+// 结尾斜杠必须去掉：net/http 的 ServeMux 里 "/mcp/" 是子树模式，会吞掉
+// 所有以此为前缀的路径；而 MCP 端点应当是精确匹配的单一路径。
+func normalizeMCPPath(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return DefaultMCPPath
+	}
+	if !strings.HasPrefix(trimmed, "/") {
+		trimmed = "/" + trimmed
+	}
+	trimmed = strings.TrimRight(trimmed, "/")
+	if trimmed == "" {
+		return DefaultMCPPath
+	}
+	return trimmed
 }
 
 func boolPtr(value bool) *bool {

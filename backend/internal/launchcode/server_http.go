@@ -19,6 +19,13 @@ func (s *LaunchServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/launch", s.handleLaunchWithBody)
 	mux.HandleFunc("/api/launch/logs", s.handleLaunchLogs)
 	mux.HandleFunc("/api/launch/", s.handleLaunch)
+
+	// MCP 端点必须显式注册：下面的 "/" 是 CDP 反向代理的兜底路由，
+	// 任何未注册路径都会被转发到 Chrome 调试端口。
+	if path, handler := s.mcpMount(); handler != nil && path != "" {
+		mux.Handle(path, handler)
+	}
+
 	mux.HandleFunc("/", s.handleCDPProxy)
 	return mux
 }

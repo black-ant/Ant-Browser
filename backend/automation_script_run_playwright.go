@@ -91,25 +91,10 @@ func (a *App) runPlaywrightScript(ctx context.Context, script automation.ScriptR
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.automationMgr == nil {
-		return "", "", "脚本执行失败", "automation runtime manager is not initialized"
-	}
-	if a.config == nil || !a.config.Automation.Enabled {
-		return "", "", "脚本执行失败", "自动化支持尚未启用"
-	}
-	if err := ctx.Err(); err != nil {
-		return "", "", "脚本执行失败", automationRunContextErrorMessage(err)
-	}
-	if err := a.automationMgr.EnsureInstalled(ctx); err != nil {
-		return "", "", "脚本执行失败", err.Error()
-	}
-	if err := ctx.Err(); err != nil {
-		return "", "", "脚本执行失败", automationRunContextErrorMessage(err)
-	}
 
-	state := a.automationMgr.CurrentState()
-	if !state.Ready {
-		return "", "", "脚本执行失败", "自动化运行时尚未就绪"
+	state, err := a.ensureAutomationReady(ctx)
+	if err != nil {
+		return "", "", "脚本执行失败", err.Error()
 	}
 
 	paramsText := resolveAutomationRunJSONText(input.ParamsText, script.ParamsText, input.UseScriptParams)

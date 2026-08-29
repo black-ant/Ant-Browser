@@ -542,6 +542,10 @@ export function GetLogLevel() {
   return window['go']['main']['App']['GetLogLevel']();
 }
 
+export function GetMCPServerInfo() {
+  return window['go']['main']['App']['GetMCPServerInfo']();
+}
+
 export function GetMemoryStats() {
   return window['go']['main']['App']['GetMemoryStats']();
 }
@@ -612,6 +616,10 @@ export function SaveBrowserSettings(arg1) {
 
 export function SaveLaunchServerSettings(arg1) {
   return window['go']['main']['App']['SaveLaunchServerSettings'](arg1);
+}
+
+export function SaveMCPSettings(arg1) {
+  return window['go']['main']['App']['SaveMCPSettings'](arg1);
 }
 
 export function SaveProxyCheckSettings(arg1) {
