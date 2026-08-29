@@ -3,6 +3,7 @@
 ## 未发布
 
 - MCP 支持：新增 MCP（Model Context Protocol）服务，Claude Code、Claude Desktop、Cursor 等 AI 客户端可直接管理实例、执行自动化脚本和查看代理池；支持 HTTP 与 stdio 两种传输，复用本地 API 端口与鉴权设置。
+- MCP 页面操作：新增 12 个基于 Playwright/CDP 的页面工具（导航、快照、点击、填表、截图、抽取、执行 JS、标签页管理等），AI 可以直接驱动浏览器而不必事先写好脚本；底层按实例维护常驻会话，CDP 只握手一次，空闲 5 分钟自动回收。
 
 ## 1.8.1 - 2026-09-14
 
