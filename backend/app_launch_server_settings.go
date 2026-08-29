@@ -68,6 +68,9 @@ func (a *App) restartLaunchServer(port int) error {
 		APIKey:  a.config.LaunchServer.Auth.APIKey,
 		Header:  a.config.LaunchServer.Auth.Header,
 	})
+	// 这里是全新的 server 实例，必须重新挂载 MCP 端点，
+	// 否则改一次端口就会把 MCP 服务弄丢。
+	applyMCPConfigTo(server, a.config, a.appVersion())
 	if err := server.Start(); err != nil {
 		if previousServer != nil {
 			if restoreErr := previousServer.Start(); restoreErr != nil {

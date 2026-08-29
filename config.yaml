@@ -62,6 +62,9 @@ launch_server:
         enabled: false
         api_key: ""
         header: X-Ant-Api-Key
+mcp:
+    enabled: true
+    path: /mcp
 automation:
     enabled: true
     install_policy: on_demand
