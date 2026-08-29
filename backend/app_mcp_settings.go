@@ -2,6 +2,8 @@ package backend
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/launchcode"
@@ -42,6 +44,19 @@ func applyMCPConfigTo(server *launchcode.LaunchServer, cfg *config.Config, versi
 	}))
 }
 
+// currentExecutablePath 返回当前进程的可执行文件路径。
+// 取不到时返回空串，由前端展示占位提示。
+func currentExecutablePath() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+}
+
 // GetMCPServerInfo 返回 MCP 服务的当前状态（Wails 绑定）。
 func (a *App) GetMCPServerInfo() map[string]interface{} {
 	enabled := false
@@ -62,6 +77,8 @@ func (a *App) GetMCPServerInfo() map[string]interface{} {
 		"ready":     false,
 		"url":       "",
 		"toolCount": mcpserver.ToolCount(),
+		// 设置页要据此生成 stdio 客户端配置；由后端提供避免前端拼路径出错。
+		"executablePath": currentExecutablePath(),
 	}
 
 	if a.launchServer != nil {
