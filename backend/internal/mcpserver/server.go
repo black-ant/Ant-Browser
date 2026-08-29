@@ -41,6 +41,7 @@ type Provider interface {
 	InstanceProvider
 	AutomationProvider
 	ProxyProvider
+	PageProvider
 }
 
 // Server 持有 MCP 协议层与能力提供方。
@@ -70,6 +71,7 @@ func (s *Server) buildMCPServer() *mcp.Server {
 	registerInstanceTools(srv, s.provider)
 	registerAutomationTools(srv, s.provider)
 	registerProxyTools(srv, s.provider)
+	registerPageTools(srv, s.provider)
 
 	return srv
 }
@@ -105,4 +107,4 @@ func ToolCount() int {
 }
 
 // toolCount 是当前注册的工具总数。新增或删除工具时必须同步更新。
-const toolCount = 18
+const toolCount = 30

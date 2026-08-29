@@ -70,6 +70,12 @@ type Manager struct {
 	lastError   string
 	activeTasks map[string]*activeTask
 	profileTask map[string]string
+
+	// 常驻页面会话用独立的锁：pageMu 下会做进程 spawn 与管道读写，
+	// 挂在 m.mu 上会把安装流程和状态查询一起阻塞。
+	pageMu       sync.Mutex
+	pageSessions map[string]*pageSession
+	pageReaperOn bool
 }
 
 type activeTask struct {
@@ -112,12 +118,13 @@ func NewManager(appRoot string, cfg *config.Config, emit func(string, any), opts
 	}
 
 	return &Manager{
-		appRoot:     strings.TrimSpace(appRoot),
-		config:      cfg,
-		emit:        emit,
-		options:     opts,
-		activeTasks: make(map[string]*activeTask),
-		profileTask: make(map[string]string),
+		appRoot:      strings.TrimSpace(appRoot),
+		config:       cfg,
+		emit:         emit,
+		options:      opts,
+		activeTasks:  make(map[string]*activeTask),
+		profileTask:  make(map[string]string),
+		pageSessions: make(map[string]*pageSession),
 	}
 }
 
