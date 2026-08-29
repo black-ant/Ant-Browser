@@ -55,6 +55,12 @@ func newServiceError(status int, message string) *ServiceError {
 	return &ServiceError{Status: status, Message: message}
 }
 
+// NewServiceError 供宿主注入的能力提供方（例如 PageDriver）构造带状态码的错误，
+// 使其失败语义能和门面内部产生的错误一样被上层区分处理。
+func NewServiceError(status int, message string) *ServiceError {
+	return newServiceError(status, message)
+}
+
 // serviceErrorFrom 把内部惯用的 (status, errMsg) 约定转换为 error。
 // errMsg 为空表示成功。
 func serviceErrorFrom(status int, errMsg string) *ServiceError {

@@ -14,6 +14,9 @@ const (
 	DefaultAutomationNodeVersion    = "22.15.1"
 	DefaultAutomationPWVersion      = "1.59.0"
 	DefaultMCPPath                  = "/mcp"
+
+	// DefaultAutomationPageSessionIdleMs 是常驻页面会话的默认空闲回收时间（5 分钟）。
+	DefaultAutomationPageSessionIdleMs = 300000
 )
 
 const (
@@ -58,6 +61,9 @@ type AutomationConfig struct {
 	SystemNodePath        string `yaml:"system_node_path,omitempty"`
 	NodeVersion           string `yaml:"node_version,omitempty"`
 	PlaywrightCoreVersion string `yaml:"playwright_core_version,omitempty"`
+	// PageSessionIdleMs 是 MCP 常驻页面会话的空闲回收时间。
+	// 会话常驻是为了省掉 CDP 握手，但挂着的 Node 进程也占资源。
+	PageSessionIdleMs int `yaml:"page_session_idle_ms,omitempty"`
 	// RunRetentionDays 自动化运行记录保留天数；<=0 使用默认值 7。
 	RunRetentionDays int `yaml:"run_retention_days,omitempty"`
 	// ArtifactRetentionDays 自动化产物（截图/图片等）保留天数；<=0 使用默认值 7。
