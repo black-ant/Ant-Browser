@@ -32,29 +32,34 @@ func (a *App) backupImportFromPathLocked(zipPath string) (map[string]interface{}
 		hasIncomingCfg = false
 	}
 	if hasIncomingCfg {
-		a.backupEmitImportProgress("importing", 58, "正在应用系统配置...")
 		incomingCfg = a.backupNormalizeImportedConfigPaths(incomingCfg, a.config)
-		if err := a.backupApplyIncomingConfig(incomingCfg); err != nil {
-			issueTracker.RecordIssue("system_config_main", "主配置文件", err)
-		}
 	}
 
-	a.backupEmitImportProgress("importing", 66, "正在合并代理配置...")
-	if err := a.backupMergeProxiesFile(payloadRoot, stats); err != nil {
-		issueTracker.RecordIssue("system_config_proxies", "代理配置文件", err)
-	}
-
+	var importMappings *backupImportReferenceMappings
 	if dbSrc := backupFindDatabaseFile(payloadRoot); dbSrc != "" {
 		a.backupEmitImportProgress("importing", 76, "正在合并数据库数据...")
-		if err := a.backupMergeDatabaseFromSource(dbSrc, incomingCfg, stats); err != nil {
+		importMappings, err = a.backupMergeDatabaseFromSource(dbSrc, incomingCfg, stats)
+		if err != nil {
 			issueTracker.RecordIssue("database_sqlite_main", "SQLite 主数据库", err)
 		}
 	} else if _, ok := componentEntries["database_sqlite_main"]; ok {
 		issueTracker.RecordIssue("database_sqlite_main", "SQLite 主数据库", fmt.Errorf("备份包缺少数据库文件"))
 	}
 
+	if hasIncomingCfg {
+		a.backupEmitImportProgress("importing", 82, "正在应用系统配置...")
+		if err := a.backupApplyIncomingConfig(incomingCfg); err != nil {
+			issueTracker.RecordIssue("system_config_main", "主配置文件", err)
+		}
+	}
+
+	a.backupEmitImportProgress("importing", 84, "正在合并代理配置...")
+	if err := a.backupMergeProxiesFile(payloadRoot, stats); err != nil {
+		issueTracker.RecordIssue("system_config_proxies", "代理配置文件", err)
+	}
+
 	a.backupEmitImportProgress("importing", 86, "正在同步文件数据...")
-	a.backupImportFileTrees(payloadRoot, incomingCfg, manifest, stats, issueTracker.RecordIssue)
+	a.backupImportFileTrees(payloadRoot, incomingCfg, manifest, stats, issueTracker.RecordIssue, importMappings)
 
 	a.backupEmitImportProgress("importing", 92, "正在修复插件迁移路径...")
 	repairIssues, err := a.backupRepairExtensionPathsAfterImport()

@@ -99,3 +99,55 @@ func TestBackupImportExternalCoresUsesManifestCoreIDs(t *testing.T) {
 		t.Fatalf("external cores were mapped by order instead of core ID: z-core=%q a-core=%q", coreB, coreA)
 	}
 }
+
+func TestBackupImportExternalCoresUsesMappedTargetCoreIDs(t *testing.T) {
+	root := t.TempDir()
+	appRoot := filepath.Join(root, "app")
+	payloadRoot := filepath.Join(root, "payload")
+	for _, folder := range []string{"external-01", "external-02"} {
+		if err := os.MkdirAll(filepath.Join(payloadRoot, "browser", "cores", "external", folder), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(payloadRoot, "browser", "cores", "external", "external-01", "marker.txt"), []byte("core-b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(payloadRoot, "browser", "cores", "external", "external-02", "marker.txt"), []byte("core-a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	incoming := config.DefaultConfig()
+	incoming.Browser.Cores = []config.BrowserCore{
+		{CoreId: "target-core-b", CorePath: "z-core"},
+		{CoreId: "target-core-a", CorePath: "a-core"},
+	}
+	manifest := backup.Manifest{Entries: []backup.ManifestEntry{
+		{ArchivePath: "payload/browser/cores/external/external-01/", CoreId: "core-b"},
+		{ArchivePath: "payload/browser/cores/external/external-02/", CoreId: "core-a"},
+	}}
+	mappings := newBackupImportReferenceMappings()
+	backupImportSetMapping(mappings.Cores, "core-b", "target-core-b", true)
+	backupImportSetMapping(mappings.Cores, "core-a", "target-core-a", true)
+
+	app := &App{appRoot: appRoot, config: config.DefaultConfig()}
+	stats := &backupMergeStats{}
+	var issues []error
+	app.backupImportFileTrees(payloadRoot, incoming, manifest, stats, func(_ string, _ string, err error) {
+		issues = append(issues, err)
+	}, mappings)
+	if len(issues) > 0 {
+		t.Fatalf("file import reported issues: %v", issues)
+	}
+
+	coreB, err := os.ReadFile(filepath.Join(appRoot, "z-core", "marker.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	coreA, err := os.ReadFile(filepath.Join(appRoot, "a-core", "marker.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(coreB) != "core-b" || string(coreA) != "core-a" {
+		t.Fatalf("external cores ignored mapped target IDs: z-core=%q a-core=%q", coreB, coreA)
+	}
+}

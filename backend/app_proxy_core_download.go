@@ -108,7 +108,7 @@ func (a *App) BrowserProxyCoreDownloadInfo(input ProxyCoreDownloadRequest) Proxy
 	info := proxyCoreDownloadInfoBase(a, spec, target)
 	info.Version = version
 	info.ReleaseURL = proxyCoreReleaseURL(spec.Repo, version)
-	client, _, err := proxyCoreHTTPClient(30*time.Second, input.ProxyConfig)
+	client, _, err := a.unifiedProxyCoreHTTPClient(30*time.Second, input.ProxyConfig)
 	if err != nil {
 		info.Message = manualProxyCoreDownloadMessage(spec, target, "下载代理配置错误: "+err.Error())
 		return info
@@ -207,7 +207,7 @@ func (a *App) downloadProxyCore(ctx context.Context, spec proxyCoreSpec, target 
 	send := func(phase string, progress int, message string) {
 		a.emitRuntimeEvent("proxy-core:download:progress", ProxyCoreDownloadProgress{Core: spec.Core, GOOS: target.GOOS, GOARCH: target.GOARCH, Phase: phase, Progress: progress, Message: message})
 	}
-	client, proxyLabel, err := proxyCoreHTTPClient(90*time.Second, proxyConfig)
+	client, proxyLabel, err := a.unifiedProxyCoreHTTPClient(90*time.Second, proxyConfig)
 	if err != nil {
 		send("error", 0, "下载代理配置错误: "+err.Error())
 		return

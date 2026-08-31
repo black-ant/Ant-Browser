@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Config, manifest backup.Manifest, stats *backupMergeStats, onIssue func(componentID, componentName string, err error)) {
+func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Config, manifest backup.Manifest, stats *backupMergeStats, onIssue func(componentID, componentName string, err error), referenceMappings ...*backupImportReferenceMappings) {
 	report := func(componentID, componentName string, err error) {
 		if onIssue != nil && err != nil {
 			onIssue(componentID, componentName, err)
@@ -67,12 +67,21 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 
 		targetExternal := a.backupCollectExternalCoreTargets(incomingCfg)
 		sourceCoreIDs := backupExternalCoreIDsByFolder(manifest)
+		var importMappings *backupImportReferenceMappings
+		if len(referenceMappings) > 0 {
+			importMappings = referenceMappings[0]
+		}
 		usedTargets := make(map[string]struct{}, len(targetExternal))
 		fallbackIndex := 0
 		for _, folder := range sourceExternal {
 			src := filepath.Join(externalSrcRoot, folder)
 			componentID := "browser_core_external_" + folder
 			coreID := sourceCoreIDs[folder]
+			if importMappings != nil {
+				if mappedCoreID := backupImportMappedID(importMappings.Cores, coreID); mappedCoreID != "" {
+					coreID = mappedCoreID
+				}
+			}
 			dst, ok := backupSelectExternalCoreTarget(targetExternal, coreID, usedTargets, &fallbackIndex)
 			if !ok {
 				stats.Skipped++
