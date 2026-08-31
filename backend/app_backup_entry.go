@@ -2,7 +2,10 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/backup"
+	"archive/zip"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +76,7 @@ func (a *App) BackupExportPackage() (map[string]interface{}, error) {
 	}, nil
 }
 
-// BackupImportPackage 从 ZIP 导入配置与数据，仅支持判重合并导入。
+// BackupImportPackage 从 ZIP 导入全量备份或实例备份。
 func (a *App) BackupImportPackage() (map[string]interface{}, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
@@ -102,7 +105,7 @@ func (a *App) BackupImportPackage() (map[string]interface{}, error) {
 	}
 	a.backupEmitImportProgress("preparing", 5, "正在校验备份包...")
 
-	result, importErr := a.backupImportFromPathLocked(zipPath)
+	result, importErr := a.backupRestorePackageFromPathLocked(zipPath)
 	if importErr != nil {
 		a.backupEmitImportProgress("error", 100, fmt.Sprintf("导入失败: %v", importErr))
 		return nil, importErr
@@ -110,7 +113,7 @@ func (a *App) BackupImportPackage() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// BackupRestoreLocalPackage 从历史路径恢复本地 ZIP 备份，仅支持判重合并恢复。
+// BackupRestoreLocalPackage 从历史路径恢复本地 ZIP 备份，并按包格式处理。
 func (a *App) BackupRestoreLocalPackage(zipPath string) (map[string]interface{}, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
@@ -143,10 +146,76 @@ func (a *App) BackupRestoreLocalPackage(zipPath string) (map[string]interface{},
 	}
 
 	a.backupEmitImportProgress("preparing", 5, "正在校验本地备份包...")
-	result, importErr := a.backupImportFromPathLocked(zipPath)
+	result, importErr := a.backupRestorePackageFromPathLocked(zipPath)
 	if importErr != nil {
 		a.backupEmitImportProgress("error", 100, fmt.Sprintf("本地备份恢复失败: %v", importErr))
 		return nil, importErr
 	}
 	return result, nil
+}
+
+func (a *App) backupRestorePackageFromPathLocked(zipPath string) (map[string]interface{}, error) {
+	packageFormat, err := detectBackupPackageFormat(zipPath)
+	if err != nil {
+		return nil, err
+	}
+
+	switch packageFormat {
+	case backup.PackageFormat:
+		return a.backupImportFromPathLocked(zipPath)
+	case profilePackageFormat:
+		a.backupEmitImportProgress("importing", 40, "正在导入实例备份...")
+		result, err := a.importProfilePackageFromPath(zipPath)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"cancelled":       result.Cancelled,
+			"imported":        result.ImportedCount,
+			"importedCount":   result.ImportedCount,
+			"profileCount":    result.ImportedCount,
+			"profileMappings": result.ProfileMappings,
+			"warnings":        result.Warnings,
+			"packageType":     "profile",
+			"zipPath":         zipPath,
+			"message":         result.Message,
+		}, nil
+	default:
+		return nil, fmt.Errorf("不支持的备份格式: %s", packageFormat)
+	}
+}
+
+func detectBackupPackageFormat(zipPath string) (string, error) {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", fmt.Errorf("打开备份包失败: %w", err)
+	}
+	defer reader.Close()
+
+	for _, entry := range reader.File {
+		if filepath.ToSlash(entry.Name) != "manifest.json" {
+			continue
+		}
+		file, err := entry.Open()
+		if err != nil {
+			return "", fmt.Errorf("读取备份清单失败: %w", err)
+		}
+		var header struct {
+			Format string `json:"format"`
+		}
+		decodeErr := json.NewDecoder(io.LimitReader(file, 64*1024)).Decode(&header)
+		closeErr := file.Close()
+		if decodeErr != nil {
+			return "", fmt.Errorf("解析备份清单失败: %w", decodeErr)
+		}
+		if closeErr != nil {
+			return "", fmt.Errorf("关闭备份清单失败: %w", closeErr)
+		}
+		format := strings.TrimSpace(header.Format)
+		if format == "" {
+			return "", fmt.Errorf("备份清单缺少格式")
+		}
+		return format, nil
+	}
+	return "", fmt.Errorf("备份包缺少 manifest.json")
 }

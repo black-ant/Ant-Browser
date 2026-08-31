@@ -194,10 +194,6 @@ export function S3ConfigPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-        当前仅保存 S3 配置；S3 备份上传与恢复尚未接入。
-      </div>
-
       {loading ? (
         <Card>
           <div className="flex h-40 items-center justify-center text-sm text-[var(--color-text-muted)]">读取 S3 配置中...</div>

@@ -30,8 +30,8 @@ export const backupChannelDefinitions = [
   {
     id: 's3',
     label: 'S3 备份',
-    description: '保存 S3 连接配置，备份能力待接入',
-    available: false,
+    description: '上传备份文件到 S3',
+    available: true,
     configurable: true,
     icon: Database,
   },

@@ -46,3 +46,35 @@ func (a *App) backupExportPackageToPath(savePath string) (map[string]interface{}
 		`message`:         `backup export complete`,
 	}, nil
 }
+
+func (a *App) backupExportProfilePackageToPath(savePath string, profileIDs []string) (map[string]interface{}, error) {
+	if strings.TrimSpace(savePath) == `` {
+		return nil, fmt.Errorf(`backup export path is empty`)
+	}
+	ids := normalizeProfilePackageIDs(profileIDs)
+	if len(ids) == 0 {
+		return nil, fmt.Errorf(`请选择要备份的实例`)
+	}
+
+	a.backupEmitExportProgress(`starting`, 0, `正在检查选中的实例...`)
+	profiles, err := a.collectProfilesForPackage(ids)
+	if err != nil {
+		a.backupEmitExportProgress(`error`, 100, fmt.Sprintf(`实例备份失败: %v`, err))
+		return nil, err
+	}
+	a.backupEmitExportProgress(`preparing`, 10, fmt.Sprintf(`正在准备 %d 个实例...`, len(profiles)))
+	fileCount, err := a.writeProfilePackage(savePath, profiles)
+	if err != nil {
+		a.backupEmitExportProgress(`error`, 100, fmt.Sprintf(`实例备份失败: %v`, err))
+		return nil, err
+	}
+	a.backupEmitExportProgress(`done`, 100, `实例备份完成`)
+	return map[string]interface{}{
+		`cancelled`:    false,
+		`zipPath`:      savePath,
+		`profileCount`: len(profiles),
+		`fileCount`:    fileCount,
+		`packageType`:  `profile`,
+		`message`:      `实例备份完成`,
+	}, nil
+}

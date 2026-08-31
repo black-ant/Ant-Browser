@@ -62,7 +62,7 @@ func (a *App) backupEmitExportProgressTransfer(phase string, progress int, messa
 	})
 }
 
-func (a *App) backupEmitExportUploadProgress(artifactName string, startProgress, endProgress int, transfer channels.UploadProgress) {
+func (a *App) backupEmitExportUploadProgress(channelLabel, artifactName string, startProgress, endProgress int, transfer channels.UploadProgress) {
 	transferred := transfer.BytesTransferred
 	if transferred < 0 {
 		transferred = 0
@@ -82,7 +82,7 @@ func (a *App) backupEmitExportUploadProgress(artifactName string, startProgress,
 		}
 		progress += int(ratio * float64(endProgress-startProgress))
 	}
-	message := fmt.Sprintf("正在上传%s到 OpenList：%s / %s，速度 %s", artifactName, formatBackupFileSize(transferred), formatBackupFileSize(total), formatBackupTransferRate(transfer.BytesPerSecond))
+	message := fmt.Sprintf("\u6b63\u5728\u4e0a\u4f20%s\u5230%s\uff1a%s / %s\uff0c\u901f\u5ea6 %s", artifactName, channelLabel, formatBackupFileSize(transferred), formatBackupFileSize(total), formatBackupTransferRate(transfer.BytesPerSecond))
 	a.backupEmitExportProgressTransfer("uploading", progress, message, channels.UploadProgress{
 		BytesTransferred: transferred,
 		TotalBytes:       total,

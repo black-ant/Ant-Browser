@@ -21,10 +21,11 @@ import (
 const profilePackageFormat = "ant-chrome-profile-package"
 
 type ProfilePackageManifest struct {
-	Format       string `json:"format"`
-	Version      int    `json:"version"`
-	ExportedAt   string `json:"exportedAt"`
-	ProfileCount int    `json:"profileCount"`
+	Format          string `json:"format"`
+	Version         int    `json:"version"`
+	ExportedAt      string `json:"exportedAt"`
+	ProfileCount    int    `json:"profileCount"`
+	DatabaseVersion int    `json:"databaseVersion,omitempty"`
 }
 
 type ProfilePackageExportResult struct {
@@ -147,7 +148,6 @@ func (a *App) collectProfilesForPackage(profileIds []string) ([]browser.Profile,
 		copyProfile.Pid = 0
 		copyProfile.RuntimeWarning = ""
 		copyProfile.LastError = ""
-		a.prepareProfileProxyForPackage(&copyProfile)
 		profiles = append(profiles, copyProfile)
 	}
 	if len(missing) > 0 {
@@ -160,6 +160,10 @@ func (a *App) collectProfilesForPackage(profileIds []string) ([]browser.Profile,
 }
 
 func (a *App) writeProfilePackage(zipPath string, profiles []browser.Profile) (int, error) {
+	databaseSnapshot, err := a.collectProfilePackageDatabase(profiles)
+	if err != nil {
+		return 0, err
+	}
 	if err := os.MkdirAll(filepath.Dir(zipPath), 0o755); err != nil {
 		return 0, fmt.Errorf("创建导出目录失败: %w", err)
 	}
@@ -174,12 +178,17 @@ func (a *App) writeProfilePackage(zipPath string, profiles []browser.Profile) (i
 
 	writeErr := func() error {
 		manifest := ProfilePackageManifest{
-			Format:       profilePackageFormat,
-			Version:      1,
-			ExportedAt:   time.Now().Format(time.RFC3339),
-			ProfileCount: len(profiles),
+			Format:          profilePackageFormat,
+			Version:         profilePackageVersion,
+			ExportedAt:      time.Now().Format(time.RFC3339),
+			ProfileCount:    len(profiles),
+			DatabaseVersion: databaseSnapshot.Version,
 		}
 		if err := writeProfilePackageJSON(zipWriter, "manifest.json", manifest); err != nil {
+			return err
+		}
+		fileCount++
+		if err := writeProfilePackageJSON(zipWriter, profilePackageDatabasePath, databaseSnapshot); err != nil {
 			return err
 		}
 		fileCount++
@@ -237,21 +246,38 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 	if err := readProfilePackageJSON(reader.File, "manifest.json", &manifest); err != nil {
 		return ProfilePackageImportResult{}, err
 	}
-	if manifest.Format != profilePackageFormat || manifest.Version != 1 {
+	if manifest.Format != profilePackageFormat || (manifest.Version != 1 && manifest.Version != profilePackageVersion) {
 		return ProfilePackageImportResult{}, fmt.Errorf("不支持的实例包格式")
 	}
 	var profiles []browser.Profile
-	if err := readProfilePackageJSON(reader.File, "profiles.json", &profiles); err != nil {
+	var databaseSnapshot *ProfilePackageDatabase
+	if manifest.Version >= profilePackageVersion {
+		var snapshot ProfilePackageDatabase
+		if err := readProfilePackageJSON(reader.File, profilePackageDatabasePath, &snapshot); err != nil {
+			return ProfilePackageImportResult{}, err
+		}
+		if snapshot.Format != profilePackageDatabaseFormat || snapshot.Version != profilePackageDatabaseVersion {
+			return ProfilePackageImportResult{}, fmt.Errorf("不支持的实例数据库快照格式")
+		}
+		databaseSnapshot = &snapshot
+		profiles = snapshot.Profiles
+	} else if err := readProfilePackageJSON(reader.File, "profiles.json", &profiles); err != nil {
 		return ProfilePackageImportResult{}, err
 	}
 	if len(profiles) == 0 {
 		return ProfilePackageImportResult{}, fmt.Errorf("实例包为空")
+	}
+	if databaseSnapshot != nil && (a.db == nil || a.db.GetConn() == nil) {
+		return ProfilePackageImportResult{}, fmt.Errorf("数据库未初始化，无法恢复实例关联数据")
 	}
 
 	a.browserMgr.InitData()
 	now := time.Now().Format(time.RFC3339)
 	mappings := make(map[string]string, len(profiles))
 	warnings := make([]string, 0)
+	if databaseSnapshot != nil {
+		warnings = append(warnings, databaseSnapshot.Warnings...)
+	}
 	prepared := make([]preparedProfilePackageImport, 0, len(profiles))
 	batchID := uuid.NewString()
 	stagingRoot := a.profilePackageImportStagingRoot(batchID)
@@ -293,8 +319,10 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 		source.CreatedAt = now
 		source.UpdatedAt = now
 		source.DeletedAt = ""
-		if warning := a.applyImportedProfileProxyByName(&source); warning != "" {
-			warnings = append(warnings, fmt.Sprintf("实例「%s」%s", source.ProfileName, warning))
+		if databaseSnapshot == nil {
+			if warning := a.applyImportedProfileProxyByName(&source); warning != "" {
+				warnings = append(warnings, fmt.Sprintf("实例「%s」%s", source.ProfileName, warning))
+			}
 		}
 
 		profile := &browser.Profile{ProfileId: newID, UserDataDir: newID}
@@ -327,6 +355,11 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 		}
 		committedDirs = append(committedDirs, item.FinalDir)
 	}
+	if databaseSnapshot != nil {
+		if err := a.restoreProfilePackageDatabase(*databaseSnapshot, prepared, &warnings); err != nil {
+			return ProfilePackageImportResult{}, err
+		}
+	}
 	a.browserMgr.Mutex.Lock()
 	for i := range prepared {
 		profile := &prepared[i].Profile
@@ -339,8 +372,10 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 		}
 	}
 	a.browserMgr.Mutex.Unlock()
-	if err := a.browserMgr.SaveProfiles(); err != nil {
-		return ProfilePackageImportResult{}, err
+	if databaseSnapshot == nil {
+		if err := a.browserMgr.SaveProfiles(); err != nil {
+			return ProfilePackageImportResult{}, err
+		}
 	}
 	committed = true
 

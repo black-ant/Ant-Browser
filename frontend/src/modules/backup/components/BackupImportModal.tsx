@@ -106,7 +106,7 @@ export function BackupImportModal({
         }
         onClose()
       }}
-      title="导入全局备份"
+      title="导入备份"
       width="620px"
       closable={!importRunning}
       footer={(
@@ -127,7 +127,7 @@ export function BackupImportModal({
       )}
     >
       <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
-        <p className="text-xs text-[var(--color-text-muted)]">合并导入会保留当前数据，并按 ID、路径和 URL 判重。</p>
+        <p className="text-xs text-[var(--color-text-muted)]">支持全量备份和实例备份；当前数据不会被清空。</p>
         {importProgress && (
           <BackupProgressPanel progress={importProgress} loadingLabel="导入中" />
         )}

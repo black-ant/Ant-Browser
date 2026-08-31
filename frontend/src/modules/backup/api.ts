@@ -18,7 +18,12 @@ export interface BackupActionResult {
   remoteUploaded?: boolean
   remoteName?: string
   remoteSize?: number
+  remoteNames?: string[]
   remoteError?: string
+  profileCount?: number
+  importedCount?: number
+  warnings?: string[]
+  packageType?: 'full' | 'profile' | string
   failedComponents?: Array<{
     componentId?: string
     componentName?: string
@@ -43,6 +48,7 @@ const getBindings = async () => {
 
 export async function createBackupPackage(
   destinations: BackupDestinationSelection,
+  profileIds: string[] = [],
 ): Promise<BackupActionResult> {
   const bindings: any = await getBindings()
   if (!bindings?.BackupCreatePackage) {
@@ -53,6 +59,9 @@ export async function createBackupPackage(
     if (typeof enabled === 'boolean') {
       payload[channelId] = String(enabled)
     }
+  }
+  if (profileIds.length > 0) {
+    payload.profileIds = JSON.stringify(profileIds)
   }
   return (await bindings.BackupCreatePackage(payload)) || {}
 }

@@ -14,9 +14,12 @@ import {
 } from './api'
 import { BackupTypeModal } from './components/BackupTypeModal'
 import type { BackupTypeSelection } from './components/BackupTypeModal'
+import { BackupScopeModal } from './components/BackupScopeModal'
 import { BackupHistoryTable, recordLocalBackupHistory } from './components/BackupHistoryTable'
 import { fetchOpenListSettings } from './channels/openlist/api'
 import type { OpenListConnection } from './channels/openlist/api'
+import { fetchS3Settings } from './channels/s3/api'
+import type { S3Connection } from './channels/s3/api'
 import { useBackupProgressEffects } from './hooks/useBackupProgressEffects'
 
 type BackupActionLoading = 'none' | 'export' | 'import-merge'
@@ -43,11 +46,14 @@ function formatBackupRate(value?: number) {
 export function BackupPage() {
   const navigate = useNavigate()
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [backupScopeModalOpen, setBackupScopeModalOpen] = useState(false)
   const [backupTypeModalOpen, setBackupTypeModalOpen] = useState(false)
   const [channelConfigModalOpen, setChannelConfigModalOpen] = useState(false)
   const [openListConfigModalOpen, setOpenListConfigModalOpen] = useState(false)
   const [openListConnection, setOpenListConnection] = useState<OpenListConnection | null>(null)
+  const [s3Connection, setS3Connection] = useState<S3Connection | null>(null)
   const [pendingBackupTypes, setPendingBackupTypes] = useState<BackupTypeSelection | null>(null)
+  const [pendingProfileIds, setPendingProfileIds] = useState<string[]>([])
   const openListConfigurationCompletedRef = useRef(false)
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0)
   const [historyBusy, setHistoryBusy] = useState(false)
@@ -73,11 +79,27 @@ export function BackupPage() {
 
   useEffect(() => {
     let active = true
-    void fetchOpenListSettings().then(settings => {
-      if (active && settings.tokenConfigured && settings.baseURL) {
-        setOpenListConnection({ baseURL: settings.baseURL, remotePath: settings.remotePath })
+    void Promise.allSettled([fetchOpenListSettings(), fetchS3Settings()]).then(([openListResult, s3Result]) => {
+      if (!active) return
+      if (openListResult.status === 'fulfilled') {
+        const settings = openListResult.value
+        if (settings.tokenConfigured && settings.baseURL) {
+          setOpenListConnection({ baseURL: settings.baseURL, remotePath: settings.remotePath })
+        }
       }
-    }).catch(() => {})
+      if (s3Result.status === 'fulfilled') {
+        const settings = s3Result.value
+        if (settings.credentialsConfigured && settings.bucket.trim()) {
+          setS3Connection({
+            endpoint: settings.endpoint,
+            region: settings.region,
+            bucket: settings.bucket,
+            prefix: settings.prefix,
+            forcePathStyle: settings.forcePathStyle,
+          })
+        }
+      }
+    })
     return () => {
       active = false
     }
@@ -88,12 +110,12 @@ export function BackupPage() {
     setBackupTypeModalOpen(true)
   }, [openListConfigModalOpen, openListConnection, pendingBackupTypes])
 
-  const handleBackup = async (destinations: BackupTypeSelection) => {
+  const handleBackup = async (destinations: BackupTypeSelection, profileIds: string[]) => {
     setActionLoading('export')
     setExportLogs([])
     setExportProgress({ phase: 'starting', progress: 0, message: '准备备份...' })
     try {
-      const res = await createBackupPackage(destinations)
+      const res = await createBackupPackage(destinations, profileIds)
       if (res.cancelled) {
         setExportProgress(null)
         setExportLogs([])
@@ -101,11 +123,14 @@ export function BackupPage() {
         return
       }
       const localSaved = res.localSaved === true || (destinations.local === true && Boolean(res.zipPath))
-      const remoteUploaded = res.remoteUploaded === true || (destinations.openlist === true && Boolean(res.remoteName))
+      const remoteUploaded = res.remoteUploaded === true || ((destinations.openlist === true || destinations.s3 === true) && Boolean(res.remoteName))
       const fileHint = Number.isFinite(res.fileCount) && (res.fileCount || 0) > 0
         ? `，共 ${res.fileCount} 个文件`
         : ''
-      const resultMessage = `${res.message || '备份完成'}${fileHint}`
+      const profileHint = res.packageType === 'profile' && Number.isFinite(res.profileCount) && (res.profileCount || 0) > 0
+        ? `，共 ${res.profileCount} 个实例`
+        : ''
+      const resultMessage = `${res.message || '备份完成'}${profileHint}${fileHint}`
       const partial = Boolean(res.partial || res.remoteError)
       setExportProgress({
         phase: partial ? 'error' : 'done',
@@ -144,6 +169,12 @@ export function BackupPage() {
     }
   }
 
+  const handleBackupScopeConfirm = (profileIds: string[]) => {
+    setPendingProfileIds(profileIds)
+    setBackupScopeModalOpen(false)
+    setBackupTypeModalOpen(true)
+  }
+
   const handleBackupTypeConfirm = (destinations: BackupTypeSelection) => {
     if (destinations.openlist === true && !openListConnection) {
       openListConfigurationCompletedRef.current = false
@@ -153,9 +184,19 @@ export function BackupPage() {
       toast.info('请先配置 OpenList，再开始备份')
       return
     }
+    if (destinations.s3 === true && !s3Connection) {
+      setPendingBackupTypes(null)
+      setPendingProfileIds([])
+      setBackupTypeModalOpen(false)
+      navigate('/system/backup/s3')
+      toast.info('请先配置 S3，再开始备份')
+      return
+    }
+    const profileIds = pendingProfileIds
     setPendingBackupTypes(null)
+    setPendingProfileIds([])
     setBackupTypeModalOpen(false)
-    void handleBackup(destinations)
+    void handleBackup(destinations, profileIds)
   }
 
   const handleImportSystem = async () => {
@@ -178,8 +219,16 @@ export function BackupPage() {
       const componentFailed = Number.isFinite(res.componentFailed) ? Math.max(0, Math.round(res.componentFailed || 0)) : 0
       const componentTotal = Number.isFinite(res.componentTotal) ? Math.max(0, Math.round(res.componentTotal || 0)) : 0
       const failedComponents = Array.isArray(res.failedComponents) ? res.failedComponents : []
+      const warnings = Array.isArray(res.warnings) ? res.warnings.filter(Boolean) : []
 
-      if (res.partial || componentFailed > 0) {
+      if (res.packageType === 'profile') {
+        const importedProfiles = res.importedCount ?? res.profileCount ?? imported
+        if (warnings.length > 0) {
+          toast.warning(`实例备份导入完成：导入 ${importedProfiles} 个实例；${warnings[0]}`)
+        } else {
+          toast.success(`实例备份导入完成：导入 ${importedProfiles} 个实例`)
+        }
+      } else if (res.partial || componentFailed > 0) {
         const moduleNames = failedComponents
           .map(item => (item?.componentName || item?.componentId || '').trim())
           .filter(Boolean)
@@ -254,13 +303,17 @@ export function BackupPage() {
 
       <BackupHistoryTable
         configuredConnection={openListConnection}
+        configuredS3Connection={s3Connection}
         refreshToken={historyRefreshToken}
         onBusyChange={setHistoryBusy}
         actions={(
           <div className="flex max-w-full flex-wrap items-center justify-end gap-2" aria-label="备份操作">
             <Button
               size="sm"
-              onClick={() => setBackupTypeModalOpen(true)}
+              onClick={() => {
+                setPendingProfileIds([])
+                setBackupScopeModalOpen(true)
+              }}
               loading={actionLoading === 'export'}
               disabled={remoteBackupBusy || scheduledBackupBusy || actionLoading !== 'none'}
               title="选择备份类型并开始备份"
@@ -340,6 +393,7 @@ export function BackupPage() {
         onClose={() => {
           setBackupTypeModalOpen(false)
           setPendingBackupTypes(null)
+          setPendingProfileIds([])
         }}
         onConfirm={handleBackupTypeConfirm}
         initialSelection={pendingBackupTypes || undefined}
@@ -350,7 +404,23 @@ export function BackupPage() {
               ? `${openListConnection.baseURL}${openListConnection.remotePath ? `/${openListConnection.remotePath}` : ''}`
               : undefined,
           },
+          s3: {
+            configured: Boolean(s3Connection),
+            summary: s3Connection
+              ? `${s3Connection.bucket}${s3Connection.prefix ? `/${s3Connection.prefix}` : ''}`
+              : undefined,
+          },
         }}
+      />
+
+      <BackupScopeModal
+        open={backupScopeModalOpen}
+        initialProfileIds={pendingProfileIds}
+        onClose={() => {
+          setBackupScopeModalOpen(false)
+          setPendingProfileIds([])
+        }}
+        onConfirm={handleBackupScopeConfirm}
       />
 
       <OpenListConfigModal
@@ -359,6 +429,7 @@ export function BackupPage() {
           setOpenListConfigModalOpen(false)
           if (!openListConfigurationCompletedRef.current) {
             setPendingBackupTypes(null)
+            setPendingProfileIds([])
           }
           openListConfigurationCompletedRef.current = false
         }}

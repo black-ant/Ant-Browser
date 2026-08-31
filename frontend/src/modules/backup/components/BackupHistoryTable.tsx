@@ -10,9 +10,15 @@ import {
   restoreOpenListBackup,
 } from '../channels/openlist/api'
 import type { OpenListBackupFile, OpenListConnection } from '../channels/openlist/api'
+import {
+  listS3Backups,
+  restoreS3Backup,
+} from '../channels/s3/api'
+import type { S3BackupFile, S3Connection } from '../channels/s3/api'
 
 type BackupHistorySource = 'local' | 'openlist' | 's3'
 type BackupHistoryFilter = 'all' | BackupHistorySource
+type RemoteBackupFile = OpenListBackupFile | S3BackupFile
 
 interface BackupHistoryItem {
   id: string
@@ -22,7 +28,7 @@ interface BackupHistoryItem {
   modifiedAt: string
   location: string
   localPath?: string
-  remoteFile?: OpenListBackupFile
+  remoteFile?: RemoteBackupFile
 }
 
 interface StoredLocalBackup {
@@ -37,15 +43,22 @@ interface StoredOpenListHistory {
   files: OpenListBackupFile[]
 }
 
+interface StoredS3History {
+  location: string
+  files: S3BackupFile[]
+}
+
 interface BackupHistoryTableProps {
   actions?: ReactNode
   configuredConnection?: OpenListConnection | null
+  configuredS3Connection?: S3Connection | null
   refreshToken?: number
   onBusyChange?: (busy: boolean) => void
 }
 
 const LOCAL_HISTORY_KEY = 'ant_chrome_local_backup_history'
 const OPENLIST_HISTORY_CACHE_KEY = 'ant_chrome_openlist_backup_history_cache'
+const S3_HISTORY_CACHE_KEY = 'ant_chrome_s3_backup_history_cache'
 
 function readLocalBackups(): StoredLocalBackup[] {
   if (typeof window === 'undefined') return []
@@ -110,6 +123,40 @@ function saveCachedOpenListHistory(files: OpenListBackupFile[], connection: Open
   }
 }
 
+function readCachedS3History(): StoredS3History | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(S3_HISTORY_CACHE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.files)) return null
+    const entries = parsed.files as Array<Record<string, unknown>>
+    return {
+      location: typeof parsed.location === 'string' ? parsed.location : 'S3',
+      files: entries
+        .map(item => ({
+          name: typeof item.name === 'string' ? item.name : '',
+          size: Number.isFinite(item.size) ? Math.max(0, Number(item.size)) : 0,
+          modifiedAt: typeof item.modifiedAt === 'string' ? item.modifiedAt : '',
+        }))
+        .filter(item => item.name),
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveCachedS3History(files: S3BackupFile[], connection: S3Connection) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(S3_HISTORY_CACHE_KEY, JSON.stringify({
+      location: buildS3Location(connection),
+      files,
+    }))
+  } catch {
+    return
+  }
+}
+
 export async function recordLocalBackupHistory(path: string) {
   const trimmedPath = path.trim()
   if (!trimmedPath || typeof window === 'undefined') return
@@ -164,6 +211,14 @@ function buildOpenListLocation(connection: OpenListConnection) {
   return remotePath ? `${baseURL}/${remotePath}` : baseURL
 }
 
+function buildS3Location(connection: S3Connection) {
+  const endpoint = connection.endpoint.trim().replace(/\/$/, '')
+  const bucket = connection.bucket.trim()
+  const prefix = connection.prefix.trim().replace(/^\/+|\/+$/g, '')
+  const root = endpoint ? `${endpoint}/${bucket}` : `s3://${bucket}`
+  return prefix ? `${root}/${prefix}` : root
+}
+
 function buildInitialItems(): BackupHistoryItem[] {
   const localItems = readLocalBackups().map(item => ({
     id: `local:${item.path || item.name}`,
@@ -184,8 +239,18 @@ function buildInitialItems(): BackupHistoryItem[] {
     location: cached.location,
     remoteFile: file,
   })) || []
+  const s3Cached = readCachedS3History()
+  const s3Items = s3Cached?.files.map(file => ({
+    id: `s3:${file.name}`,
+    name: file.name,
+    source: 's3' as const,
+    size: file.size,
+    modifiedAt: file.modifiedAt,
+    location: s3Cached.location,
+    remoteFile: file,
+  })) || []
 
-  return sortHistoryItems([...localItems, ...openListItems])
+  return sortHistoryItems([...localItems, ...openListItems, ...s3Items])
 }
 
 function sortHistoryItems(items: BackupHistoryItem[]) {
@@ -227,7 +292,7 @@ function sourceLabel(source: BackupHistorySource) {
   return 'S3'
 }
 
-export function BackupHistoryTable({ actions, configuredConnection, refreshToken = 0, onBusyChange }: BackupHistoryTableProps) {
+export function BackupHistoryTable({ actions, configuredConnection, configuredS3Connection, refreshToken = 0, onBusyChange }: BackupHistoryTableProps) {
   const [items, setItems] = useState<BackupHistoryItem[]>(buildInitialItems)
   const [filter, setFilter] = useState<BackupHistoryFilter>('all')
   const [busy, setBusy] = useState<'none' | 'list' | 'restore-merge'>('none')
@@ -237,6 +302,7 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
   const [openingLocationId, setOpeningLocationId] = useState('')
   const [error, setError] = useState('')
   const [activeConnection, setActiveConnection] = useState<OpenListConnection | null>(configuredConnection || null)
+  const [activeS3Connection, setActiveS3Connection] = useState<S3Connection | null>(configuredS3Connection || null)
 
   useEffect(() => {
     onBusyChange?.(busy !== 'none' || pendingRestoreItem !== null || restoreConfirming)
@@ -259,7 +325,12 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
     }
   }, [refreshToken])
 
-  const mergeHistoryItems = (openListFiles: OpenListBackupFile[], connection: OpenListConnection) => {
+  const mergeHistoryItems = (
+    openListFiles: OpenListBackupFile[],
+    openListConnection: OpenListConnection | null,
+    s3Files: S3BackupFile[],
+    s3Connection: S3Connection | null,
+  ) => {
     const localItems = readLocalBackups().map(item => ({
       id: `local:${item.path || item.name}`,
       name: item.name || item.path,
@@ -269,51 +340,91 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
       location: item.path || '本地文件',
       localPath: item.path,
     }))
-    const openListItems = openListFiles.map(file => ({
-      id: `openlist:${file.name}`,
-      name: file.name,
-      source: 'openlist' as const,
-      size: file.size,
-      modifiedAt: file.modifiedAt,
-      location: buildOpenListLocation(connection),
-      remoteFile: file,
-    }))
-    setItems(sortHistoryItems([...localItems, ...openListItems]))
+    const openListItems = openListConnection
+      ? openListFiles.map(file => ({
+        id: `openlist:${file.name}`,
+        name: file.name,
+        source: 'openlist' as const,
+        size: file.size,
+        modifiedAt: file.modifiedAt,
+        location: buildOpenListLocation(openListConnection),
+        remoteFile: file,
+      }))
+      : []
+    const s3Items = s3Connection
+      ? s3Files.map(file => ({
+        id: `s3:${file.name}`,
+        name: file.name,
+        source: 's3' as const,
+        size: file.size,
+        modifiedAt: file.modifiedAt,
+        location: buildS3Location(s3Connection),
+        remoteFile: file,
+      }))
+      : []
+    setItems(sortHistoryItems([...localItems, ...openListItems, ...s3Items]))
   }
 
-  const loadOpenListHistory = async (connection: OpenListConnection, showToast: boolean) => {
+  const loadRemoteHistory = async (
+    openListConnection: OpenListConnection | null,
+    s3Connection: S3Connection | null,
+    showToast: boolean,
+  ) => {
     setBusy('list')
     setError('')
+    const openListPromise = openListConnection
+      ? listOpenListBackups(openListConnection)
+      : Promise.resolve<OpenListBackupFile[] | null>(null)
+    const s3Promise = s3Connection
+      ? listS3Backups(s3Connection)
+      : Promise.resolve<S3BackupFile[] | null>(null)
     try {
-      const files = await listOpenListBackups(connection)
-      saveCachedOpenListHistory(files, connection)
-      mergeHistoryItems(files, connection)
-      if (showToast) toast.success(`已刷新 OpenList 历史，共 ${files.length} 个备份`)
-    } catch (loadError) {
-      const message = errorMessage(loadError, 'OpenList 历史读取失败')
-      setError(message)
-      if (showToast) toast.error(message)
+      const [openListResult, s3Result] = await Promise.allSettled([openListPromise, s3Promise])
+      const errors: string[] = []
+      let openListFiles: OpenListBackupFile[] = []
+      let s3Files: S3BackupFile[] = []
+      if (openListResult.status === 'fulfilled') {
+        openListFiles = openListResult.value || []
+        if (openListConnection) saveCachedOpenListHistory(openListFiles, openListConnection)
+      } else {
+        errors.push(errorMessage(openListResult.reason, 'OpenList 历史读取失败'))
+      }
+      if (s3Result.status === 'fulfilled') {
+        s3Files = s3Result.value || []
+        if (s3Connection) saveCachedS3History(s3Files, s3Connection)
+      } else {
+        errors.push(errorMessage(s3Result.reason, 'S3 历史读取失败'))
+      }
+      mergeHistoryItems(openListFiles, openListConnection, s3Files, s3Connection)
+      if (errors.length > 0) {
+        const message = errors.join('; ')
+        setError(message)
+        if (showToast) toast.error(message)
+      } else if (showToast) {
+        toast.success(`已刷新远程历史，共 ${openListFiles.length + s3Files.length} 个备份`)
+      }
     } finally {
       setBusy('none')
     }
   }
 
   useEffect(() => {
-    if (!configuredConnection) {
+    setActiveConnection(configuredConnection || null)
+    setActiveS3Connection(configuredS3Connection || null)
+    if (!configuredConnection && !configuredS3Connection) {
       setItems(buildInitialItems())
       return
     }
-    setActiveConnection(configuredConnection)
-    void loadOpenListHistory(configuredConnection, false)
-  }, [configuredConnection, refreshToken])
+    void loadRemoteHistory(configuredConnection || null, configuredS3Connection || null, false)
+  }, [configuredConnection, configuredS3Connection, refreshToken])
 
   const handleRefresh = () => {
     setItems(buildInitialItems())
-    if (!activeConnection) {
-      setError('请先点击“配置”连接 OpenList')
+    if (!activeConnection && !activeS3Connection) {
+      setError('请先配置 OpenList 或 S3')
       return
     }
-    void loadOpenListHistory(activeConnection, true)
+    void loadRemoteHistory(activeConnection, activeS3Connection, true)
   }
 
   const handleRestore = async (item: BackupHistoryItem) => {
@@ -336,8 +447,16 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
           throw new Error('请先点击“配置”连接 OpenList')
         }
         result = await restoreOpenListBackup(item.remoteFile.name, activeConnection)
+      } else if (item.source === 's3') {
+        if (!item.remoteFile) {
+          throw new Error('S3 备份文件信息不可用，请先刷新历史')
+        }
+        if (!activeS3Connection) {
+          throw new Error('请先配置 S3')
+        }
+        result = await restoreS3Backup(item.remoteFile.name, activeS3Connection)
       } else {
-        throw new Error('S3 备份恢复尚未接入')
+        throw new Error('未知备份来源')
       }
       if (result.partial || Number(result.componentFailed || 0) > 0) {
         toast.warning('备份已恢复，但有部分模块失败，请查看导入结果')
@@ -369,8 +488,14 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
       return
     }
     if (item.source === 's3') {
-      setError('S3 备份恢复尚未接入')
-      return
+      if (!item.remoteFile) {
+        setError('S3 备份文件信息不可用，请先刷新历史')
+        return
+      }
+      if (!activeS3Connection) {
+        setError('请先配置 S3')
+        return
+      }
     }
     setError('')
     setPendingRestoreItem(item)
@@ -390,7 +515,7 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
       }
 
       if (item.source === 's3') {
-        throw new Error('S3 备份地址打开尚未接入')
+        throw new Error('S3 备份地址需要使用带凭据的客户端访问')
       }
       const location = item.location.trim()
       if (!location) {
@@ -457,6 +582,9 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
       render: (value, item) => {
         const location = String(value || '').trim()
         if (!location) return '—'
+        if (item.source === 's3') {
+          return <span className="block max-w-[320px] truncate text-[var(--color-text-secondary)]" title={location}>{location}</span>
+        }
         return (
           <button
             type="button"
@@ -533,7 +661,7 @@ export function BackupHistoryTable({ actions, configuredConnection, refreshToken
               ? '暂无本地备份'
               : filter === 'openlist'
                 ? '暂无 OpenList 备份'
-                : 'S3 备份历史尚未接入'}
+                : '暂无 S3 备份'}
           className="min-w-[900px]"
           maxHeight="none"
         />

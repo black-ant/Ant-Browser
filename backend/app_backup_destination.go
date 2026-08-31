@@ -3,7 +3,9 @@ package backend
 import (
 	"ant-chrome/backend/internal/backup/channels"
 	"ant-chrome/backend/internal/backup/channels/openlist"
+	"ant-chrome/backend/internal/backup/channels/s3"
 	"ant-chrome/backend/internal/config"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,15 +15,21 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// BackupCreatePackage 创建一份备份包，并按目的地选择保存到本地和/或上传到 OpenList。
+// BackupCreatePackage 创建一份备份包，并按目的地选择保存到本地和/或上传到远程渠道。
 func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface{}, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 
 	localEnabled := backupDestinationFlag(input, "local", "localEnabled")
 	openListEnabled := backupDestinationFlag(input, "openList", "openlist", "openListEnabled")
-	if !localEnabled && !openListEnabled {
+	s3Enabled := backupDestinationFlag(input, "s3", "s3Enabled")
+	if !localEnabled && !openListEnabled && !s3Enabled {
 		err := fmt.Errorf("至少选择一个备份位置")
+		a.backupEmitExportProgress("error", 100, fmt.Sprintf("备份失败: %v", err))
+		return nil, err
+	}
+	profileIDs, err := backupProfileIDsFromInput(input)
+	if err != nil {
 		a.backupEmitExportProgress("error", 100, fmt.Sprintf("备份失败: %v", err))
 		return nil, err
 	}
@@ -33,9 +41,16 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 
 	var openListClient channels.Client
 	var openListConfig config.OpenListChannelConfig
-	var err error
+	var s3Client channels.Client
 	if openListEnabled {
 		openListConfig, openListClient, err = a.backupOpenListClientWithConfig(input)
+		if err != nil {
+			a.backupEmitExportProgress("error", 100, fmt.Sprintf("备份失败: %v", err))
+			return nil, err
+		}
+	}
+	if s3Enabled {
+		s3Client, err = a.backupS3Client(input)
 		if err != nil {
 			a.backupEmitExportProgress("error", 100, fmt.Sprintf("备份失败: %v", err))
 			return nil, err
@@ -46,7 +61,7 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 	var temporaryRoot string
 	if localEnabled {
 		a.backupEmitExportProgress("starting", 0, "等待选择本地备份路径...")
-		defaultName := fmt.Sprintf("ant-chrome-backup-%s.zip", time.Now().Format("20060102-150405"))
+		defaultName := backupPackageDefaultName(len(profileIDs) > 0, time.Now())
 		packagePath, err = wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
 			Title:           "保存本地备份",
 			DefaultFilename: defaultName,
@@ -73,63 +88,84 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 			return nil, fmt.Errorf("创建临时备份目录失败: %w", err)
 		}
 		defer os.RemoveAll(temporaryRoot)
-		packagePath = filepath.Join(temporaryRoot, fmt.Sprintf("ant-chrome-backup-%s.zip", time.Now().Format("20060102-150405.000000000")))
+		packagePath = filepath.Join(temporaryRoot, backupTemporaryPackageName(len(profileIDs) > 0, time.Now()))
 	}
 
-	result, err := a.backupExportPackageToPath(packagePath)
+	var result map[string]interface{}
+	if len(profileIDs) > 0 {
+		result, err = a.backupExportProfilePackageToPath(packagePath, profileIDs)
+	} else {
+		result, err = a.backupExportPackageToPath(packagePath)
+	}
 	if err != nil {
 		return nil, err
 	}
 	result["localSaved"] = localEnabled
 	result["remoteUploaded"] = false
 
+	remoteTargets := make([]backupRemoteUploadTarget, 0, 2)
 	if openListEnabled {
+		remoteTargets = append(remoteTargets, backupRemoteUploadTarget{
+			label:               "OpenList",
+			client:              openListClient,
+			timeout:             openlist.TransferTimeout,
+			uploadRateLimitMBps: openListConfig.UploadRateLimitMBps,
+			skipMetadata:        len(profileIDs) > 0,
+		})
+	}
+	if s3Enabled {
+		remoteTargets = append(remoteTargets, backupRemoteUploadTarget{
+			label:          "S3",
+			client:         s3Client,
+			timeout:        s3.TransferTimeout,
+			skipMetadata:   len(profileIDs) > 0,
+		})
+	}
+	remoteErrors := make([]string, 0, len(remoteTargets))
+	remoteNames := make([]string, 0, len(remoteTargets))
+	for _, target := range remoteTargets {
 		fileName := filepath.Base(packagePath)
-		uploadMessage, uploadSize, uploadErr := backupOpenListUploadProgressMessage(packagePath, "备份文件", openListConfig.UploadRateLimitMBps)
-		var remoteFile channels.File
-		if uploadErr == nil {
-			a.backupEmitExportProgressTransfer("uploading", 96, uploadMessage, channels.UploadProgress{TotalBytes: uploadSize})
-			ctx, cancel := a.backupOpenListContext(openlist.TransferTimeout)
-			remoteFile, uploadErr = backupUploadWithProgress(ctx, openListClient, packagePath, fileName, a.backupOpenListUploadProgressCallback("备份文件", 96, 98))
-			cancel()
-		}
+		remoteFile, uploadErr := a.backupUploadRemoteArtifacts(target, packagePath, fileName)
 		if uploadErr != nil {
-			if localEnabled {
-				result["partial"] = true
-				result["remoteError"] = uploadErr.Error()
-				result["message"] = fmt.Sprintf("本地备份已保存，但上传 OpenList 失败: %v", uploadErr)
-				a.backupEmitExportProgress("error", 100, result["message"].(string))
-				return result, nil
-			}
-			a.backupEmitExportProgress("error", 100, fmt.Sprintf("上传 OpenList 失败: %v", uploadErr))
-			return nil, uploadErr
+			remoteErrors = append(remoteErrors, fmt.Sprintf("%s: %v", target.label, uploadErr))
+			continue
 		}
 		result["remoteUploaded"] = true
-		result["remoteName"] = remoteFile.Name
-		result["remoteSize"] = remoteFile.Size
-
-		metadataPath := backupMetadataPath(packagePath)
-		metadataName := filepath.Base(metadataPath)
-		metadataMessage, metadataSize, metadataErr := backupOpenListUploadProgressMessage(metadataPath, "备份元数据", openListConfig.UploadRateLimitMBps)
-		if metadataErr == nil {
-			a.backupEmitExportProgressTransfer("uploading", 98, metadataMessage, channels.UploadProgress{TotalBytes: metadataSize})
-			metadataContext, metadataCancel := a.backupOpenListContext(openlist.TransferTimeout)
-			_, metadataErr = backupUploadMetadataWithProgress(metadataContext, openListClient, metadataPath, metadataName, a.backupOpenListUploadProgressCallback("备份元数据", 98, 99))
-			metadataCancel()
-		}
-		if metadataErr != nil {
-			result["partial"] = true
-			result["remoteError"] = metadataErr.Error()
-			result["message"] = fmt.Sprintf("备份已上传，但同名 JSON 上传失败: %v", metadataErr)
-			a.backupEmitExportProgress("error", 100, result["message"].(string))
-			return result, nil
+		remoteNames = append(remoteNames, fmt.Sprintf("%s:%s", target.label, remoteFile.Name))
+		if _, exists := result["remoteName"]; !exists {
+			result["remoteName"] = remoteFile.Name
+			result["remoteSize"] = remoteFile.Size
 		}
 	}
-
+	if len(remoteErrors) > 0 {
+		result["partial"] = true
+		result["remoteError"] = strings.Join(remoteErrors, "; ")
+		if len(remoteNames) > 0 {
+			result["remoteNames"] = remoteNames
+		}
+		if len(remoteNames) == 0 && !localEnabled {
+			a.backupEmitExportProgress("error", 100, result["remoteError"].(string))
+			return nil, fmt.Errorf("远程备份失败: %s", result["remoteError"].(string))
+		}
+		if !localEnabled {
+			delete(result, "zipPath")
+		}
+		result["message"] = fmt.Sprintf("备份已完成，但部分远程渠道失败: %s", result["remoteError"].(string))
+		a.backupEmitExportProgress("error", 100, result["message"].(string))
+		return result, nil
+	}
 	if !localEnabled {
 		delete(result, "zipPath")
 	}
 	switch {
+	case localEnabled && openListEnabled && s3Enabled:
+		result["message"] = "\u672c\u5730\u3001OpenList \u548c S3 \u5907\u4efd\u5b8c\u6210"
+	case openListEnabled && s3Enabled:
+		result["message"] = "OpenList \u548c S3 \u5907\u4efd\u5b8c\u6210"
+	case localEnabled && s3Enabled:
+		result["message"] = "\u672c\u5730\u548c S3 \u5907\u4efd\u5b8c\u6210"
+	case s3Enabled:
+		result["message"] = "S3 \u5907\u4efd\u5b8c\u6210"
 	case localEnabled && openListEnabled:
 		result["message"] = "本地和 OpenList 备份完成"
 	case localEnabled:
@@ -139,6 +175,39 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 	}
 	a.backupEmitExportProgress("done", 100, result["message"].(string))
 	return result, nil
+}
+
+func backupProfileIDsFromInput(input map[string]string) ([]string, error) {
+	raw := strings.TrimSpace(input["profileIds"])
+	if raw == "" {
+		return nil, nil
+	}
+
+	var profileIDs []string
+	if err := json.Unmarshal([]byte(raw), &profileIDs); err != nil {
+		return nil, fmt.Errorf("实例 ID 参数无效: %w", err)
+	}
+	profileIDs = normalizeProfilePackageIDs(profileIDs)
+	if len(profileIDs) == 0 {
+		return nil, fmt.Errorf("请选择要备份的实例")
+	}
+	return profileIDs, nil
+}
+
+func backupPackageDefaultName(profileOnly bool, now time.Time) string {
+	prefix := "ant-chrome-backup"
+	if profileOnly {
+		prefix = "ant-chrome-profile-backup"
+	}
+	return fmt.Sprintf("%s-%s.zip", prefix, now.Format("20060102-150405"))
+}
+
+func backupTemporaryPackageName(profileOnly bool, now time.Time) string {
+	prefix := "ant-chrome-backup"
+	if profileOnly {
+		prefix = "ant-chrome-profile-backup"
+	}
+	return fmt.Sprintf("%s-%s.zip", prefix, now.Format("20060102-150405.000000000"))
 }
 
 func backupDestinationFlag(input map[string]string, keys ...string) bool {

@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+type backupRemoteUploadTarget struct {
+	label               string
+	client              channels.Client
+	timeout             time.Duration
+	uploadRateLimitMBps int
+	skipMetadata        bool
+}
+
 func (a *App) BackupOpenListTest(input map[string]string) (map[string]interface{}, error) {
 	client, err := a.backupOpenListClient(input)
 	if err != nil {
@@ -74,36 +82,18 @@ func (a *App) backupOpenListUploadLocked(input map[string]string) (map[string]in
 	if err != nil {
 		return nil, err
 	}
-	uploadMessage, uploadSize, err := backupOpenListUploadProgressMessage(localPath, `备份文件`, openListConfig.UploadRateLimitMBps)
-	if err != nil {
-		a.backupEmitExportProgress(`error`, 100, err.Error())
-		return nil, err
-	}
-	a.backupEmitExportProgressTransfer(`uploading`, 96, uploadMessage, channels.UploadProgress{TotalBytes: uploadSize})
-	ctx, cancel := a.backupOpenListContext(openlist.TransferTimeout)
-	remoteFile, err := backupUploadWithProgress(ctx, client, localPath, fileName, a.backupOpenListUploadProgressCallback(`备份文件`, 96, 98))
-	cancel()
+	remoteFile, err := a.backupUploadRemoteArtifacts(backupRemoteUploadTarget{
+		label:               `OpenList`,
+		client:              client,
+		timeout:             openlist.TransferTimeout,
+		uploadRateLimitMBps: openListConfig.UploadRateLimitMBps,
+	}, localPath, fileName)
 	if err != nil {
 		a.backupEmitExportProgress(`error`, 100, err.Error())
 		return nil, err
 	}
 	result[`remoteName`] = remoteFile.Name
 	result[`remoteSize`] = remoteFile.Size
-	metadataPath := backupMetadataPath(localPath)
-	metadataName := filepath.Base(metadataPath)
-	metadataMessage, metadataSize, err := backupOpenListUploadProgressMessage(metadataPath, `备份元数据`, openListConfig.UploadRateLimitMBps)
-	if err != nil {
-		a.backupEmitExportProgress(`error`, 100, err.Error())
-		return nil, err
-	}
-	a.backupEmitExportProgressTransfer(`uploading`, 98, metadataMessage, channels.UploadProgress{TotalBytes: metadataSize})
-	metadataContext, metadataCancel := a.backupOpenListContext(openlist.TransferTimeout)
-	if _, err := backupUploadMetadataWithProgress(metadataContext, client, metadataPath, metadataName, a.backupOpenListUploadProgressCallback(`备份元数据`, 98, 99)); err != nil {
-		metadataCancel()
-		a.backupEmitExportProgress(`error`, 100, err.Error())
-		return nil, err
-	}
-	metadataCancel()
 	a.backupEmitExportProgress(`done`, 100, `backup uploaded to OpenList`)
 	result[`message`] = `backup uploaded to OpenList`
 	return result, nil
@@ -117,23 +107,59 @@ func (a *App) BackupOpenListRestore(input map[string]string, fileName string) (m
 	if err != nil {
 		return nil, err
 	}
+	return a.backupRestoreRemoteLocked(client, `OpenList`, openlist.TransferTimeout, fileName, `ant-chrome-openlist-restore-`)
+}
+
+func (a *App) backupUploadRemoteArtifacts(target backupRemoteUploadTarget, localPath, fileName string) (channels.File, error) {
+	uploadMessage, uploadSize, err := backupRemoteUploadProgressMessage(localPath, `备份文件`, target.label, target.uploadRateLimitMBps)
+	if err != nil {
+		return channels.File{}, err
+	}
+	a.backupEmitExportProgressTransfer(`uploading`, 96, uploadMessage, channels.UploadProgress{TotalBytes: uploadSize})
+	ctx, cancel := a.backupRemoteContext(target.timeout)
+	remoteFile, err := backupUploadWithProgress(ctx, target.client, localPath, fileName, a.backupRemoteUploadProgressCallback(target.label, `备份文件`, 96, 98))
+	cancel()
+	if err != nil {
+		return channels.File{}, fmt.Errorf(`上传%s备份文件失败: %w`, target.label, err)
+	}
+	if target.skipMetadata {
+		return remoteFile, nil
+	}
+
+	metadataPath := backupMetadataPath(localPath)
+	metadataName := filepath.Base(metadataPath)
+	metadataMessage, metadataSize, err := backupRemoteUploadProgressMessage(metadataPath, `备份元数据`, target.label, target.uploadRateLimitMBps)
+	if err != nil {
+		return channels.File{}, err
+	}
+	a.backupEmitExportProgressTransfer(`uploading`, 98, metadataMessage, channels.UploadProgress{TotalBytes: metadataSize})
+	metadataContext, metadataCancel := a.backupRemoteContext(target.timeout)
+	_, metadataErr := backupUploadMetadataWithProgress(metadataContext, target.client, metadataPath, metadataName, a.backupRemoteUploadProgressCallback(target.label, `备份元数据`, 98, 99))
+	metadataCancel()
+	if metadataErr != nil {
+		return channels.File{}, fmt.Errorf(`上传%s备份元数据失败: %w`, target.label, metadataErr)
+	}
+	return remoteFile, nil
+}
+
+func (a *App) backupRestoreRemoteLocked(client channels.Client, label string, timeout time.Duration, fileName, temporaryPrefix string) (map[string]interface{}, error) {
 	if strings.TrimSpace(fileName) == `` {
 		return nil, fmt.Errorf(`remote backup file name is empty`)
 	}
-	temporaryRoot, err := os.MkdirTemp(``, `ant-chrome-openlist-restore-`)
+	temporaryRoot, err := os.MkdirTemp(``, temporaryPrefix)
 	if err != nil {
 		return nil, fmt.Errorf(`create temporary restore directory failed: %w`, err)
 	}
 	defer os.RemoveAll(temporaryRoot)
 	localPath := filepath.Join(temporaryRoot, `remote-backup.zip`)
-	a.backupEmitImportProgress(`preparing`, 5, `downloading backup from OpenList`)
-	ctx, cancel := a.backupOpenListContext(openlist.TransferTimeout)
+	a.backupEmitImportProgress(`preparing`, 5, fmt.Sprintf(`正在从%s下载备份`, label))
+	ctx, cancel := a.backupRemoteContext(timeout)
 	defer cancel()
 	if err := client.Download(ctx, fileName, localPath); err != nil {
 		a.backupEmitImportProgress(`error`, 100, err.Error())
 		return nil, err
 	}
-	result, err := a.backupImportFromPathLocked(localPath)
+	result, err := a.backupRestorePackageFromPathLocked(localPath)
 	if err != nil {
 		a.backupEmitImportProgress(`error`, 100, fmt.Sprintf(`restore remote backup failed: %v`, err))
 		return nil, err
@@ -192,7 +218,7 @@ func (a *App) backupResolvedOpenListConfig(input map[string]string) (config.Open
 	return settings, nil
 }
 
-func backupOpenListUploadProgressMessage(localPath, artifactName string, uploadRateLimitMBps int) (string, int64, error) {
+func backupRemoteUploadProgressMessage(localPath, artifactName, channelLabel string, uploadRateLimitMBps int) (string, int64, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
 		return ``, 0, fmt.Errorf(`读取%s大小失败: %w`, artifactName, err)
@@ -204,7 +230,11 @@ func backupOpenListUploadProgressMessage(localPath, artifactName string, uploadR
 	if uploadRateLimitMBps > 0 {
 		rateDescription = fmt.Sprintf(`%d MB/s`, uploadRateLimitMBps)
 	}
-	return fmt.Sprintf(`准备上传%s到 OpenList：文件大小 %s（%d bytes），上传限速 %s`, artifactName, formatBackupFileSize(info.Size()), info.Size(), rateDescription), info.Size(), nil
+	return fmt.Sprintf(`准备上传%s到%s：文件大小 %s（%d bytes），上传限速 %s`, artifactName, channelLabel, formatBackupFileSize(info.Size()), info.Size(), rateDescription), info.Size(), nil
+}
+
+func backupOpenListUploadProgressMessage(localPath, artifactName string, uploadRateLimitMBps int) (string, int64, error) {
+	return backupRemoteUploadProgressMessage(localPath, artifactName, `OpenList`, uploadRateLimitMBps)
 }
 
 func formatBackupFileSize(size int64) string {
@@ -241,10 +271,14 @@ func formatBackupTransferRate(bytesPerSecond float64) string {
 	return fmt.Sprintf(`%.2f %s`, value, units[unitIndex])
 }
 
-func (a *App) backupOpenListUploadProgressCallback(artifactName string, startProgress, endProgress int) channels.UploadProgressFunc {
+func (a *App) backupRemoteUploadProgressCallback(channelLabel, artifactName string, startProgress, endProgress int) channels.UploadProgressFunc {
 	return func(progress channels.UploadProgress) {
-		a.backupEmitExportUploadProgress(artifactName, startProgress, endProgress, progress)
+		a.backupEmitExportUploadProgress(channelLabel, artifactName, startProgress, endProgress, progress)
 	}
+}
+
+func (a *App) backupOpenListUploadProgressCallback(artifactName string, startProgress, endProgress int) channels.UploadProgressFunc {
+	return a.backupRemoteUploadProgressCallback(`OpenList`, artifactName, startProgress, endProgress)
 }
 
 func backupUploadWithProgress(ctx context.Context, client channels.Client, localPath, fileName string, progress channels.UploadProgressFunc) (channels.File, error) {
@@ -295,6 +329,10 @@ func backupOpenListInputValueWithPresence(input map[string]string, keys ...strin
 }
 
 func (a *App) backupOpenListContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	return a.backupRemoteContext(timeout)
+}
+
+func (a *App) backupRemoteContext(timeout time.Duration) (context.Context, context.CancelFunc) {
 	parent := context.Background()
 	if a != nil && a.ctx != nil {
 		parent = a.ctx

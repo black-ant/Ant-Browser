@@ -158,12 +158,24 @@ export function BackupS3GetSettings() {
   return window['go']['main']['App']['BackupS3GetSettings']();
 }
 
+export function BackupS3List(arg1) {
+  return window['go']['main']['App']['BackupS3List'](arg1);
+}
+
+export function BackupS3Restore(arg1, arg2) {
+  return window['go']['main']['App']['BackupS3Restore'](arg1, arg2);
+}
+
 export function BackupS3SaveSettings(arg1) {
   return window['go']['main']['App']['BackupS3SaveSettings'](arg1);
 }
 
 export function BackupS3Test(arg1) {
   return window['go']['main']['App']['BackupS3Test'](arg1);
+}
+
+export function BackupS3Upload(arg1) {
+  return window['go']['main']['App']['BackupS3Upload'](arg1);
 }
 
 export function BackupScheduledGetSettings() {
