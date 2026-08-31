@@ -19,6 +19,8 @@ export interface S3Settings extends S3Connection {
   sessionTokenConfigured: boolean
 }
 
+export type S3CredentialField = 'accessKeyID' | 'secretAccessKey' | 'sessionToken'
+
 export interface S3BackupFile {
   name: string
   size: number
@@ -102,6 +104,14 @@ export async function testS3Connection(draft: S3Draft): Promise<void> {
     throw new Error('当前环境不支持 S3 连接测试')
   }
   await bindings.BackupS3Test(toPayload(draft, false))
+}
+
+export async function revealS3Credential(field: S3CredentialField): Promise<string> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupS3RevealCredential) {
+    throw new Error('当前环境不支持显示 S3 凭据')
+  }
+  return String((await bindings.BackupS3RevealCredential(field)) || '')
 }
 
 export async function listS3Backups(connection?: S3Connection): Promise<S3BackupFile[]> {

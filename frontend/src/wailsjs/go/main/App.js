@@ -158,6 +158,10 @@ export function BackupS3GetSettings() {
   return window['go']['main']['App']['BackupS3GetSettings']();
 }
 
+export function BackupS3RevealCredential(arg1) {
+  return window['go']['main']['App']['BackupS3RevealCredential'](arg1);
+}
+
 export function BackupS3List(arg1) {
   return window['go']['main']['App']['BackupS3List'](arg1);
 }

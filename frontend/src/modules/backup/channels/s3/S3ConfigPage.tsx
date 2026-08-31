@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Database, Plug, Save, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Database, Eye, EyeOff, Plug, Save, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button, Card, FormItem, Input, Switch, toast } from '../../../../shared/components'
 import {
   defaultS3Settings,
   fetchS3Settings,
+  revealS3Credential,
   saveS3Settings,
   testS3Connection,
 } from './api'
-import type { S3Draft, S3Settings } from './api'
+import type { S3CredentialField, S3Draft, S3Settings } from './api'
 
 type S3Field = keyof S3Draft
 type S3FieldErrors = Partial<Record<S3Field, string>>
@@ -81,6 +82,12 @@ function validateDraft(draft: S3Draft, settings: S3Settings): S3FieldErrors {
   return errors
 }
 
+function isCredentialConfigured(settings: S3Settings, field: S3CredentialField) {
+  if (field === 'accessKeyID') return settings.accessKeyIDConfigured
+  if (field === 'secretAccessKey') return settings.secretAccessKeyConfigured
+  return settings.sessionTokenConfigured
+}
+
 export function S3ConfigPage() {
   const navigate = useNavigate()
   const [draft, setDraft] = useState<S3Draft>(emptyDraft)
@@ -89,6 +96,8 @@ export function S3ConfigPage() {
   const [fieldErrors, setFieldErrors] = useState<S3FieldErrors>({})
   const [error, setError] = useState('')
   const [testResult, setTestResult] = useState<S3TestResult | null>(null)
+  const [visibleCredentials, setVisibleCredentials] = useState<Partial<Record<S3CredentialField, boolean>>>({})
+  const [revealingCredential, setRevealingCredential] = useState<S3CredentialField | null>(null)
 
   useEffect(() => {
     let active = true
@@ -136,6 +145,32 @@ export function S3ConfigPage() {
     setTestResult(null)
   }
 
+  const toggleCredentialVisibility = async (field: S3CredentialField) => {
+    if (visibleCredentials[field]) {
+      setVisibleCredentials(previous => ({ ...previous, [field]: false }))
+      return
+    }
+
+    if (draft[field] || !isCredentialConfigured(settings, field)) {
+      setVisibleCredentials(previous => ({ ...previous, [field]: true }))
+      return
+    }
+
+    setRevealingCredential(field)
+    setError('')
+    try {
+      const value = await revealS3Credential(field)
+      setDraft(previous => ({ ...previous, [field]: value }))
+      setVisibleCredentials(previous => ({ ...previous, [field]: true }))
+    } catch (revealError) {
+      const message = errorMessage(revealError, '显示 S3 凭据失败')
+      setError(message)
+      toast.error(message)
+    } finally {
+      setRevealingCredential(null)
+    }
+  }
+
   const validate = () => {
     const nextErrors = validateDraft(normalizedDraft, settings)
     setFieldErrors(nextErrors)
@@ -180,6 +215,33 @@ export function S3ConfigPage() {
 
   const loading = busy === 'load'
   const submitting = busy === 'test' || busy === 'save'
+
+  const credentialInput = (field: S3CredentialField, label: string, autoComplete: string, required: boolean, hint?: string) => (
+    <FormItem label={label} required={required} hint={hint} error={fieldErrors[field]}>
+      <div className='relative'>
+        <Input
+          type={visibleCredentials[field] ? 'text' : 'password'}
+          value={draft[field]}
+          placeholder={isCredentialConfigured(settings, field) ? '****' : undefined}
+          onChange={event => updateDraft(field, event.target.value)}
+          autoComplete={autoComplete}
+          error={Boolean(fieldErrors[field])}
+          className='pr-10'
+          disabled={submitting}
+        />
+        <button
+          type='button'
+          className='absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50'
+          onClick={() => { void toggleCredentialVisibility(field) }}
+          disabled={submitting || revealingCredential !== null}
+          aria-label={visibleCredentials[field] ? '隐藏' + label : '显示' + label}
+          title={visibleCredentials[field] ? '隐藏' + label : '显示' + label}
+        >
+          {visibleCredentials[field] ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
+        </button>
+      </div>
+    </FormItem>
+  )
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 animate-fade-in">
@@ -262,34 +324,11 @@ export function S3ConfigPage() {
 
           <Card title="访问凭据">
             <div className="grid gap-4 md:grid-cols-2">
-              <FormItem label="Access Key ID" required={!settings.accessKeyIDConfigured} hint={settings.accessKeyIDConfigured ? '留空沿用已保存凭据' : undefined} error={fieldErrors.accessKeyID}>
-                <Input
-                  value={draft.accessKeyID}
-                  onChange={event => updateDraft('accessKeyID', event.target.value)}
-                  autoComplete="username"
-                  error={Boolean(fieldErrors.accessKeyID)}
-                  disabled={submitting}
-                />
-              </FormItem>
-              <FormItem label="Secret Access Key" required={!settings.secretAccessKeyConfigured} hint={settings.secretAccessKeyConfigured ? '留空沿用已保存凭据' : undefined} error={fieldErrors.secretAccessKey}>
-                <Input
-                  type="password"
-                  value={draft.secretAccessKey}
-                  onChange={event => updateDraft('secretAccessKey', event.target.value)}
-                  autoComplete="new-password"
-                  error={Boolean(fieldErrors.secretAccessKey)}
-                  disabled={submitting}
-                />
-              </FormItem>
-              <FormItem label="Session Token" hint={settings.sessionTokenConfigured ? '留空清除临时会话 Token' : '可选，临时凭据需要填写'} className="md:col-span-2">
-                <Input
-                  type="password"
-                  value={draft.sessionToken}
-                  onChange={event => updateDraft('sessionToken', event.target.value)}
-                  autoComplete="new-password"
-                  disabled={submitting}
-                />
-              </FormItem>
+              {credentialInput('accessKeyID', 'Access Key ID', 'username', !settings.accessKeyIDConfigured, settings.accessKeyIDConfigured ? '留空沿用已保存凭据' : undefined)}
+              {credentialInput('secretAccessKey', 'Secret Access Key', 'new-password', !settings.secretAccessKeyConfigured, settings.secretAccessKeyConfigured ? '留空沿用已保存凭据' : undefined)}
+              <div className="md:col-span-2">
+                {credentialInput('sessionToken', 'Session Token', 'new-password', false, settings.sessionTokenConfigured ? '留空清除临时会话 Token' : '可选，临时凭据需要填写')}
+              </div>
             </div>
           </Card>
 

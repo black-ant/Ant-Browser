@@ -17,6 +17,27 @@ func (a *App) BackupS3GetSettings() (map[string]interface{}, error) {
 	return backupS3SettingsResult(scheduler.settings.Channels.S3), nil
 }
 
+func (a *App) BackupS3RevealCredential(field string) (string, error) {
+	scheduler, err := a.ensureBackupScheduler()
+	if err != nil {
+		return ``, err
+	}
+
+	scheduler.mu.RLock()
+	defer scheduler.mu.RUnlock()
+
+	switch strings.TrimSpace(field) {
+	case `accessKeyID`:
+		return scheduler.settings.Channels.S3.AccessKeyID, nil
+	case `secretAccessKey`:
+		return scheduler.settings.Channels.S3.SecretAccessKey, nil
+	case `sessionToken`:
+		return scheduler.settings.Channels.S3.SessionToken, nil
+	default:
+		return ``, fmt.Errorf(`不支持的 S3 凭据字段`)
+	}
+}
+
 func (a *App) BackupS3SaveSettings(input map[string]string) (map[string]interface{}, error) {
 	scheduler, err := a.ensureBackupScheduler()
 	if err != nil {

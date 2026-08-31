@@ -65,3 +65,39 @@ func TestBackupS3SaveSettingsKeepsFullConfigLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupS3RevealCredentialReturnsStoredValue(t *testing.T) {
+	app := NewApp(t.TempDir())
+	app.config = config.DefaultConfig()
+	defer app.stopBackupScheduler()
+
+	if _, err := app.BackupS3SaveSettings(map[string]string{
+		`endpoint`:        `https://s3.example.com`,
+		`region`:          `us-west-2`,
+		`bucket`:          `backup-bucket`,
+		`accessKeyID`:     `access-key`,
+		`secretAccessKey`: `secret-key`,
+		`sessionToken`:    `session-token`,
+	}); err != nil {
+		t.Fatalf(`save S3 settings: %v`, err)
+	}
+
+	tests := map[string]string{
+		`accessKeyID`:     `access-key`,
+		`secretAccessKey`: `secret-key`,
+		`sessionToken`:    `session-token`,
+	}
+	for field, want := range tests {
+		got, err := app.BackupS3RevealCredential(field)
+		if err != nil {
+			t.Fatalf(`reveal %s: %v`, field, err)
+		}
+		if got != want {
+			t.Fatalf(`reveal %s = %q, want %q`, field, got, want)
+		}
+	}
+
+	if _, err := app.BackupS3RevealCredential(`unknown`); err == nil {
+		t.Fatal(`reveal unknown field succeeded`)
+	}
+}
