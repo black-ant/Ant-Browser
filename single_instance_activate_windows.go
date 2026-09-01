@@ -3,6 +3,7 @@
 package main
 
 import (
+	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -37,6 +38,46 @@ const (
 	swpNoSize     = 0x0001
 	swpShowWindow = 0x0040
 )
+
+type singleInstanceWindowCandidate struct {
+	hwnd      uintptr
+	visible   bool
+	titled    bool
+	owned     bool
+	minimized bool
+}
+
+type singleInstanceWindowScan struct {
+	pid        uint32
+	candidates []singleInstanceWindowCandidate
+}
+
+var singleInstanceEnumWindowsCallback = windows.NewCallback(enumSingleInstanceWindow)
+
+func enumSingleInstanceWindow(hwnd uintptr, scan *singleInstanceWindowScan) uintptr {
+	if scan == nil || scan.pid == 0 {
+		return 1
+	}
+
+	var windowPID uint32
+	procGetWindowThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&windowPID)))
+	if windowPID != scan.pid {
+		return 1
+	}
+
+	visible, _, _ := procIsWindowVisible.Call(hwnd)
+	titleLength, _, _ := procGetWindowTextLengthW.Call(hwnd)
+	owner, _, _ := procGetWindow.Call(hwnd, gwOwner)
+	minimized, _, _ := procIsIconic.Call(hwnd)
+	scan.candidates = append(scan.candidates, singleInstanceWindowCandidate{
+		hwnd:      hwnd,
+		visible:   visible != 0,
+		titled:    titleLength > 0,
+		owned:     owner != 0,
+		minimized: minimized != 0,
+	})
+	return 1
+}
 
 func grantExistingSingleInstanceForeground(pid int) {
 	if pid > 0 {
@@ -87,55 +128,31 @@ func attachForegroundThreadInput(hwnd uintptr, fn func()) {
 }
 
 func findTopLevelWindowByPID(pid uint32) uintptr {
-	type candidateWindow struct {
-		hwnd      uintptr
-		visible   bool
-		titled    bool
-		owned     bool
-		minimized bool
-	}
-	var candidates []candidateWindow
-	callback := windows.NewCallback(func(hwnd uintptr, lparam uintptr) uintptr {
-		var windowPID uint32
-		procGetWindowThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&windowPID)))
-		if windowPID == pid {
-			visible, _, _ := procIsWindowVisible.Call(hwnd)
-			titleLength, _, _ := procGetWindowTextLengthW.Call(hwnd)
-			owner, _, _ := procGetWindow.Call(hwnd, gwOwner)
-			minimized, _, _ := procIsIconic.Call(hwnd)
-			candidates = append(candidates, candidateWindow{
-				hwnd:      hwnd,
-				visible:   visible != 0,
-				titled:    titleLength > 0,
-				owned:     owner != 0,
-				minimized: minimized != 0,
-			})
-		}
-		return 1
-	})
-	procEnumWindows.Call(callback, 0)
-	if len(candidates) == 0 {
+	scan := singleInstanceWindowScan{pid: pid}
+	procEnumWindows.Call(singleInstanceEnumWindowsCallback, uintptr(unsafe.Pointer(&scan)))
+	runtime.KeepAlive(&scan)
+	if len(scan.candidates) == 0 {
 		return 0
 	}
-	for _, candidate := range candidates {
+	for _, candidate := range scan.candidates {
 		if candidate.visible && candidate.titled && !candidate.owned {
 			return candidate.hwnd
 		}
 	}
-	for _, candidate := range candidates {
+	for _, candidate := range scan.candidates {
 		if candidate.titled && !candidate.owned {
 			return candidate.hwnd
 		}
 	}
-	for _, candidate := range candidates {
+	for _, candidate := range scan.candidates {
 		if candidate.visible && !candidate.owned {
 			return candidate.hwnd
 		}
 	}
-	for _, candidate := range candidates {
+	for _, candidate := range scan.candidates {
 		if candidate.minimized && !candidate.owned {
 			return candidate.hwnd
 		}
 	}
-	return candidates[0].hwnd
+	return scan.candidates[0].hwnd
 }

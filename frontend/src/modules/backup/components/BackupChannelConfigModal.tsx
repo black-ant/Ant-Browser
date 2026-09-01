@@ -1,5 +1,10 @@
-import { Modal, Button } from '../../../shared/components'
+import { useState } from 'react'
+import { Plug } from 'lucide-react'
+
+import { Button, Modal, toast } from '../../../shared/components'
 import { backupChannelDefinitions, type BackupChannelId } from '../channels'
+import { fetchOpenListSettings, testOpenListConnection } from '../channels/openlist/api'
+import { fetchS3Settings, testS3Connection } from '../channels/s3/api'
 
 interface BackupChannelConfigModalProps {
   open: boolean
@@ -7,8 +12,57 @@ interface BackupChannelConfigModalProps {
   onSelect: (channelId: BackupChannelId) => void
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return fallback
+}
+
 export function BackupChannelConfigModal({ open, onClose, onSelect }: BackupChannelConfigModalProps) {
   const options = backupChannelDefinitions.filter(option => option.configurable)
+  const [testingChannel, setTestingChannel] = useState<BackupChannelId | null>(null)
+
+  const handleTest = async (channelId: BackupChannelId) => {
+    if (testingChannel) return
+
+    setTestingChannel(channelId)
+    const label = channelId === 'openlist' ? 'OpenList' : 'S3'
+    try {
+      if (channelId === 'openlist') {
+        const settings = await fetchOpenListSettings()
+        if (!settings.baseURL.trim() || !settings.tokenConfigured) {
+          throw new Error('请先保存完整 OpenList 配置')
+        }
+        await testOpenListConnection({
+          baseURL: settings.baseURL,
+          remotePath: settings.remotePath,
+          token: '',
+          uploadRateLimitMBps: String(settings.uploadRateLimitMBps),
+        })
+      } else if (channelId === 's3') {
+        const settings = await fetchS3Settings()
+        if (!settings.region.trim() || !settings.bucket.trim() || !settings.credentialsConfigured) {
+          throw new Error('请先保存完整 S3 配置')
+        }
+        await testS3Connection({
+          endpoint: settings.endpoint,
+          region: settings.region,
+          bucket: settings.bucket,
+          prefix: settings.prefix,
+          forcePathStyle: settings.forcePathStyle,
+          accessKeyID: '',
+          secretAccessKey: '',
+          sessionToken: '',
+        })
+      }
+      toast.success(`${label} 连接测试成功`)
+    } catch (testError) {
+      toast.error(errorMessage(testError, `${label} 连接测试失败`))
+    } finally {
+      setTestingChannel(null)
+    }
+  }
 
   return (
     <Modal
@@ -16,17 +70,16 @@ export function BackupChannelConfigModal({ open, onClose, onSelect }: BackupChan
       onClose={onClose}
       title="配置备份渠道"
       width="440px"
-      footer={<Button variant="secondary" onClick={onClose}>取消</Button>}
+      closable={testingChannel === null}
+      footer={<Button variant="secondary" onClick={onClose} disabled={testingChannel !== null}>取消</Button>}
     >
       <div className="space-y-2">
         {options.map(option => {
           const Icon = option.icon
           return (
-            <button
+            <div
               key={option.id}
-              type="button"
               className="flex w-full items-center gap-3 rounded-lg border border-[var(--color-border-default)] px-3 py-3 text-left transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-muted)]"
-              onClick={() => onSelect(option.id)}
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--color-bg-muted)] text-[var(--color-text-secondary)]">
                 <Icon className="h-4 w-4" />
@@ -35,8 +88,32 @@ export function BackupChannelConfigModal({ open, onClose, onSelect }: BackupChan
                 <span className="block text-sm font-medium text-[var(--color-text-primary)]">{option.label}</span>
                 <span className="block text-xs text-[var(--color-text-muted)]">{option.description}</span>
               </span>
-              <span className="shrink-0 text-xs text-[var(--color-text-muted)]">配置</span>
-            </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="!border-[var(--color-border-strong)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!bg-[var(--color-border-default)]"
+                  onClick={() => { void handleTest(option.id) }}
+                  loading={testingChannel === option.id}
+                  disabled={testingChannel !== null}
+                  title={`测试${option.label}连接`}
+                >
+                  <Plug className="h-3.5 w-3.5" />
+                  测试
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  className="!border-black !bg-black !text-white hover:!bg-black/80"
+                  onClick={() => onSelect(option.id)}
+                  disabled={testingChannel !== null}
+                >
+                  配置
+                </Button>
+              </div>
+            </div>
           )
         })}
       </div>

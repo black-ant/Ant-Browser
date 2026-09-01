@@ -80,9 +80,9 @@ func (a *App) backupS3UploadLocked(input map[string]string) (map[string]interfac
 		return nil, err
 	}
 	remoteFile, err := a.backupUploadRemoteArtifacts(backupRemoteUploadTarget{
-		label:          "S3",
-		client:         client,
-		timeout:        s3.TransferTimeout,
+		label:   "S3",
+		client:  client,
+		timeout: s3.TransferTimeout,
 	}, localPath, fileName)
 	if err != nil {
 		a.backupEmitExportProgress("error", 100, err.Error())
@@ -105,6 +105,14 @@ func (a *App) BackupS3Restore(input map[string]string, fileName string) (map[str
 		return nil, err
 	}
 	return a.backupRestoreRemoteLocked(client, "S3", s3.TransferTimeout, fileName, "ant-chrome-s3-restore-")
+}
+
+func (a *App) BackupS3Download(input map[string]string, fileName string) (map[string]interface{}, error) {
+	client, err := a.backupS3Client(input)
+	if err != nil {
+		return nil, err
+	}
+	return a.backupDownloadRemoteFile(client, "S3", s3.TransferTimeout, fileName)
 }
 
 func newS3Client(settings config.S3ChannelConfig) (*s3.Client, error) {

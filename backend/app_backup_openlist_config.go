@@ -31,6 +31,17 @@ func (a *App) BackupOpenListGetSettings() (map[string]interface{}, error) {
 	return backupOpenListSettingsResult(scheduler.settings.Channels.OpenList), nil
 }
 
+func (a *App) BackupOpenListRevealToken() (string, error) {
+	scheduler, err := a.ensureBackupScheduler()
+	if err != nil {
+		return ``, err
+	}
+
+	scheduler.mu.RLock()
+	defer scheduler.mu.RUnlock()
+	return scheduler.settings.Channels.OpenList.Token, nil
+}
+
 func (a *App) BackupOpenListSaveSettings(input map[string]string) (map[string]interface{}, error) {
 	scheduler, err := a.ensureBackupScheduler()
 	if err != nil {

@@ -304,36 +304,49 @@ func profileWindowMarkerPID(marker *profileWindowMarker) uint32 {
 	return uint32(pid)
 }
 
+type profileWindowMarkerWindowScan struct {
+	pid     uint32
+	windows []profileWindowMarkerWindow
+}
+
+var profileWindowMarkerEnumCallback = windows.NewCallback(enumProfileWindowMarkerWindow)
+
+func enumProfileWindowMarkerWindow(hwnd uintptr, scan *profileWindowMarkerWindowScan) uintptr {
+	if scan == nil || scan.pid == 0 {
+		return 1
+	}
+
+	var windowPID uint32
+	procGetWindowThreadProcessIDMarker.Call(hwnd, uintptr(unsafe.Pointer(&windowPID)))
+	if windowPID != scan.pid {
+		return 1
+	}
+
+	visible, _, _ := procIsWindowVisibleMarker.Call(hwnd)
+	titleLength, _, _ := procGetWindowTextLengthMarker.Call(hwnd)
+	owner, _, _ := procGetWindowMarker.Call(hwnd, gwOwner)
+	minimized, _, _ := procIsIconicMarker.Call(hwnd)
+	scan.windows = append(scan.windows, profileWindowMarkerWindow{
+		hwnd:      hwnd,
+		processID: windowPID,
+		visible:   visible != 0,
+		titled:    titleLength > 0,
+		owned:     owner != 0,
+		minimized: minimized != 0,
+	})
+	return 1
+}
+
 func findTopLevelWindowsForProfileMarker(pid uint32) []profileWindowMarkerWindow {
 	if pid == 0 {
 		return nil
 	}
 
-	var windowsForPID []profileWindowMarkerWindow
-	callback := windows.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
-		var windowPID uint32
-		procGetWindowThreadProcessIDMarker.Call(hwnd, uintptr(unsafe.Pointer(&windowPID)))
-		if windowPID != pid {
-			return 1
-		}
+	scan := profileWindowMarkerWindowScan{pid: pid}
+	procEnumWindowsMarker.Call(profileWindowMarkerEnumCallback, uintptr(unsafe.Pointer(&scan)))
+	runtime.KeepAlive(&scan)
 
-		visible, _, _ := procIsWindowVisibleMarker.Call(hwnd)
-		titleLength, _, _ := procGetWindowTextLengthMarker.Call(hwnd)
-		owner, _, _ := procGetWindowMarker.Call(hwnd, gwOwner)
-		minimized, _, _ := procIsIconicMarker.Call(hwnd)
-		windowsForPID = append(windowsForPID, profileWindowMarkerWindow{
-			hwnd:      hwnd,
-			processID: windowPID,
-			visible:   visible != 0,
-			titled:    titleLength > 0,
-			owned:     owner != 0,
-			minimized: minimized != 0,
-		})
-		return 1
-	})
-	procEnumWindowsMarker.Call(callback, 0)
-
-	return prioritizeProfileMarkerWindows(windowsForPID)
+	return prioritizeProfileMarkerWindows(scan.windows)
 }
 
 func findTopLevelWindowsForProfileMarkerByUserData(target profileWindowMarkerTarget) []profileWindowMarkerWindow {

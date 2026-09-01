@@ -4,6 +4,9 @@ export interface S3Connection {
   bucket: string
   prefix: string
   forcePathStyle: boolean
+  accessKeyID?: string
+  secretAccessKey?: string
+  sessionToken?: string
 }
 
 export interface S3Draft extends S3Connection {
@@ -144,4 +147,12 @@ export async function restoreS3Backup(fileName: string, connection?: S3Connectio
     throw new Error('当前环境不支持 S3 备份恢复')
   }
   return (await bindings.BackupS3Restore(toPayload(connection, false), fileName)) || {}
+}
+
+export async function downloadS3Backup(fileName: string, connection?: S3Connection): Promise<Record<string, any>> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupS3Download) {
+    throw new Error('当前环境不支持 S3 备份下载')
+  }
+  return (await bindings.BackupS3Download(toPayload(connection, false), fileName)) || {}
 }

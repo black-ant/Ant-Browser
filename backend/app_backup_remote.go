@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type backupRemoteUploadTarget struct {
@@ -108,6 +110,61 @@ func (a *App) BackupOpenListRestore(input map[string]string, fileName string) (m
 		return nil, err
 	}
 	return a.backupRestoreRemoteLocked(client, `OpenList`, openlist.TransferTimeout, fileName, `ant-chrome-openlist-restore-`)
+}
+
+func (a *App) BackupOpenListDownload(input map[string]string, fileName string) (map[string]interface{}, error) {
+	client, err := a.backupOpenListClient(input)
+	if err != nil {
+		return nil, err
+	}
+	return a.backupDownloadRemoteFile(client, `OpenList`, openlist.TransferTimeout, fileName)
+}
+
+func (a *App) backupDownloadRemoteFile(client channels.Client, label string, timeout time.Duration, fileName string) (map[string]interface{}, error) {
+	if a == nil || a.ctx == nil {
+		return nil, fmt.Errorf(`应用上下文未初始化`)
+	}
+	trimmedName := strings.TrimSpace(fileName)
+	if trimmedName == `` {
+		return nil, fmt.Errorf(`remote backup file name is empty`)
+	}
+	defaultName := filepath.Base(strings.ReplaceAll(trimmedName, `\`, `/`))
+	if defaultName == `` || defaultName == `.` || defaultName == string(filepath.Separator) {
+		return nil, fmt.Errorf(`remote backup file name is invalid`)
+	}
+	if !strings.EqualFold(filepath.Ext(defaultName), `.zip`) {
+		return nil, fmt.Errorf(`远程备份必须是 ZIP 文件`)
+	}
+
+	savePath, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           fmt.Sprintf(`下载%s备份`, label),
+		DefaultFilename: defaultName,
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: `ZIP 文件 (*.zip)`, Pattern: `*.zip`},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf(`打开保存对话框失败: %w`, err)
+	}
+	if strings.TrimSpace(savePath) == `` {
+		return map[string]interface{}{
+			`cancelled`: true,
+			`message`:   `已取消下载`,
+		}, nil
+	}
+	savePath = backupEnsureZipSuffix(savePath)
+
+	ctx, cancel := a.backupRemoteContext(timeout)
+	defer cancel()
+	if err := client.Download(ctx, trimmedName, savePath); err != nil {
+		return nil, fmt.Errorf(`下载%s备份失败: %w`, label, err)
+	}
+	return map[string]interface{}{
+		`cancelled`:  false,
+		`zipPath`:    savePath,
+		`remoteName`: trimmedName,
+		`message`:    fmt.Sprintf(`已下载%s备份`, label),
+	}, nil
 }
 
 func (a *App) backupUploadRemoteArtifacts(target backupRemoteUploadTarget, localPath, fileName string) (channels.File, error) {

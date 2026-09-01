@@ -126,12 +126,20 @@ export function BackupImportPackage() {
   return window['go']['main']['App']['BackupImportPackage']();
 }
 
+export function BackupOpenListDownload(arg1, arg2) {
+  return window['go']['main']['App']['BackupOpenListDownload'](arg1, arg2);
+}
+
 export function BackupOpenListGetSettings() {
   return window['go']['main']['App']['BackupOpenListGetSettings']();
 }
 
 export function BackupOpenListList(arg1) {
   return window['go']['main']['App']['BackupOpenListList'](arg1);
+}
+
+export function BackupOpenListRevealToken() {
+  return window['go']['main']['App']['BackupOpenListRevealToken']();
 }
 
 export function BackupOpenListRestore(arg1, arg2) {
@@ -154,12 +162,12 @@ export function BackupRestoreLocalPackage(arg1) {
   return window['go']['main']['App']['BackupRestoreLocalPackage'](arg1);
 }
 
-export function BackupS3GetSettings() {
-  return window['go']['main']['App']['BackupS3GetSettings']();
+export function BackupS3Download(arg1, arg2) {
+  return window['go']['main']['App']['BackupS3Download'](arg1, arg2);
 }
 
-export function BackupS3RevealCredential(arg1) {
-  return window['go']['main']['App']['BackupS3RevealCredential'](arg1);
+export function BackupS3GetSettings() {
+  return window['go']['main']['App']['BackupS3GetSettings']();
 }
 
 export function BackupS3List(arg1) {
@@ -168,6 +176,10 @@ export function BackupS3List(arg1) {
 
 export function BackupS3Restore(arg1, arg2) {
   return window['go']['main']['App']['BackupS3Restore'](arg1, arg2);
+}
+
+export function BackupS3RevealCredential(arg1) {
+  return window['go']['main']['App']['BackupS3RevealCredential'](arg1);
 }
 
 export function BackupS3SaveSettings(arg1) {

@@ -1,23 +1,27 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Cloud, Database, ExternalLink, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Cloud, Database, Download, ExternalLink, RefreshCw, Search } from 'lucide-react'
 
 import { Button, Card, ConfirmModal, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components'
 import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 import { getBackupFileInfo, openBackupPath, restoreLocalSystemConfig } from '../api'
 import {
+  downloadOpenListBackup,
   listOpenListBackups,
   restoreOpenListBackup,
 } from '../channels/openlist/api'
 import type { OpenListBackupFile, OpenListConnection } from '../channels/openlist/api'
 import {
+  downloadS3Backup,
   listS3Backups,
   restoreS3Backup,
 } from '../channels/s3/api'
 import type { S3BackupFile, S3Connection } from '../channels/s3/api'
+import { BackupRemoteScanModal } from './BackupRemoteScanModal'
+import type { BackupRemoteScanResult } from './BackupRemoteScanModal'
 
 type BackupHistorySource = 'local' | 'openlist' | 's3'
-type BackupHistoryFilter = 'all' | BackupHistorySource
+type BackupHistoryFilter = BackupHistorySource
 type RemoteBackupFile = OpenListBackupFile | S3BackupFile
 
 interface BackupHistoryItem {
@@ -264,6 +268,17 @@ function sortHistoryItems(items: BackupHistoryItem[]) {
   })
 }
 
+function connectionKey(connection?: OpenListConnection | S3Connection | null) {
+  if (!connection) return ''
+  return JSON.stringify(connection)
+}
+
+function remoteFilesFromItems<T extends RemoteBackupFile>(items: BackupHistoryItem[], source: BackupHistorySource) {
+  return items
+    .filter(item => item.source === source && item.remoteFile)
+    .map(item => item.remoteFile as T)
+}
+
 function formatSize(size: number) {
   if (size <= 0) return '—'
   if (size < 1024) return `${size} B`
@@ -294,18 +309,23 @@ function sourceLabel(source: BackupHistorySource) {
 
 export function BackupHistoryTable({ actions, configuredConnection, configuredS3Connection, refreshToken = 0, onBusyChange }: BackupHistoryTableProps) {
   const [items, setItems] = useState<BackupHistoryItem[]>(buildInitialItems)
-  const [filter, setFilter] = useState<BackupHistoryFilter>('all')
-  const [busy, setBusy] = useState<'none' | 'list' | 'restore-merge'>('none')
+  const [filter, setFilter] = useState<BackupHistoryFilter>('local')
+  const [busy, setBusy] = useState<'none' | 'list' | 'restore-merge' | 'download'>('none')
   const [restoringItemId, setRestoringItemId] = useState('')
+  const [downloadingItemId, setDownloadingItemId] = useState('')
   const [pendingRestoreItem, setPendingRestoreItem] = useState<BackupHistoryItem | null>(null)
   const [restoreConfirming, setRestoreConfirming] = useState(false)
   const [openingLocationId, setOpeningLocationId] = useState('')
+  const [scanModalOpen, setScanModalOpen] = useState(false)
   const [error, setError] = useState('')
   const [activeConnection, setActiveConnection] = useState<OpenListConnection | null>(configuredConnection || null)
   const [activeS3Connection, setActiveS3Connection] = useState<S3Connection | null>(configuredS3Connection || null)
+  const configuredOpenListKeyRef = useRef<string | null>(null)
+  const configuredS3KeyRef = useRef<string | null>(null)
+  const remoteLoadVersionRef = useRef(0)
 
   useEffect(() => {
-    onBusyChange?.(busy !== 'none' || pendingRestoreItem !== null || restoreConfirming)
+    onBusyChange?.(busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming)
   }, [busy, onBusyChange, pendingRestoreItem, restoreConfirming])
 
   useEffect(() => {
@@ -370,6 +390,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     s3Connection: S3Connection | null,
     showToast: boolean,
   ) => {
+    const loadVersion = ++remoteLoadVersionRef.current
     setBusy('list')
     setError('')
     const openListPromise = openListConnection
@@ -380,6 +401,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
       : Promise.resolve<S3BackupFile[] | null>(null)
     try {
       const [openListResult, s3Result] = await Promise.allSettled([openListPromise, s3Promise])
+      if (loadVersion !== remoteLoadVersionRef.current) return
       const errors: string[] = []
       let openListFiles: OpenListBackupFile[] = []
       let s3Files: S3BackupFile[] = []
@@ -404,18 +426,35 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
         toast.success(`已刷新远程历史，共 ${openListFiles.length + s3Files.length} 个备份`)
       }
     } finally {
-      setBusy('none')
+      if (loadVersion === remoteLoadVersionRef.current) {
+        setBusy('none')
+      }
     }
   }
 
   useEffect(() => {
-    setActiveConnection(configuredConnection || null)
-    setActiveS3Connection(configuredS3Connection || null)
-    if (!configuredConnection && !configuredS3Connection) {
+    const nextOpenListKey = connectionKey(configuredConnection)
+    const nextS3Key = connectionKey(configuredS3Connection)
+    const configurationChanged = configuredOpenListKeyRef.current !== nextOpenListKey
+      || configuredS3KeyRef.current !== nextS3Key
+    configuredOpenListKeyRef.current = nextOpenListKey
+    configuredS3KeyRef.current = nextS3Key
+
+    const nextOpenListConnection = configurationChanged
+      ? configuredConnection || null
+      : activeConnection
+    const nextS3Connection = configurationChanged
+      ? configuredS3Connection || null
+      : activeS3Connection
+    if (configurationChanged) {
+      setActiveConnection(nextOpenListConnection)
+      setActiveS3Connection(nextS3Connection)
+    }
+    if (!nextOpenListConnection && !nextS3Connection) {
       setItems(buildInitialItems())
       return
     }
-    void loadRemoteHistory(configuredConnection || null, configuredS3Connection || null, false)
+    void loadRemoteHistory(nextOpenListConnection, nextS3Connection, false)
   }, [configuredConnection, configuredS3Connection, refreshToken])
 
   const handleRefresh = () => {
@@ -425,6 +464,74 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
       return
     }
     void loadRemoteHistory(activeConnection, activeS3Connection, true)
+  }
+
+  const handleRemoteScanned = (result: BackupRemoteScanResult) => {
+    remoteLoadVersionRef.current += 1
+    setBusy('none')
+    setError('')
+    if (result.channel === 'openlist') {
+      const connection = result.connection as OpenListConnection
+      const files = result.files as OpenListBackupFile[]
+      setActiveConnection(connection)
+      setFilter('openlist')
+      saveCachedOpenListHistory(files, connection)
+      mergeHistoryItems(files, connection, remoteFilesFromItems<S3BackupFile>(items, 's3'), activeS3Connection)
+      return
+    }
+
+    const connection = result.connection as S3Connection
+    const files = result.files as S3BackupFile[]
+    setActiveS3Connection(connection)
+    setFilter('s3')
+    saveCachedS3History(files, connection)
+    mergeHistoryItems(remoteFilesFromItems<OpenListBackupFile>(items, 'openlist'), activeConnection, files, connection)
+  }
+
+  const handleDownload = async (item: BackupHistoryItem) => {
+    if (!item.remoteFile || item.source === 'local') return
+    setBusy('download')
+    setDownloadingItemId(item.id)
+    setError('')
+    try {
+      const result = item.source === 'openlist'
+        ? await downloadOpenListBackup(item.remoteFile.name, activeConnection || undefined)
+        : await downloadS3Backup(item.remoteFile.name, activeS3Connection || undefined)
+      if (result.cancelled) {
+        toast.info('已取消下载')
+        return
+      }
+      if (!result.zipPath) {
+        throw new Error('下载完成但未返回本地文件路径')
+      }
+      await recordLocalBackupHistory(result.zipPath)
+      setItems(buildInitialItems())
+      toast.success(`${result.message || `已从${sourceLabel(item.source)}下载备份`}：${result.zipPath}`)
+    } catch (downloadError) {
+      const message = errorMessage(downloadError, `${sourceLabel(item.source)}备份下载失败`)
+      setError(message)
+      toast.error(message)
+    } finally {
+      setBusy('none')
+      setDownloadingItemId('')
+    }
+  }
+
+  const requestDownload = (item: BackupHistoryItem) => {
+    if (item.source === 'local') return
+    if (!item.remoteFile) {
+      setError(`${sourceLabel(item.source)} 备份文件信息不可用，请先刷新历史`)
+      return
+    }
+    if (item.source === 'openlist' && !activeConnection) {
+      setError('请先扫描或配置 OpenList')
+      return
+    }
+    if (item.source === 's3' && !activeS3Connection) {
+      setError('请先扫描或配置 S3')
+      return
+    }
+    void handleDownload(item)
   }
 
   const handleRestore = async (item: BackupHistoryItem) => {
@@ -535,9 +642,8 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     }
   }
 
-  const filteredItems = filter === 'all' ? items : items.filter(item => item.source === filter)
+  const filteredItems = items.filter(item => item.source === filter)
   const filterItems: Array<{ key: BackupHistoryFilter; label: string }> = [
-    { key: 'all', label: '全部' },
     { key: 'local', label: '本地' },
     { key: 'openlist', label: 'OpenList' },
     { key: 's3', label: 'S3' },
@@ -603,18 +709,35 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     {
       key: 'actions',
       title: '操作',
-      width: 120,
+      width: 220,
       align: 'right',
       render: (_value, item) => (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => requestRestore(item)}
-          loading={restoringItemId === item.id}
-          disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming}
-        >
-          合并恢复
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {item.source !== 'local' && (
+            <Button
+              size="sm"
+              variant="primary"
+              className="!border-[var(--color-accent)] !bg-[var(--color-accent)] !text-[var(--color-text-inverse)] hover:!bg-[var(--color-accent-hover)] disabled:!opacity-60"
+              onClick={() => requestDownload(item)}
+              loading={downloadingItemId === item.id}
+              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming}
+              title="下载到本地"
+            >
+              <Download className="h-3.5 w-3.5" />
+              下载
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="secondary"
+            className="!border-[var(--color-border-strong)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!bg-[var(--color-border-default)] disabled:!opacity-60"
+            onClick={() => requestRestore(item)}
+            loading={restoringItemId === item.id}
+            disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || downloadingItemId !== ''}
+          >
+            合并恢复
+          </Button>
+        </div>
       ),
     },
   ]
@@ -642,6 +765,16 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
         </div>
         <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
           {actions}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setScanModalOpen(true)}
+            disabled={busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}
+            title="输入远程连接并扫描备份"
+          >
+            <Search className="h-4 w-4" />
+            扫描远程
+          </Button>
           <Button size="sm" variant="secondary" onClick={handleRefresh} loading={busy === 'list'} disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}>
             <RefreshCw className="h-4 w-4" />
             刷新
@@ -655,16 +788,14 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
           data={filteredItems}
           rowKey="id"
           loading={busy === 'list' && items.length === 0}
-          emptyText={filter === 'all'
-            ? '暂无备份历史'
-            : filter === 'local'
-              ? '暂无本地备份'
-              : filter === 'openlist'
-                ? '暂无 OpenList 备份'
-                : '暂无 S3 备份'}
-          className="min-w-[900px]"
-          maxHeight="none"
-        />
+          emptyText={filter === 'local'
+            ? '暂无本地备份'
+            : filter === 'openlist'
+              ? '暂无 OpenList 备份'
+              : '暂无 S3 备份'}
+           className="min-w-[1000px]"
+           maxHeight="none"
+         />
       </div>
       <ConfirmModal
         open={pendingRestoreItem !== null}
@@ -687,6 +818,13 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
           </div>
         )}
         confirmText="开始恢复"
+      />
+      <BackupRemoteScanModal
+        open={scanModalOpen}
+        onClose={() => setScanModalOpen(false)}
+        initialOpenListConnection={activeConnection}
+        initialS3Connection={activeS3Connection}
+        onScanned={handleRemoteScanned}
       />
     </Card>
   )

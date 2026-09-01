@@ -72,9 +72,13 @@ export function BackupGetScopeDefinition():Promise<backup.Scope>;
 
 export function BackupImportPackage():Promise<Record<string, any>>;
 
+export function BackupOpenListDownload(arg1:Record<string, string>,arg2:string):Promise<Record<string, any>>;
+
 export function BackupOpenListGetSettings():Promise<Record<string, any>>;
 
 export function BackupOpenListList(arg1:Record<string, string>):Promise<Array<Record<string, any>>>;
+
+export function BackupOpenListRevealToken():Promise<string>;
 
 export function BackupOpenListRestore(arg1:Record<string, string>,arg2:string):Promise<Record<string, any>>;
 
@@ -86,13 +90,15 @@ export function BackupOpenListUpload(arg1:Record<string, string>):Promise<Record
 
 export function BackupRestoreLocalPackage(arg1:string):Promise<Record<string, any>>;
 
-export function BackupS3GetSettings():Promise<Record<string, any>>;
+export function BackupS3Download(arg1:Record<string, string>,arg2:string):Promise<Record<string, any>>;
 
-export function BackupS3RevealCredential(arg1:string):Promise<string>;
+export function BackupS3GetSettings():Promise<Record<string, any>>;
 
 export function BackupS3List(arg1:Record<string, string>):Promise<Array<Record<string, any>>>;
 
 export function BackupS3Restore(arg1:Record<string, string>,arg2:string):Promise<Record<string, any>>;
+
+export function BackupS3RevealCredential(arg1:string):Promise<string>;
 
 export function BackupS3SaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
 

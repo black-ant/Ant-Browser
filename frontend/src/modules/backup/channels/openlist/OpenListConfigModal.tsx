@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Settings2, XCircle } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, Settings2, XCircle } from 'lucide-react'
 
 import { Button, FormItem, Input, Modal, toast } from '../../../../shared/components'
 import {
   defaultOpenListSettings,
   fetchOpenListSettings,
+  revealOpenListToken,
   saveOpenListSettings,
   testOpenListConnection,
 } from './api'
@@ -80,9 +81,11 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
 	const [draft, setDraft] = useState<OpenListDraft>(emptyDraft)
 	const [settings, setSettings] = useState<OpenListSettings>(defaultOpenListSettings)
 	const [busy, setBusy] = useState<OpenListBusy>('none')
-  const [error, setError] = useState('')
+	const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<OpenListFieldErrors>({})
 	const [testResult, setTestResult] = useState<OpenListTestResult | null>(null)
+  const [tokenVisible, setTokenVisible] = useState(false)
+  const [revealingToken, setRevealingToken] = useState(false)
 
 	useEffect(() => {
 		if (!open) return
@@ -91,6 +94,8 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
 		setError('')
 		setFieldErrors({})
 		setTestResult(null)
+    setTokenVisible(false)
+    setRevealingToken(false)
 		void fetchOpenListSettings()
 			.then(next => {
 				if (!active) return
@@ -140,6 +145,32 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
     setError('')
     setTestResult(null)
     return false
+	}
+
+  const toggleTokenVisibility = async () => {
+    if (tokenVisible) {
+      setTokenVisible(false)
+      return
+    }
+
+    if (draft.token || !settings.tokenConfigured) {
+      setTokenVisible(true)
+      return
+    }
+
+    setRevealingToken(true)
+    setError('')
+    try {
+      const token = await revealOpenListToken()
+      setDraft(current => ({ ...current, token }))
+      setTokenVisible(true)
+    } catch (revealError) {
+      const message = errorMessage(revealError, '显示 OpenList Token 失败')
+      setError(message)
+      toast.error(message)
+    } finally {
+      setRevealingToken(false)
+    }
   }
 
   const handleTestConnection = async () => {
@@ -164,17 +195,16 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
   const handleSave = async () => {
     if (!validate()) return
 
-	setBusy('save')
-	setError('')
-	try {
-		await testOpenListConnection(normalizedDraft)
-		const next = await saveOpenListSettings(normalizedDraft)
-		setSettings(next)
-		onConfigured?.({ baseURL: next.baseURL, remotePath: next.remotePath })
-		toast.success('OpenList 配置已保存')
-		onClose()
-	} catch (saveError) {
-		const message = errorMessage(saveError, 'OpenList 配置保存失败')
+    setBusy('save')
+    setError('')
+    try {
+      const next = await saveOpenListSettings(normalizedDraft)
+      setSettings(next)
+      onConfigured?.({ baseURL: next.baseURL, remotePath: next.remotePath })
+      toast.success('OpenList 配置已保存')
+      onClose()
+    } catch (saveError) {
+      const message = errorMessage(saveError, 'OpenList 配置保存失败')
       setError(message)
       toast.error(message)
     } finally {
@@ -182,7 +212,7 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
     }
   }
 
-  const canClose = busy === 'none'
+  const canClose = busy === 'none' && !revealingToken
 
   return (
     <Modal
@@ -213,7 +243,7 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
 	    <div
 	      className="space-y-4"
 	      onKeyDown={event => {
-	        if (event.key !== 'Enter' || busy !== 'none') return
+	        if (event.key !== 'Enter' || !canClose) return
 	        event.preventDefault()
 	        void handleSave()
 	      }}
@@ -253,13 +283,28 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
           />
         </FormItem>
         <FormItem label="Token" required={!settings.tokenConfigured} hint={settings.tokenConfigured ? '留空沿用已保存 Token' : '用于 OpenList 请求认证'} error={fieldErrors.token}>
-          <Input
-            type="password"
-            value={draft.token}
-            onChange={event => updateDraft('token', event.target.value)}
-            autoComplete="new-password"
-            error={Boolean(fieldErrors.token)}
-          />
+          <div className="relative">
+            <Input
+              type={tokenVisible ? 'text' : 'password'}
+              value={draft.token}
+              placeholder={settings.tokenConfigured ? '****' : undefined}
+              onChange={event => updateDraft('token', event.target.value)}
+              autoComplete="new-password"
+              error={Boolean(fieldErrors.token)}
+              className="pr-10"
+              disabled={!canClose}
+            />
+            <button
+              type="button"
+              className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => { void toggleTokenVisibility() }}
+              disabled={!canClose}
+              aria-label={tokenVisible ? '隐藏 OpenList Token' : '显示 OpenList Token'}
+              title={tokenVisible ? '隐藏 OpenList Token' : '显示 OpenList Token'}
+            >
+              {tokenVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </FormItem>
         {testResult && (
           <div

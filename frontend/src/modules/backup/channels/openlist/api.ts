@@ -1,6 +1,7 @@
 export interface OpenListConnection {
   baseURL: string
   remotePath: string
+  token?: string
 }
 
 export interface OpenListDraft extends OpenListConnection {
@@ -67,6 +68,14 @@ export async function fetchOpenListSettings(): Promise<OpenListSettings> {
   return normalizeOpenListSettings(await bindings.BackupOpenListGetSettings())
 }
 
+export async function revealOpenListToken(): Promise<string> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupOpenListRevealToken) {
+    throw new Error('当前环境不支持显示 OpenList Token')
+  }
+  return String((await bindings.BackupOpenListRevealToken()) || '')
+}
+
 export async function saveOpenListSettings(draft: OpenListDraft): Promise<OpenListSettings> {
   const bindings: any = await getBindings()
   if (!bindings?.BackupOpenListSaveSettings) {
@@ -118,4 +127,15 @@ export async function restoreOpenListBackup(
     throw new Error('当前环境不支持 OpenList 备份恢复')
   }
   return (await bindings.BackupOpenListRestore(toPayload(connection), fileName)) || {}
+}
+
+export async function downloadOpenListBackup(
+  fileName: string,
+  connection?: OpenListConnection,
+): Promise<Record<string, any>> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupOpenListDownload) {
+    throw new Error('当前环境不支持 OpenList 备份下载')
+  }
+  return (await bindings.BackupOpenListDownload(toPayload(connection), fileName)) || {}
 }

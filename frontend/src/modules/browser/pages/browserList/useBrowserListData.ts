@@ -3,6 +3,8 @@ import type { BrowserGroupWithCount, BrowserProfile, BrowserProxy } from '../../
 import { fetchBrowserProfiles, fetchBrowserProxies, fetchGroups } from '../../api'
 import { EventsOn } from '../../../../wailsjs/runtime/runtime'
 
+const PROFILE_LIST_FALLBACK_REFRESH_MS = 15_000
+
 interface UseBrowserListDataOptions {
   loadCores: () => void
 }
@@ -133,7 +135,7 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void loadProfiles({ silent: true, syncRuntimeState: true })
-    }, 2000)
+    }, PROFILE_LIST_FALLBACK_REFRESH_MS)
 
     return () => {
       window.clearInterval(timer)
