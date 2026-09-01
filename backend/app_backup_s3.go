@@ -39,11 +39,15 @@ func (a *App) BackupS3List(input map[string]string) ([]map[string]interface{}, e
 	}
 	result := make([]map[string]interface{}, 0, len(items))
 	for _, item := range items {
-		result = append(result, map[string]interface{}{
+		entry := map[string]interface{}{
 			"name":       item.Name,
 			"size":       item.Size,
 			"modifiedAt": item.ModifiedAt,
-		})
+		}
+		for key, value := range backupPackageInfoFields(backupPackageInfoFromFileName(item.Name)) {
+			entry[key] = value
+		}
+		result = append(result, entry)
 	}
 	return result, nil
 }

@@ -1,4 +1,5 @@
 import type { BackupChannelSelection } from './channels'
+import type { BackupPackageInfo } from './packageInfo'
 
 export interface BackupActionResult {
   cancelled?: boolean
@@ -21,6 +22,7 @@ export interface BackupActionResult {
   remoteNames?: string[]
   remoteError?: string
   profileCount?: number
+  profileNames?: string[]
   importedCount?: number
   warnings?: string[]
   packageType?: 'full' | 'profile' | string
@@ -31,7 +33,7 @@ export interface BackupActionResult {
   }>
 }
 
-export interface BackupFileInfo {
+export interface BackupFileInfo extends BackupPackageInfo {
   size: number
   modifiedAt: string
 }

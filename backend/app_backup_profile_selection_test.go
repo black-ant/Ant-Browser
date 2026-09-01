@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
@@ -26,6 +27,47 @@ func TestBackupProfileIDsFromInput(t *testing.T) {
 
 	if _, err := backupProfileIDsFromInput(map[string]string{"profileIds": `{"profileId":"profile-a"}`}); err == nil {
 		t.Fatal("expected invalid profile IDs to return an error")
+	}
+}
+
+func TestBackupProfilePackageFileName(t *testing.T) {
+	now := time.Date(2026, time.September, 1, 17, 36, 16, 0, time.UTC)
+	if got := backupProfilePackageFileName([]string{"测试账号 A"}, now, false); got != "ant-chrome-profile-backup-single--测试账号 A--20260901-173616.zip" {
+		t.Fatalf("single profile backup name = %q", got)
+	}
+	if got := backupProfilePackageFileName([]string{"实例 A", "实例 B"}, now, true); got != "ant-chrome-profile-backup-multi-2--20260901-173616.000000000.zip" {
+		t.Fatalf("multi profile backup name = %q", got)
+	}
+}
+
+func TestBackupPackageInfoFromFileName(t *testing.T) {
+	tests := []struct {
+		name string
+		want backupPackageInfo
+	}{
+		{
+			name: "ant-chrome-profile-backup-single--测试账号 A--20260901-173616.zip",
+			want: backupPackageInfo{PackageType: "profile", ProfileCount: 1, ProfileNames: []string{"测试账号 A"}},
+		},
+		{
+			name: "ant-chrome-profile-backup-20260901-112531.810696400.zip",
+			want: backupPackageInfo{PackageType: "profile"},
+		},
+		{
+			name: "ant-chrome-profile-backup-multi-3--20260901-173616.000000000.zip",
+			want: backupPackageInfo{PackageType: "profile", ProfileCount: 3},
+		},
+		{
+			name: "ant-chrome-backup-20260901-173616.zip",
+			want: backupPackageInfo{PackageType: "full"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := backupPackageInfoFromFileName(test.name); !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("package info = %#v, want %#v", got, test.want)
+			}
+		})
 	}
 }
 
@@ -108,6 +150,20 @@ func TestBackupExportProfilePackageToPath(t *testing.T) {
 	}
 	if result["packageType"] != "profile" || result["profileCount"] != 1 {
 		t.Fatalf("unexpected export result: %#v", result)
+	}
+	packageInfo, err := inspectBackupPackageInfo(zipPath)
+	if err != nil {
+		t.Fatalf("inspect exported profile package failed: %v", err)
+	}
+	if packageInfo.PackageType != "profile" || packageInfo.ProfileCount != 1 || !reflect.DeepEqual(packageInfo.ProfileNames, []string{"实例 A"}) {
+		t.Fatalf("unexpected exported package info: %#v", packageInfo)
+	}
+	fileInfo, err := app.GetBackupFileInfo(zipPath)
+	if err != nil {
+		t.Fatalf("read exported profile file info failed: %v", err)
+	}
+	if fileInfo["packageType"] != "profile" || fileInfo["profileCount"] != 1 {
+		t.Fatalf("unexpected exported file info: %#v", fileInfo)
 	}
 
 	reader, err := zip.OpenReader(zipPath)

@@ -1,3 +1,5 @@
+import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../../packageInfo'
+
 export interface S3Connection {
   endpoint: string
   region: string
@@ -24,7 +26,7 @@ export interface S3Settings extends S3Connection {
 
 export type S3CredentialField = 'accessKeyID' | 'secretAccessKey' | 'sessionToken'
 
-export interface S3BackupFile {
+export interface S3BackupFile extends BackupPackageInfo {
   name: string
   size: number
   modifiedAt: string
@@ -125,11 +127,15 @@ export async function listS3Backups(connection?: S3Connection): Promise<S3Backup
   const raw = await bindings.BackupS3List(toPayload(connection, false))
   if (!Array.isArray(raw)) return []
   return raw
-    .map(item => ({
-      name: typeof item?.name === 'string' ? item.name : '',
-      size: Number.isFinite(item?.size) ? Math.max(0, Number(item.size)) : 0,
-      modifiedAt: typeof item?.modifiedAt === 'string' ? item.modifiedAt : '',
-    }))
+    .map(item => {
+      const name = typeof item?.name === 'string' ? item.name : ''
+      return {
+        name,
+        size: Number.isFinite(item?.size) ? Math.max(0, Number(item.size)) : 0,
+        modifiedAt: typeof item?.modifiedAt === 'string' ? item.modifiedAt : '',
+        ...normalizeBackupPackageInfo(item, name),
+      }
+    })
     .filter(item => item.name)
 }
 

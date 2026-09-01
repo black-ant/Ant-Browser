@@ -73,6 +73,7 @@ func (a *App) backupExportProfilePackageToPath(savePath string, profileIDs []str
 		`cancelled`:    false,
 		`zipPath`:      savePath,
 		`profileCount`: len(profiles),
+		`profileNames`: profilePackageProfileNames(profiles),
 		`fileCount`:    fileCount,
 		`packageType`:  `profile`,
 		`message`:      `实例备份完成`,

@@ -33,6 +33,14 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 		a.backupEmitExportProgress("error", 100, fmt.Sprintf("备份失败: %v", err))
 		return nil, err
 	}
+	profileNames := []string(nil)
+	if len(profileIDs) > 0 {
+		profiles, collectErr := a.collectProfilesForPackage(profileIDs)
+		if collectErr != nil {
+			return nil, collectErr
+		}
+		profileNames = profilePackageProfileNames(profiles)
+	}
 	if localEnabled && a.ctx == nil {
 		err := fmt.Errorf("应用上下文未初始化")
 		a.backupEmitExportProgress("error", 100, fmt.Sprintf("备份失败: %v", err))
@@ -61,7 +69,7 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 	var temporaryRoot string
 	if localEnabled {
 		a.backupEmitExportProgress("starting", 0, "等待选择本地备份路径...")
-		defaultName := backupPackageDefaultName(len(profileIDs) > 0, time.Now())
+		defaultName := backupPackageDefaultName(len(profileIDs) > 0, profileNames, time.Now())
 		packagePath, err = wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
 			Title:           "保存本地备份",
 			DefaultFilename: defaultName,
@@ -88,7 +96,7 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 			return nil, fmt.Errorf("创建临时备份目录失败: %w", err)
 		}
 		defer os.RemoveAll(temporaryRoot)
-		packagePath = filepath.Join(temporaryRoot, backupTemporaryPackageName(len(profileIDs) > 0, time.Now()))
+		packagePath = filepath.Join(temporaryRoot, backupTemporaryPackageName(len(profileIDs) > 0, profileNames, time.Now()))
 	}
 
 	var result map[string]interface{}
@@ -115,17 +123,20 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 	}
 	if s3Enabled {
 		remoteTargets = append(remoteTargets, backupRemoteUploadTarget{
-			label:          "S3",
-			client:         s3Client,
-			timeout:        s3.TransferTimeout,
-			skipMetadata:   len(profileIDs) > 0,
+			label:        "S3",
+			client:       s3Client,
+			timeout:      s3.TransferTimeout,
+			skipMetadata: len(profileIDs) > 0,
 		})
 	}
 	remoteErrors := make([]string, 0, len(remoteTargets))
 	remoteNames := make([]string, 0, len(remoteTargets))
+	remoteFileName := filepath.Base(packagePath)
+	if len(profileIDs) > 0 {
+		remoteFileName = backupProfilePackageFileName(profileNames, time.Now(), true)
+	}
 	for _, target := range remoteTargets {
-		fileName := filepath.Base(packagePath)
-		remoteFile, uploadErr := a.backupUploadRemoteArtifacts(target, packagePath, fileName)
+		remoteFile, uploadErr := a.backupUploadRemoteArtifacts(target, packagePath, remoteFileName)
 		if uploadErr != nil {
 			remoteErrors = append(remoteErrors, fmt.Sprintf("%s: %v", target.label, uploadErr))
 			continue
@@ -194,19 +205,19 @@ func backupProfileIDsFromInput(input map[string]string) ([]string, error) {
 	return profileIDs, nil
 }
 
-func backupPackageDefaultName(profileOnly bool, now time.Time) string {
-	prefix := "ant-chrome-backup"
+func backupPackageDefaultName(profileOnly bool, profileNames []string, now time.Time) string {
 	if profileOnly {
-		prefix = "ant-chrome-profile-backup"
+		return backupProfilePackageFileName(profileNames, now, false)
 	}
+	prefix := "ant-chrome-backup"
 	return fmt.Sprintf("%s-%s.zip", prefix, now.Format("20060102-150405"))
 }
 
-func backupTemporaryPackageName(profileOnly bool, now time.Time) string {
-	prefix := "ant-chrome-backup"
+func backupTemporaryPackageName(profileOnly bool, profileNames []string, now time.Time) string {
 	if profileOnly {
-		prefix = "ant-chrome-profile-backup"
+		return backupProfilePackageFileName(profileNames, now, true)
 	}
+	prefix := "ant-chrome-backup"
 	return fmt.Sprintf("%s-%s.zip", prefix, now.Format("20060102-150405.000000000"))
 }
 

@@ -1,3 +1,5 @@
+import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../../packageInfo'
+
 export interface OpenListConnection {
   baseURL: string
   remotePath: string
@@ -14,7 +16,7 @@ export interface OpenListSettings extends OpenListConnection {
   uploadRateLimitMBps: number
 }
 
-export interface OpenListBackupFile {
+export interface OpenListBackupFile extends BackupPackageInfo {
   name: string
   size: number
   modifiedAt: string
@@ -102,11 +104,15 @@ export async function listOpenListBackups(connection?: OpenListConnection): Prom
     return []
   }
   return raw
-    .map(item => ({
-      name: typeof item?.name === 'string' ? item.name : '',
-      size: Number.isFinite(item?.size) ? Math.max(0, Number(item.size)) : 0,
-      modifiedAt: typeof item?.modifiedAt === 'string' ? item.modifiedAt : '',
-    }))
+    .map(item => {
+      const name = typeof item?.name === 'string' ? item.name : ''
+      return {
+        name,
+        size: Number.isFinite(item?.size) ? Math.max(0, Number(item.size)) : 0,
+        modifiedAt: typeof item?.modifiedAt === 'string' ? item.modifiedAt : '',
+        ...normalizeBackupPackageInfo(item, name),
+      }
+    })
     .filter(item => item.name)
 }
 

@@ -21,11 +21,12 @@ import (
 const profilePackageFormat = "ant-chrome-profile-package"
 
 type ProfilePackageManifest struct {
-	Format          string `json:"format"`
-	Version         int    `json:"version"`
-	ExportedAt      string `json:"exportedAt"`
-	ProfileCount    int    `json:"profileCount"`
-	DatabaseVersion int    `json:"databaseVersion,omitempty"`
+	Format          string   `json:"format"`
+	Version         int      `json:"version"`
+	ExportedAt      string   `json:"exportedAt"`
+	ProfileCount    int      `json:"profileCount"`
+	ProfileNames    []string `json:"profileNames,omitempty"`
+	DatabaseVersion int      `json:"databaseVersion,omitempty"`
 }
 
 type ProfilePackageExportResult struct {
@@ -182,6 +183,7 @@ func (a *App) writeProfilePackage(zipPath string, profiles []browser.Profile) (i
 			Version:         profilePackageVersion,
 			ExportedAt:      time.Now().Format(time.RFC3339),
 			ProfileCount:    len(profiles),
+			ProfileNames:    profilePackageProfileNames(profiles),
 			DatabaseVersion: databaseSnapshot.Version,
 		}
 		if err := writeProfilePackageJSON(zipWriter, "manifest.json", manifest); err != nil {
@@ -579,6 +581,21 @@ func normalizeProfilePackageIDs(ids []string) []string {
 		result = append(result, id)
 	}
 	sort.Strings(result)
+	return result
+}
+
+func profilePackageProfileNames(profiles []browser.Profile) []string {
+	result := make([]string, 0, len(profiles))
+	for _, profile := range profiles {
+		name := strings.TrimSpace(profile.ProfileName)
+		if name == "" {
+			name = strings.TrimSpace(profile.ProfileId)
+		}
+		if name == "" {
+			continue
+		}
+		result = append(result, name)
+	}
 	return result
 }
 

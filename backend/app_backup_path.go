@@ -24,14 +24,22 @@ func (a *App) OpenBackupPath(backupPath string) error {
 }
 
 func (a *App) GetBackupFileInfo(backupPath string) (map[string]interface{}, error) {
-	_, info, err := a.resolveBackupFile(backupPath)
+	resolvedPath, info, err := a.resolveBackupFile(backupPath)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"size":       info.Size(),
 		"modifiedAt": info.ModTime().UTC().Format(time.RFC3339Nano),
-	}, nil
+	}
+	if packageInfo, inspectErr := inspectBackupPackageInfo(resolvedPath); inspectErr == nil {
+		for key, value := range backupPackageInfoFields(packageInfo) {
+			result[key] = value
+		}
+	} else {
+		result["packageType"] = "unknown"
+	}
+	return result, nil
 }
 
 func (a *App) resolveBackupFile(backupPath string) (string, os.FileInfo, error) {

@@ -19,12 +19,13 @@ import {
 import type { S3BackupFile, S3Connection } from '../channels/s3/api'
 import { BackupRemoteScanModal } from './BackupRemoteScanModal'
 import type { BackupRemoteScanResult } from './BackupRemoteScanModal'
+import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../packageInfo'
 
 type BackupHistorySource = 'local' | 'openlist' | 's3'
 type BackupHistoryFilter = BackupHistorySource
 type RemoteBackupFile = OpenListBackupFile | S3BackupFile
 
-interface BackupHistoryItem {
+interface BackupHistoryItem extends BackupPackageInfo {
   id: string
   name: string
   source: BackupHistorySource
@@ -35,7 +36,7 @@ interface BackupHistoryItem {
   remoteFile?: RemoteBackupFile
 }
 
-interface StoredLocalBackup {
+interface StoredLocalBackup extends BackupPackageInfo {
   name: string
   path: string
   size: number
@@ -72,12 +73,17 @@ function readLocalBackups(): StoredLocalBackup[] {
     if (!Array.isArray(parsed)) return []
     const entries = parsed as Array<Record<string, unknown>>
     return entries
-      .map(item => ({
-        name: typeof item.name === 'string' ? item.name : '',
-        path: typeof item.path === 'string' ? item.path : '',
-        size: Number.isFinite(item.size) ? Math.max(0, Number(item.size)) : 0,
-        modifiedAt: typeof item.modifiedAt === 'string' ? item.modifiedAt : '',
-      }))
+      .map(item => {
+        const name = typeof item.name === 'string' ? item.name : ''
+        const path = typeof item.path === 'string' ? item.path : ''
+        return {
+          name,
+          path,
+          size: Number.isFinite(item.size) ? Math.max(0, Number(item.size)) : 0,
+          modifiedAt: typeof item.modifiedAt === 'string' ? item.modifiedAt : '',
+          ...normalizeBackupPackageInfo(item, name || path),
+        }
+      })
       .filter(item => item.name || item.path)
   } catch {
     return []
@@ -103,11 +109,15 @@ function readCachedOpenListHistory(): StoredOpenListHistory | null {
     return {
       location: typeof parsed.location === 'string' ? parsed.location : 'OpenList',
       files: entries
-        .map(item => ({
-          name: typeof item.name === 'string' ? item.name : '',
-          size: Number.isFinite(item.size) ? Math.max(0, Number(item.size)) : 0,
-          modifiedAt: typeof item.modifiedAt === 'string' ? item.modifiedAt : '',
-        }))
+        .map(item => {
+          const name = typeof item.name === 'string' ? item.name : ''
+          return {
+            name,
+            size: Number.isFinite(item.size) ? Math.max(0, Number(item.size)) : 0,
+            modifiedAt: typeof item.modifiedAt === 'string' ? item.modifiedAt : '',
+            ...normalizeBackupPackageInfo(item, name),
+          }
+        })
         .filter(item => item.name),
     }
   } catch {
@@ -137,11 +147,15 @@ function readCachedS3History(): StoredS3History | null {
     return {
       location: typeof parsed.location === 'string' ? parsed.location : 'S3',
       files: entries
-        .map(item => ({
-          name: typeof item.name === 'string' ? item.name : '',
-          size: Number.isFinite(item.size) ? Math.max(0, Number(item.size)) : 0,
-          modifiedAt: typeof item.modifiedAt === 'string' ? item.modifiedAt : '',
-        }))
+        .map(item => {
+          const name = typeof item.name === 'string' ? item.name : ''
+          return {
+            name,
+            size: Number.isFinite(item.size) ? Math.max(0, Number(item.size)) : 0,
+            modifiedAt: typeof item.modifiedAt === 'string' ? item.modifiedAt : '',
+            ...normalizeBackupPackageInfo(item, name),
+          }
+        })
         .filter(item => item.name),
     }
   } catch {
@@ -166,17 +180,23 @@ export async function recordLocalBackupHistory(path: string) {
   if (!trimmedPath || typeof window === 'undefined') return
 
   const name = trimmedPath.split(/[\\/]/).pop() || trimmedPath
-  let fileInfo = { size: 0, modifiedAt: '' }
+  let size = 0
+  let modifiedAt = ''
+  let packageInfo = normalizeBackupPackageInfo({}, name)
   try {
-    fileInfo = await getBackupFileInfo(trimmedPath)
+    const fileInfo = await getBackupFileInfo(trimmedPath)
+    size = fileInfo.size
+    modifiedAt = fileInfo.modifiedAt
+    packageInfo = normalizeBackupPackageInfo(fileInfo, name)
   } catch {
-    fileInfo = { size: 0, modifiedAt: '' }
+    packageInfo = normalizeBackupPackageInfo({}, name)
   }
   const nextItem: StoredLocalBackup = {
     name,
     path: trimmedPath,
-    size: fileInfo.size,
-    modifiedAt: fileInfo.modifiedAt || new Date().toISOString(),
+    size,
+    modifiedAt: modifiedAt || new Date().toISOString(),
+    ...packageInfo,
   }
   const previous = readLocalBackups()
   const next = [nextItem, ...previous.filter(item => item.path !== trimmedPath)].slice(0, 50)
@@ -185,23 +205,33 @@ export async function recordLocalBackupHistory(path: string) {
 
 async function refreshMissingLocalBackupInfo() {
   const previous = readLocalBackups()
-  const pending = previous.filter(item => item.path && item.size <= 0)
+  const pending = previous.filter(item => item.path && (
+    item.size <= 0
+    || !item.packageType
+    || (item.packageType === 'profile' && (!item.profileCount || !item.profileNames?.length))
+  ))
   if (!pending.length) return new Map<string, StoredLocalBackup>()
 
   const resolved = await Promise.all(pending.map(async item => {
     try {
       const fileInfo = await getBackupFileInfo(item.path)
+      const packageInfo = normalizeBackupPackageInfo(fileInfo, item.name || item.path)
       return {
         ...item,
         size: fileInfo.size,
         modifiedAt: fileInfo.modifiedAt || item.modifiedAt,
+        ...packageInfo,
       }
     } catch { return item }
   }))
   const updates = new Map(resolved.map(item => [item.path, item]))
   const changed = resolved.some((item, index) => {
     const original = pending[index]
-    return item.size !== original.size || item.modifiedAt !== original.modifiedAt
+    return item.size !== original.size
+      || item.modifiedAt !== original.modifiedAt
+      || item.packageType !== original.packageType
+      || item.profileCount !== original.profileCount
+      || JSON.stringify(item.profileNames || []) !== JSON.stringify(original.profileNames || [])
   })
   if (changed) {
     saveLocalBackups(previous.map(item => updates.get(item.path) || item))
@@ -232,6 +262,7 @@ function buildInitialItems(): BackupHistoryItem[] {
     modifiedAt: item.modifiedAt,
     location: item.path || '本地文件',
     localPath: item.path,
+    ...normalizeBackupPackageInfo(item, item.name || item.path),
   }))
   const cached = readCachedOpenListHistory()
   const openListItems = cached?.files.map(file => ({
@@ -242,6 +273,7 @@ function buildInitialItems(): BackupHistoryItem[] {
     modifiedAt: file.modifiedAt,
     location: cached.location,
     remoteFile: file,
+    ...normalizeBackupPackageInfo(file, file.name),
   })) || []
   const s3Cached = readCachedS3History()
   const s3Items = s3Cached?.files.map(file => ({
@@ -252,6 +284,7 @@ function buildInitialItems(): BackupHistoryItem[] {
     modifiedAt: file.modifiedAt,
     location: s3Cached.location,
     remoteFile: file,
+    ...normalizeBackupPackageInfo(file, file.name),
   })) || []
 
   return sortHistoryItems([...localItems, ...openListItems, ...s3Items])
@@ -307,6 +340,34 @@ function sourceLabel(source: BackupHistorySource) {
   return 'S3'
 }
 
+function backupPackageTypeLabel(item: BackupPackageInfo) {
+  if (item.packageType === 'full') return '全量备份'
+  if (item.packageType === 'profile') {
+    const count = item.profileCount || item.profileNames?.length || 0
+    if (count === 1) return '单实例备份'
+    if (count > 1) return `多实例备份 · ${count} 个实例`
+    return '实例备份'
+  }
+  return '备份类型未识别'
+}
+
+function renderBackupPackageInfo(item: BackupHistoryItem) {
+  const names = item.profileNames || []
+  const typeLabel = backupPackageTypeLabel(item)
+  if (item.packageType !== 'profile') {
+    return <span className="text-[var(--color-text-secondary)]">{typeLabel}</span>
+  }
+  if (names.length === 0) {
+    return <span className="text-[var(--color-text-secondary)]">{typeLabel} · 名称未记录</span>
+  }
+  return (
+    <div className="min-w-0" title={names.join('、')}>
+      <div className="text-[var(--color-text-secondary)]">{typeLabel}</div>
+      <div className="truncate text-[var(--color-text-primary)]">{names.join('、')}</div>
+    </div>
+  )
+}
+
 export function BackupHistoryTable({ actions, configuredConnection, configuredS3Connection, refreshToken = 0, onBusyChange }: BackupHistoryTableProps) {
   const [items, setItems] = useState<BackupHistoryItem[]>(buildInitialItems)
   const [filter, setFilter] = useState<BackupHistoryFilter>('local')
@@ -336,7 +397,14 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
         if (item.source !== 'local') return item
         const updated = updates.get(item.localPath || '')
         return updated
-          ? { ...item, size: updated.size, modifiedAt: updated.modifiedAt }
+          ? {
+            ...item,
+            size: updated.size,
+            modifiedAt: updated.modifiedAt,
+            packageType: updated.packageType,
+            profileCount: updated.profileCount,
+            profileNames: updated.profileNames,
+          }
           : item
       })))
     })
@@ -359,6 +427,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
       modifiedAt: item.modifiedAt,
       location: item.path || '本地文件',
       localPath: item.path,
+      ...normalizeBackupPackageInfo(item, item.name || item.path),
     }))
     const openListItems = openListConnection
       ? openListFiles.map(file => ({
@@ -369,6 +438,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
         modifiedAt: file.modifiedAt,
         location: buildOpenListLocation(openListConnection),
         remoteFile: file,
+        ...normalizeBackupPackageInfo(file, file.name),
       }))
       : []
     const s3Items = s3Connection
@@ -380,6 +450,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
         modifiedAt: file.modifiedAt,
         location: buildS3Location(s3Connection),
         remoteFile: file,
+        ...normalizeBackupPackageInfo(file, file.name),
       }))
       : []
     setItems(sortHistoryItems([...localItems, ...openListItems, ...s3Items]))
@@ -653,6 +724,12 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
       key: 'name',
       title: '备份文件',
       render: value => <span className="min-w-0 break-all text-[var(--color-text-primary)]">{value}</span>,
+    },
+    {
+      key: 'packageType',
+      title: '备份内容',
+      width: 240,
+      render: (_value, item) => renderBackupPackageInfo(item),
     },
     {
       key: 'source',
