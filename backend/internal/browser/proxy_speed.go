@@ -15,9 +15,12 @@ type ProxySpeedScheduler struct {
 	interval  time.Duration
 	concLimit int
 	stopCh    chan struct{}
+	doneCh    chan struct{}
 	mu        sync.Mutex
 	running   bool
 	testing   bool
+	stopped   bool
+	runWG     sync.WaitGroup
 }
 
 const (
@@ -46,49 +49,89 @@ func NewProxySpeedScheduler(dao ProxyDAO, testFn SpeedTestFunc, interval time.Du
 // Start 启动定时任务（非阻塞）
 func (s *ProxySpeedScheduler) Start() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.running {
+	if s.running || s.stopped {
+		s.mu.Unlock()
 		return
 	}
 	s.running = true
-	go s.loop()
+	s.doneCh = make(chan struct{})
+	doneCh := s.doneCh
+	s.mu.Unlock()
+	go s.loop(doneCh)
 }
 
 // Stop 停止定时任务
 func (s *ProxySpeedScheduler) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.running {
+	if s.stopped {
+		doneCh := s.doneCh
+		s.mu.Unlock()
+		if doneCh != nil {
+			<-doneCh
+		}
+		s.runWG.Wait()
 		return
 	}
+	s.stopped = true
 	s.running = false
+	doneCh := s.doneCh
 	close(s.stopCh)
+	s.mu.Unlock()
+
+	if doneCh != nil {
+		<-doneCh
+	}
+	s.runWG.Wait()
 }
 
 // RunOnce 立即执行一轮测速（可手动触发）
 func (s *ProxySpeedScheduler) RunOnce() {
-	go s.runAll()
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.runWG.Add(1)
+	s.mu.Unlock()
+	go func() {
+		defer s.runWG.Done()
+		s.runAll()
+	}()
 }
 
-func (s *ProxySpeedScheduler) loop() {
+func (s *ProxySpeedScheduler) loop(doneCh chan struct{}) {
+	defer close(doneCh)
+
 	// 启动后延迟一段时间跑第一轮，避免启动阶段频繁拉起代理内核。
 	select {
 	case <-time.After(DefaultProxySpeedInitialDelay):
 	case <-s.stopCh:
 		return
 	}
-	s.runAll()
+	s.runTracked()
 
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			s.runAll()
+			s.runTracked()
 		case <-s.stopCh:
 			return
 		}
 	}
+}
+
+func (s *ProxySpeedScheduler) runTracked() {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.runWG.Add(1)
+	s.mu.Unlock()
+	defer s.runWG.Done()
+	s.runAll()
 }
 
 func (s *ProxySpeedScheduler) runAll() {

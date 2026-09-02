@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"ant-chrome/backend/internal/config"
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -141,13 +142,17 @@ func RequiresBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId s
 
 // EnsureBridge 确保 Xray 桥接进程运行，用于临时请求场景。
 func (m *XrayManager) EnsureBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, error) {
-	socksURL, _, err := m.ensureBridge(proxyConfig, proxies, proxyId, false)
+	return m.EnsureBridgeContext(context.Background(), proxyConfig, proxies, proxyId)
+}
+
+func (m *XrayManager) EnsureBridgeContext(ctx context.Context, proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, error) {
+	socksURL, _, err := m.ensureBridgeContext(ctx, proxyConfig, proxies, proxyId, false)
 	return socksURL, err
 }
 
 // AcquireBridge 获取一个带引用计数的 Xray 桥接，用于浏览器实例等长生命周期场景。
 func (m *XrayManager) AcquireBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, string, error) {
-	return m.ensureBridge(proxyConfig, proxies, proxyId, true)
+	return m.ensureBridgeContext(context.Background(), proxyConfig, proxies, proxyId, true)
 }
 
 // ReleaseBridge 释放一个已占用的桥接引用；空闲桥接会由后台回收协程延迟清理。
@@ -170,12 +175,8 @@ func (m *XrayManager) ReleaseBridge(key string) {
 	bridge.LastUsedAt = time.Now()
 }
 
-// StopAll 关闭所有 xray 桥接进程。
-func (m *XrayManager) StopAll() {
-	m.stopOnce.Do(func() {
-		close(m.stopCh)
-	})
-
+// StopBridges closes all xray bridge processes while keeping the manager cleanup loop alive.
+func (m *XrayManager) StopBridges() {
 	m.mu.Lock()
 	bridges := make([]*XrayBridge, 0, len(m.Bridges))
 	for key, bridge := range m.Bridges {
@@ -190,4 +191,12 @@ func (m *XrayManager) StopAll() {
 	for _, bridge := range bridges {
 		m.stopBridgeProcess(bridge)
 	}
+}
+
+// StopAll closes all xray bridge processes and stops the manager cleanup loop.
+func (m *XrayManager) StopAll() {
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
+	m.StopBridges()
 }

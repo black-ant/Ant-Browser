@@ -2,7 +2,6 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/browser"
-	"ant-chrome/backend/internal/config"
 	"errors"
 	"os/exec"
 	"sort"
@@ -37,8 +36,8 @@ func (a *App) backupRunningProfileNames() []string {
 }
 
 func (a *App) backupStopRuntimeForMaintenance() error {
-	// 维护期间只阻断浏览器内核与代理内核（VPN 网络），
-	// 不停止自动化任务与测速调度器等其它运行态服务。
+	// 维护期间停止会访问数据库或代理内核的运行态服务，
+	// 自动化任务由应用生命周期继续管理。
 	type runtimeProfile struct {
 		debugPort   int
 		userDataDir string
@@ -103,15 +102,20 @@ func (a *App) backupStopRuntimeForMaintenance() error {
 	if err := errors.Join(stopErrors...); err != nil {
 		return err
 	}
+	a.cancelBackgroundTasksAndWait()
+	if a.speedScheduler != nil {
+		a.speedScheduler.Stop()
+		a.speedScheduler = nil
+	}
 
 	if a.xrayMgr != nil {
-		a.xrayMgr.StopAll()
+		a.xrayMgr.StopBridges()
 	}
 	if a.clashMgr != nil {
 		a.clashMgr.StopAll()
 	}
 	if a.singboxMgr != nil {
-		a.singboxMgr.StopAll()
+		a.singboxMgr.StopBridges()
 	}
 	a.clearProfileProxyBridges()
 
@@ -134,6 +138,8 @@ func (a *App) backupStopRuntimeForMaintenance() error {
 
 func (a *App) backupReloadAfterMutation() error {
 	if err := a.ReloadConfig(); err != nil {
+		a.resumeBackgroundTasks()
+		a.ensureSpeedScheduler()
 		return err
 	}
 
@@ -170,18 +176,7 @@ func (a *App) backupReloadAfterMutation() error {
 		a.browserMgr.CodeProvider = a.launchCodeSvc
 	}
 
-	if a.browserMgr != nil && a.browserMgr.ProxyDAO != nil && a.speedScheduler == nil {
-		a.speedScheduler = browser.NewProxySpeedScheduler(
-			a.browserMgr.ProxyDAO,
-			func(proxyID string) (bool, int64, string) {
-				connectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
-				r := a.testProxySpeedWithConnector(proxyID, a.getLatestProxies(), connectorType)
-				return r.Ok, r.LatencyMs, r.Error
-			},
-			browser.DefaultProxySpeedInterval,
-			browser.DefaultProxySpeedConcurrency,
-		)
-		a.speedScheduler.Start()
-	}
+	a.ensureSpeedScheduler()
+	a.resumeBackgroundTasks()
 	return nil
 }

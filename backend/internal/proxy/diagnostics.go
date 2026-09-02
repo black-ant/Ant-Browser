@@ -10,9 +10,10 @@ import (
 
 // BuildDiagnosticOptions 控制代理诊断构建行为。
 type BuildDiagnosticOptions struct {
-	XrayMgr    *XrayManager
-	SingBoxMgr *SingBoxManager
-	ClashMgr   *ClashManager
+	XrayMgr       *XrayManager
+	SingBoxMgr    *SingBoxManager
+	ClashMgr      *ClashManager
+	ConnectorType string
 }
 
 // ProxyBuildDiagnostic 是不启动桥接进程的代理构建诊断结果。
@@ -84,7 +85,8 @@ func BuildProxyDiagnostic(proxyConfig string, proxies []config.BrowserProxy, pro
 
 	src = normalizeNodeScheme(src)
 	result.RawConfigMasked = maskProxyConfig(src)
-	resolution, err := ResolveProxyKernel(src, proxies, proxyId, "")
+	connectorType := config.NormalizeBrowserConnectorType(options.ConnectorType)
+	resolution, err := ResolveProxyKernelForConnector(src, proxies, proxyId, connectorType)
 	if err != nil {
 		result.Errors = append(result.Errors, err.Error())
 		return result

@@ -8,6 +8,9 @@ import (
 
 func resolveProxyConfig(proxyConfig string, proxies []config.BrowserProxy, proxyId string) string {
 	src := strings.TrimSpace(proxyConfig)
+	if src != "" {
+		return src
+	}
 	if proxyId == "" {
 		return src
 	}

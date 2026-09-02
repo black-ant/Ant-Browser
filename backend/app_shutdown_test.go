@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestQuitStateTransitions(t *testing.T) {
@@ -49,4 +51,17 @@ func TestQuitStateConcurrentAccess(t *testing.T) {
 	}
 
 	waitGroup.Wait()
+}
+
+func TestStopAppOnlyRuntimeServicesStopsSpeedScheduler(t *testing.T) {
+	app := NewApp(t.TempDir())
+	scheduler := browser.NewProxySpeedScheduler(nil, nil, time.Hour, 1)
+	scheduler.Start()
+	app.speedScheduler = scheduler
+
+	app.stopAppOnlyRuntimeServices()
+
+	if app.speedScheduler != nil {
+		t.Fatal("app-only shutdown retained the speed scheduler")
+	}
 }

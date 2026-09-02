@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -192,18 +193,21 @@ func buildSpeedTestHTTPClient(
 		client *http.Client
 		err    error
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), prepareTimeout)
+	defer cancel()
 	resultCh := make(chan clientResult, 1)
 	go func() {
-		client, err := buildProxyHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+		client, err := buildProxyHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
 		resultCh <- clientResult{client: client, err: err}
 	}()
 
-	timer := time.NewTimer(prepareTimeout)
-	defer timer.Stop()
 	select {
 	case result := <-resultCh:
+		if result.err != nil && errors.Is(result.err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("代理准备超时（%dms）", prepareTimeout.Milliseconds())
+		}
 		return result.client, result.err
-	case <-timer.C:
+	case <-ctx.Done():
 		return nil, fmt.Errorf("代理准备超时（%dms）", prepareTimeout.Milliseconds())
 	}
 }

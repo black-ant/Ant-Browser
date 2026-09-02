@@ -17,6 +17,7 @@ func (a *App) shutdown(ctx context.Context) {
 		a.stopRuntimeServices()
 	} else {
 		log.Info("应用正在关闭（保留当前已打开的浏览器实例）...")
+		a.stopAppOnlyRuntimeServices()
 	}
 	a.finalizeShutdown()
 }
@@ -87,6 +88,8 @@ func ShouldBlockClose(a *App, ctx context.Context) bool {
 }
 
 func (a *App) stopRuntimeServices() {
+	a.stopRuntimeEvents()
+	a.waitBackgroundTasks()
 	a.stopServicesOnce.Do(func() {
 		if a.automationMgr != nil {
 			a.automationMgr.StopAllTasks()
@@ -107,6 +110,18 @@ func (a *App) stopRuntimeServices() {
 			a.singboxMgr.StopAll()
 		}
 	})
+}
+
+func (a *App) stopAppOnlyRuntimeServices() {
+	a.stopRuntimeEvents()
+	a.waitBackgroundTasks()
+	if a.automationMgr != nil {
+		a.automationMgr.StopAllTasks()
+	}
+	if a.speedScheduler != nil {
+		a.speedScheduler.Stop()
+		a.speedScheduler = nil
+	}
 }
 
 func (a *App) stopTrackedBrowserProcesses() {

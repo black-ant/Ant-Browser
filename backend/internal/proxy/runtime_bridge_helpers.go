@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"ant-chrome/backend/internal/fsutil"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -72,16 +73,56 @@ func waitPortReady(host string, port int, timeout time.Duration) error {
 }
 
 func waitSocks5Ready(host string, port int, timeout time.Duration) error {
+	return waitSocks5ReadyContext(context.Background(), host, port, timeout)
+}
+
+func waitSocks5ReadyContext(ctx context.Context, host string, port int, timeout time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
-		if err := checkSocks5Handshake(addr, 300*time.Millisecond); err == nil {
-			return nil
-		} else {
-			lastErr = err
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		time.Sleep(100 * time.Millisecond)
+		probeTimeout := 300 * time.Millisecond
+		if remaining := time.Until(deadline); remaining < probeTimeout {
+			probeTimeout = remaining
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+		err := checkSocks5HandshakeContext(probeCtx, addr, probeTimeout)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		pause := 100 * time.Millisecond
+		if remaining := time.Until(deadline); remaining < pause {
+			pause = remaining
+		}
+		if pause <= 0 {
+			break
+		}
+		timer := time.NewTimer(pause)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 	if lastErr != nil {
 		return fmt.Errorf("socks5 端口 %d 未就绪: %w", port, lastErr)
@@ -90,12 +131,24 @@ func waitSocks5Ready(host string, port int, timeout time.Duration) error {
 }
 
 func checkSocks5Handshake(addr string, timeout time.Duration) error {
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+	return checkSocks5HandshakeContext(context.Background(), addr, timeout)
+}
+
+func checkSocks5HandshakeContext(ctx context.Context, addr string, timeout time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dialer := &net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	deadline := time.Now().Add(timeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	_ = conn.SetDeadline(deadline)
 	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
 		return err
 	}

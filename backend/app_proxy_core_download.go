@@ -67,9 +67,6 @@ type proxyCoreSpec struct {
 }
 
 func (a *App) BrowserProxyCoreDownload(input ProxyCoreDownloadRequest) error {
-	if a.ctx == nil {
-		return fmt.Errorf("app context is nil")
-	}
 	spec, err := normalizeProxyCoreSpec(input.Core)
 	if err != nil {
 		return err
@@ -79,8 +76,11 @@ func (a *App) BrowserProxyCoreDownload(input ProxyCoreDownloadRequest) error {
 		return err
 	}
 	version := normalizeProxyCoreVersion(input.Version, spec.Version)
-	go a.downloadProxyCore(a.ctx, spec, target, input.ProxyConfig, version)
-	return nil
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	return a.startBackgroundTask(func(ctx context.Context) {
+		a.downloadProxyCore(ctx, spec, target, input.ProxyConfig, version)
+	})
 }
 
 func (a *App) BrowserProxyCoreStatus(input ProxyCoreDownloadRequest) ProxyCoreStatusResult {
@@ -215,6 +215,9 @@ func (a *App) downloadProxyCore(ctx context.Context, spec proxyCoreSpec, target 
 	send("resolving", 0, fmt.Sprintf("正在查询官方 Release %s（%s）", version, proxyLabel))
 
 	release, err := fetchGitHubRelease(ctx, client, spec.Repo, version)
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	if err != nil {
 		send("error", 0, "查询 Release 失败: "+err.Error())
 		return
@@ -225,10 +228,16 @@ func (a *App) downloadProxyCore(ctx context.Context, spec proxyCoreSpec, target 
 		return
 	}
 
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	platformDir := fmt.Sprintf("%s-%s", target.GOOS, target.GOARCH)
 	installDir := proxyCoreInstallDir(a, spec, target)
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		send("error", 0, "创建安装目录失败: "+err.Error())
+		return
+	}
+	if err := ctx.Err(); err != nil {
 		return
 	}
 
@@ -247,6 +256,9 @@ func (a *App) downloadProxyCore(ctx context.Context, spec proxyCoreSpec, target 
 		return
 	}
 	_ = tmp.Close()
+	if err := ctx.Err(); err != nil {
+		return
+	}
 
 	extractDir, err := os.MkdirTemp(installDir, "extract-*")
 	if err != nil {
@@ -260,12 +272,18 @@ func (a *App) downloadProxyCore(ctx context.Context, spec proxyCoreSpec, target 
 		send("error", 0, "解压失败: "+err.Error())
 		return
 	}
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	binaryPath, err := findProxyCoreBinary(extractDir, spec.BinaryBase, target.GOOS)
 	if err != nil {
 		send("error", 0, err.Error())
 		return
 	}
 
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	if err := replaceDirContents(extractDir, installDir); err != nil {
 		send("error", 0, "安装失败: "+err.Error())
 		return

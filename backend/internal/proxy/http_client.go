@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -24,7 +25,7 @@ func BuildProxyHTTPClient(
 	connectorType string,
 	timeout time.Duration,
 ) (*http.Client, error) {
-	return buildProxyHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+	return buildProxyHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
 }
 
 func buildProxyHTTPClient(
@@ -37,6 +38,26 @@ func buildProxyHTTPClient(
 	connectorType string,
 	timeout time.Duration,
 ) (*http.Client, error) {
+	return buildProxyHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+}
+
+func buildProxyHTTPClientContext(
+	ctx context.Context,
+	src string,
+	proxyId string,
+	proxies []config.BrowserProxy,
+	xrayMgr *XrayManager,
+	singboxMgr *SingBoxManager,
+	clashMgr *ClashManager,
+	connectorType string,
+	timeout time.Duration,
+) (*http.Client, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	src = strings.TrimSpace(resolveProxyConfig(src, proxies, proxyId))
 	log := logger.New("ProxyHTTPClient")
 	resolution, err := ResolveProxyKernelForConnector(src, proxies, proxyId, connectorType)
@@ -93,7 +114,7 @@ func buildProxyHTTPClient(
 			log.Warn("Mihomo 管理器未初始化", logger.F("proxy_id", proxyId))
 			return nil, fmt.Errorf("Mihomo 管理器未初始化")
 		}
-		proxyAddr, err := clashMgr.EnsureNodeBridge(src, proxies, proxyId)
+		proxyAddr, err := clashMgr.EnsureNodeBridgeContext(ctx, src, proxies, proxyId)
 		if err != nil {
 			log.Warn("Mihomo 桥接启动失败", logger.F("proxy_id", proxyId), logger.F("error", err.Error()))
 			return nil, fmt.Errorf("Mihomo 桥接启动失败: %w", err)
@@ -105,7 +126,7 @@ func buildProxyHTTPClient(
 			log.Warn("sing-box 管理器未初始化", logger.F("proxy_id", proxyId))
 			return nil, fmt.Errorf("sing-box 管理器未初始化")
 		}
-		socks5Addr, err := singboxMgr.EnsureBridge(src, proxies, proxyId)
+		socks5Addr, err := singboxMgr.EnsureBridgeContext(ctx, src, proxies, proxyId)
 		if err != nil {
 			log.Warn("sing-box 桥接启动失败", logger.F("proxy_id", proxyId), logger.F("error", err.Error()))
 			return nil, fmt.Errorf("sing-box 桥接启动失败: %w", err)
@@ -117,7 +138,7 @@ func buildProxyHTTPClient(
 			log.Warn("xray 管理器未初始化", logger.F("proxy_id", proxyId))
 			return nil, fmt.Errorf("xray 管理器未初始化")
 		}
-		socks5Addr, err := xrayMgr.EnsureBridge(src, proxies, proxyId)
+		socks5Addr, err := xrayMgr.EnsureBridgeContext(ctx, src, proxies, proxyId)
 		if err != nil {
 			log.Warn("xray 桥接启动失败", logger.F("proxy_id", proxyId), logger.F("error", err.Error()))
 			return nil, fmt.Errorf("xray 桥接启动失败: %w", err)

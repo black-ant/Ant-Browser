@@ -3,8 +3,10 @@ package browser
 import (
 	"ant-chrome/backend/internal/apppath"
 	"ant-chrome/backend/internal/config"
+	"net/http"
 	"os/exec"
 	"sync"
+	"time"
 )
 
 // Profile 浏览器配置文件
@@ -143,16 +145,19 @@ type CodeProvider interface {
 
 type RuntimeEventEmitter func(eventName string, optionalData ...interface{})
 
+type CoreDownloadHTTPClientFactory func(proxyConfig string, timeout time.Duration) (*http.Client, error)
+
 // Manager 浏览器管理器
 type Manager struct {
-	Config           *config.Config
-	AppRoot          string // 应用根目录，所有相对路径基于此解析（生产=exe目录，dev=项目根目录）
-	Profiles         map[string]*Profile
-	Mutex            sync.Mutex
-	BrowserProcesses map[string]*exec.Cmd
-	XrayBridges      map[string]*XrayBridge
-	CodeProvider     CodeProvider
-	EventEmitter     RuntimeEventEmitter
+	Config                        *config.Config
+	AppRoot                       string // 应用根目录，所有相对路径基于此解析（生产=exe目录，dev=项目根目录）
+	Profiles                      map[string]*Profile
+	Mutex                         sync.Mutex
+	BrowserProcesses              map[string]*exec.Cmd
+	XrayBridges                   map[string]*XrayBridge
+	CodeProvider                  CodeProvider
+	EventEmitter                  RuntimeEventEmitter
+	CoreDownloadHTTPClientFactory CoreDownloadHTTPClientFactory
 
 	// DAO 层（注入后使用 SQLite 存储，未注入时降级到 config.yaml）
 	ProfileDAO   ProfileDAO

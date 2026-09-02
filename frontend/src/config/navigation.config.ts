@@ -2,6 +2,7 @@ export interface NavItem {
   name: string
   path: string
   icon: string
+  exact?: boolean
 }
 
 export interface NavSection {
@@ -25,7 +26,8 @@ export const navigationConfig: NavSection[] = [
   {
     title: '系统维护',
     items: [
-      { name: '系统设置', path: '/settings', icon: 'Settings' },
+      { name: '系统设置', path: '/settings', icon: 'Settings', exact: true },
+      { name: '自动化运行时', path: '/settings/automation', icon: 'Bot' },
       { name: '备份与恢复', path: '/system/backup', icon: 'Archive' },
       { name: '文档中心', path: '/system/docs', icon: 'BookOpen' },
       { name: '日志查看', path: '/browser/logs', icon: 'FileText' },

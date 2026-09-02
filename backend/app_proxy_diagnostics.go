@@ -10,9 +10,10 @@ import (
 func (a *App) BrowserProxyBuildDiagnostic(proxyId string, proxyConfig string) ProxyBuildDiagnostic {
 	proxies := a.getLatestProxies()
 	return proxy.BuildProxyDiagnostic(proxyConfig, proxies, proxyId, proxy.BuildDiagnosticOptions{
-		XrayMgr:    a.xrayMgr,
-		SingBoxMgr: a.singboxMgr,
-		ClashMgr:   a.clashMgr,
+		XrayMgr:       a.xrayMgr,
+		SingBoxMgr:    a.singboxMgr,
+		ClashMgr:      a.clashMgr,
+		ConnectorType: a.defaultProxyConnectorType(),
 	})
 }
 
@@ -21,7 +22,7 @@ func (a *App) BrowserProxyProbeBrowserPage(request ProxyBrowserProbeRequest) Pro
 	request.ProxyId = strings.TrimSpace(request.ProxyId)
 	proxies := a.getLatestProxies()
 	cfg := buildProxyBrowserProbeConfig(request)
-	result := proxy.ProbeBrowserPageConnectivity(request.ProxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, &cfg)
+	result := proxy.ProbeBrowserPageConnectivityWithConnector(request.ProxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.defaultProxyConnectorType(), &cfg)
 	return ProxyBrowserProbeResult{
 		ProxyId:     result.ProxyId,
 		Ok:          result.Ok,

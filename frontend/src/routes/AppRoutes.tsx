@@ -5,6 +5,10 @@ const SettingsPage = lazyNamed(
   () => import("../modules/settings/SettingsPage"),
   "SettingsPage",
 );
+const AutomationSettingsPage = lazyNamed(
+  () => import("../modules/settings/AutomationSettingsPage"),
+  "AutomationSettingsPage",
+);
 const BackupPage = lazyNamed(
   () => import("../modules/backup/BackupPage"),
   "BackupPage",
@@ -84,6 +88,7 @@ export function AppRoutes() {
       <Route path="/" element={<Navigate to="/browser/list" replace />} />
       <Route path="/charts" element={<ChartsPage />} />
       <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/settings/automation" element={<AutomationSettingsPage />} />
       <Route path="/system/backup" element={<BackupPage />} />
       <Route path="/system/backup/s3" element={<S3ConfigPage />} />
       <Route path="/profile" element={<ProfilePage />} />

@@ -78,9 +78,9 @@ export function BackupOpenListGetSettings():Promise<Record<string, any>>;
 
 export function BackupOpenListList(arg1:Record<string, string>):Promise<Array<Record<string, any>>>;
 
-export function BackupOpenListRevealToken():Promise<string>;
-
 export function BackupOpenListRestore(arg1:Record<string, string>,arg2:string):Promise<Record<string, any>>;
+
+export function BackupOpenListRevealToken():Promise<string>;
 
 export function BackupOpenListSaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
 

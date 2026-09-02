@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"strings"
 	"testing"
 
 	"ant-chrome/backend/internal/config"
@@ -73,18 +74,28 @@ func TestResolveProxyKernelForConnectorKeepsSingBoxOnlyProtocols(t *testing.T) {
 	}
 }
 
-func TestResolveProxyKernelForConnectorExplicitPreferenceWins(t *testing.T) {
+func TestResolveProxyKernelForConnectorRejectsMihomoFallbackInXrayStack(t *testing.T) {
+	_, err := ResolveProxyKernelForConnector(mieruClashNode, nil, "", config.BrowserConnectorXray)
+	if err == nil {
+		t.Fatal("expected mihomo-only protocol to be rejected by the xray stack")
+	}
+	if !strings.Contains(err.Error(), "当前 xray 连接栈") {
+		t.Fatalf("error = %q, want current-stack guidance", err.Error())
+	}
+}
+
+func TestResolveProxyKernelForConnectorRejectsCrossStackPreference(t *testing.T) {
 	proxyID := "p1"
 	proxies := []config.BrowserProxy{{
 		ProxyId:         proxyID,
 		ProxyConfig:     "vless://00000000-0000-0000-0000-000000000000@example.com:443",
 		PreferredKernel: ProxyKernelXray,
 	}}
-	got, err := ResolveProxyKernelForConnector("", proxies, proxyID, config.BrowserConnectorMihomo)
-	if err != nil {
-		t.Fatalf("ResolveProxyKernelForConnector returned error: %v", err)
+	_, err := ResolveProxyKernelForConnector("", proxies, proxyID, config.BrowserConnectorMihomo)
+	if err == nil {
+		t.Fatal("expected xray preference to be rejected by the mihomo stack")
 	}
-	if got.Kernel != ProxyKernelXray {
-		t.Fatalf("kernel = %q, want explicit %q; resolution=%+v", got.Kernel, ProxyKernelXray, got)
+	if !strings.Contains(err.Error(), "当前 mihomo 连接栈") {
+		t.Fatalf("error = %q, want current-stack guidance", err.Error())
 	}
 }

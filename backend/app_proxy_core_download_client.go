@@ -15,7 +15,7 @@ func (a *App) unifiedProxyCoreHTTPClient(timeout time.Duration, proxyConfig stri
 		return nil, "", fmt.Errorf("\u5e94\u7528\u5b9e\u4f8b\u4e3a\u7a7a")
 	}
 	rawProxyConfig := strings.TrimSpace(proxyConfig)
-	if rawProxyConfig == "" || strings.EqualFold(rawProxyConfig, "direct://") {
+	if rawProxyConfig == "" || rawProxyConfig == "__direct__" || strings.EqualFold(rawProxyConfig, "direct://") {
 		return &http.Client{Timeout: timeout, Transport: proxyCoreDirectTransport()}, "\u76f4\u8fde", nil
 	}
 	if parsed, err := url.Parse(rawProxyConfig); err == nil && isBadLocalHTTPSProxy(parsed) {

@@ -7,6 +7,19 @@ import (
 	"time"
 )
 
+func (m *XrayManager) discardBridge(key string, bridge *XrayBridge) {
+	if bridge == nil {
+		return
+	}
+	m.mu.Lock()
+	bridge.Stopping = true
+	if current, ok := m.Bridges[key]; ok && current == bridge {
+		delete(m.Bridges, key)
+	}
+	m.mu.Unlock()
+	m.stopBridgeProcess(bridge)
+}
+
 func (m *XrayManager) tryReuseBridge(key string, pin bool) (string, bool) {
 	var stale *XrayBridge
 

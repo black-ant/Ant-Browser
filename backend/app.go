@@ -43,6 +43,10 @@ type App struct {
 	quitMu                 sync.RWMutex
 	runtimeMu              sync.RWMutex
 	runtimeStopped         bool
+	backgroundTaskCtx      context.Context
+	backgroundTaskCancel   context.CancelFunc
+	backgroundTasks        sync.WaitGroup
+	backgroundTasksBlocked bool
 	maintenanceMu          sync.Mutex
 	bridgeMu               sync.Mutex
 	profileBridgeRefs      map[string]profileProxyBridgeRef

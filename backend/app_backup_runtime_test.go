@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -48,7 +49,7 @@ func TestBackupStopRuntimeForMaintenanceClearsProfileRuntimeState(t *testing.T) 
 	}
 }
 
-func TestBackupStopRuntimeForMaintenanceKeepsSpeedScheduler(t *testing.T) {
+func TestBackupStopRuntimeForMaintenanceStopsSpeedScheduler(t *testing.T) {
 	oldTryClose := backupTryCloseBrowserViaCDP
 	oldTerminate := backupTerminateBrowserProcessesByUserDataDir
 	backupTryCloseBrowserViaCDP = func(int, time.Duration) bool { return false }
@@ -67,8 +68,36 @@ func TestBackupStopRuntimeForMaintenanceKeepsSpeedScheduler(t *testing.T) {
 
 	app.backupStopRuntimeForMaintenance()
 
-	if app.speedScheduler != scheduler {
-		t.Fatal("维护流程不应停止或置空测速调度器")
+	if app.speedScheduler != nil {
+		t.Fatal("维护流程应停止并清空测速调度器")
+	}
+}
+
+func TestBackupStopRuntimeForMaintenanceCancelsBackgroundTasks(t *testing.T) {
+	app := NewApp(t.TempDir())
+	app.setRuntimeContext(context.Background())
+	taskStopped := make(chan struct{})
+	if err := app.startBackgroundTask(func(ctx context.Context) {
+		<-ctx.Done()
+		close(taskStopped)
+	}); err != nil {
+		t.Fatalf("startBackgroundTask returned error: %v", err)
+	}
+
+	if err := app.backupStopRuntimeForMaintenance(); err != nil {
+		t.Fatalf("backupStopRuntimeForMaintenance returned error: %v", err)
+	}
+	select {
+	case <-taskStopped:
+	case <-time.After(time.Second):
+		t.Fatal("background task was not cancelled")
+	}
+	if err := app.startBackgroundTask(func(context.Context) {}); err == nil {
+		t.Fatal("maintenance should block new background tasks")
+	}
+	app.resumeBackgroundTasks()
+	if err := app.startBackgroundTask(func(context.Context) {}); err != nil {
+		t.Fatalf("background tasks did not resume after maintenance: %v", err)
 	}
 }
 

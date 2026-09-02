@@ -4,6 +4,7 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -286,18 +287,24 @@ func (a *App) relativeCorePathIfPossible(absDir string) string {
 
 // BrowserCoreDownload 在线下载并自动解压配置内核
 func (a *App) BrowserCoreDownload(coreName, url, proxyConfig string) error {
-	if a.ctx == nil {
-		return fmt.Errorf("app context is nil")
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	if a.browserMgr == nil {
+		return fmt.Errorf("浏览器管理器未初始化")
 	}
-	go a.browserMgr.DownloadAndExtractCore(a.ctx, coreName, url, proxyConfig)
-	return nil
+	return a.startBackgroundTask(func(ctx context.Context) {
+		a.browserMgr.DownloadAndExtractCore(ctx, coreName, url, proxyConfig)
+	})
 }
 
 // BrowserCoreRedownload 重新下载并替换指定内核目录
 func (a *App) BrowserCoreRedownload(coreId, url, proxyConfig string) error {
-	if a.ctx == nil {
-		return fmt.Errorf("app context is nil")
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	if a.browserMgr == nil {
+		return fmt.Errorf("浏览器管理器未初始化")
 	}
-	go a.browserMgr.RedownloadCore(a.ctx, coreId, url, proxyConfig)
-	return nil
+	return a.startBackgroundTask(func(ctx context.Context) {
+		a.browserMgr.RedownloadCore(ctx, coreId, url, proxyConfig)
+	})
 }

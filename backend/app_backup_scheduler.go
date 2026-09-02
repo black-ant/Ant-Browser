@@ -200,6 +200,8 @@ func (s *backupScheduler) execute(openList config.OpenListChannelConfig) {
 		return
 	}
 
+	s.app.maintenanceMu.Lock()
+	defer s.app.maintenanceMu.Unlock()
 	result, err := s.app.backupOpenListUploadLocked(map[string]string{
 		"baseURL":             openList.BaseURL,
 		"remotePath":          openList.RemotePath,

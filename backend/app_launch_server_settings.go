@@ -55,8 +55,9 @@ func ensureLaunchServerPortAvailable(port int) error {
 
 func (a *App) restartLaunchServer(port int) error {
 	log := logger.New("LaunchServer")
-	if a.launchServer != nil {
-		if err := a.launchServer.Stop(); err != nil {
+	previousServer := a.launchServer
+	if previousServer != nil {
+		if err := previousServer.Stop(); err != nil {
 			return fmt.Errorf("停止 LaunchServer 失败: %w", err)
 		}
 	}
@@ -68,6 +69,13 @@ func (a *App) restartLaunchServer(port int) error {
 		Header:  a.config.LaunchServer.Auth.Header,
 	})
 	if err := server.Start(); err != nil {
+		if previousServer != nil {
+			if restoreErr := previousServer.Start(); restoreErr != nil {
+				a.launchServer = nil
+				return fmt.Errorf("启动 LaunchServer 失败: %w；恢复旧 LaunchServer 失败: %v", err, restoreErr)
+			}
+			a.launchServer = previousServer
+		}
 		return fmt.Errorf("启动 LaunchServer 失败: %w", err)
 	}
 	a.launchServer = server

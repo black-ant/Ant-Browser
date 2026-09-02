@@ -138,12 +138,12 @@ export function BackupOpenListList(arg1) {
   return window['go']['main']['App']['BackupOpenListList'](arg1);
 }
 
-export function BackupOpenListRevealToken() {
-  return window['go']['main']['App']['BackupOpenListRevealToken']();
-}
-
 export function BackupOpenListRestore(arg1, arg2) {
   return window['go']['main']['App']['BackupOpenListRestore'](arg1, arg2);
+}
+
+export function BackupOpenListRevealToken() {
+  return window['go']['main']['App']['BackupOpenListRevealToken']();
 }
 
 export function BackupOpenListSaveSettings(arg1) {

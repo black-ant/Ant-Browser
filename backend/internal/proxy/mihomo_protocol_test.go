@@ -79,7 +79,7 @@ func TestMieruSpeedTestRequiresMihomoConnector(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		config.BrowserConnectorXray,
+		config.BrowserConnectorMihomo,
 		&SpeedTestConfig{Timeout: 10, URLs: []string{"http://latency.test/generate_204"}},
 	)
 	if result.Ok {

@@ -46,8 +46,20 @@ func ProbeBrowserPageConnectivity(
 	clashMgr *ClashManager,
 	cfg *BrowserPageProbeConfig,
 ) BrowserPageProbeResult {
+	return ProbeBrowserPageConnectivityWithConnector(proxyId, proxies, xrayMgr, singboxMgr, clashMgr, config.BrowserConnectorXray, cfg)
+}
+
+func ProbeBrowserPageConnectivityWithConnector(
+	proxyId string,
+	proxies []config.BrowserProxy,
+	xrayMgr *XrayManager,
+	singboxMgr *SingBoxManager,
+	clashMgr *ClashManager,
+	connectorType string,
+	cfg *BrowserPageProbeConfig,
+) BrowserPageProbeResult {
 	normalized := normalizeBrowserPageProbeConfig(cfg)
-	client, err := buildProxyHTTPClient("", proxyId, proxies, xrayMgr, singboxMgr, clashMgr, config.BrowserConnectorXray, normalized.Timeout)
+	client, err := buildProxyHTTPClient("", proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, normalized.Timeout)
 	if err != nil {
 		return BrowserPageProbeResult{ProxyId: proxyId, Ok: false, Error: err.Error(), Concurrency: normalized.Concurrency}
 	}

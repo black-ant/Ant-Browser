@@ -5,6 +5,7 @@ import (
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/fsutil"
 	"ant-chrome/backend/internal/logger"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -36,12 +37,17 @@ type MihomoNodeBridge struct {
 }
 
 func (m *ClashManager) EnsureNodeBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, error) {
-	proxyURL, _, err := m.ensureNodeBridge(proxyConfig, proxies, proxyId, false)
+	return m.EnsureNodeBridgeContext(context.Background(), proxyConfig, proxies, proxyId)
+
+}
+
+func (m *ClashManager) EnsureNodeBridgeContext(ctx context.Context, proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, error) {
+	proxyURL, _, err := m.ensureNodeBridgeContext(ctx, proxyConfig, proxies, proxyId, false)
 	return proxyURL, err
 }
 
 func (m *ClashManager) AcquireNodeBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string) (string, string, error) {
-	return m.ensureNodeBridge(proxyConfig, proxies, proxyId, true)
+	return m.ensureNodeBridgeContext(context.Background(), proxyConfig, proxies, proxyId, true)
 }
 
 func (m *ClashManager) ReleaseNodeBridge(key string) {
@@ -72,7 +78,17 @@ func (m *ClashManager) ReleaseNodeBridge(key string) {
 }
 
 func (m *ClashManager) ensureNodeBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string, pin bool) (string, string, error) {
+	return m.ensureNodeBridgeContext(context.Background(), proxyConfig, proxies, proxyId, pin)
+}
+
+func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig string, proxies []config.BrowserProxy, proxyId string, pin bool) (string, string, error) {
 	log := logger.New("Mihomo")
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
 	src := strings.TrimSpace(resolveProxyConfig(proxyConfig, proxies, proxyId))
 	if src == "" {
 		return "", "", fmt.Errorf("未找到代理节点")
@@ -85,9 +101,14 @@ func (m *ClashManager) ensureNodeBridge(proxyConfig string, proxies []config.Bro
 	unlock := m.lockLaunchForKey(key)
 	defer unlock()
 
-	if proxyURL, reused := m.tryReuseMihomoNodeBridge(key, pin); reused {
+	if proxyURL, reused, err := m.tryReuseMihomoNodeBridgeContext(ctx, key, pin); err != nil {
+		return "", "", err
+	} else if reused {
 		log.Info("复用 mihomo 桥接", logger.F("engine", "mihomo"), logger.F("key", key[:8]), logger.F("proxy_url", proxyURL))
 		return proxyURL, key, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return "", "", err
 	}
 
 	binaryPath, err := m.resolveMihomoBinary()
@@ -125,36 +146,66 @@ func (m *ClashManager) ensureNodeBridge(proxyConfig string, proxies []config.Bro
 		}
 		return "", "", fmt.Errorf("mihomo 启动失败: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if stderrFile != nil {
+			stderrFile.Close()
+		}
+		return "", "", err
+	}
 	bridge := &MihomoNodeBridge{NodeKey: key, Port: port, ControllerPort: controllerPort, Cmd: cmd, Pid: cmd.Process.Pid, ConfigPath: cfgPath, Running: true, LastUsedAt: time.Now(), ExitDone: make(chan struct{})}
 	if pin {
 		bridge.RefCount = 1
 	}
 	m.watchMihomoNodeBridge(bridge)
-	if err := waitTCPPortReady("127.0.0.1", port, 10*time.Second); err != nil {
+	if err := waitTCPPortReadyContext(ctx, "127.0.0.1", port, 10*time.Second); err != nil {
 		if stderrFile != nil {
 			stderrFile.Close()
 		}
 		_ = cmd.Process.Kill()
 		return "", "", fmt.Errorf("mihomo mixed-port 未就绪: %w", err)
 	}
-	if err := waitTCPPortReady("127.0.0.1", controllerPort, 10*time.Second); err != nil {
+	if err := waitTCPPortReadyContext(ctx, "127.0.0.1", controllerPort, 10*time.Second); err != nil {
 		if stderrFile != nil {
 			stderrFile.Close()
 		}
 		_ = cmd.Process.Kill()
 		return "", "", fmt.Errorf("mihomo 控制端口未就绪: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		m.discardMihomoNodeBridge(key, bridge)
+		if stderrFile != nil {
+			stderrFile.Close()
+		}
+		return "", "", err
+	}
 	if stderrFile != nil {
 		stderrFile.Close()
 	}
 	m.registerMihomoNodeBridge(key, bridge)
+	if err := ctx.Err(); err != nil {
+		m.discardMihomoNodeBridge(key, bridge)
+		return "", "", err
+	}
 	log.Info("mihomo 内核进程已启动", logger.F("engine", "mihomo"), logger.F("key", key[:8]), logger.F("pid", bridge.Pid), logger.F("port", port))
 	return fmt.Sprintf("http://127.0.0.1:%d", port), key, nil
 }
 
 func (m *ClashManager) tryReuseMihomoNodeBridge(key string, pin bool) (string, bool) {
+	proxyURL, reused, _ := m.tryReuseMihomoNodeBridgeContext(context.Background(), key, pin)
+	return proxyURL, reused
+}
+
+func (m *ClashManager) tryReuseMihomoNodeBridgeContext(ctx context.Context, key string, pin bool) (string, bool, error) {
 	if m == nil {
-		return "", false
+		return "", false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", false, err
 	}
 	m.mu.Lock()
 	if m.NodeBridges == nil {
@@ -164,10 +215,13 @@ func (m *ClashManager) tryReuseMihomoNodeBridge(key string, pin bool) (string, b
 	if bridge == nil || !bridge.Running || bridge.Cmd == nil || bridge.Cmd.Process == nil || bridge.Cmd.ProcessState != nil {
 		delete(m.NodeBridges, key)
 		m.mu.Unlock()
-		return "", false
+		return "", false, nil
 	}
 	m.mu.Unlock()
-	if waitTCPPortReady("127.0.0.1", bridge.Port, 800*time.Millisecond) != nil {
+	if err := waitTCPPortReadyContext(ctx, "127.0.0.1", bridge.Port, 800*time.Millisecond); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", false, ctxErr
+		}
 		_ = bridge.Cmd.Process.Kill()
 		m.mu.Lock()
 		if m.NodeBridges[key] == bridge {
@@ -175,19 +229,37 @@ func (m *ClashManager) tryReuseMihomoNodeBridge(key string, pin bool) (string, b
 			delete(m.NodeBridges, key)
 		}
 		m.mu.Unlock()
-		return "", false
+		return "", false, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return "", false, err
 	}
 	m.mu.Lock()
 	if m.NodeBridges[key] != bridge || !bridge.Running {
 		m.mu.Unlock()
-		return "", false
+		return "", false, nil
 	}
 	if pin {
 		bridge.RefCount++
 	}
 	bridge.LastUsedAt = time.Now()
 	m.mu.Unlock()
-	return fmt.Sprintf("http://127.0.0.1:%d", bridge.Port), true
+	return fmt.Sprintf("http://127.0.0.1:%d", bridge.Port), true, nil
+}
+
+func (m *ClashManager) discardMihomoNodeBridge(key string, bridge *MihomoNodeBridge) {
+	if bridge == nil {
+		return
+	}
+	m.mu.Lock()
+	bridge.Running = false
+	if current, ok := m.NodeBridges[key]; ok && current == bridge {
+		delete(m.NodeBridges, key)
+	}
+	m.mu.Unlock()
+	if bridge.Cmd != nil && bridge.Cmd.Process != nil {
+		_ = bridge.Cmd.Process.Kill()
+	}
 }
 
 func (m *ClashManager) TestNodeDelay(proxyId string, proxies []config.BrowserProxy, cfg *SpeedTestConfig) TestResult {
@@ -437,17 +509,53 @@ func (m *ClashManager) resolveMihomoWorkdir(key string) string {
 }
 
 func waitTCPPortReady(host string, port int, timeout time.Duration) error {
+	return waitTCPPortReadyContext(context.Background(), host, port, timeout)
+}
+
+func waitTCPPortReadyContext(ctx context.Context, host string, port int, timeout time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	deadline := time.Now().Add(timeout)
 	address := net.JoinHostPort(host, strconv.Itoa(port))
 	for {
-		conn, err := net.DialTimeout("tcp", address, 200*time.Millisecond)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		probeTimeout := 200 * time.Millisecond
+		if remaining := time.Until(deadline); remaining < probeTimeout {
+			probeTimeout = remaining
+		}
+		dialer := &net.Dialer{Timeout: probeTimeout}
+		conn, err := dialer.DialContext(ctx, "tcp", address)
 		if err == nil {
 			_ = conn.Close()
 			return nil
 		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if time.Now().After(deadline) {
 			return err
 		}
-		time.Sleep(100 * time.Millisecond)
+		pause := 100 * time.Millisecond
+		if remaining := time.Until(deadline); remaining < pause {
+			pause = remaining
+		}
+		timer := time.NewTimer(pause)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 }

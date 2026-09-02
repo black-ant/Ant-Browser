@@ -11,7 +11,9 @@ import (
 	"ant-chrome/backend/internal/proxy"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -129,6 +131,10 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	a.xrayMgr = proxy.NewXrayManager(cfg, a.appRoot)
 	a.clashMgr = proxy.NewClashManager(cfg, a.appRoot)
 	a.singboxMgr = proxy.NewSingBoxManager(cfg, a.appRoot)
+	a.browserMgr.CoreDownloadHTTPClientFactory = func(proxyConfig string, timeout time.Duration) (*http.Client, error) {
+		client, _, err := a.unifiedProxyCoreHTTPClient(timeout, proxyConfig)
+		return client, err
+	}
 
 	conn := db.GetConn()
 	a.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(conn)
@@ -214,15 +220,24 @@ func errorMessage(err error) string {
 }
 
 func (a *App) startupInitSpeedScheduler() {
-	a.speedScheduler = browser.NewProxySpeedScheduler(
-		a.browserMgr.ProxyDAO,
-		func(proxyId string) (bool, int64, string) {
-			connectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
-			r := a.testProxySpeedWithConnector(proxyId, a.getLatestProxies(), connectorType)
-			return r.Ok, r.LatencyMs, r.Error
-		},
-		browser.DefaultProxySpeedInterval,
-		browser.DefaultProxySpeedConcurrency,
-	)
+	a.ensureSpeedScheduler()
+}
+
+func (a *App) ensureSpeedScheduler() {
+	if a == nil || a.config == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil {
+		return
+	}
+	if a.speedScheduler == nil {
+		a.speedScheduler = browser.NewProxySpeedScheduler(
+			a.browserMgr.ProxyDAO,
+			func(proxyId string) (bool, int64, string) {
+				connectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
+				r := a.testProxySpeedWithConnector(proxyId, a.getLatestProxies(), connectorType)
+				return r.Ok, r.LatencyMs, r.Error
+			},
+			browser.DefaultProxySpeedInterval,
+			browser.DefaultProxySpeedConcurrency,
+		)
+	}
 	a.speedScheduler.Start()
 }
