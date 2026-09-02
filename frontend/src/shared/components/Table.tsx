@@ -26,6 +26,7 @@ interface TableProps<T> {
   emptyText?: string
   onRowClick?: (record: T) => void
   className?: string
+  tableMinWidth?: string | number
   maxHeight?: string  // 表格最大高度，默认 'calc(100vh - 320px)'
   stickyHeader?: boolean  // 是否固定表头，默认 true
   onSort?: (sorterResult: SorterResult) => void // 排序变化回调
@@ -41,6 +42,7 @@ export function Table<T extends Record<string, any>>({
   emptyText = '暂无数据',
   onRowClick,
   className,
+  tableMinWidth,
   maxHeight = 'calc(100vh - 320px)',
   stickyHeader = true,
   onSort,
@@ -100,17 +102,17 @@ export function Table<T extends Record<string, any>>({
 
   return (
     <div
-      className={clsx('overflow-auto', className)}
+      className={clsx('w-full min-w-0 overflow-auto', className)}
       style={{ maxHeight }}
     >
-      <table className="min-w-full">
+      <table className="min-w-full" style={{ minWidth: tableMinWidth }}>
         <thead className={clsx(stickyHeader && 'sticky top-0 z-10')}>
           <tr>
             {columns.map((col) => (
               <th
                 key={col.key}
                 className={clsx(
-                  'px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)]',
+                  'whitespace-nowrap px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)]',
                   col.align === 'center' && 'text-center',
                   col.align === 'right' && 'text-right',
                   !col.align && 'text-left',

@@ -723,7 +723,18 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     {
       key: 'name',
       title: '备份文件',
-      render: value => <span className="min-w-0 break-all text-[var(--color-text-primary)]">{value}</span>,
+      width: 280,
+      render: value => {
+        const name = String(value || '').trim()
+        return (
+          <span
+            className="block max-w-[280px] truncate text-[var(--color-text-primary)]"
+            title={name || undefined}
+          >
+            {name || '-'}
+          </span>
+        )
+      },
     },
     {
       key: 'packageType',
@@ -762,6 +773,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     {
       key: 'location',
       title: '位置',
+      width: 280,
       render: (value, item) => {
         const location = String(value || '').trim()
         if (!location) return '—'
@@ -821,8 +833,8 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
 
   return (
     <Card padding="none">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-muted)] px-5 py-3">
-        <div className="flex min-w-0 items-end gap-0" role="tablist" aria-label="备份来源">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3">
+        <div className="flex min-w-0 flex-wrap items-end gap-2" role="tablist" aria-label="备份来源">
           {filterItems.map(filterItem => (
             <button
               key={filterItem.key}
@@ -830,10 +842,10 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
               role="tab"
               aria-selected={filter === filterItem.key}
               onClick={() => setFilter(filterItem.key)}
-              className={`border-b-2 px-4 py-2 text-sm transition-colors ${
+              className={`flex h-9 w-[88px] shrink-0 items-center justify-center whitespace-nowrap rounded-md border px-3 py-2 text-sm transition-colors ${
                 filter === filterItem.key
-                  ? 'border-[var(--color-accent)] font-medium text-[var(--color-text-primary)]'
-                  : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
+                  ? 'border-black !bg-black font-medium !text-white [-webkit-text-fill-color:#ffffff]'
+                  : 'border-[var(--color-border-strong)] bg-[var(--color-border-strong)] text-[var(--color-text-primary)] hover:border-[var(--color-text-secondary)] hover:bg-[var(--color-border-default)] hover:text-[var(--color-text-primary)]'
               }`}
             >
               {filterItem.label}
@@ -845,6 +857,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
           <Button
             size="sm"
             variant="secondary"
+            className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]"
             onClick={() => setScanModalOpen(true)}
             disabled={busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}
             title="输入远程连接并扫描备份"
@@ -852,7 +865,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
             <Search className="h-4 w-4" />
             扫描远程
           </Button>
-          <Button size="sm" variant="secondary" onClick={handleRefresh} loading={busy === 'list'} disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}>
+          <Button size="sm" variant="secondary" className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]" onClick={handleRefresh} loading={busy === 'list'} disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}>
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
@@ -870,7 +883,8 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
             : filter === 'openlist'
               ? '暂无 OpenList 备份'
               : '暂无 S3 备份'}
-           className="min-w-[1000px]"
+           className="w-full"
+           tableMinWidth={1440}
            maxHeight="none"
          />
       </div>
