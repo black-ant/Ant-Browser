@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package singleinstance
 
 import (
 	"ant-chrome/backend"

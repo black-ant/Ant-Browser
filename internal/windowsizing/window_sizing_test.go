@@ -1,16 +1,16 @@
-package main
+package windowsizing
 
 import "testing"
 
 func TestFitStartupWindowBoundsKeepsConfiguredSizeWithinWorkArea(t *testing.T) {
-	configBounds := startupWindowBounds{
+	configBounds := StartupWindowBounds{
 		Width:     1600,
 		Height:    900,
 		MinWidth:  1200,
 		MinHeight: 700,
 	}
 
-	got := fitStartupWindowBounds(configBounds, desktopWorkArea{Width: 1920, Height: 1080}, true)
+	got := fitStartupWindowBounds(configBounds, DesktopWorkArea{Width: 1920, Height: 1080}, true)
 
 	if got.Width != configBounds.Width || got.Height != configBounds.Height {
 		t.Fatalf("window size = %dx%d, want configured size %dx%d", got.Width, got.Height, configBounds.Width, configBounds.Height)
@@ -21,14 +21,14 @@ func TestFitStartupWindowBoundsKeepsConfiguredSizeWithinWorkArea(t *testing.T) {
 }
 
 func TestFitStartupWindowBoundsClampsOnlyOversizedDimensions(t *testing.T) {
-	configBounds := startupWindowBounds{
+	configBounds := StartupWindowBounds{
 		Width:     2200,
 		Height:    800,
 		MinWidth:  1200,
 		MinHeight: 700,
 	}
 
-	got := fitStartupWindowBounds(configBounds, desktopWorkArea{Width: 1920, Height: 700}, true)
+	got := fitStartupWindowBounds(configBounds, DesktopWorkArea{Width: 1920, Height: 700}, true)
 
 	if got.Width != 1920 {
 		t.Fatalf("width = %d, want work area width 1920", got.Width)
@@ -42,14 +42,14 @@ func TestFitStartupWindowBoundsClampsOnlyOversizedDimensions(t *testing.T) {
 }
 
 func TestFitStartupWindowBoundsKeepsConfiguredSizeWithoutWorkArea(t *testing.T) {
-	configBounds := startupWindowBounds{
+	configBounds := StartupWindowBounds{
 		Width:     1600,
 		Height:    900,
 		MinWidth:  1200,
 		MinHeight: 700,
 	}
 
-	got := fitStartupWindowBounds(configBounds, desktopWorkArea{}, false)
+	got := fitStartupWindowBounds(configBounds, DesktopWorkArea{}, false)
 
 	if got != configBounds {
 		t.Fatalf("bounds = %+v, want %+v", got, configBounds)

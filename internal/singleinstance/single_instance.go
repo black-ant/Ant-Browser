@@ -1,4 +1,4 @@
-package main
+package singleinstance
 
 import (
 	"bufio"
@@ -19,18 +19,31 @@ type singleInstanceLockInfo struct {
 	Addr string `json:"addr"`
 }
 
-type singleInstanceGuard struct {
+type Guard struct {
 	lockPath   string
 	lock       *singleInstanceFileLock
 	listener   net.Listener
-	activation chan singleInstanceActivationRequest
+	activation chan ActivationRequest
 }
 
-type singleInstanceActivationRequest struct {
+type ActivationRequest struct {
 	done chan struct{}
 }
 
-func acquireSingleInstance(appRoot string) (*singleInstanceGuard, bool, error) {
+func (r ActivationRequest) Complete() {
+	if r.done != nil {
+		close(r.done)
+	}
+}
+
+func (g *Guard) Activations() <-chan ActivationRequest {
+	if g == nil {
+		return nil
+	}
+	return g.activation
+}
+
+func Acquire(appRoot string) (*Guard, bool, error) {
 	stateRoot := singleInstanceStateRoot(appRoot)
 	if err := os.MkdirAll(stateRoot, 0o755); err != nil {
 		return nil, false, fmt.Errorf("准备单实例状态目录失败: %w", err)
@@ -55,11 +68,11 @@ func acquireSingleInstance(appRoot string) (*singleInstanceGuard, bool, error) {
 				_ = listener.Close()
 				return nil, false, fmt.Errorf("写入单实例锁失败: %w", encodeErr)
 			}
-			guard := &singleInstanceGuard{
+			guard := &Guard{
 				lockPath:   lockPath,
 				lock:       lock,
 				listener:   listener,
-				activation: make(chan singleInstanceActivationRequest, 8),
+				activation: make(chan ActivationRequest, 8),
 			}
 			go guard.serve()
 			return guard, true, nil
@@ -102,10 +115,10 @@ func signalExistingSingleInstance(lockPath string) bool {
 				_, _ = conn.Write([]byte("activate\n"))
 				_, _ = bufio.NewReader(conn).ReadString('\n')
 				_ = conn.Close()
-				activateExistingSingleInstanceWindow(info.PID)
+				ActivateExistingWindow(info.PID)
 				return true
 			}
-			activateExistingSingleInstanceWindow(info.PID)
+			ActivateExistingWindow(info.PID)
 		}
 		time.Sleep(120 * time.Millisecond)
 	}
@@ -124,7 +137,7 @@ func readSingleInstanceLock(lockPath string) (singleInstanceLockInfo, error) {
 	return info, nil
 }
 
-func (g *singleInstanceGuard) serve() {
+func (g *Guard) serve() {
 	for {
 		conn, err := g.listener.Accept()
 		if err != nil {
@@ -134,7 +147,7 @@ func (g *singleInstanceGuard) serve() {
 	}
 }
 
-func (g *singleInstanceGuard) handleConn(conn net.Conn) {
+func (g *Guard) handleConn(conn net.Conn) {
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	message, _ := bufio.NewReader(conn).ReadString('\n')
@@ -143,7 +156,7 @@ func (g *singleInstanceGuard) handleConn(conn net.Conn) {
 	}
 	done := make(chan struct{})
 	select {
-	case g.activation <- singleInstanceActivationRequest{done: done}:
+	case g.activation <- ActivationRequest{done: done}:
 		select {
 		case <-done:
 		case <-time.After(3 * time.Second):
@@ -153,7 +166,7 @@ func (g *singleInstanceGuard) handleConn(conn net.Conn) {
 	_, _ = conn.Write([]byte("ok\n"))
 }
 
-func (g *singleInstanceGuard) Close() {
+func (g *Guard) Close() {
 	if g == nil {
 		return
 	}

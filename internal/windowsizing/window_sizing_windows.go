@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package windowsizing
 
 import (
 	"unsafe"
@@ -19,7 +19,7 @@ type windowsRect struct {
 	Bottom int32
 }
 
-func getDesktopWorkArea() (desktopWorkArea, bool) {
+func getDesktopWorkArea() (DesktopWorkArea, bool) {
 	var workArea windowsRect
 	result, _, _ := windows.NewLazySystemDLL("user32.dll").NewProc("SystemParametersInfoW").Call(
 		uintptr(spiGetWorkArea),
@@ -28,16 +28,16 @@ func getDesktopWorkArea() (desktopWorkArea, bool) {
 		0,
 	)
 	if result == 0 {
-		return desktopWorkArea{}, false
+		return DesktopWorkArea{}, false
 	}
 
 	width := windowsPhysicalToLogicalPixels(int(workArea.Right - workArea.Left))
 	height := windowsPhysicalToLogicalPixels(int(workArea.Bottom - workArea.Top))
 	if width <= 0 || height <= 0 {
-		return desktopWorkArea{}, false
+		return DesktopWorkArea{}, false
 	}
 
-	return desktopWorkArea{Width: width, Height: height}, true
+	return DesktopWorkArea{Width: width, Height: height}, true
 }
 
 func windowsPhysicalToLogicalPixels(value int) int {

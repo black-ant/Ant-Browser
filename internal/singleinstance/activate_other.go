@@ -1,7 +1,7 @@
 //go:build !windows
 
-package main
+package singleinstance
 
 func grantExistingSingleInstanceForeground(pid int) {}
 
-func activateExistingSingleInstanceWindow(pid int) {}
+func ActivateExistingWindow(pid int) {}

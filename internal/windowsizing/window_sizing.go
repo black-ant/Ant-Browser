@@ -1,28 +1,28 @@
-package main
+package windowsizing
 
 const (
 	startupMinScaleNumerator   = 3
 	startupMinScaleDenominator = 4
 )
 
-type desktopWorkArea struct {
+type DesktopWorkArea struct {
 	Width  int
 	Height int
 }
 
-type startupWindowBounds struct {
+type StartupWindowBounds struct {
 	Width     int
 	Height    int
 	MinWidth  int
 	MinHeight int
 }
 
-func resolveStartupWindowBounds(configBounds startupWindowBounds) startupWindowBounds {
+func ResolveStartupWindowBounds(configBounds StartupWindowBounds) StartupWindowBounds {
 	screenArea, hasScreenArea := getDesktopWorkArea()
 	return fitStartupWindowBounds(configBounds, screenArea, hasScreenArea)
 }
 
-func fitStartupWindowBounds(configBounds startupWindowBounds, screenArea desktopWorkArea, hasScreenArea bool) startupWindowBounds {
+func fitStartupWindowBounds(configBounds StartupWindowBounds, screenArea DesktopWorkArea, hasScreenArea bool) StartupWindowBounds {
 	resolvedBounds := sanitizeStartupWindowBounds(configBounds)
 	if hasScreenArea && screenArea.Width > 0 && screenArea.Height > 0 {
 		resolvedBounds.Width = clampStartupDimension(resolvedBounds.Width, screenArea.Width)
@@ -35,7 +35,7 @@ func fitStartupWindowBounds(configBounds startupWindowBounds, screenArea desktop
 	return resolvedBounds
 }
 
-func sanitizeStartupWindowBounds(bounds startupWindowBounds) startupWindowBounds {
+func sanitizeStartupWindowBounds(bounds StartupWindowBounds) StartupWindowBounds {
 	if bounds.Width <= 0 {
 		bounds.Width = 1200
 	}

@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package singleinstance
 
 import (
 	"runtime"
@@ -85,7 +85,7 @@ func grantExistingSingleInstanceForeground(pid int) {
 	}
 }
 
-func activateExistingSingleInstanceWindow(pid int) {
+func ActivateExistingWindow(pid int) {
 	if pid <= 0 {
 		return
 	}
