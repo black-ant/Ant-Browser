@@ -2,13 +2,13 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-stable}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./dev.sh [stable|live|help]
+  ./scripts/dev.sh [stable|live|help]
 
 Modes:
   stable   Default. Build frontend static assets and start Wails without Vite dev server.
