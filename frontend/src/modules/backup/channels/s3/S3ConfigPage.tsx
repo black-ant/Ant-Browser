@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, CheckCircle2, Database, Eye, EyeOff, Plug, Save, XCircle } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Button, Card, FormItem, Input, Switch, toast } from '../../../../shared/components'
 import {
@@ -11,6 +11,7 @@ import {
   testS3Connection,
 } from './api'
 import type { S3CredentialField, S3Draft, S3Settings } from './api'
+import type { BackupRouteState } from '../../flow'
 
 type S3Field = keyof S3Draft
 type S3FieldErrors = Partial<Record<S3Field, string>>
@@ -89,6 +90,7 @@ function isCredentialConfigured(settings: S3Settings, field: S3CredentialField) 
 }
 
 export function S3ConfigPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const [draft, setDraft] = useState<S3Draft>(emptyDraft)
   const [settings, setSettings] = useState<S3Settings>(defaultS3Settings)
@@ -203,7 +205,26 @@ export function S3ConfigPage() {
       const next = await saveS3Settings(normalizedDraft)
       setSettings(next)
       toast.success('S3 配置已保存')
-      navigate('/system/backup')
+      const routeState = location.state as BackupRouteState | null
+      const resume = routeState?.backupResume
+      if (resume) {
+        navigate('/system/backup', {
+          state: {
+            backupResume: {
+              ...resume,
+              s3Connection: {
+                endpoint: next.endpoint,
+                region: next.region,
+                bucket: next.bucket,
+                prefix: next.prefix,
+                forcePathStyle: next.forcePathStyle,
+              },
+            },
+          },
+        })
+      } else {
+        navigate('/system/backup')
+      }
     } catch (saveError) {
       const message = errorMessage(saveError, 'S3 配置保存失败')
       setError(message)

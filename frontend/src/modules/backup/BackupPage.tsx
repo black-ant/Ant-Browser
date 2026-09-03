@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Clock3, Settings2, Upload } from 'lucide-react'
 
 import { Button, Progress, toast } from '../../shared/components'
@@ -20,6 +20,8 @@ import { fetchOpenListSettings } from './channels/openlist/api'
 import type { OpenListConnection } from './channels/openlist/api'
 import { fetchS3Settings } from './channels/s3/api'
 import type { S3Connection } from './channels/s3/api'
+import { createBackupRouteState } from './flow'
+import type { BackupRouteState } from './flow'
 import { useBackupProgressEffects } from './hooks/useBackupProgressEffects'
 
 type BackupActionLoading = 'none' | 'export' | 'import-merge'
@@ -44,6 +46,7 @@ function formatBackupRate(value?: number) {
 }
 
 export function BackupPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [backupScopeModalOpen, setBackupScopeModalOpen] = useState(false)
@@ -55,16 +58,19 @@ export function BackupPage() {
   const [pendingBackupTypes, setPendingBackupTypes] = useState<BackupTypeSelection | null>(null)
   const [pendingProfileIds, setPendingProfileIds] = useState<string[]>([])
   const openListConfigurationCompletedRef = useRef(false)
+  const openListConfiguredConnectionRef = useRef<OpenListConnection | null>(null)
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0)
   const [historyBusy, setHistoryBusy] = useState(false)
   const [openListBusy, setOpenListBusy] = useState(false)
   const [scheduledBackupModalOpen, setScheduledBackupModalOpen] = useState(false)
+  const [scheduledBackupRefreshToken, setScheduledBackupRefreshToken] = useState(0)
   const [scheduledBackupBusy, setScheduledBackupBusy] = useState(false)
   const [actionLoading, setActionLoading] = useState<BackupActionLoading>('none')
   const [exportProgress, setExportProgress] = useState<BackupExportProgress | null>(null)
   const [importProgress, setImportProgress] = useState<BackupExportProgress | null>(null)
   const [exportLogs, setExportLogs] = useState<BackupExportLogItem[]>([])
   const exportLogsRef = useRef<HTMLDivElement | null>(null)
+  const [connectionsLoading, setConnectionsLoading] = useState(true)
   const remoteBackupBusy = historyBusy || openListBusy
 
   useBackupProgressEffects({
@@ -79,6 +85,7 @@ export function BackupPage() {
 
   useEffect(() => {
     let active = true
+    setConnectionsLoading(true)
     void Promise.allSettled([fetchOpenListSettings(), fetchS3Settings()]).then(([openListResult, s3Result]) => {
       if (!active) return
       if (openListResult.status === 'fulfilled') {
@@ -99,6 +106,8 @@ export function BackupPage() {
           })
         }
       }
+    }).finally(() => {
+      if (active) setConnectionsLoading(false)
     })
     return () => {
       active = false
@@ -106,9 +115,20 @@ export function BackupPage() {
   }, [])
 
   useEffect(() => {
-    if (openListConfigModalOpen || !openListConnection || !pendingBackupTypes) return
-    setBackupTypeModalOpen(true)
-  }, [openListConfigModalOpen, openListConnection, pendingBackupTypes])
+    const routeState = location.state as BackupRouteState | null
+    const resume = routeState?.backupResume
+    if (!resume?.pendingBackupTypes) return
+
+    setPendingBackupTypes(resume.pendingBackupTypes)
+    setPendingProfileIds(Array.isArray(resume.pendingProfileIds) ? resume.pendingProfileIds : [])
+    if (resume.openListConnection !== undefined) {
+      setOpenListConnection(resume.openListConnection)
+    }
+    if (resume.s3Connection !== undefined) {
+      setS3Connection(resume.s3Connection)
+    }
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.key, location.pathname, location.state, navigate])
 
   const handleBackup = async (destinations: BackupTypeSelection, profileIds: string[]) => {
     setActionLoading('export')
@@ -175,9 +195,42 @@ export function BackupPage() {
     setBackupTypeModalOpen(true)
   }
 
+  useEffect(() => {
+    if (connectionsLoading || openListConfigModalOpen || backupTypeModalOpen || backupScopeModalOpen) return
+    const destinations = pendingBackupTypes
+    if (!destinations) return
+    const configuredOpenListConnection = openListConnection || openListConfiguredConnectionRef.current
+    if (destinations.openlist === true && !configuredOpenListConnection) return
+
+    if (destinations.s3 === true && !s3Connection) {
+      setBackupTypeModalOpen(false)
+      navigate('/system/backup/s3', {
+        state: createBackupRouteState(destinations, pendingProfileIds, configuredOpenListConnection, s3Connection),
+      })
+      toast.info('请先配置 S3，再开始备份')
+      return
+    }
+
+    const profileIds = pendingProfileIds
+    setPendingBackupTypes(null)
+    setPendingProfileIds([])
+    void handleBackup(destinations, profileIds)
+  }, [
+    backupScopeModalOpen,
+    backupTypeModalOpen,
+    connectionsLoading,
+    navigate,
+    openListConfigModalOpen,
+    openListConnection,
+    pendingBackupTypes,
+    pendingProfileIds,
+    s3Connection,
+  ])
+
   const handleBackupTypeConfirm = (destinations: BackupTypeSelection) => {
     if (destinations.openlist === true && !openListConnection) {
       openListConfigurationCompletedRef.current = false
+      openListConfiguredConnectionRef.current = null
       setPendingBackupTypes(destinations)
       setBackupTypeModalOpen(false)
       setOpenListConfigModalOpen(true)
@@ -185,10 +238,11 @@ export function BackupPage() {
       return
     }
     if (destinations.s3 === true && !s3Connection) {
-      setPendingBackupTypes(null)
-      setPendingProfileIds([])
+      setPendingBackupTypes(destinations)
       setBackupTypeModalOpen(false)
-      navigate('/system/backup/s3')
+      navigate('/system/backup/s3', {
+        state: createBackupRouteState(destinations, pendingProfileIds, openListConnection, s3Connection),
+      })
       toast.info('请先配置 S3，再开始备份')
       return
     }
@@ -386,6 +440,8 @@ export function BackupPage() {
             return
           }
           if (channelId === 'openlist') {
+            openListConfigurationCompletedRef.current = false
+            openListConfiguredConnectionRef.current = null
             setOpenListConfigModalOpen(true)
           }
         }}
@@ -426,33 +482,38 @@ export function BackupPage() {
         onConfirm={handleBackupScopeConfirm}
       />
 
+      <ScheduledBackupModal
+        open={scheduledBackupModalOpen}
+        onClose={() => setScheduledBackupModalOpen(false)}
+        refreshToken={scheduledBackupRefreshToken}
+        onRequestOpenListConfig={() => {
+          openListConfigurationCompletedRef.current = false
+          openListConfiguredConnectionRef.current = null
+          setOpenListConfigModalOpen(true)
+        }}
+        onBusyChange={setScheduledBackupBusy}
+      />
+
       <OpenListConfigModal
         open={openListConfigModalOpen}
         onClose={() => {
+          const configured = openListConfigurationCompletedRef.current
           setOpenListConfigModalOpen(false)
-          if (!openListConfigurationCompletedRef.current) {
+          if (!configured) {
             setPendingBackupTypes(null)
             setPendingProfileIds([])
+            openListConfiguredConnectionRef.current = null
           }
           openListConfigurationCompletedRef.current = false
         }}
         onConfigured={(connection) => {
           openListConfigurationCompletedRef.current = true
+          openListConfiguredConnectionRef.current = connection
           setOpenListConnection(connection)
+          setScheduledBackupRefreshToken(previous => previous + 1)
           setHistoryRefreshToken(previous => previous + 1)
         }}
         onBusyChange={setOpenListBusy}
-      />
-
-      <ScheduledBackupModal
-        open={scheduledBackupModalOpen}
-        onClose={() => setScheduledBackupModalOpen(false)}
-        onSaved={() => {}}
-        onRequestOpenListConfig={() => {
-          setScheduledBackupModalOpen(false)
-          setOpenListConfigModalOpen(true)
-        }}
-        onBusyChange={setScheduledBackupBusy}
       />
     </div>
   )

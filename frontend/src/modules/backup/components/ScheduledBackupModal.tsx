@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Clock3, XCircle } from 'lucide-react'
 
 import { Button, FormItem, Input, Modal, Switch, toast } from '../../../shared/components'
@@ -12,7 +12,7 @@ import type { ScheduledBackupDraft, ScheduledBackupSettings } from '../schedule/
 interface ScheduledBackupModalProps {
   open: boolean
   onClose: () => void
-  onSaved: (settings: ScheduledBackupSettings) => void
+  refreshToken?: number
   onRequestOpenListConfig?: () => void
   onBusyChange?: (busy: boolean) => void
 }
@@ -56,16 +56,22 @@ function statusLabel(settings: ScheduledBackupSettings) {
   }
 }
 
-export function ScheduledBackupModal({ open, onClose, onSaved, onRequestOpenListConfig, onBusyChange }: ScheduledBackupModalProps) {
+export function ScheduledBackupModal({ open, onClose, refreshToken = 0, onRequestOpenListConfig, onBusyChange }: ScheduledBackupModalProps) {
   const [draft, setDraft] = useState<ScheduledBackupDraft>(emptyDraft)
   const [settings, setSettings] = useState<ScheduledBackupSettings>(defaultScheduledBackupSettings)
   const [errors, setErrors] = useState<ScheduledBackupErrors>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const wasOpenRef = useRef(false)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      wasOpenRef.current = false
+      return
+    }
+    const preserveDraft = wasOpenRef.current
+    wasOpenRef.current = true
     let active = true
     setLoading(true)
     setError('')
@@ -74,10 +80,12 @@ export function ScheduledBackupModal({ open, onClose, onSaved, onRequestOpenList
       .then(next => {
         if (!active) return
         setSettings(next)
-        setDraft({
-          enabled: next.enabled,
-          dailyTime: next.dailyTime,
-        })
+        if (!preserveDraft) {
+          setDraft({
+            enabled: next.enabled,
+            dailyTime: next.dailyTime,
+          })
+        }
       })
       .catch(loadError => {
         if (active) setError(loadError?.message || '读取定时备份设置失败')
@@ -88,7 +96,7 @@ export function ScheduledBackupModal({ open, onClose, onSaved, onRequestOpenList
     return () => {
       active = false
     }
-  }, [open])
+  }, [open, refreshToken])
 
   useEffect(() => {
     onBusyChange?.(loading || saving)
@@ -117,7 +125,6 @@ export function ScheduledBackupModal({ open, onClose, onSaved, onRequestOpenList
     try {
       const next = await saveScheduledBackupSettings(draft)
       setSettings(next)
-      onSaved(next)
       toast.success(draft.enabled ? `已设置每日 ${next.dailyTime} 自动备份` : '已关闭定时备份')
       onClose()
     } catch (saveError: any) {

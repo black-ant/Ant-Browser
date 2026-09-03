@@ -128,6 +128,11 @@ export async function saveSettings(settings: AppSettings): Promise<boolean> {
 
 // 重置设置
 export async function resetSettings(): Promise<AppSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.ResetManagedSettings) {
+    throw new Error('当前环境不支持重置所有设置')
+  }
+  await bindings.ResetManagedSettings()
   localStorage.removeItem(SETTINGS_KEY)
   return defaultSettings
 }

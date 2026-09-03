@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { RotateCcw, Save } from 'lucide-react'
 
 import { Button, Card, ThemeSwitcher, toast } from '../../shared/components'
+import { useTheme } from '../../shared/theme'
 import {
   automationProbeSystemNode,
   automationRuntimeSelfCheck,
@@ -28,6 +29,7 @@ import type { AutomationRuntimeProgress } from './progress'
 type AutomationBusyState = 'none' | 'toggle' | 'probe' | 'runtime' | 'package' | 'install' | 'check'
 
 export function SettingsPage() {
+  const { setTheme } = useTheme()
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
   const [automationState, setAutomationState] = useState<AutomationState>(defaultAutomationState)
   const [automationProgress, setAutomationProgress] = useState<AutomationRuntimeProgress | null>(null)
@@ -103,10 +105,26 @@ export function SettingsPage() {
   }
 
   const handleReset = async () => {
-    if (!confirm('确定要重置所有设置吗？')) return
+    if (!confirm('确定要重置所有设置吗？将重置通用设置、自动化、备份渠道和 Launch Server；不会删除浏览器实例、代理或内核数据。')) return
 
     try {
-      setSettings(await resetSettings())
+      const nextSettings = await resetSettings()
+      const [automation, launchServer] = await Promise.all([
+        fetchAutomationState(),
+        fetchLaunchServerSettings(),
+      ])
+      setSettings(nextSettings)
+      setTheme('light')
+      setAutomationState(automation)
+      setAutomationProgress(null)
+      setAutomationCheck(null)
+      setAutomationProbe(null)
+      setAutomationNodeSourceDraft((automation.settings.nodeSource || 'auto') as AutomationNodeSource)
+      setAutomationSystemNodePathDraft(automation.settings.systemNodePath || '')
+      setAutomationRuntimeDirty(false)
+      setLaunchServerPortDraft(String(launchServer.preferredPort || launchServer.port || 19876))
+      setLaunchServerBaseUrl(launchServer.baseUrl)
+      setLaunchServerReady(launchServer.ready)
       setHasChanges(false)
       toast.success('设置已重置')
     } catch (error: any) {

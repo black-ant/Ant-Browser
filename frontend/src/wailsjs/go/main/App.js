@@ -678,6 +678,10 @@ export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }
 
+export function ResetManagedSettings() {
+  return window['go']['main']['App']['ResetManagedSettings']();
+}
+
 export function SaveAutomationRuntimeSettings(arg1, arg2) {
   return window['go']['main']['App']['SaveAutomationRuntimeSettings'](arg1, arg2);
 }

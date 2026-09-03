@@ -348,6 +348,8 @@ export function QuitAppOnly():Promise<void>;
 
 export function ReloadConfig():Promise<void>;
 
+export function ResetManagedSettings():Promise<void>;
+
 export function SaveAutomationRuntimeSettings(arg1:string,arg2:string):Promise<Record<string, any>>;
 
 export function SaveAutomationScriptPackageSettings(arg1:boolean):Promise<Record<string, any>>;

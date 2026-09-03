@@ -3,14 +3,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button, FormItem, Input, Modal, Select, Switch, toast } from '../../../shared/components'
 import {
   defaultOpenListSettings,
+  fetchOpenListSettings,
   listOpenListBackups,
 } from '../channels/openlist/api'
-import type { OpenListBackupFile, OpenListConnection, OpenListDraft } from '../channels/openlist/api'
+import type { OpenListBackupFile, OpenListConnection, OpenListDraft, OpenListSettings } from '../channels/openlist/api'
 import {
   defaultS3Settings,
+  fetchS3Settings,
   listS3Backups,
 } from '../channels/s3/api'
-import type { S3BackupFile, S3Connection, S3Draft } from '../channels/s3/api'
+import type { S3BackupFile, S3Connection, S3Draft, S3Settings } from '../channels/s3/api'
 
 export type RemoteScanChannel = 'openlist' | 's3'
 type ScanFieldErrors<T> = Partial<Record<keyof T, string>>
@@ -54,7 +56,7 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-function validateOpenListDraft(draft: OpenListDraft): ScanFieldErrors<OpenListDraft> {
+function validateOpenListDraft(draft: OpenListDraft, tokenConfigured: boolean): ScanFieldErrors<OpenListDraft> {
   const errors: ScanFieldErrors<OpenListDraft> = {}
   const baseURL = draft.baseURL.trim()
   if (!baseURL) {
@@ -76,13 +78,13 @@ function validateOpenListDraft(draft: OpenListDraft): ScanFieldErrors<OpenListDr
   if (draft.remotePath.trim().split('/').some(segment => segment.trim() === '..')) {
     errors.remotePath = '远程目录不能包含 ..'
   }
-  if (!draft.token.trim()) {
+  if (!draft.token.trim() && !tokenConfigured) {
     errors.token = '请输入 OpenList Token'
   }
   return errors
 }
 
-function validateS3Draft(draft: S3Draft): ScanFieldErrors<S3Draft> {
+function validateS3Draft(draft: S3Draft, accessKeyConfigured: boolean, secretAccessKeyConfigured: boolean): ScanFieldErrors<S3Draft> {
   const errors: ScanFieldErrors<S3Draft> = {}
   const endpoint = draft.endpoint.trim()
   if (endpoint) {
@@ -113,10 +115,10 @@ function validateS3Draft(draft: S3Draft): ScanFieldErrors<S3Draft> {
   if (draft.prefix.trim().split('/').some(segment => segment.trim() === '..')) {
     errors.prefix = '对象前缀不能包含 ..'
   }
-  if (!draft.accessKeyID.trim()) {
+  if (!draft.accessKeyID.trim() && !accessKeyConfigured) {
     errors.accessKeyID = '请输入 Access Key ID'
   }
-  if (!draft.secretAccessKey.trim()) {
+  if (!draft.secretAccessKey.trim() && !secretAccessKeyConfigured) {
     errors.secretAccessKey = '请输入 Secret Access Key'
   }
   return errors
@@ -135,34 +137,54 @@ export function BackupRemoteScanModal({
   const [openListErrors, setOpenListErrors] = useState<ScanFieldErrors<OpenListDraft>>({})
   const [s3Errors, setS3Errors] = useState<ScanFieldErrors<S3Draft>>({})
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState<'none' | 'scan'>('none')
+  const [busy, setBusy] = useState<'none' | 'load' | 'scan'>('none')
+  const [openListTokenConfigured, setOpenListTokenConfigured] = useState(false)
+  const [s3AccessKeyConfigured, setS3AccessKeyConfigured] = useState(false)
+  const [s3SecretAccessKeyConfigured, setS3SecretAccessKeyConfigured] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    const nextOpenList = initialOpenListConnection
-    const nextS3 = initialS3Connection
-    setChannel(nextOpenList || !nextS3 ? 'openlist' : 's3')
-    setOpenListDraft({
-      ...emptyOpenListDraft,
-      baseURL: nextOpenList?.baseURL || '',
-      remotePath: nextOpenList?.remotePath || defaultOpenListSettings.remotePath,
-      token: nextOpenList?.token || '',
-    })
-    setS3Draft({
-      ...emptyS3Draft,
-      endpoint: nextS3?.endpoint || '',
-      region: nextS3?.region || defaultS3Settings.region,
-      bucket: nextS3?.bucket || '',
-      prefix: nextS3?.prefix || '',
-      forcePathStyle: nextS3?.forcePathStyle === true,
-      accessKeyID: nextS3?.accessKeyID || '',
-      secretAccessKey: nextS3?.secretAccessKey || '',
-      sessionToken: nextS3?.sessionToken || '',
-    })
+    let active = true
+    setBusy('load')
     setOpenListErrors({})
     setS3Errors({})
     setError('')
-    setBusy('none')
+    void Promise.allSettled([fetchOpenListSettings(), fetchS3Settings()]).then(([openListResult, s3Result]) => {
+      if (!active) return
+      const savedOpenList: OpenListSettings | null = openListResult.status === 'fulfilled' ? openListResult.value : null
+      const savedS3: S3Settings | null = s3Result.status === 'fulfilled' ? s3Result.value : null
+      const nextOpenList = initialOpenListConnection
+      const nextS3 = initialS3Connection
+      const hasOpenList = Boolean(nextOpenList || savedOpenList?.tokenConfigured)
+      const hasS3 = Boolean(nextS3 || savedS3?.credentialsConfigured)
+
+      setChannel(hasOpenList || !hasS3 ? 'openlist' : 's3')
+      setOpenListTokenConfigured(savedOpenList?.tokenConfigured === true)
+      setS3AccessKeyConfigured(savedS3?.accessKeyIDConfigured === true)
+      setS3SecretAccessKeyConfigured(savedS3?.secretAccessKeyConfigured === true)
+      setOpenListDraft({
+        ...emptyOpenListDraft,
+        baseURL: nextOpenList?.baseURL ?? savedOpenList?.baseURL ?? '',
+        remotePath: nextOpenList?.remotePath ?? savedOpenList?.remotePath ?? defaultOpenListSettings.remotePath,
+        token: nextOpenList?.token ?? '',
+      })
+      setS3Draft({
+        ...emptyS3Draft,
+        endpoint: nextS3?.endpoint ?? savedS3?.endpoint ?? '',
+        region: nextS3?.region ?? savedS3?.region ?? defaultS3Settings.region,
+        bucket: nextS3?.bucket ?? savedS3?.bucket ?? '',
+        prefix: nextS3?.prefix ?? savedS3?.prefix ?? '',
+        forcePathStyle: nextS3?.forcePathStyle ?? savedS3?.forcePathStyle ?? defaultS3Settings.forcePathStyle,
+        accessKeyID: nextS3?.accessKeyID ?? '',
+        secretAccessKey: nextS3?.secretAccessKey ?? '',
+        sessionToken: nextS3?.sessionToken ?? '',
+      })
+    }).finally(() => {
+      if (active) setBusy('none')
+    })
+    return () => {
+      active = false
+    }
   }, [open])
 
   const normalizedOpenListDraft = useMemo(() => ({
@@ -197,11 +219,15 @@ export function BackupRemoteScanModal({
 
   const handleScan = async () => {
     if (channel === 'openlist') {
-      const nextErrors = validateOpenListDraft(normalizedOpenListDraft)
+      const nextErrors = validateOpenListDraft(normalizedOpenListDraft, openListTokenConfigured || Boolean(normalizedOpenListDraft.token))
       setOpenListErrors(nextErrors)
       if (Object.values(nextErrors).some(Boolean)) return
     } else {
-      const nextErrors = validateS3Draft(normalizedS3Draft)
+      const nextErrors = validateS3Draft(
+        normalizedS3Draft,
+        s3AccessKeyConfigured || Boolean(normalizedS3Draft.accessKeyID),
+        s3SecretAccessKeyConfigured || Boolean(normalizedS3Draft.secretAccessKey),
+      )
       setS3Errors(nextErrors)
       if (Object.values(nextErrors).some(Boolean)) return
     }
@@ -244,6 +270,9 @@ export function BackupRemoteScanModal({
   }
 
   const disabled = busy !== 'none'
+  const openListTokenRequired = !openListTokenConfigured && !openListDraft.token.trim()
+  const s3AccessKeyRequired = !s3AccessKeyConfigured && !s3Draft.accessKeyID.trim()
+  const s3SecretAccessKeyRequired = !s3SecretAccessKeyConfigured && !s3Draft.secretAccessKey.trim()
 
   return (
     <Modal
@@ -308,7 +337,7 @@ export function BackupRemoteScanModal({
                 disabled={disabled}
               />
             </FormItem>
-            <FormItem label="Token" required error={openListErrors.token}>
+            <FormItem label="Token" required={openListTokenRequired} hint={openListTokenConfigured ? '留空沿用已保存 Token' : undefined} error={openListErrors.token}>
               <Input
                 type="password"
                 value={openListDraft.token}
@@ -372,7 +401,7 @@ export function BackupRemoteScanModal({
               </FormItem>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <FormItem label="Access Key ID" required error={s3Errors.accessKeyID}>
+              <FormItem label="Access Key ID" required={s3AccessKeyRequired} hint={s3AccessKeyConfigured ? '留空沿用已保存凭据' : undefined} error={s3Errors.accessKeyID}>
                 <Input
                   value={s3Draft.accessKeyID}
                   onChange={event => updateS3Draft('accessKeyID', event.target.value)}
@@ -381,7 +410,7 @@ export function BackupRemoteScanModal({
                   disabled={disabled}
                 />
               </FormItem>
-              <FormItem label="Secret Access Key" required error={s3Errors.secretAccessKey}>
+              <FormItem label="Secret Access Key" required={s3SecretAccessKeyRequired} hint={s3SecretAccessKeyConfigured ? '留空沿用已保存凭据' : undefined} error={s3Errors.secretAccessKey}>
                 <Input
                   type="password"
                   value={s3Draft.secretAccessKey}

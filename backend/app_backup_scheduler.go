@@ -34,6 +34,7 @@ type backupScheduler struct {
 	state              backupScheduleState
 	lastDate           string
 	running            bool
+	resetting          bool
 	stopCh             chan struct{}
 	done               chan struct{}
 	stopOnce           sync.Once
@@ -122,7 +123,7 @@ func (s *backupScheduler) loop() {
 
 func (s *backupScheduler) check(now time.Time) {
 	s.mu.RLock()
-	if s.app == nil || s.app.config == nil || s.configurationError != "" {
+	if s.app == nil || s.app.config == nil || s.configurationError != "" || s.resetting {
 		s.mu.RUnlock()
 		return
 	}
@@ -144,7 +145,7 @@ func (s *backupScheduler) check(now time.Time) {
 	}
 
 	s.mu.Lock()
-	if s.running || s.lastDate == today {
+	if s.running || s.lastDate == today || s.resetting {
 		s.mu.Unlock()
 		return
 	}
