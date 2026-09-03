@@ -845,7 +845,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
               className={`flex h-9 w-[88px] shrink-0 items-center justify-center whitespace-nowrap rounded-md border px-3 py-2 text-sm transition-colors ${
                 filter === filterItem.key
                   ? 'border-black !bg-black font-medium !text-white [-webkit-text-fill-color:#ffffff]'
-                  : 'border-[var(--color-border-strong)] bg-[var(--color-border-strong)] text-[var(--color-text-primary)] hover:border-[var(--color-text-secondary)] hover:bg-[var(--color-border-default)] hover:text-[var(--color-text-primary)]'
+                  : 'border-[var(--color-border-strong)] bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] hover:border-[var(--color-text-secondary)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]'
               }`}
             >
               {filterItem.label}

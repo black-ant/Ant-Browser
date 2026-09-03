@@ -27,6 +27,16 @@ bat\dev.bat limited
 - `bat\dev.bat live`：显式启动 `frontend/scripts/dev-watcher.mjs`，并通过 `-frontenddevserverurl` 接入 Vite dev server
 - `bat\dev.bat limited`：在 `live` 基础上通过 `scripts/run-limited-frontend-dev.ps1` 给 watcher 及其子进程附加 Windows Job Object 内存限制
 
+Linux 或其他 POSIX shell 环境使用 `scripts/dev.sh`：
+
+```bash
+./scripts/dev.sh
+./scripts/dev.sh live
+./scripts/dev.sh help
+```
+
+该入口默认使用 `stable` 模式；Windows 开发请继续使用 `bat\dev.bat`。
+
 默认行为：
 
 - 稳定模式不依赖外部 Vite dev server，因此不会因为 watcher 或 `5218` 端口异常直接白屏
@@ -102,13 +112,13 @@ bat\publish.bat
 bat\publish.bat W
 bat\publish.bat L
 bat\publish.bat B
-bat\publish.bat W -Version 1.1.0
-bat\publish.bat B -Version 1.1.0
+bat\publish.bat W -Version 1.8.0
+bat\publish.bat B -Version 1.8.0
 ```
 
 说明：
 
-- `-Version 1.1.0` 会覆盖本次发布使用的版本号。
+- `-Version 1.8.0` 会覆盖本次发布使用的版本号；发布其他版本时替换为目标版本。
 - Windows / Linux 包名、NSIS 安装包版本号，以及本次构建期间读取到的 `wails.json productVersion` 会统一使用该值。
 
 Windows 打包依赖 NSIS，默认查找顺序：

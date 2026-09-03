@@ -20,7 +20,7 @@ Publish a sanitized snapshot to the public repository.
 .\tools\public-release\publish-public.ps1 -CommitMessage "release: public snapshot 1.2.3"
 
 .EXAMPLE
-.\tools\public-release\publish-public.ps1 -Version 1.1.0 -PublishRelease -PublishTag
+.\tools\public-release\publish-public.ps1 -Version 1.8.0 -PublishRelease -PublishTag
 
 .EXAMPLE
 .\tools\public-release\publish-public.ps1 -CommitMessageFile .\publish-message.txt

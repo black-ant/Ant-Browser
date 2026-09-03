@@ -6,6 +6,8 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/black-ant/Ant-Browser/releases)
 [![Issues](https://img.shields.io/github/issues/black-ant/Ant-Browser)](https://github.com/black-ant/Ant-Browser/issues)
 
+当前版本：`1.8.0` · 2026-09-03
+
 ## 推荐内核项目
 
 Ant Browser 当前推荐配套使用的浏览器内核，来源于开源项目 [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium)。
@@ -29,6 +31,7 @@ Ant Browser 的目标很明确：在一台桌面设备上，帮助用户稳定�
 - [常用操作](#常用操作)
 - [常见问题](#常见问题)
 - [Roadmap](#roadmap)
+- [开发与发布文档](#开发与发布文档)
 - [贡献](#贡献)
 - [支持与反馈](#支持与反馈)
 - [License](#license)
@@ -51,13 +54,23 @@ Ant Browser 适合以下场景：
 
 ## 近期更新
 
+### 1.8.0 · 2026-09-03
+
+- 备份渠道：支持本地、OpenList 和 S3（含兼容服务）三种备份位置。
+- 备份范围：支持全量备份，也支持按实例选择性备份；远程历史支持扫描、下载和恢复。
+- OpenList 定时备份：支持每日执行时间、最近执行状态和失败反馈；实例仍在运行时跳过本次任务。
+- 凭据保护：OpenList Token、S3 访问凭据仅保存到本地敏感配置 `backup.local.yaml`，界面默认脱敏并支持按需显示。
+- 恢复安全：备份包增加清单校验、路径校验和解压限制；恢复保留兼容字段，并按当前机器重新映射实例与外部内核路径。
+- 代理连接栈：明确区分 `xray` + sing-box 组合栈与独立 `mihomo` 栈，统一代理测速、连通性、预热和运行时下载流程。
+- 设置维护：新增系统设置重置，并增加定时备份的配置保护；开发入口整理为 `bat\dev.bat` 和 `scripts/dev.sh`。
+
 ### 1.7.0 · 2026-08-17
 
 - 实例窗口标识：Windows 运行实例使用独立窗口图标，右上角显示 1-10 / A-Z 角标，窗口标题左侧同步显示运行码
 - 应用图标：统一桌面快捷方式、应用窗口与侧边栏 Logo 的白色背景和蓝色指纹线稿标识
 - 全局备份与恢复：覆盖应用配置、数据库和浏览器数据，仅支持保留现有数据的合并导入、进度展示和导出日志
 - OpenList 备份渠道：配置归档到 `backup.channels.openlist`，使用 Token 认证；Token 仅保存在本地敏感配置 `backup.local.yaml`
-- S3 渠道配置：支持 AWS S3 及兼容服务的 Endpoint、Region、Bucket、对象前缀、Path Style 和访问凭据配置；完整配置仅保存在被忽略的 `backup.local.yaml`，不会写入 `config.yaml`，上传与恢复能力待接入
+- S3 渠道配置：增加 AWS S3 及兼容服务的 Endpoint、Region、Bucket、对象前缀、Path Style 和访问凭据配置；完整远程备份流程在 1.8.0 完善
 - 备份恢复一致性：保留数据库迁移字段，兼容旧版本备份列缺失，按当前机器归一化实例/内核路径并按 `coreId` 映射外部内核
 - 维护安全：浏览器停止失败时中止备份导入，避免未完成的维护操作继续写入数据
 - 通知中心：支持按全部、未读、错误和警告筛选，批量标记已读、清空通知和跳转相关页面
@@ -132,22 +145,15 @@ Ant Browser 适合以下场景：
 - 自动化脚本：支持脚本导入、运行、目标实例选择、执行记录和外部接口调用
 - 插件管理：支持插件安装、导入、启停、删除、实例限制和单实例插件配置
 - 实例迁移：支持将实例配置和浏览器用户数据目录导出为 ZIP，并导入为新实例
+- 备份与恢复：支持本地、OpenList、S3 备份位置，以及全量和选择性实例备份
+- 远程历史：支持扫描远程备份列表，下载后恢复到本机
 - VPN / 代理检测：支持连接栈预热、测速、IP 健康检测和代理异常处理
+- 设置维护：支持系统设置重置，敏感备份凭据不写入普通配置文件
 - 本地化存储：配置和实例数据保存在本地，适合长期使用和备份
 
 ## 界面预览
 
-### 1. 控制台
-
-<img src="images/readme/001-首页.png" alt="控制台" width="100%" />
-
-对应功能点：
-
-- 查看实例总数、运行中实例、代理节点数量和内核版本
-- 从首页快速进入 `实例列表`、`代理池配置`、`内核管理`、`系统设置`
-- 查看客户端版本、运行环境、数据存储和当前实例运行状态
-
-### 2. 实例列表
+### 1. 实例列表
 
 <img src="images/readme/002-实例列表.png" alt="实例列表" width="100%" />
 
@@ -158,7 +164,7 @@ Ant Browser 适合以下场景：
 - 支持 `新建配置`、启动、停止、重启、配置、克隆、删除
 - 给实例分配快捷打开码，后续可以直接快速启动
 
-### 3. 代理池配置
+### 2. 代理池配置
 
 <img src="images/readme/003-设置代理池.png" alt="代理池配置" width="100%" />
 
@@ -175,9 +181,9 @@ Ant Browser 适合以下场景：
 - `xray` 表示 Xray + sing-box 组合栈：Xray 负责 vmess/vless/trojan/shadowsocks/链式代理等，sing-box 负责 hysteria2/tuic/anytls 等协议。
 - `mihomo` 表示独立 Mihomo 栈：需要桥接的代理统一走 mihomo。
 - 实例启动、代理测速、真实连通性、IP 健康、预热和插件下载代理必须按当前连接栈执行；不得在 `xray` 组合栈和 `mihomo` 栈之间自动混用。
-- 详细约束见 `docs/proxy-connector-stacks.md`。
+- 详细约束见 [VPN / 代理协议审计报告](docs/audits/vpn-protocol-audit-report.md)。
 
-### 4. 代理生效验证
+### 3. 代理生效验证
 
 <img src="images/readme/004-自定义代理.png" alt="代理生效验证" width="100%" />
 
@@ -210,17 +216,18 @@ Ant Browser 适合以下场景：
 
 1. 开发默认使用 `master` 分支；该分支不带测试用户数据，适合作为日常开发基线。
 2. 如需带测试库的演示环境，请切换到 `user_data` 分支。
-3. Windows 统一执行 `bat\dev.bat`；默认是 `live` 热更新模式，如需静态资源排查使用 `bat\dev.bat stable`，如需受限内存复现使用 `bat\dev.bat limited`。
+3. Windows 统一执行 `bat\dev.bat`；默认是 `stable` 静态资源模式，需要热更新时使用 `bat\dev.bat live`，需要受限内存复现时使用 `bat\dev.bat limited`。
 4. Windows 运行时使用 `bin/xray.exe`、`bin/sing-box.exe`；Linux 运行时使用 `bin/linux-<arch>/xray`、`bin/linux-<arch>/sing-box`；macOS 运行时使用 `bin/darwin-<arch>/xray`、`bin/darwin-<arch>/sing-box`。
 5. 运行时文件采用“仓库固定 + 哈希校验”，校验清单在 `publish/runtime-manifest.json`，固定来源清单在 `publish/runtime-sources.json`。
 6. 如需刷新 Linux / macOS 运行时，执行 `python3 tools/runtime/sync-runtime.py --target <target>`（会按固定来源下载、校验归档并更新 manifest）。
 
 开发模式说明：
 
-- `bat\dev.bat`：默认 `live` 模式，启动 Vite watcher，并通过 `-frontenddevserverurl` 接入桌面壳
+- `bat\dev.bat`：默认 `stable` 模式，先构建 `frontend/dist`，再以静态资源模式启动 Wails
 - `bat\dev.bat stable`：先构建 `frontend/dist`，再以静态资源模式启动 Wails，不依赖外部 Vite dev server
-- `bat\dev.bat live`：显式指定 `live` 模式，效果与默认一致
+- `bat\dev.bat live`：启动 Vite watcher，并通过 `-frontenddevserverurl` 接入桌面壳
 - `bat\dev.bat limited`：在 `live` 基础上为 watcher 与其子进程附加 Windows Job Object 内存限制
+- Linux shell 入口：`./scripts/dev.sh` 默认使用 `stable`，也可传入 `live` 或 `help`
 - 如需为依赖下载配置代理，可在启动前设置 `DEV_PROXY_URL`、`DEV_NO_PROXY`、`DEV_GOPROXY`
 
 ### 自动化脚本包
@@ -323,6 +330,16 @@ chrome/
 4. 返回实例列表，点击启动按钮运行实例
 5. 打开 IP 检测网站，确认代理结果是否符合预期
 
+### 备份与恢复
+
+1. 打开 `系统维护 > 备份与恢复`。
+2. 选择 `全量备份`，或选择需要迁移的实例。
+3. 选择一个或多个备份位置：本地、OpenList、S3。
+4. 从历史列表选择本地或远程备份，可下载并恢复；恢复采用合并方式，不会直接清空现有数据。
+5. 需要自动备份时，先配置 OpenList，再设置每日执行时间。
+
+OpenList Token 和 S3 访问凭据保存在本机的 `backup.local.yaml`，不会写入 `config.yaml`；不要把该文件复制到公共仓库或提交到 git。
+
 ## 常用操作
 
 | 目标 | 入口 | 说明 |
@@ -334,6 +351,8 @@ chrome/
 | 快速打开实例 | `Ctrl + K` | 可按 Code、实例名、标签、关键字快速检索 |
 | 管理浏览器内核 | `内核管理` | 新增、编辑、删除和设置默认内核 |
 | 验证代理结果 | 启动实例后访问 IP 检测网站 | 核对 IP、地区、ASN、风险值 |
+| 备份与恢复 | `系统维护 > 备份与恢复` | 创建本地或远程备份，扫描、下载和恢复历史备份 |
+| 设置重置 | `系统维护 > 系统设置 > 重置` | 将可管理设置恢复为默认值 |
 
 ## 常见问题
 
@@ -355,6 +374,10 @@ chrome/
 
 建议采用一账号一实例、一实例一稳定代理的方式，不要混用浏览器环境，也不要频繁切换同一实例的出口 IP。
 
+### 5. 备份凭据会不会写进配置文件？
+
+不会写入普通 `config.yaml`。OpenList Token 和 S3 访问凭据保存在被忽略的本地文件 `backup.local.yaml`，界面读取时默认显示为脱敏值。
+
 ## Roadmap
 
 - 完善自动化模块能力
@@ -370,6 +393,14 @@ chrome/
 - 文档优化：欢迎直接提交 README、教程和截图说明相关改进
 
 如果是较大改动，建议先开 Issue 对齐需求再提交 PR。
+
+## 开发与发布文档
+
+- Windows 开发与发布：[`bat/README.md`](bat/README.md)
+- Linux 打包：[`publish/linux/README.md`](publish/linux/README.md)
+- macOS unsigned 打包：[`publish/mac/README.md`](publish/mac/README.md)
+- 公共发布快照：[`tools/public-release/README.md`](tools/public-release/README.md)
+- 代理协议与连接栈：[`docs/audits/vpn-protocol-audit-report.md`](docs/audits/vpn-protocol-audit-report.md)
 
 ## 支持与反馈
 
