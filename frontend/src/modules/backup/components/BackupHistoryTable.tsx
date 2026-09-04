@@ -9,6 +9,7 @@ import {
   listLocalBackups,
   openBackupPath,
   restoreLocalSystemConfig,
+  saveLocalBackupDirectory,
   selectLocalBackupDirectory,
   type BackupLocalHistoryItem,
 } from '../api'
@@ -134,6 +135,48 @@ function errorMessage(error: unknown, fallback: string) {
     return error.message
   }
   return fallback
+}
+
+const LEGACY_LOCAL_HISTORY_KEY = 'ant_chrome_local_backup_history'
+
+function legacyLocalBackupDirectories() {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(LEGACY_LOCAL_HISTORY_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    if (!Array.isArray(parsed)) return []
+
+    const directories = new Map<string, number>()
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== 'object') continue
+      const record = entry as Record<string, unknown>
+      const rawPath = record.path
+      const path = typeof rawPath === 'string'
+        ? rawPath.trim()
+        : ''
+      if (!path || !/\.zip$/i.test(path)) continue
+      const separatorIndex = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))
+      if (separatorIndex < 0) continue
+      const directory = path.slice(0, separatorIndex) || path.slice(0, separatorIndex + 1)
+      if (!directory) continue
+      directories.set(directory, (directories.get(directory) || 0) + 1)
+    }
+
+    return [...directories.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([directory]) => directory)
+  } catch {
+    return []
+  }
+}
+
+function clearLegacyLocalBackupHistory() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(LEGACY_LOCAL_HISTORY_KEY)
+  } catch {
+    return
+  }
 }
 
 function sourceLabel(source: BackupHistorySource) {
@@ -318,18 +361,43 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     }
   }
 
+  const recoverLegacyLocalDirectory = async () => {
+    for (const directory of legacyLocalBackupDirectories()) {
+      try {
+        const entries = await listLocalBackups(directory)
+        if (entries.length === 0) continue
+        const settings = await saveLocalBackupDirectory(directory)
+        if (!settings.localDirectory) continue
+        clearLegacyLocalBackupHistory()
+        return settings.localDirectory
+      } catch {
+        continue
+      }
+    }
+    return ''
+  }
+
   useEffect(() => {
     let active = true
-    void fetchLocalBackupSettings()
-      .then(settings => {
+    const loadLocalBackups = async () => {
+      try {
+        const settings = await fetchLocalBackupSettings()
         if (!active) return
-        setLocalDirectory(settings.localDirectory)
-        return loadLocalHistory(settings.localDirectory)
-      })
-      .catch(localError => {
+        let directory = settings.localDirectory
+        if (!directory) {
+          directory = await recoverLegacyLocalDirectory()
+        } else {
+          clearLegacyLocalBackupHistory()
+        }
+        if (!active) return
+        setLocalDirectory(directory)
+        await loadLocalHistory(directory)
+      } catch (localError) {
         if (!active) return
         setError(errorMessage(localError, '读取本地备份目录设置失败'))
-      })
+      }
+    }
+    void loadLocalBackups()
     return () => {
       active = false
     }
@@ -368,6 +436,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     try {
       const result = await selectLocalBackupDirectory()
       if (result.cancelled) return
+      clearLegacyLocalBackupHistory()
       setLocalDirectory(result.localDirectory)
       setFilter('local')
       await loadLocalHistory(result.localDirectory, true)
@@ -382,10 +451,15 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
 
   const handleRefresh = async () => {
     setError('')
+    let directory = localDirectory
+    if (!directory) {
+      directory = await recoverLegacyLocalDirectory()
+      if (directory) setLocalDirectory(directory)
+    }
     setItems(sortHistoryItems([
       ...localItemsRef.current,
     ]))
-    const tasks = [loadLocalHistory(localDirectory)]
+    const tasks = [loadLocalHistory(directory)]
     if (activeConnection || activeS3Connection) {
       tasks.push(loadRemoteHistory(activeConnection, activeS3Connection, false, false))
     }

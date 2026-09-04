@@ -170,6 +170,17 @@ export async function fetchLocalBackupSettings(): Promise<BackupLocalSettings> {
   }
 }
 
+export async function saveLocalBackupDirectory(directory: string): Promise<BackupLocalSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupSaveLocalDirectory) {
+    throw new Error('当前环境不支持保存本地备份目录')
+  }
+  const raw = (await bindings.BackupSaveLocalDirectory(directory.trim())) || {}
+  return {
+    localDirectory: typeof raw.localDirectory === 'string' ? raw.localDirectory.trim() : '',
+  }
+}
+
 export async function selectLocalBackupDirectory(): Promise<BackupSelectLocalDirectoryResult> {
   const bindings: any = await getBindings()
   if (!bindings?.BackupSelectLocalDirectory) {
