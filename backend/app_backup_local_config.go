@@ -72,6 +72,7 @@ func defaultBackupConfig() config.BackupConfig {
 
 func normalizeBackupSettings(value config.BackupConfig) config.BackupConfig {
 	defaults := defaultBackupConfig()
+	value.LocalDirectory = strings.TrimSpace(value.LocalDirectory)
 	value.Channels.OpenList.BaseURL = strings.TrimSpace(value.Channels.OpenList.BaseURL)
 	value.Channels.OpenList.RemotePath = strings.TrimSpace(value.Channels.OpenList.RemotePath)
 	if value.Channels.OpenList.RemotePath == "" {
@@ -98,7 +99,8 @@ func normalizeBackupSettings(value config.BackupConfig) config.BackupConfig {
 func backupConfigsEqual(left, right config.BackupConfig) bool {
 	left = normalizeBackupSettings(left)
 	right = normalizeBackupSettings(right)
-	return left.Channels.OpenList.BaseURL == right.Channels.OpenList.BaseURL &&
+	return left.LocalDirectory == right.LocalDirectory &&
+		left.Channels.OpenList.BaseURL == right.Channels.OpenList.BaseURL &&
 		left.Channels.OpenList.RemotePath == right.Channels.OpenList.RemotePath &&
 		left.Channels.OpenList.Token == right.Channels.OpenList.Token &&
 		left.Channels.OpenList.UploadRateLimitMBps == right.Channels.OpenList.UploadRateLimitMBps &&

@@ -114,6 +114,22 @@ export function BackupExportPackage() {
   return window['go']['main']['App']['BackupExportPackage']();
 }
 
+export function BackupGetLocalSettings() {
+  return window['go']['main']['App']['BackupGetLocalSettings']();
+}
+
+export function BackupListLocalBackups(arg1) {
+  return window['go']['main']['App']['BackupListLocalBackups'](arg1);
+}
+
+export function BackupSaveLocalDirectory(arg1) {
+  return window['go']['main']['App']['BackupSaveLocalDirectory'](arg1);
+}
+
+export function BackupSelectLocalDirectory() {
+  return window['go']['main']['App']['BackupSelectLocalDirectory']();
+}
+
 export function BackupGetManifestTemplate() {
   return window['go']['main']['App']['BackupGetManifestTemplate']();
 }

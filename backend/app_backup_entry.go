@@ -31,24 +31,17 @@ func (a *App) BackupExportPackage() (map[string]interface{}, error) {
 	a.backupEmitExportProgress("starting", 2, "等待选择导出路径...")
 
 	defaultName := fmt.Sprintf("ant-chrome-backup-%s.zip", time.Now().Format("20060102-150405"))
-	savePath, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-		Title:           "导出全量备份",
-		DefaultFilename: defaultName,
-		Filters: []wailsruntime.FileFilter{
-			{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
-		},
-	})
+	savePath, cancelled, err := a.backupResolveLocalPackagePath(defaultName, "导出全量备份")
 	if err != nil {
 		return nil, fmt.Errorf("打开保存对话框失败: %w", err)
 	}
-	if strings.TrimSpace(savePath) == "" {
+	if cancelled || strings.TrimSpace(savePath) == "" {
 		a.backupEmitExportProgress("cancelled", 0, "已取消导出")
 		return map[string]interface{}{
 			"cancelled": true,
 			"message":   "已取消导出",
 		}, nil
 	}
-	savePath = backupEnsureZipSuffix(savePath)
 	a.backupEmitExportProgress("preparing", 8, "正在收集导出范围...")
 
 	scope, err := a.backupBuildScope()

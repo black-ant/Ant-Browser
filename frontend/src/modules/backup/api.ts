@@ -19,6 +19,9 @@ export interface BackupActionResult {
   remoteUploaded?: boolean
   remoteName?: string
   remoteSize?: number
+  localDirectory?: string
+  metadataPath?: string
+  metadataAvailable?: boolean
   remoteNames?: string[]
   remoteError?: string
   profileCount?: number
@@ -36,6 +39,26 @@ export interface BackupActionResult {
 export interface BackupFileInfo extends BackupPackageInfo {
   size: number
   modifiedAt: string
+}
+
+export interface BackupLocalSettings {
+  localDirectory: string
+}
+
+export interface BackupSelectLocalDirectoryResult extends BackupLocalSettings {
+  cancelled: boolean
+}
+
+export interface BackupLocalHistoryItem extends BackupPackageInfo {
+  name: string
+  path: string
+  size: number
+  modifiedAt: string
+  createdAt?: string
+  metadataAvailable: boolean
+  metadataError?: string
+  appName?: string
+  appVersion?: string
 }
 
 export type BackupDestinationSelection = BackupChannelSelection
@@ -109,5 +132,61 @@ export async function getBackupFileInfo(zipPath: string): Promise<BackupFileInfo
   return {
     size: Number.isFinite(raw.size) ? Math.max(0, Number(raw.size)) : 0,
     modifiedAt: typeof raw.modifiedAt === 'string' ? raw.modifiedAt : '',
+    packageType: typeof raw.packageType === 'string' ? raw.packageType : undefined,
+    profileCount: Number.isFinite(raw.profileCount) ? Math.max(0, Number(raw.profileCount)) : undefined,
+    profileNames: Array.isArray(raw.profileNames) ? (raw.profileNames as unknown[]).filter((item: unknown): item is string => typeof item === 'string') : undefined,
   }
+}
+
+function normalizeLocalBackupItem(raw: any): BackupLocalHistoryItem {
+  const profileNames = Array.isArray(raw?.profileNames)
+    ? (raw.profileNames as unknown[]).filter((item: unknown): item is string => typeof item === 'string').map((item: string) => item.trim()).filter(Boolean)
+    : undefined
+  const profileCount = Number(raw?.profileCount)
+  return {
+    name: typeof raw?.name === 'string' ? raw.name : '',
+    path: typeof raw?.path === 'string' ? raw.path : '',
+    size: Number.isFinite(Number(raw?.size)) ? Math.max(0, Number(raw.size)) : 0,
+    modifiedAt: typeof raw?.modifiedAt === 'string' ? raw.modifiedAt : '',
+    createdAt: typeof raw?.createdAt === 'string' ? raw.createdAt : undefined,
+    metadataAvailable: raw?.metadataAvailable === true,
+    metadataError: typeof raw?.metadataError === 'string' ? raw.metadataError : undefined,
+    appName: typeof raw?.appName === 'string' ? raw.appName : undefined,
+    appVersion: typeof raw?.appVersion === 'string' ? raw.appVersion : undefined,
+    packageType: typeof raw?.packageType === 'string' ? raw.packageType : undefined,
+    profileCount: Number.isFinite(profileCount) && profileCount > 0 ? Math.floor(profileCount) : undefined,
+    profileNames: profileNames?.length ? profileNames : undefined,
+  }
+}
+
+export async function fetchLocalBackupSettings(): Promise<BackupLocalSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupGetLocalSettings) {
+    throw new Error('当前环境不支持本地备份目录设置')
+  }
+  const raw = (await bindings.BackupGetLocalSettings()) || {}
+  return {
+    localDirectory: typeof raw.localDirectory === 'string' ? raw.localDirectory.trim() : '',
+  }
+}
+
+export async function selectLocalBackupDirectory(): Promise<BackupSelectLocalDirectoryResult> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupSelectLocalDirectory) {
+    throw new Error('当前环境不支持选择本地备份目录')
+  }
+  const raw = (await bindings.BackupSelectLocalDirectory()) || {}
+  return {
+    cancelled: raw.cancelled === true,
+    localDirectory: typeof raw.localDirectory === 'string' ? raw.localDirectory.trim() : '',
+  }
+}
+
+export async function listLocalBackups(directory = ''): Promise<BackupLocalHistoryItem[]> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupListLocalBackups) {
+    throw new Error('当前环境不支持扫描本地备份目录')
+  }
+  const raw = await bindings.BackupListLocalBackups(directory.trim())
+  return Array.isArray(raw) ? raw.map(normalizeLocalBackupItem).filter(item => item.name || item.path) : []
 }

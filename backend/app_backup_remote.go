@@ -5,6 +5,7 @@ import (
 	"ant-chrome/backend/internal/backup/channels/openlist"
 	"ant-chrome/backend/internal/config"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,35 +141,94 @@ func (a *App) backupDownloadRemoteFile(client channels.Client, label string, tim
 		return nil, fmt.Errorf(`远程备份必须是 ZIP 文件`)
 	}
 
-	savePath, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-		Title:           fmt.Sprintf(`下载%s备份`, label),
-		DefaultFilename: defaultName,
-		Filters: []wailsruntime.FileFilter{
-			{DisplayName: `ZIP 文件 (*.zip)`, Pattern: `*.zip`},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf(`打开保存对话框失败: %w`, err)
+	configuredDirectory := ``
+	if a.config != nil {
+		configuredDirectory = strings.TrimSpace(a.config.Backup.LocalDirectory)
+	}
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	var savePath string
+	var err error
+	if configuredDirectory != `` {
+		savePath, _, err = a.backupResolveLocalPackagePath(defaultName, fmt.Sprintf(`download %s backup`, label))
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		savePath, err = wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+			Title:           fmt.Sprintf(`下载%s备份`, label),
+			DefaultFilename: defaultName,
+			Filters: []wailsruntime.FileFilter{
+				{DisplayName: `ZIP 文件 (*.zip)`, Pattern: `*.zip`},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf(`打开保存对话框失败: %w`, err)
+		}
+		if strings.TrimSpace(savePath) == `` {
+			return map[string]interface{}{
+				`cancelled`: true,
+				`message`:   `已取消下载`,
+			}, nil
+		}
 	}
 	if strings.TrimSpace(savePath) == `` {
 		return map[string]interface{}{
 			`cancelled`: true,
-			`message`:   `已取消下载`,
+			`message`:   `cancelled`,
 		}, nil
 	}
 	savePath = backupEnsureZipSuffix(savePath)
+	if configuredDirectory == `` {
+		if err := a.backupSetLocalDirectoryLocked(filepath.Dir(savePath)); err != nil {
+			return nil, err
+		}
+	}
 
 	ctx, cancel := a.backupRemoteContext(timeout)
 	defer cancel()
 	if err := client.Download(ctx, trimmedName, savePath); err != nil {
 		return nil, fmt.Errorf(`下载%s备份失败: %w`, label, err)
 	}
+	metadataPath := backupMetadataPath(savePath)
+	remoteMetadataName := filepath.Base(backupMetadataPath(defaultName))
+	metadataContext, metadataCancel := a.backupRemoteContext(timeout)
+	metadataErr := client.Download(metadataContext, remoteMetadataName, metadataPath)
+	metadataCancel()
+	if metadataErr != nil {
+		_ = os.Remove(metadataPath)
+	} else if metadataErr = normalizeDownloadedBackupMetadata(metadataPath, filepath.Base(savePath)); metadataErr != nil {
+		_ = os.Remove(metadataPath)
+	}
 	return map[string]interface{}{
-		`cancelled`:  false,
-		`zipPath`:    savePath,
-		`remoteName`: trimmedName,
-		`message`:    fmt.Sprintf(`已下载%s备份`, label),
+		`cancelled`:         false,
+		`zipPath`:           savePath,
+		`metadataPath`:      metadataPath,
+		`metadataAvailable`: metadataErr == nil,
+		`localDirectory`:    filepath.Dir(savePath),
+		`remoteName`:        trimmedName,
+		`message`:           fmt.Sprintf(`已下载%s备份`, label),
 	}, nil
+}
+
+func normalizeDownloadedBackupMetadata(metadataPath, backupFileName string) error {
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return err
+	}
+	var metadata backupMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return err
+	}
+	if strings.TrimSpace(metadata.Format) != `ant-chrome-backup-metadata` {
+		return fmt.Errorf(`unsupported backup metadata format`)
+	}
+	metadata.BackupFile = filepath.Base(backupFileName)
+	updated, err := json.MarshalIndent(metadata, ``, `  `)
+	if err != nil {
+		return err
+	}
+	return writeBackupMetadataFile(metadataPath, append(updated, '\n'))
 }
 
 func (a *App) backupUploadRemoteArtifacts(target backupRemoteUploadTarget, localPath, fileName string) (channels.File, error) {
@@ -188,17 +248,32 @@ func (a *App) backupUploadRemoteArtifacts(target backupRemoteUploadTarget, local
 	}
 
 	metadataPath := backupMetadataPath(localPath)
-	metadataName := filepath.Base(metadataPath)
-	metadataMessage, metadataSize, err := backupRemoteUploadProgressMessage(metadataPath, `备份元数据`, target.label, target.uploadRateLimitMBps)
+	metadataName := filepath.Base(backupMetadataPath(fileName))
+	if _, err := os.Stat(metadataPath); err != nil {
+		if os.IsNotExist(err) {
+			a.backupEmitExportProgress(`warning`, 99, fmt.Sprintf(`%s backup metadata is missing; skipped metadata upload`, target.label))
+			return remoteFile, nil
+		}
+		return channels.File{}, fmt.Errorf(`read %s backup metadata failed: %w`, target.label, err)
+	}
+	metadataUploadPath, cleanupMetadata, metadataPrepareErr := backupPrepareRemoteMetadata(metadataPath, filepath.Base(localPath), fileName)
+	if metadataPrepareErr != nil {
+		a.backupEmitExportProgress(`warning`, 99, fmt.Sprintf(`%s backup metadata is unavailable; skipped metadata upload: %v`, target.label, metadataPrepareErr))
+		return remoteFile, nil
+	}
+	defer cleanupMetadata()
+	metadataMessage, metadataSize, err := backupRemoteUploadProgressMessage(metadataUploadPath, `备份元数据`, target.label, target.uploadRateLimitMBps)
 	if err != nil {
-		return channels.File{}, err
+		a.backupEmitExportProgress(`warning`, 99, fmt.Sprintf(`%s backup metadata is unavailable; skipped metadata upload: %v`, target.label, err))
+		return remoteFile, nil
 	}
 	a.backupEmitExportProgressTransfer(`uploading`, 98, metadataMessage, channels.UploadProgress{TotalBytes: metadataSize})
 	metadataContext, metadataCancel := a.backupRemoteContext(target.timeout)
-	_, metadataErr := backupUploadMetadataWithProgress(metadataContext, target.client, metadataPath, metadataName, a.backupRemoteUploadProgressCallback(target.label, `备份元数据`, 98, 99))
+	_, metadataErr := backupUploadMetadataWithProgress(metadataContext, target.client, metadataUploadPath, metadataName, a.backupRemoteUploadProgressCallback(target.label, `备份元数据`, 98, 99))
 	metadataCancel()
 	if metadataErr != nil {
-		return channels.File{}, fmt.Errorf(`上传%s备份元数据失败: %w`, target.label, metadataErr)
+		a.backupEmitExportProgress(`warning`, 99, fmt.Sprintf(`%s backup metadata upload failed; ZIP kept: %v`, target.label, metadataErr))
+		return remoteFile, nil
 	}
 	return remoteFile, nil
 }

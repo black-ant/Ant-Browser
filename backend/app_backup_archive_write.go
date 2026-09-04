@@ -134,8 +134,7 @@ func backupWritePackageZip(zipPath string, scope backup.Scope, manifest backup.M
 		return 0, 0, 0, fmt.Errorf("写入导出文件失败: %w", err)
 	}
 	if _, err := backupWriteMetadata(zipPath, manifest, includedEntries, skippedEntries); err != nil {
-		emit("error", 100, err.Error(), nil)
-		return 0, 0, 0, err
+		emit("warning", 100, fmt.Sprintf("备份文件已生成，但元数据文件写入失败：%v", err), nil)
 	}
 	return includedEntries, skippedEntries, fileCount, nil
 }

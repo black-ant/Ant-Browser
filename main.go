@@ -108,6 +108,22 @@ func (a *App) BrowserExtensionInstallManualDownloadFile(fileName string) (backen
 	return a.App.BrowserExtensionInstallManualDownloadFile(fileName)
 }
 
+func (a *App) BackupGetLocalSettings() backend.BackupLocalSettings {
+	return a.App.BackupGetLocalSettings()
+}
+
+func (a *App) BackupSelectLocalDirectory() (backend.BackupSelectLocalDirectoryResult, error) {
+	return a.App.BackupSelectLocalDirectory()
+}
+
+func (a *App) BackupSaveLocalDirectory(directory string) (backend.BackupLocalSettings, error) {
+	return a.App.BackupSaveLocalDirectory(directory)
+}
+
+func (a *App) BackupListLocalBackups(directory string) ([]backend.BackupLocalHistoryItem, error) {
+	return a.App.BackupListLocalBackups(directory)
+}
+
 func main() {
 	defer func() {
 		if recovered := recover(); recovered != nil {

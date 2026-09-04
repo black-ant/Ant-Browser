@@ -108,6 +108,41 @@ func TestBackupScheduledSettingsDefaults(t *testing.T) {
 	}
 }
 
+func TestBackupLocalDirectoryStaysInSyncWithSchedulerSettings(t *testing.T) {
+	appRoot := t.TempDir()
+	backupDirectory := filepath.Join(appRoot, "backups")
+	if err := os.MkdirAll(backupDirectory, 0o755); err != nil {
+		t.Fatalf("create backup directory: %v", err)
+	}
+
+	app := NewApp(appRoot)
+	app.config = config.DefaultConfig()
+	scheduler := newBackupScheduler(app)
+	app.backupScheduler = scheduler
+
+	if err := app.backupSetLocalDirectoryLocked(backupDirectory); err != nil {
+		t.Fatalf("save local backup directory: %v", err)
+	}
+	if scheduler.settings.LocalDirectory != backupDirectory {
+		t.Fatalf("scheduler local directory = %q, want %q", scheduler.settings.LocalDirectory, backupDirectory)
+	}
+
+	if _, err := scheduler.saveOpenList(map[string]string{
+		"baseURL": "http://127.0.0.1:5244/dav",
+		"token":   "secret-token",
+	}); err != nil {
+		t.Fatalf("save OpenList settings: %v", err)
+	}
+
+	persisted, err := config.Load(filepath.Join(appRoot, "config.yaml"))
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if persisted.Backup.LocalDirectory != backupDirectory {
+		t.Fatalf("persisted local directory = %q, want %q", persisted.Backup.LocalDirectory, backupDirectory)
+	}
+}
+
 func TestOpenListRemotePathCanBeClearedToUseRoot(t *testing.T) {
 	next := config.DefaultConfig().Backup
 	next.Channels.OpenList.RemotePath = "ant-chrome/backups"

@@ -262,7 +262,6 @@ Section "Uninstall"
 
   Delete /REBOOTOK "$INSTDIR\${PRODUCT_EXE}"
   Delete /REBOOTOK "$INSTDIR\${PRODUCT_ICON}"
-  Delete /REBOOTOK "$INSTDIR\config.yaml"
   Delete /REBOOTOK "$INSTDIR\proxies.yaml"
   Delete /REBOOTOK "$INSTDIR\Uninstall.exe"
   RMDir /r /REBOOTOK "$INSTDIR\bin"

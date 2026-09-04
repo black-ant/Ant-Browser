@@ -15,7 +15,7 @@ import {
 import { BackupTypeModal } from './components/BackupTypeModal'
 import type { BackupTypeSelection } from './components/BackupTypeModal'
 import { BackupScopeModal } from './components/BackupScopeModal'
-import { BackupHistoryTable, recordLocalBackupHistory } from './components/BackupHistoryTable'
+import { BackupHistoryTable } from './components/BackupHistoryTable'
 import { fetchOpenListSettings } from './channels/openlist/api'
 import type { OpenListConnection } from './channels/openlist/api'
 import { fetchS3Settings } from './channels/s3/api'
@@ -158,9 +158,9 @@ export function BackupPage() {
         message: resultMessage,
       })
       if (localSaved && res.zipPath) {
-        await recordLocalBackupHistory(res.zipPath)
+        setHistoryRefreshToken(previous => previous + 1)
       }
-      if (localSaved || remoteUploaded) {
+      if (remoteUploaded && !localSaved) {
         setHistoryRefreshToken(previous => previous + 1)
       }
       if (partial) {
@@ -299,7 +299,6 @@ export function BackupPage() {
         toast.success(`导入完成：导入 ${imported}，跳过 ${skipped}，冲突 ${conflicts}`)
       }
       if (res.zipPath) {
-        await recordLocalBackupHistory(res.zipPath)
         setHistoryRefreshToken(previous => previous + 1)
       }
       setImportModalOpen(false)

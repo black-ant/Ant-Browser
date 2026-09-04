@@ -145,3 +145,23 @@ func TestBackupConfigUnmarshalPreservesMultipleChannels(t *testing.T) {
 		t.Fatalf("S3 settings = %+v, want preserved", s3)
 	}
 }
+
+func TestBackupConfigUnmarshalPreservesLocalDirectory(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	data := []byte(`backup:
+  local_directory: D:/backups/ant-chrome
+  schedule:
+    daily_time: "03:15"
+`)
+	if err := os.WriteFile(configPath, data, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loaded, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if loaded.Backup.LocalDirectory != "D:/backups/ant-chrome" {
+		t.Fatalf("local directory = %q, want preserved path", loaded.Backup.LocalDirectory)
+	}
+}

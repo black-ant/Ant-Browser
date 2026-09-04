@@ -87,8 +87,9 @@ type SQLiteConfig struct {
 }
 
 type BackupConfig struct {
-	Channels BackupChannelsConfig `yaml:"channels"`
-	Schedule BackupScheduleConfig `yaml:"schedule"`
+	LocalDirectory string               `yaml:"local_directory,omitempty"`
+	Channels       BackupChannelsConfig `yaml:"channels"`
+	Schedule       BackupScheduleConfig `yaml:"schedule"`
 }
 
 type BackupChannelsConfig struct {
@@ -116,9 +117,10 @@ type S3ChannelConfig struct {
 
 func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
 	var decoded struct {
-		Channels BackupChannelsConfig  `yaml:"channels"`
-		OpenList OpenListChannelConfig `yaml:"openlist"`
-		Schedule BackupScheduleConfig  `yaml:"schedule"`
+		LocalDirectory string                `yaml:"local_directory"`
+		Channels       BackupChannelsConfig  `yaml:"channels"`
+		OpenList       OpenListChannelConfig `yaml:"openlist"`
+		Schedule       BackupScheduleConfig  `yaml:"schedule"`
 	}
 	if err := node.Decode(&decoded); err != nil {
 		return err
@@ -139,6 +141,7 @@ func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
 		openList.UploadRateLimitMBps = decoded.OpenList.UploadRateLimitMBps
 	}
 	channels.OpenList = openList
+	c.LocalDirectory = strings.TrimSpace(decoded.LocalDirectory)
 	c.Channels = channels
 	c.Schedule = decoded.Schedule
 	return nil

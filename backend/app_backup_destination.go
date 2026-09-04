@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // BackupCreatePackage 创建一份备份包，并按目的地选择保存到本地和/或上传到远程渠道。
@@ -70,25 +68,19 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 	if localEnabled {
 		a.backupEmitExportProgress("starting", 0, "等待选择本地备份路径...")
 		defaultName := backupPackageDefaultName(len(profileIDs) > 0, profileNames, time.Now())
-		packagePath, err = wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-			Title:           "保存本地备份",
-			DefaultFilename: defaultName,
-			Filters: []wailsruntime.FileFilter{
-				{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
-			},
-		})
+		var cancelled bool
+		packagePath, cancelled, err = a.backupResolveLocalPackagePath(defaultName, "保存本地备份")
 		if err != nil {
 			a.backupEmitExportProgress("error", 100, fmt.Sprintf("打开保存对话框失败: %v", err))
 			return nil, fmt.Errorf("打开保存对话框失败: %w", err)
 		}
-		if strings.TrimSpace(packagePath) == "" {
+		if cancelled || strings.TrimSpace(packagePath) == "" {
 			a.backupEmitExportProgress("cancelled", 0, "已取消备份")
 			return map[string]interface{}{
 				"cancelled": true,
 				"message":   "已取消备份",
 			}, nil
 		}
-		packagePath = backupEnsureZipSuffix(packagePath)
 	} else {
 		temporaryRoot, err = os.MkdirTemp("", "ant-chrome-backup-")
 		if err != nil {
@@ -118,7 +110,7 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 			client:              openListClient,
 			timeout:             openlist.TransferTimeout,
 			uploadRateLimitMBps: openListConfig.UploadRateLimitMBps,
-			skipMetadata:        len(profileIDs) > 0,
+			skipMetadata:        false,
 		})
 	}
 	if s3Enabled {
@@ -126,7 +118,7 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 			label:        "S3",
 			client:       s3Client,
 			timeout:      s3.TransferTimeout,
-			skipMetadata: len(profileIDs) > 0,
+			skipMetadata: false,
 		})
 	}
 	remoteErrors := make([]string, 0, len(remoteTargets))

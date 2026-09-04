@@ -71,21 +71,14 @@ func (a *App) BrowserProfilePackageExport(profileIds []string) (ProfilePackageEx
 		return ProfilePackageExportResult{}, err
 	}
 
-	defaultName := fmt.Sprintf("ant-chrome-profile-package-%s.zip", time.Now().Format("20060102-150405"))
-	savePath, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-		Title:           "导出实例",
-		DefaultFilename: defaultName,
-		Filters: []wailsruntime.FileFilter{
-			{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
-		},
-	})
+	defaultName := backupProfilePackageFileName(profilePackageProfileNames(profiles), time.Now(), false)
+	savePath, cancelled, err := a.backupResolveLocalPackagePath(defaultName, "导出实例")
 	if err != nil {
-		return ProfilePackageExportResult{}, fmt.Errorf("打开保存对话框失败: %w", err)
+		return ProfilePackageExportResult{}, err
 	}
-	if strings.TrimSpace(savePath) == "" {
+	if cancelled || strings.TrimSpace(savePath) == "" {
 		return ProfilePackageExportResult{Cancelled: true, Message: "已取消导出"}, nil
 	}
-	savePath = ensureZipSuffix(savePath)
 
 	fileCount, err := a.writeProfilePackage(savePath, profiles)
 	if err != nil {
@@ -176,9 +169,10 @@ func (a *App) writeProfilePackage(zipPath string, profiles []browser.Profile) (i
 	}
 	zipWriter := zip.NewWriter(out)
 	fileCount := 0
+	var manifest ProfilePackageManifest
 
 	writeErr := func() error {
-		manifest := ProfilePackageManifest{
+		manifest = ProfilePackageManifest{
 			Format:          profilePackageFormat,
 			Version:         profilePackageVersion,
 			ExportedAt:      time.Now().Format(time.RFC3339),
@@ -234,6 +228,7 @@ func (a *App) writeProfilePackage(zipPath string, profiles []browser.Profile) (i
 		_ = os.Remove(tmpPath)
 		return 0, fmt.Errorf("保存导出文件失败: %w", err)
 	}
+	_, _ = backupWriteProfileMetadata(zipPath, manifest, fileCount, a.appName(), a.appVersion())
 	return fileCount, nil
 }
 
