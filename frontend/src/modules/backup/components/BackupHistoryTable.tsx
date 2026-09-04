@@ -54,6 +54,7 @@ interface BackupHistoryTableProps {
   configuredS3Connection?: S3Connection | null
   refreshToken?: number
   onBusyChange?: (busy: boolean) => void
+  onLocalDirectoryChange?: (directory: string) => void
 }
 
 function buildOpenListLocation(connection: OpenListConnection) {
@@ -223,7 +224,14 @@ function renderBackupPackageInfo(item: BackupHistoryItem) {
   )
 }
 
-export function BackupHistoryTable({ actions, configuredConnection, configuredS3Connection, refreshToken = 0, onBusyChange }: BackupHistoryTableProps) {
+export function BackupHistoryTable({
+  actions,
+  configuredConnection,
+  configuredS3Connection,
+  refreshToken = 0,
+  onBusyChange,
+  onLocalDirectoryChange,
+}: BackupHistoryTableProps) {
   const [items, setItems] = useState<BackupHistoryItem[]>([])
   const [filter, setFilter] = useState<BackupHistoryFilter>('local')
   const [busy, setBusy] = useState<'none' | 'list' | 'restore-merge' | 'download'>('none')
@@ -391,6 +399,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
         }
         if (!active) return
         setLocalDirectory(directory)
+        onLocalDirectoryChange?.(directory)
         await loadLocalHistory(directory)
       } catch (localError) {
         if (!active) return
@@ -401,7 +410,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     return () => {
       active = false
     }
-  }, [refreshToken])
+  }, [onLocalDirectoryChange, refreshToken])
 
   useEffect(() => {
     const nextOpenListKey = connectionKey(configuredConnection)
@@ -438,6 +447,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
       if (result.cancelled) return
       clearLegacyLocalBackupHistory()
       setLocalDirectory(result.localDirectory)
+      onLocalDirectoryChange?.(result.localDirectory)
       setFilter('local')
       await loadLocalHistory(result.localDirectory, true)
     } catch (localError) {
@@ -454,7 +464,10 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
     let directory = localDirectory
     if (!directory) {
       directory = await recoverLegacyLocalDirectory()
-      if (directory) setLocalDirectory(directory)
+      if (directory) {
+        setLocalDirectory(directory)
+        onLocalDirectoryChange?.(directory)
+      }
     }
     setItems(sortHistoryItems([
       ...localItemsRef.current,
@@ -510,6 +523,7 @@ export function BackupHistoryTable({ actions, configuredConnection, configuredS3
       const downloadedDirectory = result.localDirectory?.trim() || localDirectory
       if (downloadedDirectory && downloadedDirectory !== localDirectory) {
         setLocalDirectory(downloadedDirectory)
+        onLocalDirectoryChange?.(downloadedDirectory)
       }
       await loadLocalHistory(downloadedDirectory)
       toast.success(`${result.message || `已从${sourceLabel(item.source)}下载备份`}：${result.zipPath}`)

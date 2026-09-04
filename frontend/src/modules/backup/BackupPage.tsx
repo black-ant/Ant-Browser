@@ -10,6 +10,7 @@ import { OpenListConfigModal } from './channels/openlist/OpenListConfigModal'
 import type { BackupExportLogItem, BackupExportProgress } from './progress'
 import {
   createBackupPackage,
+  fetchLocalBackupSettings,
   importSystemConfig,
 } from './api'
 import { BackupTypeModal } from './components/BackupTypeModal'
@@ -55,6 +56,7 @@ export function BackupPage() {
   const [openListConfigModalOpen, setOpenListConfigModalOpen] = useState(false)
   const [openListConnection, setOpenListConnection] = useState<OpenListConnection | null>(null)
   const [s3Connection, setS3Connection] = useState<S3Connection | null>(null)
+  const [localBackupDirectory, setLocalBackupDirectory] = useState('')
   const [pendingBackupTypes, setPendingBackupTypes] = useState<BackupTypeSelection | null>(null)
   const [pendingProfileIds, setPendingProfileIds] = useState<string[]>([])
   const openListConfigurationCompletedRef = useRef(false)
@@ -86,7 +88,7 @@ export function BackupPage() {
   useEffect(() => {
     let active = true
     setConnectionsLoading(true)
-    void Promise.allSettled([fetchOpenListSettings(), fetchS3Settings()]).then(([openListResult, s3Result]) => {
+    void Promise.allSettled([fetchOpenListSettings(), fetchS3Settings(), fetchLocalBackupSettings()]).then(([openListResult, s3Result, localResult]) => {
       if (!active) return
       if (openListResult.status === 'fulfilled') {
         const settings = openListResult.value
@@ -105,6 +107,9 @@ export function BackupPage() {
             forcePathStyle: settings.forcePathStyle,
           })
         }
+      }
+      if (localResult.status === 'fulfilled') {
+        setLocalBackupDirectory(localResult.value.localDirectory)
       }
     }).finally(() => {
       if (active) setConnectionsLoading(false)
@@ -196,10 +201,15 @@ export function BackupPage() {
   }
 
   useEffect(() => {
-    if (connectionsLoading || openListConfigModalOpen || backupTypeModalOpen || backupScopeModalOpen) return
+    if (connectionsLoading || channelConfigModalOpen || openListConfigModalOpen || backupTypeModalOpen || backupScopeModalOpen) return
     const destinations = pendingBackupTypes
     if (!destinations) return
     const configuredOpenListConnection = openListConnection || openListConfiguredConnectionRef.current
+    if (destinations.local === true && !localBackupDirectory.trim()) {
+      setChannelConfigModalOpen(true)
+      toast.info('请先配置本地备份目录，再开始备份')
+      return
+    }
     if (destinations.openlist === true && !configuredOpenListConnection) return
 
     if (destinations.s3 === true && !s3Connection) {
@@ -217,17 +227,26 @@ export function BackupPage() {
     void handleBackup(destinations, profileIds)
   }, [
     backupScopeModalOpen,
+    channelConfigModalOpen,
     backupTypeModalOpen,
     connectionsLoading,
     navigate,
     openListConfigModalOpen,
     openListConnection,
+    localBackupDirectory,
     pendingBackupTypes,
     pendingProfileIds,
     s3Connection,
   ])
 
   const handleBackupTypeConfirm = (destinations: BackupTypeSelection) => {
+    if (destinations.local === true && !localBackupDirectory.trim()) {
+      setPendingBackupTypes(destinations)
+      setBackupTypeModalOpen(false)
+      setChannelConfigModalOpen(true)
+      toast.info('请先配置本地备份目录，再开始备份')
+      return
+    }
     if (destinations.openlist === true && !openListConnection) {
       openListConfigurationCompletedRef.current = false
       openListConfiguredConnectionRef.current = null
@@ -359,6 +378,7 @@ export function BackupPage() {
         configuredS3Connection={s3Connection}
         refreshToken={historyRefreshToken}
         onBusyChange={setHistoryBusy}
+        onLocalDirectoryChange={setLocalBackupDirectory}
         actions={(
           <div className="flex max-w-full flex-wrap items-center justify-end gap-2" aria-label="备份操作">
             <Button
@@ -431,7 +451,19 @@ export function BackupPage() {
 
       <BackupChannelConfigModal
         open={channelConfigModalOpen}
-        onClose={() => setChannelConfigModalOpen(false)}
+        localDirectory={localBackupDirectory}
+        onLocalConfigured={directory => {
+          setLocalBackupDirectory(directory)
+          setHistoryRefreshToken(previous => previous + 1)
+          setChannelConfigModalOpen(false)
+        }}
+        onClose={() => {
+          setChannelConfigModalOpen(false)
+          if (!pendingBackupTypes?.local || !localBackupDirectory.trim()) {
+            setPendingBackupTypes(null)
+            setPendingProfileIds([])
+          }
+        }}
         onSelect={channelId => {
           setChannelConfigModalOpen(false)
           if (channelId === 's3') {
@@ -467,6 +499,10 @@ export function BackupPage() {
             summary: s3Connection
               ? `${s3Connection.bucket}${s3Connection.prefix ? `/${s3Connection.prefix}` : ''}`
               : undefined,
+          },
+          local: {
+            configured: Boolean(localBackupDirectory.trim()),
+            summary: localBackupDirectory || undefined,
           },
         }}
       />

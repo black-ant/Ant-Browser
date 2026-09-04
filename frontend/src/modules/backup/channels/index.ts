@@ -16,7 +16,7 @@ export const backupChannelDefinitions = [
     label: '本地备份',
     description: '保存备份文件到本机',
     available: true,
-    configurable: false,
+    configurable: true,
     icon: HardDrive,
   },
   {
