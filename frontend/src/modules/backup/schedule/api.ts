@@ -7,6 +7,7 @@ export interface ScheduledBackupSettings {
   lastSuccessAt: string
   lastError: string
   lastRemoteName: string
+  recentBackupTimes: string[]
 }
 
 export interface ScheduledBackupDraft {
@@ -23,6 +24,7 @@ export const defaultScheduledBackupSettings: ScheduledBackupSettings = {
   lastSuccessAt: '',
   lastError: '',
   lastRemoteName: '',
+  recentBackupTimes: [],
 }
 
 const getBindings = async () => {
@@ -45,6 +47,13 @@ function normalizeScheduledBackupSettings(raw: any): ScheduledBackupSettings {
     lastSuccessAt: typeof raw?.lastSuccessAt === 'string' ? raw.lastSuccessAt : '',
     lastError: typeof raw?.lastError === 'string' ? raw.lastError : '',
     lastRemoteName: typeof raw?.lastRemoteName === 'string' ? raw.lastRemoteName : '',
+    recentBackupTimes: Array.isArray(raw?.recentBackupTimes)
+      ? (raw.recentBackupTimes as unknown[])
+        .filter((item): item is string => typeof item === 'string')
+        .map(item => item.trim())
+        .filter(Boolean)
+        .slice(0, 3)
+      : [],
   }
 }
 

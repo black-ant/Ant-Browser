@@ -24,43 +24,14 @@ function normalizeProfileCount(value: unknown): number | undefined {
   return Math.floor(count)
 }
 
-export function inferBackupPackageInfoFromName(fileName: string): BackupPackageInfo {
-  const baseName = fileName.trim().split(/[\\/]/).pop() || fileName.trim()
-  const singleMatch = /^ant-chrome-profile-backup-single--(.+)--\d{8}-\d{6}(?:\.\d+)?\.zip$/iu.exec(baseName)
-  if (singleMatch) {
-    const name = singleMatch[1].trim()
-    return {
-      packageType: 'profile',
-      profileCount: 1,
-      profileNames: name && name !== '未命名实例' ? [name] : undefined,
-    }
-  }
-  const multiMatch = /^ant-chrome-profile-backup-multi-(\d+)--/iu.exec(baseName)
-  if (multiMatch) {
-    return {
-      packageType: 'profile',
-      profileCount: normalizeProfileCount(multiMatch[1]),
-    }
-  }
-  if (/^ant-chrome-profile-backup-/iu.test(baseName)) {
-    return { packageType: 'profile' }
-  }
-  if (/^ant-chrome-backup-/iu.test(baseName)) {
-    return { packageType: 'full' }
-  }
-  return {}
-}
-
-export function normalizeBackupPackageInfo(raw: unknown, fallbackName = ''): BackupPackageInfo {
+export function normalizeBackupPackageInfo(raw: unknown): BackupPackageInfo {
   const value = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
-  const inferred = inferBackupPackageInfoFromName(fallbackName)
   const packageType = typeof value.packageType === 'string' && value.packageType.trim()
     ? value.packageType.trim()
-    : inferred.packageType
+    : undefined
   const rawNames = normalizeProfileNames(value.profileNames)
-  const profileNames = rawNames.length > 0 ? rawNames : inferred.profileNames || []
+  const profileNames = rawNames
   const profileCount = normalizeProfileCount(value.profileCount)
-    || inferred.profileCount
     || (profileNames.length > 0 ? profileNames.length : undefined)
 
   return {

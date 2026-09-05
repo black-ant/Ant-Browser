@@ -16,6 +16,7 @@ const (
 	backupScheduleStatusSuccess = "success"
 	backupScheduleStatusSkipped = "skipped"
 	backupScheduleStatusFailed  = "failed"
+	backupScheduleHistoryLimit  = 3
 )
 
 type backupScheduleState struct {
@@ -83,6 +84,10 @@ func (s *backupScheduler) loadLocalConfig() error {
 		return err
 	}
 	s.settings = normalizeBackupSettings(s.app.config.Backup)
+	if recent := s.settings.Schedule.RecentBackupTimes; len(recent) > 0 {
+		s.state.Status = backupScheduleStatusSuccess
+		s.state.LastSuccessAt = recent[0]
+	}
 	return nil
 }
 
@@ -215,12 +220,36 @@ func (s *backupScheduler) execute(openList config.OpenListChannelConfig) {
 	}
 
 	remoteName, _ := result["remoteName"].(string)
+	s.recordSuccess(remoteName)
+}
+
+func (s *backupScheduler) recordSuccess(remoteName string) {
+	s.recordSuccessAt(time.Now().UTC().Format(time.RFC3339Nano), remoteName)
+}
+
+func (s *backupScheduler) recordSuccessAt(successAt, remoteName string) {
+	successAt = strings.TrimSpace(successAt)
+	if successAt == "" {
+		successAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.state.Status = backupScheduleStatusSuccess
-	s.state.LastSuccessAt = time.Now().UTC().Format(time.RFC3339)
+	s.state.LastSuccessAt = successAt
 	s.state.LastError = ""
 	s.state.LastRemoteName = remoteName
-	s.mu.Unlock()
+	recent := normalizeBackupScheduleTimes(append([]string{successAt}, s.settings.Schedule.RecentBackupTimes...))
+	s.settings.Schedule.RecentBackupTimes = recent
+
+	if s.app == nil || s.app.config == nil {
+		return
+	}
+	next := normalizeBackupSettings(s.app.config.Backup)
+	next.Schedule.RecentBackupTimes = append([]string(nil), recent...)
+	s.app.config.Backup = next
+	_ = s.app.config.Save(s.app.resolveAppPath("config.yaml"))
 }
 
 func (s *backupScheduler) recordSkipped(message string) {
@@ -263,14 +292,15 @@ func (s *backupScheduler) snapshot() map[string]interface{} {
 
 func backupScheduledSettingsResult(settings config.BackupConfig, state backupScheduleState, tokenConfigured bool) map[string]interface{} {
 	return map[string]interface{}{
-		"enabled":         settings.Schedule.Enabled,
-		"dailyTime":       settings.Schedule.DailyTime,
-		"tokenConfigured": tokenConfigured,
-		"status":          state.Status,
-		"lastRunAt":       state.LastRunAt,
-		"lastSuccessAt":   state.LastSuccessAt,
-		"lastError":       state.LastError,
-		"lastRemoteName":  state.LastRemoteName,
+		"enabled":           settings.Schedule.Enabled,
+		"dailyTime":         settings.Schedule.DailyTime,
+		"tokenConfigured":   tokenConfigured,
+		"status":            state.Status,
+		"lastRunAt":         state.LastRunAt,
+		"lastSuccessAt":     state.LastSuccessAt,
+		"lastError":         state.LastError,
+		"lastRemoteName":    state.LastRemoteName,
+		"recentBackupTimes": append([]string(nil), normalizeBackupScheduleTimes(settings.Schedule.RecentBackupTimes)...),
 	}
 }
 
@@ -287,12 +317,43 @@ func backupScheduledSettingsSnapshot(app *App, scheduler *backupScheduler) map[s
 			}
 		}
 		tokenConfigured := strings.TrimSpace(settings.Channels.OpenList.Token) != ""
-		return backupScheduledSettingsResult(settings, backupScheduleState{Status: backupScheduleStatusNever}, tokenConfigured)
+		state := backupScheduleState{Status: backupScheduleStatusNever}
+		if recent := settings.Schedule.RecentBackupTimes; len(recent) > 0 {
+			state.Status = backupScheduleStatusSuccess
+			state.LastSuccessAt = recent[0]
+		}
+		return backupScheduledSettingsResult(settings, state, tokenConfigured)
 	}
 	scheduler.mu.RLock()
 	defer scheduler.mu.RUnlock()
 	tokenConfigured := strings.TrimSpace(scheduler.settings.Channels.OpenList.Token) != ""
 	return backupScheduledSettingsResult(scheduler.settings, scheduler.state, tokenConfigured)
+}
+
+func normalizeBackupScheduleTimes(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, 0, backupScheduleHistoryLimit)
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+		if len(result) == backupScheduleHistoryLimit {
+			break
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func (s *backupScheduler) saveSchedule(input map[string]string) (map[string]interface{}, error) {

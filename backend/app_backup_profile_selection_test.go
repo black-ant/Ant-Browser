@@ -40,37 +40,6 @@ func TestBackupProfilePackageFileName(t *testing.T) {
 	}
 }
 
-func TestBackupPackageInfoFromFileName(t *testing.T) {
-	tests := []struct {
-		name string
-		want backupPackageInfo
-	}{
-		{
-			name: "ant-chrome-profile-backup-single--测试账号 A--20260901-173616.zip",
-			want: backupPackageInfo{PackageType: "profile", ProfileCount: 1, ProfileNames: []string{"测试账号 A"}},
-		},
-		{
-			name: "ant-chrome-profile-backup-20260901-112531.810696400.zip",
-			want: backupPackageInfo{PackageType: "profile"},
-		},
-		{
-			name: "ant-chrome-profile-backup-multi-3--20260901-173616.000000000.zip",
-			want: backupPackageInfo{PackageType: "profile", ProfileCount: 3},
-		},
-		{
-			name: "ant-chrome-backup-20260901-173616.zip",
-			want: backupPackageInfo{PackageType: "full"},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := backupPackageInfoFromFileName(test.name); !reflect.DeepEqual(got, test.want) {
-				t.Fatalf("package info = %#v, want %#v", got, test.want)
-			}
-		})
-	}
-}
-
 func TestDetectBackupPackageFormat(t *testing.T) {
 	for _, format := range []string{"ant-chrome-full-backup", profilePackageFormat} {
 		t.Run(format, func(t *testing.T) {
@@ -106,6 +75,19 @@ func TestDetectBackupPackageFormat(t *testing.T) {
 				t.Fatalf("package format = %q, want %q", got, format)
 			}
 		})
+	}
+}
+
+func TestInspectBackupPackageUsesInternalManifestInsteadOfFileName(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "ant-chrome-backup-full-looking-name.zip")
+	writeTestProfilePackage(t, zipPath, []browser.Profile{{ProfileId: "profile-a", ProfileName: "实例 A"}}, nil)
+
+	info, err := inspectBackupPackageInfo(zipPath)
+	if err != nil {
+		t.Fatalf("inspectBackupPackageInfo returned error: %v", err)
+	}
+	if info.PackageType != "profile" || info.ProfileCount != 1 || len(info.ProfileNames) != 1 || info.ProfileNames[0] != "实例 A" {
+		t.Fatalf("package info = %#v, want profile manifest metadata", info)
 	}
 }
 

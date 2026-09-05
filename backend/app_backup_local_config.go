@@ -93,6 +93,7 @@ func normalizeBackupSettings(value config.BackupConfig) config.BackupConfig {
 	if value.Schedule.DailyTime == "" {
 		value.Schedule.DailyTime = defaults.Schedule.DailyTime
 	}
+	value.Schedule.RecentBackupTimes = normalizeBackupScheduleTimes(value.Schedule.RecentBackupTimes)
 	return value
 }
 
@@ -113,7 +114,20 @@ func backupConfigsEqual(left, right config.BackupConfig) bool {
 		left.Channels.S3.SessionToken == right.Channels.S3.SessionToken &&
 		left.Channels.S3.ForcePathStyle == right.Channels.S3.ForcePathStyle &&
 		left.Schedule.Enabled == right.Schedule.Enabled &&
-		left.Schedule.DailyTime == right.Schedule.DailyTime
+		left.Schedule.DailyTime == right.Schedule.DailyTime &&
+		backupScheduleTimesEqual(left.Schedule.RecentBackupTimes, right.Schedule.RecentBackupTimes)
+}
+
+func backupScheduleTimesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func backupHasLocalSecrets(value config.BackupConfig) bool {

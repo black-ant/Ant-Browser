@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -19,77 +18,182 @@ type backupPackageInfo struct {
 	ProfileNames []string
 }
 
+type backupPackageInspection struct {
+	info            backupPackageInfo
+	fullManifest    *backup.Manifest
+	profileManifest *ProfilePackageManifest
+	includedEntries int
+	skippedEntries  int
+	fileCount       int
+}
+
 func inspectBackupPackageInfo(zipPath string) (backupPackageInfo, error) {
+	inspection, err := inspectBackupPackage(zipPath)
+	if err != nil {
+		return backupPackageInfo{}, err
+	}
+	return inspection.info, nil
+}
+
+func inspectBackupPackage(zipPath string) (backupPackageInspection, error) {
 	reader, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return backupPackageInfo{}, fmt.Errorf(`open backup package failed: %w`, err)
+		return backupPackageInspection{}, fmt.Errorf(`open backup package failed: %w`, err)
 	}
 	defer reader.Close()
 
 	manifestFile := findBackupPackageEntry(reader.File, `manifest.json`)
 	if manifestFile == nil {
-		return backupPackageInfo{}, fmt.Errorf(`backup package has no manifest.json`)
+		return backupPackageInspection{}, fmt.Errorf(`backup package has no manifest.json`)
 	}
 	var header map[string]json.RawMessage
 	if err := decodeBackupPackageEntry(manifestFile, &header); err != nil {
-		return backupPackageInfo{}, fmt.Errorf(`parse backup manifest failed: %w`, err)
+		return backupPackageInspection{}, fmt.Errorf(`parse backup manifest failed: %w`, err)
 	}
 	format := backupPackageJSONFieldString(header, `format`)
 	switch format {
 	case backup.PackageFormat:
-		return backupPackageInfo{PackageType: `full`}, nil
+		var manifest backup.Manifest
+		if err := decodeBackupPackageEntry(manifestFile, &manifest); err != nil {
+			return backupPackageInspection{}, fmt.Errorf(`parse full backup manifest failed: %w`, err)
+		}
+		if manifest.Format != backup.PackageFormat {
+			return backupPackageInspection{}, fmt.Errorf(`unsupported backup format: %s`, manifest.Format)
+		}
+		if manifest.ManifestVersion != backup.ManifestVersion {
+			return backupPackageInspection{}, fmt.Errorf(`unsupported backup manifest version: %d`, manifest.ManifestVersion)
+		}
+		normalizedEntries, err := backupNormalizeAndValidateManifestEntries(manifest)
+		if err != nil {
+			return backupPackageInspection{}, err
+		}
+		includedEntries, skippedEntries, err := validateBackupManifestArchive(reader.File, normalizedEntries)
+		if err != nil {
+			return backupPackageInspection{}, err
+		}
+		return backupPackageInspection{
+			info:            backupPackageInfo{PackageType: `full`},
+			fullManifest:    &manifest,
+			includedEntries: includedEntries,
+			skippedEntries:  skippedEntries,
+			fileCount:       countBackupPackageFiles(reader.File),
+		}, nil
 	case profilePackageFormat:
-		info := backupPackageInfo{
-			PackageType:  `profile`,
-			ProfileCount: backupPackageJSONFieldInt(header, `profileCount`),
-			ProfileNames: backupPackageJSONFieldStringList(header, `profileNames`),
+		var manifest ProfilePackageManifest
+		if err := decodeBackupPackageEntry(manifestFile, &manifest); err != nil {
+			return backupPackageInspection{}, fmt.Errorf(`parse profile backup manifest failed: %w`, err)
 		}
-		if len(info.ProfileNames) == 0 {
-			info.ProfileNames = inspectProfileNamesFromPackage(reader.File, backupPackageJSONFieldInt(header, `version`))
+		info, err := inspectProfilePackageManifest(reader.File, manifest)
+		if err != nil {
+			return backupPackageInspection{}, err
 		}
-		if info.ProfileCount < len(info.ProfileNames) {
-			info.ProfileCount = len(info.ProfileNames)
-		}
-		return info, nil
+		return backupPackageInspection{
+			info:            info,
+			profileManifest: &manifest,
+			fileCount:       countBackupPackageFiles(reader.File),
+		}, nil
 	default:
-		return backupPackageInfo{}, fmt.Errorf(`unsupported backup format: %s`, format)
+		return backupPackageInspection{}, fmt.Errorf(`unsupported backup format: %s`, format)
 	}
 }
 
-func backupPackageInfoFromFileName(fileName string) backupPackageInfo {
-	baseName := filepath.Base(strings.TrimSpace(fileName))
-	lowerName := strings.ToLower(baseName)
-	const singlePrefix = `ant-chrome-profile-backup-single--`
-	const multiPrefix = `ant-chrome-profile-backup-multi-`
-	const profilePrefix = `ant-chrome-profile-backup-`
-	const fullPrefix = `ant-chrome-backup-`
+func validateBackupManifestArchive(files []*zip.File, entries []backupNormalizedManifestEntry) (int, int, error) {
+	includedEntries := 0
+	skippedEntries := 0
+	for _, normalized := range entries {
+		entry := normalized.entry
+		present, wrongType, matchCount := findBackupArchiveEntryState(files, normalized.archivePath, entry.EntryType)
+		if wrongType {
+			return 0, 0, fmt.Errorf(`备份条目类型与归档内容不匹配(%s)`, entry.ID)
+		}
+		if entry.EntryType == backup.EntryTypeFile && matchCount > 1 {
+			return 0, 0, fmt.Errorf(`备份包包含重复文件条目: %s`, normalized.archivePath)
+		}
+		if !present {
+			if !entry.Required {
+				skippedEntries++
+				continue
+			}
+			return 0, 0, fmt.Errorf(`备份包缺少必需条目: %s`, entry.ID)
+		}
+		includedEntries++
+	}
+	return includedEntries, skippedEntries, nil
+}
 
-	if strings.HasPrefix(lowerName, singlePrefix) {
-		name := strings.TrimSuffix(baseName[len(singlePrefix):], filepath.Ext(baseName))
-		if separator := strings.LastIndex(name, `--`); separator > 0 {
-			name = strings.TrimSpace(name[:separator])
+func findBackupArchiveEntryState(files []*zip.File, archivePath string, entryType backup.EntryType) (bool, bool, int) {
+	base := strings.TrimSuffix(filepath.ToSlash(archivePath), `/`)
+	present := false
+	wrongType := false
+	matchCount := 0
+	for _, file := range files {
+		name := filepath.ToSlash(strings.TrimSpace(file.Name))
+		if name == `` {
+			continue
 		}
-		info := backupPackageInfo{PackageType: `profile`, ProfileCount: 1}
-		if name != `` && !strings.EqualFold(name, `未命名实例`) {
-			info.ProfileNames = []string{name}
+		isDirectory := strings.HasSuffix(name, `/`) || file.FileInfo().IsDir()
+		normalizedName := strings.TrimSuffix(name, `/`)
+		if entryType == backup.EntryTypeFile {
+			if normalizedName != base {
+				continue
+			}
+			if isDirectory {
+				wrongType = true
+				continue
+			}
+			present = true
+			matchCount++
+			continue
 		}
-		return info
-	}
-	if strings.HasPrefix(lowerName, multiPrefix) {
-		countPart := baseName[len(multiPrefix):]
-		if separator := strings.Index(countPart, `--`); separator >= 0 {
-			countPart = countPart[:separator]
+		if normalizedName == base {
+			if isDirectory {
+				present = true
+			} else {
+				wrongType = true
+			}
+			continue
 		}
-		count, _ := strconv.Atoi(countPart)
-		return backupPackageInfo{PackageType: `profile`, ProfileCount: count}
+		if strings.HasPrefix(name, base+`/`) {
+			present = true
+		}
 	}
-	if strings.HasPrefix(lowerName, profilePrefix) {
-		return backupPackageInfo{PackageType: `profile`}
+	return present, wrongType, matchCount
+}
+
+func countBackupPackageFiles(files []*zip.File) int {
+	count := 0
+	for _, file := range files {
+		name := filepath.ToSlash(strings.TrimSpace(file.Name))
+		if name == `` || strings.HasSuffix(name, `/`) || file.FileInfo().IsDir() {
+			continue
+		}
+		count++
 	}
-	if strings.HasPrefix(lowerName, fullPrefix) {
-		return backupPackageInfo{PackageType: `full`}
+	return count
+}
+
+func inspectProfilePackageManifest(files []*zip.File, manifest ProfilePackageManifest) (backupPackageInfo, error) {
+	if manifest.Format != profilePackageFormat {
+		return backupPackageInfo{}, fmt.Errorf(`unsupported profile backup format: %s`, manifest.Format)
 	}
-	return backupPackageInfo{}
+	if manifest.Version != 1 && manifest.Version != profilePackageVersion {
+		return backupPackageInfo{}, fmt.Errorf(`unsupported profile backup manifest version: %d`, manifest.Version)
+	}
+	if manifest.ProfileCount < 0 {
+		return backupPackageInfo{}, fmt.Errorf(`profile backup manifest has an invalid profile count`)
+	}
+	info := backupPackageInfo{
+		PackageType:  `profile`,
+		ProfileCount: manifest.ProfileCount,
+		ProfileNames: normalizeBackupPackageProfileNames(manifest.ProfileNames),
+	}
+	if len(info.ProfileNames) == 0 {
+		info.ProfileNames = inspectProfileNamesFromPackage(files, manifest.Version)
+	}
+	if info.ProfileCount < len(info.ProfileNames) {
+		info.ProfileCount = len(info.ProfileNames)
+	}
+	return info, nil
 }
 
 func backupPackageInfoFields(info backupPackageInfo) map[string]interface{} {
@@ -174,22 +278,6 @@ func backupPackageJSONFieldString(fields map[string]json.RawMessage, key string)
 		return ``
 	}
 	return strings.TrimSpace(value)
-}
-
-func backupPackageJSONFieldStringList(fields map[string]json.RawMessage, key string) []string {
-	var values []string
-	if err := json.Unmarshal(fields[key], &values); err != nil {
-		return nil
-	}
-	return normalizeBackupPackageProfileNames(values)
-}
-
-func backupPackageJSONFieldInt(fields map[string]json.RawMessage, key string) int {
-	var value int
-	if err := json.Unmarshal(fields[key], &value); err != nil || value < 0 {
-		return 0
-	}
-	return value
 }
 
 func normalizeBackupPackageProfileNames(names []string) []string {

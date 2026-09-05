@@ -148,8 +148,9 @@ func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type BackupScheduleConfig struct {
-	Enabled   bool   `yaml:"enabled"`
-	DailyTime string `yaml:"daily_time"`
+	Enabled           bool     `yaml:"enabled"`
+	DailyTime         string   `yaml:"daily_time"`
+	RecentBackupTimes []string `yaml:"recent_backup_times,omitempty"`
 }
 
 type AppConfig struct {

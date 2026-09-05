@@ -118,18 +118,6 @@ export function BackupGetLocalSettings() {
   return window['go']['main']['App']['BackupGetLocalSettings']();
 }
 
-export function BackupListLocalBackups(arg1) {
-  return window['go']['main']['App']['BackupListLocalBackups'](arg1);
-}
-
-export function BackupSaveLocalDirectory(arg1) {
-  return window['go']['main']['App']['BackupSaveLocalDirectory'](arg1);
-}
-
-export function BackupSelectLocalDirectory() {
-  return window['go']['main']['App']['BackupSelectLocalDirectory']();
-}
-
 export function BackupGetManifestTemplate() {
   return window['go']['main']['App']['BackupGetManifestTemplate']();
 }
@@ -140,6 +128,10 @@ export function BackupGetScopeDefinition() {
 
 export function BackupImportPackage() {
   return window['go']['main']['App']['BackupImportPackage']();
+}
+
+export function BackupListLocalBackups(arg1) {
+  return window['go']['main']['App']['BackupListLocalBackups'](arg1);
 }
 
 export function BackupOpenListDownload(arg1, arg2) {
@@ -210,12 +202,20 @@ export function BackupS3Upload(arg1) {
   return window['go']['main']['App']['BackupS3Upload'](arg1);
 }
 
+export function BackupSaveLocalDirectory(arg1) {
+  return window['go']['main']['App']['BackupSaveLocalDirectory'](arg1);
+}
+
 export function BackupScheduledGetSettings() {
   return window['go']['main']['App']['BackupScheduledGetSettings']();
 }
 
 export function BackupScheduledSaveSettings(arg1) {
   return window['go']['main']['App']['BackupScheduledSaveSettings'](arg1);
+}
+
+export function BackupSelectLocalDirectory() {
+  return window['go']['main']['App']['BackupSelectLocalDirectory']();
 }
 
 export function BookmarkList() {

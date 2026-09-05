@@ -4,6 +4,7 @@ import (
 	"ant-chrome/backend/internal/config"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -105,6 +106,53 @@ func TestBackupScheduledSettingsDefaults(t *testing.T) {
 	}
 	if _, ok := settings["remotePath"]; ok {
 		t.Fatal("scheduled settings must not include OpenList remote path")
+	}
+}
+
+func TestBackupScheduledSettingsExposeRecentBackupTimes(t *testing.T) {
+	root := t.TempDir()
+	app := NewApp(root)
+	app.config = config.DefaultConfig()
+	scheduler := newBackupScheduler(app)
+	scheduler.settings = app.config.Backup
+
+	for _, timestamp := range []string{
+		"2026-09-02T01:00:00Z",
+		"2026-09-03T01:00:00Z",
+		"2026-09-04T01:00:00Z",
+		"2026-09-05T01:00:00Z",
+	} {
+		scheduler.recordSuccessAt(timestamp, "backup.zip")
+	}
+
+	want := []string{
+		"2026-09-05T01:00:00Z",
+		"2026-09-04T01:00:00Z",
+		"2026-09-03T01:00:00Z",
+	}
+	settings := scheduler.snapshot()
+	got, ok := settings["recentBackupTimes"].([]string)
+	if !ok {
+		t.Fatalf("recentBackupTimes = %#v, want []string", settings["recentBackupTimes"])
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("recentBackupTimes = %#v, want %#v", got, want)
+	}
+
+	persisted, err := config.Load(filepath.Join(root, "config.yaml"))
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if !reflect.DeepEqual(persisted.Backup.Schedule.RecentBackupTimes, want) {
+		t.Fatalf("persisted recentBackupTimes = %#v, want %#v", persisted.Backup.Schedule.RecentBackupTimes, want)
+	}
+
+	reloadedScheduler := newBackupScheduler(&App{appRoot: root, config: persisted})
+	if err := reloadedScheduler.loadLocalConfig(); err != nil {
+		t.Fatalf("reload scheduler settings: %v", err)
+	}
+	if reloadedScheduler.state.Status != backupScheduleStatusSuccess || reloadedScheduler.state.LastSuccessAt != want[0] {
+		t.Fatalf("reloaded scheduler state = %+v, want successful state at %s", reloadedScheduler.state, want[0])
 	}
 }
 

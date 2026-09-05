@@ -66,19 +66,15 @@ export function BackupCreatePackage(arg1:Record<string, string>):Promise<Record<
 
 export function BackupExportPackage():Promise<Record<string, any>>;
 
-export function BackupGetLocalSettings():Promise<Record<string, any>>;
-
-export function BackupListLocalBackups(arg1:string):Promise<Array<Record<string, any>>>;
-
-export function BackupSaveLocalDirectory(arg1:string):Promise<Record<string, any>>;
-
-export function BackupSelectLocalDirectory():Promise<Record<string, any>>;
+export function BackupGetLocalSettings():Promise<backend.BackupLocalSettings>;
 
 export function BackupGetManifestTemplate():Promise<backup.Manifest>;
 
 export function BackupGetScopeDefinition():Promise<backup.Scope>;
 
 export function BackupImportPackage():Promise<Record<string, any>>;
+
+export function BackupListLocalBackups(arg1:string):Promise<Array<backend.BackupLocalHistoryItem>>;
 
 export function BackupOpenListDownload(arg1:Record<string, string>,arg2:string):Promise<Record<string, any>>;
 
@@ -114,9 +110,13 @@ export function BackupS3Test(arg1:Record<string, string>):Promise<Record<string,
 
 export function BackupS3Upload(arg1:Record<string, string>):Promise<Record<string, any>>;
 
+export function BackupSaveLocalDirectory(arg1:string):Promise<backend.BackupLocalSettings>;
+
 export function BackupScheduledGetSettings():Promise<Record<string, any>>;
 
 export function BackupScheduledSaveSettings(arg1:Record<string, string>):Promise<Record<string, any>>;
+
+export function BackupSelectLocalDirectory():Promise<backend.BackupSelectLocalDirectoryResult>;
 
 export function BookmarkList():Promise<Array<config.BrowserBookmark>>;
 

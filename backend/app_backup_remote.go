@@ -58,9 +58,6 @@ func (a *App) BackupOpenListList(input map[string]string) ([]map[string]interfac
 			`size`:       item.Size,
 			`modifiedAt`: item.ModifiedAt,
 		}
-		for key, value := range backupPackageInfoFields(backupPackageInfoFromFileName(item.Name)) {
-			entry[key] = value
-		}
 		result = append(result, entry)
 	}
 	return result, nil

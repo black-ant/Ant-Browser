@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Cloud, Database, Download, ExternalLink, FolderOpen, RefreshCw, Search } from 'lucide-react'
+import { Cloud, Database, Download, ExternalLink, RefreshCw } from 'lucide-react'
 
 import { Button, Card, ConfirmModal, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components'
@@ -10,7 +10,6 @@ import {
   openBackupPath,
   restoreLocalSystemConfig,
   saveLocalBackupDirectory,
-  selectLocalBackupDirectory,
   type BackupLocalHistoryItem,
 } from '../api'
 import {
@@ -25,12 +24,11 @@ import {
   restoreS3Backup,
 } from '../channels/s3/api'
 import type { S3BackupFile, S3Connection } from '../channels/s3/api'
-import { BackupRemoteScanModal } from './BackupRemoteScanModal'
-import type { BackupRemoteScanResult } from './BackupRemoteScanModal'
 import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../packageInfo'
 
 type BackupHistorySource = 'local' | 'openlist' | 's3'
 type BackupHistoryFilter = BackupHistorySource
+type RemoteBackupSource = Exclude<BackupHistorySource, 'local'>
 type RemoteBackupFile = OpenListBackupFile | S3BackupFile
 
 interface BackupHistoryItem extends BackupPackageInfo {
@@ -44,6 +42,7 @@ interface BackupHistoryItem extends BackupPackageInfo {
   remoteFile?: RemoteBackupFile
   metadataAvailable?: boolean
   metadataError?: string
+  metadataOrphan?: boolean
   appName?: string
   appVersion?: string
 }
@@ -72,7 +71,7 @@ function buildS3Location(connection: S3Connection) {
 }
 
 function localItemsFromEntries(entries: BackupLocalHistoryItem[]): BackupHistoryItem[] {
-  return entries.map(item => ({
+  return sortHistoryItems(entries.map(item => ({
     id: `local:${item.path || item.name}`,
     name: item.name || item.path,
     source: 'local' as const,
@@ -82,6 +81,7 @@ function localItemsFromEntries(entries: BackupLocalHistoryItem[]): BackupHistory
     localPath: item.path,
     metadataAvailable: item.metadataAvailable,
     metadataError: item.metadataError,
+    metadataOrphan: item.metadataOrphan,
     appName: item.appName,
     appVersion: item.appVersion,
     ...(item.metadataAvailable
@@ -91,11 +91,35 @@ function localItemsFromEntries(entries: BackupLocalHistoryItem[]): BackupHistory
         profileNames: item.profileNames,
       }
       : {}),
-  }))
+  })))
+}
+
+function historyItemIdentity(item: BackupHistoryItem) {
+  const rawName = item.source === 'local'
+    ? (item.name || item.localPath || item.location)
+    : item.name
+  const normalizedName = rawName.trim().replace(/\.json$/i, '.zip').toLocaleLowerCase()
+  return `${item.source}:${normalizedName}`
+}
+
+function historyItemPriority(item: BackupHistoryItem) {
+  let priority = 0
+  if (item.source === 'local' && /\.zip$/i.test(item.name.trim())) priority += 4
+  if (item.metadataAvailable) priority += 2
+  if (!item.metadataOrphan) priority += 1
+  return priority
 }
 
 function sortHistoryItems(items: BackupHistoryItem[]) {
-  return [...items].sort((left, right) => {
+  const unique = new Map<string, BackupHistoryItem>()
+  for (const item of items) {
+    const key = historyItemIdentity(item)
+    const current = unique.get(key)
+    if (!current || historyItemPriority(item) > historyItemPriority(current)) {
+      unique.set(key, item)
+    }
+  }
+  return [...unique.values()].sort((left, right) => {
     const leftTime = Date.parse(left.modifiedAt)
     const rightTime = Date.parse(right.modifiedAt)
     if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return rightTime - leftTime
@@ -108,12 +132,6 @@ function sortHistoryItems(items: BackupHistoryItem[]) {
 function connectionKey(connection?: OpenListConnection | S3Connection | null) {
   if (!connection) return ''
   return JSON.stringify(connection)
-}
-
-function remoteFilesFromItems<T extends RemoteBackupFile>(items: BackupHistoryItem[], source: BackupHistorySource) {
-  return items
-    .filter(item => item.source === source && item.remoteFile)
-    .map(item => item.remoteFile as T)
 }
 
 function formatSize(size: number) {
@@ -198,6 +216,16 @@ function backupPackageTypeLabel(item: BackupPackageInfo) {
 }
 
 function renderBackupPackageInfo(item: BackupHistoryItem) {
+  if (item.source === 'local' && item.metadataOrphan) {
+    return (
+      <span
+        className="text-[var(--color-error)]"
+        title={item.metadataError || '同名 JSON 存在，但 ZIP 文件不存在'}
+      >
+        备份文件缺失
+      </span>
+    )
+  }
   if (item.source === 'local' && item.metadataAvailable !== true) {
     return (
       <span
@@ -240,10 +268,8 @@ export function BackupHistoryTable({
   const [pendingRestoreItem, setPendingRestoreItem] = useState<BackupHistoryItem | null>(null)
   const [restoreConfirming, setRestoreConfirming] = useState(false)
   const [openingLocationId, setOpeningLocationId] = useState('')
-  const [scanModalOpen, setScanModalOpen] = useState(false)
   const [error, setError] = useState('')
   const [localDirectory, setLocalDirectory] = useState('')
-  const [localDirectoryBusy, setLocalDirectoryBusy] = useState(false)
   const [activeConnection, setActiveConnection] = useState<OpenListConnection | null>(configuredConnection || null)
   const [activeS3Connection, setActiveS3Connection] = useState<S3Connection | null>(configuredS3Connection || null)
   const configuredOpenListKeyRef = useRef<string | null>(null)
@@ -253,41 +279,48 @@ export function BackupHistoryTable({
   const localItemsRef = useRef<BackupHistoryItem[]>([])
 
   useEffect(() => {
-    onBusyChange?.(busy === 'restore-merge' || busy === 'download' || localDirectoryBusy || pendingRestoreItem !== null || restoreConfirming)
-  }, [busy, localDirectoryBusy, onBusyChange, pendingRestoreItem, restoreConfirming])
+    onBusyChange?.(busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming)
+  }, [busy, onBusyChange, pendingRestoreItem, restoreConfirming])
 
   const mergeHistoryItems = (
     openListFiles: OpenListBackupFile[],
     openListConnection: OpenListConnection | null,
     s3Files: S3BackupFile[],
     s3Connection: S3Connection | null,
+    replaceSources: RemoteBackupSource[] = ['openlist', 's3'],
   ) => {
     const localItems = localItemsRef.current
-    const openListItems = openListConnection
-      ? openListFiles.map(file => ({
-        id: `openlist:${file.name}`,
-        name: file.name,
-        source: 'openlist' as const,
-        size: file.size,
-        modifiedAt: file.modifiedAt,
-        location: buildOpenListLocation(openListConnection),
-        remoteFile: file,
-        ...normalizeBackupPackageInfo(file, file.name),
-      }))
-      : []
-    const s3Items = s3Connection
-      ? s3Files.map(file => ({
-        id: `s3:${file.name}`,
-        name: file.name,
-        source: 's3' as const,
-        size: file.size,
-        modifiedAt: file.modifiedAt,
-        location: buildS3Location(s3Connection),
-        remoteFile: file,
-        ...normalizeBackupPackageInfo(file, file.name),
-      }))
-      : []
-    setItems(sortHistoryItems([...localItems, ...openListItems, ...s3Items]))
+    setItems(previous => {
+      const preservedItems = previous.filter(item => {
+        if (item.source === 'local') return false
+        return !replaceSources.includes(item.source)
+      })
+      const openListItems = replaceSources.includes('openlist') && openListConnection
+        ? openListFiles.map(file => ({
+          id: `openlist:${file.name}`,
+          name: file.name,
+          source: 'openlist' as const,
+          size: file.size,
+          modifiedAt: file.modifiedAt,
+          location: buildOpenListLocation(openListConnection),
+          remoteFile: file,
+          ...normalizeBackupPackageInfo(file),
+        }))
+        : []
+      const s3Items = replaceSources.includes('s3') && s3Connection
+        ? s3Files.map(file => ({
+          id: `s3:${file.name}`,
+          name: file.name,
+          source: 's3' as const,
+          size: file.size,
+          modifiedAt: file.modifiedAt,
+          location: buildS3Location(s3Connection),
+          remoteFile: file,
+          ...normalizeBackupPackageInfo(file),
+        }))
+        : []
+      return sortHistoryItems([...localItems, ...preservedItems, ...openListItems, ...s3Items])
+    })
   }
 
   const loadLocalHistory = async (
@@ -328,14 +361,15 @@ export function BackupHistoryTable({
     s3Connection: S3Connection | null,
     showToast: boolean,
     manageBusy = true,
+    source: RemoteBackupSource | 'all' = 'all',
   ) => {
     const loadVersion = ++remoteLoadVersionRef.current
     if (manageBusy) setBusy('list')
     setError('')
-    const openListPromise = openListConnection
+    const openListPromise = source !== 's3' && openListConnection
       ? listOpenListBackups(openListConnection)
       : Promise.resolve<OpenListBackupFile[] | null>(null)
-    const s3Promise = s3Connection
+    const s3Promise = source !== 'openlist' && s3Connection
       ? listS3Backups(s3Connection)
       : Promise.resolve<S3BackupFile[] | null>(null)
     try {
@@ -354,7 +388,14 @@ export function BackupHistoryTable({
       } else {
         errors.push(errorMessage(s3Result.reason, 'S3 历史读取失败'))
       }
-      mergeHistoryItems(openListFiles, openListConnection, s3Files, s3Connection)
+      const replaceSources: RemoteBackupSource[] = source === 'all' ? ['openlist', 's3'] : [source]
+      mergeHistoryItems(
+        openListFiles,
+        source === 's3' ? null : openListConnection,
+        s3Files,
+        source === 'openlist' ? null : s3Connection,
+        replaceSources,
+      )
       if (errors.length > 0) {
         const message = errors.join('; ')
         setError(message)
@@ -430,33 +471,64 @@ export function BackupHistoryTable({
       setActiveConnection(nextOpenListConnection)
       setActiveS3Connection(nextS3Connection)
     }
-    if (!nextOpenListConnection && !nextS3Connection) {
+    if (filter === 'local') {
       setItems(sortHistoryItems([
         ...localItemsRef.current,
       ]))
       return
     }
-    void loadRemoteHistory(nextOpenListConnection, nextS3Connection, false)
+    if (filter === 'openlist') {
+      if (!nextOpenListConnection) {
+        setItems(previous => sortHistoryItems([
+          ...localItemsRef.current,
+          ...previous.filter(item => item.source !== 'openlist'),
+        ]))
+        return
+      }
+      void loadRemoteHistory(nextOpenListConnection, nextS3Connection, false, true, 'openlist')
+      return
+    }
+    if (!nextS3Connection) {
+      setItems(previous => sortHistoryItems([
+        ...localItemsRef.current,
+        ...previous.filter(item => item.source !== 's3'),
+      ]))
+      return
+    }
+    void loadRemoteHistory(nextOpenListConnection, nextS3Connection, false, true, 's3')
   }, [configuredConnection, configuredS3Connection, refreshToken])
 
-  const handleSelectLocalDirectory = async () => {
-    setLocalDirectoryBusy(true)
+  const handleFilterChange = (nextFilter: BackupHistoryFilter) => {
+    if (busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== '') return
+    setFilter(nextFilter)
     setError('')
-    try {
-      const result = await selectLocalBackupDirectory()
-      if (result.cancelled) return
-      clearLegacyLocalBackupHistory()
-      setLocalDirectory(result.localDirectory)
-      onLocalDirectoryChange?.(result.localDirectory)
-      setFilter('local')
-      await loadLocalHistory(result.localDirectory, true)
-    } catch (localError) {
-      const message = errorMessage(localError, '选择本地备份目录失败')
-      setError(message)
-      toast.error(message)
-    } finally {
-      setLocalDirectoryBusy(false)
+    if (nextFilter === 'local') {
+      void loadLocalHistory(localDirectory, false, true)
+      return
     }
+
+    if (nextFilter === 'openlist' && !activeConnection) {
+      setItems(previous => sortHistoryItems([
+        ...localItemsRef.current,
+        ...previous.filter(item => item.source !== nextFilter),
+      ]))
+      return
+    }
+    if (nextFilter === 's3' && !activeS3Connection) {
+      setItems(previous => sortHistoryItems([
+        ...localItemsRef.current,
+        ...previous.filter(item => item.source !== nextFilter),
+      ]))
+      return
+    }
+
+    void loadRemoteHistory(
+      activeConnection,
+      activeS3Connection,
+      false,
+      true,
+      nextFilter,
+    )
   }
 
   const handleRefresh = async () => {
@@ -469,39 +541,36 @@ export function BackupHistoryTable({
         onLocalDirectoryChange?.(directory)
       }
     }
-    setItems(sortHistoryItems([
-      ...localItemsRef.current,
-    ]))
-    const tasks = [loadLocalHistory(directory)]
-    if (activeConnection || activeS3Connection) {
-      tasks.push(loadRemoteHistory(activeConnection, activeS3Connection, false, false))
-    }
-    await Promise.all(tasks)
-    if (!activeConnection && !activeS3Connection) {
+    if (filter === 'local') {
+      await loadLocalHistory(directory, false, true)
       toast.success(`已刷新本地历史，共 ${localItemsRef.current.length} 个备份`)
-    } else {
-      toast.success(`已刷新备份历史，共 ${localItemsRef.current.length} 个本地备份`)
-    }
-  }
-
-  const handleRemoteScanned = (result: BackupRemoteScanResult) => {
-    remoteLoadVersionRef.current += 1
-    setBusy('none')
-    setError('')
-    if (result.channel === 'openlist') {
-      const connection = result.connection as OpenListConnection
-      const files = result.files as OpenListBackupFile[]
-      setActiveConnection(connection)
-      setFilter('openlist')
-      mergeHistoryItems(files, connection, remoteFilesFromItems<S3BackupFile>(items, 's3'), activeS3Connection)
       return
     }
 
-    const connection = result.connection as S3Connection
-    const files = result.files as S3BackupFile[]
-    setActiveS3Connection(connection)
-    setFilter('s3')
-    mergeHistoryItems(remoteFilesFromItems<OpenListBackupFile>(items, 'openlist'), activeConnection, files, connection)
+    if (filter === 'openlist' && !activeConnection) {
+      setItems(previous => sortHistoryItems([
+        ...localItemsRef.current,
+        ...previous.filter(item => item.source !== filter),
+      ]))
+      setError(`请先配置 ${sourceLabel(filter)}`)
+      return
+    }
+    if (filter === 's3' && !activeS3Connection) {
+      setItems(previous => sortHistoryItems([
+        ...localItemsRef.current,
+        ...previous.filter(item => item.source !== filter),
+      ]))
+      setError(`请先配置 ${sourceLabel(filter)}`)
+      return
+    }
+    await loadRemoteHistory(
+      activeConnection,
+      activeS3Connection,
+      false,
+      true,
+      filter,
+    )
+    toast.success(`已刷新${sourceLabel(filter)}历史`)
   }
 
   const handleDownload = async (item: BackupHistoryItem) => {
@@ -561,6 +630,9 @@ export function BackupHistoryTable({
     try {
       let result
       if (item.source === 'local') {
+        if (item.metadataOrphan) {
+          throw new Error(item.metadataError || '同名 JSON 存在，但 ZIP 文件不存在')
+        }
         const localPath = item.localPath?.trim()
         if (!localPath) {
           throw new Error('本地备份路径不可用，请重新导入该 ZIP 文件')
@@ -602,6 +674,10 @@ export function BackupHistoryTable({
   }
 
   const requestRestore = (item: BackupHistoryItem) => {
+    if (item.source === 'local' && item.metadataOrphan) {
+      setError(item.metadataError || '同名 JSON 存在，但 ZIP 文件不存在')
+      return
+    }
     if (item.source === 'local' && !item.localPath?.trim()) {
       setError('本地备份路径不可用，请重新导入该 ZIP 文件')
       return
@@ -633,6 +709,9 @@ export function BackupHistoryTable({
     setError('')
     try {
       if (item.source === 'local') {
+        if (item.metadataOrphan) {
+          throw new Error(item.metadataError || '同名 JSON 存在，但 ZIP 文件不存在')
+        }
         const localPath = item.localPath?.trim()
         if (!localPath) {
           throw new Error('本地备份路径不可用')
@@ -726,6 +805,9 @@ export function BackupHistoryTable({
       render: (value, item) => {
         const location = String(value || '').trim()
         if (!location) return '—'
+        if (item.source === 'local' && item.metadataOrphan) {
+          return <span className="text-[var(--color-error)]" title={item.metadataError}>同名 JSON，ZIP 缺失</span>
+        }
         if (item.source === 's3') {
           return <span className="block max-w-[320px] truncate text-[var(--color-text-secondary)]" title={location}>{location}</span>
         }
@@ -771,7 +853,7 @@ export function BackupHistoryTable({
             className="!border-[var(--color-border-strong)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!bg-[var(--color-border-default)] disabled:!opacity-60"
             onClick={() => requestRestore(item)}
             loading={restoringItemId === item.id}
-            disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || downloadingItemId !== ''}
+            disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || downloadingItemId !== '' || item.metadataOrphan === true}
           >
             合并恢复
           </Button>
@@ -795,8 +877,9 @@ export function BackupHistoryTable({
               type="button"
               role="tab"
               aria-selected={filter === filterItem.key}
-              onClick={() => setFilter(filterItem.key)}
-              className={`flex h-8 min-w-0 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-medium transition-colors duration-200 ${
+              onClick={() => handleFilterChange(filterItem.key)}
+              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}
+              className={`flex h-8 min-w-0 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-medium transition-colors duration-200 disabled:cursor-wait disabled:opacity-60 ${
                 filter === filterItem.key
                   ? '!bg-[#0f172a] !text-white shadow-sm [-webkit-text-fill-color:#ffffff]'
                   : 'bg-transparent text-[var(--color-text-primary)] hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-text-primary)]'
@@ -817,32 +900,7 @@ export function BackupHistoryTable({
               {localDirectory}
             </span>
           )}
-          {filter === 'local' && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]"
-              onClick={() => { void handleSelectLocalDirectory() }}
-              loading={localDirectoryBusy}
-              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}
-              title={localDirectory ? '更换本地备份目录' : '选择本地备份目录'}
-            >
-              <FolderOpen className="h-4 w-4" />
-              {localDirectory ? '更换目录' : '选择目录'}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="secondary"
-            className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]"
-            onClick={() => setScanModalOpen(true)}
-            disabled={busy !== 'none' || localDirectoryBusy || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}
-            title="输入远程连接并扫描备份"
-          >
-            <Search className="h-4 w-4" />
-            扫描远程
-          </Button>
-          <Button size="sm" variant="secondary" className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]" onClick={handleRefresh} loading={busy === 'list'} disabled={busy !== 'none' || localDirectoryBusy || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}>
+          <Button size="sm" variant="secondary" className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]" onClick={handleRefresh} loading={busy === 'list'} disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}>
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
@@ -854,15 +912,15 @@ export function BackupHistoryTable({
           columns={tableColumns}
           data={filteredItems}
           rowKey="id"
-          loading={busy === 'list' && items.length === 0}
+          loading={busy === 'list' && filteredItems.length === 0}
           emptyText={filter === 'local'
             ? (localDirectory ? '暂无本地备份' : '请先配置本地备份目录')
             : filter === 'openlist'
-              ? '暂无 OpenList 备份'
-              : '暂无 S3 备份'}
-           className="w-full"
-           tableMinWidth={1440}
-           maxHeight="none"
+              ? (activeConnection ? '暂无 OpenList 备份' : '请先配置 OpenList')
+              : (activeS3Connection ? '暂无 S3 备份' : '请先配置 S3')}
+          className="w-full"
+          tableMinWidth={1440}
+          maxHeight="none"
          />
       </div>
       <ConfirmModal
@@ -886,13 +944,6 @@ export function BackupHistoryTable({
           </div>
         )}
         confirmText="开始恢复"
-      />
-      <BackupRemoteScanModal
-        open={scanModalOpen}
-        onClose={() => setScanModalOpen(false)}
-        initialOpenListConnection={activeConnection}
-        initialS3Connection={activeS3Connection}
-        onScanned={handleRemoteScanned}
       />
     </Card>
   )

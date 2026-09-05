@@ -192,6 +192,23 @@ export function ScheduledBackupModal({ open, onClose, refreshToken = 0, onReques
             </FormItem>
           </div>
 
+          <FormItem label="最近 3 次备份">
+            <div className="rounded-lg border border-[var(--color-border-default)] px-3 py-2">
+              {settings.recentBackupTimes.length > 0 ? (
+                <div className="space-y-1.5">
+                  {settings.recentBackupTimes.map((value, index) => (
+                    <div key={`${value}-${index}`} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-[var(--color-text-muted)]">第 {index + 1} 次</span>
+                      <span className="truncate text-right text-[var(--color-text-secondary)]" title={value}>{formatDate(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-sm text-[var(--color-text-muted)]">暂无成功备份</span>
+              )}
+            </div>
+          </FormItem>
+
 
           {error && <p role="alert" className="text-sm text-[var(--color-error)]">{error}</p>}
         </div>

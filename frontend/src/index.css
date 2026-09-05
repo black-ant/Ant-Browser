@@ -465,15 +465,15 @@ input, select, textarea {
 }
 
 .animate-toast-in {
-  animation: toastIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: toastIn 0.36s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .animate-toast-out {
-  animation: toastOut 0.18s ease-in forwards;
+  animation: toastOut 0.32s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .animate-toast-success-out {
-  animation: toastSuccessOut 0.46s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: toastSuccessOut 0.56s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 .toast-card {
   border-color: var(--color-border-strong);
@@ -526,7 +526,7 @@ input, select, textarea {
   background: rgb(var(--toast-focus-rgb) / var(--toast-focus-alpha));
   -webkit-backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
   backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
-  animation: toastFocusIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: toastFocusIn 0.56s cubic-bezier(0.22, 1, 0.36, 1) both;
   will-change: opacity, backdrop-filter;
 }
 
@@ -535,7 +535,11 @@ input, select, textarea {
 }
 
 .toast-focus-backdrop.toast-focus-leaving {
-  animation: toastFocusOut 0.32s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: toastFocusOut 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.toast-focus-backdrop.toast-focus-success.toast-focus-leaving {
+  animation-duration: 0.46s;
 }
 
 .toast-focus-success {

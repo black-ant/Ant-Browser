@@ -55,7 +55,7 @@ func TestResetManagedSettingsResetsManagedConfigAndSecrets(t *testing.T) {
 	if app.config.Automation != defaults.Automation {
 		t.Fatalf("automation config = %+v, want %+v", app.config.Automation, defaults.Automation)
 	}
-	if app.config.Backup != defaults.Backup {
+	if !backupConfigsEqual(app.config.Backup, defaults.Backup) {
 		t.Fatalf("backup config = %+v, want %+v", app.config.Backup, defaults.Backup)
 	}
 	if app.config.LaunchServer != defaults.LaunchServer {
@@ -72,7 +72,7 @@ func TestResetManagedSettingsResetsManagedConfigAndSecrets(t *testing.T) {
 		t.Fatalf("backup local config still exists, stat error: %v", err)
 	}
 
-	if scheduler.settings != defaults.Backup {
+	if !backupConfigsEqual(scheduler.settings, defaults.Backup) {
 		t.Fatalf("scheduler settings = %+v, want %+v", scheduler.settings, defaults.Backup)
 	}
 	if scheduler.configurationError != "" || scheduler.state.Status != backupScheduleStatusNever || scheduler.lastDate != "" || scheduler.running || scheduler.resetting {
@@ -83,7 +83,7 @@ func TestResetManagedSettingsResetsManagedConfigAndSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load persisted config: %v", err)
 	}
-	if persisted.Automation != defaults.Automation || persisted.Backup != defaults.Backup || persisted.LaunchServer != defaults.LaunchServer {
+	if persisted.Automation != defaults.Automation || !backupConfigsEqual(persisted.Backup, defaults.Backup) || persisted.LaunchServer != defaults.LaunchServer {
 		t.Fatalf("persisted managed settings were not reset: automation=%+v backup=%+v launchServer=%+v", persisted.Automation, persisted.Backup, persisted.LaunchServer)
 	}
 	if persisted.App.Name != "custom app" || persisted.Browser.UserDataRoot != filepath.Join(root, "browser-data") {

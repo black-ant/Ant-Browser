@@ -44,9 +44,6 @@ func (a *App) BackupS3List(input map[string]string) ([]map[string]interface{}, e
 			"size":       item.Size,
 			"modifiedAt": item.ModifiedAt,
 		}
-		for key, value := range backupPackageInfoFields(backupPackageInfoFromFileName(item.Name)) {
-			entry[key] = value
-		}
 		result = append(result, entry)
 	}
 	return result, nil

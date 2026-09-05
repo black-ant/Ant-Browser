@@ -20,6 +20,63 @@ type backupArchiveStats struct {
 	digest    hash.Hash
 }
 
+type backupNormalizedManifestEntry struct {
+	entry       backup.ManifestEntry
+	archivePath string
+}
+
+func backupNormalizeAndValidateManifestEntries(manifest backup.Manifest) ([]backupNormalizedManifestEntry, error) {
+	if len(manifest.Entries) == 0 {
+		return nil, fmt.Errorf("manifest.json 缺少备份条目")
+	}
+
+	seenIDs := make(map[string]struct{}, len(manifest.Entries))
+	seenPaths := make(map[string]struct{}, len(manifest.Entries))
+	entries := make([]backupNormalizedManifestEntry, 0, len(manifest.Entries))
+	for _, entry := range manifest.Entries {
+		id := strings.TrimSpace(entry.ID)
+		archivePath, err := backupNormalizeManifestPath(entry.ArchivePath)
+		if err != nil {
+			return nil, err
+		}
+		if id == "" {
+			return nil, fmt.Errorf("manifest.json 包含空条目 ID")
+		}
+		if _, exists := seenIDs[id]; exists {
+			return nil, fmt.Errorf("manifest.json 包含重复条目 ID: %s", id)
+		}
+		pathKey := archivePath
+		if runtime.GOOS == "windows" {
+			pathKey = strings.ToLower(pathKey)
+		}
+		if _, exists := seenPaths[pathKey]; exists {
+			return nil, fmt.Errorf("manifest.json 包含重复归档路径: %s", archivePath)
+		}
+		seenIDs[id] = struct{}{}
+		seenPaths[pathKey] = struct{}{}
+
+		if entry.FileCount < 0 || entry.ByteSize < 0 {
+			return nil, fmt.Errorf("manifest.json 条目统计值非法: %s", id)
+		}
+		if entry.SHA256 != "" {
+			if len(entry.SHA256) != sha256.Size*2 {
+				return nil, fmt.Errorf("manifest.json 条目哈希长度非法: %s", id)
+			}
+			if _, err := hex.DecodeString(entry.SHA256); err != nil {
+				return nil, fmt.Errorf("manifest.json 条目哈希格式非法: %s", id)
+			}
+		}
+		if entry.EntryType != backup.EntryTypeFile && entry.EntryType != backup.EntryTypeDir {
+			return nil, fmt.Errorf("备份条目类型不支持(%s): %s", id, entry.EntryType)
+		}
+		entries = append(entries, backupNormalizedManifestEntry{
+			entry:       entry,
+			archivePath: archivePath,
+		})
+	}
+	return entries, nil
+}
+
 func newBackupArchiveStats() backupArchiveStats {
 	return backupArchiveStats{digest: sha256.New()}
 }
@@ -100,49 +157,14 @@ func backupValidateManifest(extractRoot string, manifest backup.Manifest) error 
 	if err != nil || !payloadInfo.IsDir() {
 		return fmt.Errorf("备份包缺少 payload 目录")
 	}
-	if len(manifest.Entries) == 0 {
-		return fmt.Errorf("manifest.json 缺少备份条目")
+	entries, err := backupNormalizeAndValidateManifestEntries(manifest)
+	if err != nil {
+		return err
 	}
-
-	seenIDs := make(map[string]struct{}, len(manifest.Entries))
-	seenPaths := make(map[string]struct{}, len(manifest.Entries))
-	for _, entry := range manifest.Entries {
+	for _, normalized := range entries {
+		entry := normalized.entry
 		id := strings.TrimSpace(entry.ID)
-		archivePath, err := backupNormalizeManifestPath(entry.ArchivePath)
-		if err != nil {
-			return err
-		}
-		if id == "" {
-			return fmt.Errorf("manifest.json 包含空条目 ID")
-		}
-		if _, exists := seenIDs[id]; exists {
-			return fmt.Errorf("manifest.json 包含重复条目 ID: %s", id)
-		}
-		pathKey := archivePath
-		if runtime.GOOS == "windows" {
-			pathKey = strings.ToLower(pathKey)
-		}
-		if _, exists := seenPaths[pathKey]; exists {
-			return fmt.Errorf("manifest.json 包含重复归档路径: %s", archivePath)
-		}
-		seenIDs[id] = struct{}{}
-		seenPaths[pathKey] = struct{}{}
-
-		if entry.FileCount < 0 || entry.ByteSize < 0 {
-			return fmt.Errorf("manifest.json 条目统计值非法: %s", id)
-		}
-		if entry.SHA256 != "" {
-			if len(entry.SHA256) != sha256.Size*2 {
-				return fmt.Errorf("manifest.json 条目哈希长度非法: %s", id)
-			}
-			if _, err := hex.DecodeString(entry.SHA256); err != nil {
-				return fmt.Errorf("manifest.json 条目哈希格式非法: %s", id)
-			}
-		}
-		if entry.EntryType != backup.EntryTypeFile && entry.EntryType != backup.EntryTypeDir {
-			return fmt.Errorf("备份条目类型不支持(%s): %s", id, entry.EntryType)
-		}
-
+		archivePath := normalized.archivePath
 		absPath := filepath.Join(extractRoot, filepath.FromSlash(archivePath))
 		info, statErr := os.Stat(absPath)
 		if statErr != nil {

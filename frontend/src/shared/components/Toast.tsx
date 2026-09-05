@@ -20,13 +20,14 @@ interface Toast extends NotificationPayload {
 type ToastOptions = Omit<NotificationInput, 'type' | 'message'>
 
 const TOAST_DEDUPE_WINDOW_MS = 10_000
-const TOAST_BACKDROP_DURATIONS: Record<NotificationType, number> = {
-  success: 1_200,
-  info: 1_500,
-  warning: 3_000,
-  error: 3_000,
+const TOAST_SUCCESS_BACKDROP_DURATION = 1_200
+const TOAST_BACKDROP_EXIT_DURATION = 460
+const TOAST_BACKDROP_EXIT_DURATIONS: Record<NotificationType, number> = {
+  success: TOAST_BACKDROP_EXIT_DURATION,
+  info: 360,
+  warning: 360,
+  error: 360,
 }
-const TOAST_BACKDROP_EXIT_DURATION = 320
 const TOAST_FOCUS_PRIORITY: Record<NotificationType, number> = {
   success: 1,
   info: 2,
@@ -34,10 +35,10 @@ const TOAST_FOCUS_PRIORITY: Record<NotificationType, number> = {
   error: 4,
 }
 const TOAST_EXIT_DURATIONS: Record<NotificationType, number> = {
-  success: 460,
-  info: 220,
-  warning: 220,
-  error: 220,
+  success: 560,
+  info: 360,
+  warning: 360,
+  error: 360,
 }
 const toastDedupeTimestamps = new Map<string, number>()
 
@@ -45,6 +46,8 @@ interface ToastFocus {
   id: string
   type: NotificationType
   phase: 'enter' | 'leave'
+  duration: number
+  exitDuration: number
 }
 
 interface ToastStore {
@@ -104,11 +107,22 @@ function selectToastFocus(toasts: Toast[]) {
   return [...toasts].sort((left, right) => TOAST_FOCUS_PRIORITY[right.type] - TOAST_FOCUS_PRIORITY[left.type])[0] ?? null
 }
 
+function getToastDuration(toast: Pick<Toast, 'type' | 'duration'>) {
+  if (toast.duration === undefined) return notificationDurations[toast.type]
+  if (toast.duration <= 0 || toast.type === 'success') return toast.duration
+  return Math.round(toast.duration * 0.8)
+}
+
+function getToastBackdropDuration(toast: Toast) {
+  if (toast.type === 'success') return TOAST_SUCCESS_BACKDROP_DURATION
+  return getToastDuration(toast)
+}
+
 function ToastItem({ toast: t, onManualDismiss }: { toast: Toast; onManualDismiss: (dismissedId: string) => void }) {
   const removeToast = useToastStore((state) => state.removeToast)
   const visual = notificationVisuals[t.type]
   const Icon = visual.icon
-  const duration = t.duration ?? notificationDurations[t.type]
+  const duration = getToastDuration(t)
   const exitDuration = TOAST_EXIT_DURATIONS[t.type]
   const exitAnimation = t.type === 'success' ? 'animate-toast-success-out' : 'animate-toast-out'
   const [leaving, setLeaving] = useState(false)
@@ -197,7 +211,13 @@ export function ToastContainer() {
     const focusToast = selectToastFocus(toasts)
     if (!focusToast) return
 
-    const nextFocus: ToastFocus = { id: focusToast.id, type: focusToast.type, phase: 'enter' }
+    const nextFocus: ToastFocus = {
+      id: focusToast.id,
+      type: focusToast.type,
+      phase: 'enter',
+      duration: getToastBackdropDuration(focusToast),
+      exitDuration: TOAST_BACKDROP_EXIT_DURATIONS[focusToast.type],
+    }
     setFocus((current) => {
       if (!current) return nextFocus
       if (current.id === nextFocus.id && current.type === nextFocus.type) {
@@ -218,7 +238,7 @@ export function ToastContainer() {
       focusExitTimer.current = window.setTimeout(() => {
         setFocus((current) => (current?.id === focus.id ? null : current))
         focusExitTimer.current = null
-      }, TOAST_BACKDROP_EXIT_DURATION)
+      }, focus.exitDuration)
 
       return () => {
         if (focusExitTimer.current !== null) window.clearTimeout(focusExitTimer.current)
@@ -229,12 +249,14 @@ export function ToastContainer() {
     if (focusExitTimer.current !== null) window.clearTimeout(focusExitTimer.current)
     focusExitTimer.current = null
     if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+    if (focus.duration <= 0) return
+
     focusTimer.current = window.setTimeout(() => {
       setFocus((current) => (
         current?.id === focus.id ? { ...current, phase: 'leave' } : current
       ))
       focusTimer.current = null
-    }, TOAST_BACKDROP_DURATIONS[focus.type])
+    }, focus.duration)
 
     return () => {
       if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)

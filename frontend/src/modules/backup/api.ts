@@ -57,6 +57,7 @@ export interface BackupLocalHistoryItem extends BackupPackageInfo {
   createdAt?: string
   metadataAvailable: boolean
   metadataError?: string
+  metadataOrphan?: boolean
   appName?: string
   appVersion?: string
 }
@@ -151,6 +152,7 @@ function normalizeLocalBackupItem(raw: any): BackupLocalHistoryItem {
     createdAt: typeof raw?.createdAt === 'string' ? raw.createdAt : undefined,
     metadataAvailable: raw?.metadataAvailable === true,
     metadataError: typeof raw?.metadataError === 'string' ? raw.metadataError : undefined,
+    metadataOrphan: raw?.metadataOrphan === true,
     appName: typeof raw?.appName === 'string' ? raw.appName : undefined,
     appVersion: typeof raw?.appVersion === 'string' ? raw.appVersion : undefined,
     packageType: typeof raw?.packageType === 'string' ? raw.packageType : undefined,

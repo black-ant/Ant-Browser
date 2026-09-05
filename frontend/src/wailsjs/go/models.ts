@@ -365,6 +365,68 @@ export namespace backend {
 	        this.bodyJson = source["bodyJson"];
 	    }
 	}
+	export class BackupLocalHistoryItem {
+	    name: string;
+	    path: string;
+	    size: number;
+	    modifiedAt: string;
+	    createdAt?: string;
+	    metadataAvailable: boolean;
+	    metadataError?: string;
+	    metadataOrphan?: boolean;
+	    appName?: string;
+	    appVersion?: string;
+	    packageType?: string;
+	    profileCount?: number;
+	    profileNames?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new BackupLocalHistoryItem(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.size = source["size"];
+	        this.modifiedAt = source["modifiedAt"];
+	        this.createdAt = source["createdAt"];
+	        this.metadataAvailable = source["metadataAvailable"];
+	        this.metadataError = source["metadataError"];
+	        this.metadataOrphan = source["metadataOrphan"];
+	        this.appName = source["appName"];
+	        this.appVersion = source["appVersion"];
+	        this.packageType = source["packageType"];
+	        this.profileCount = source["profileCount"];
+	        this.profileNames = source["profileNames"];
+	    }
+	}
+	export class BackupLocalSettings {
+	    localDirectory: string;
+
+	    static createFrom(source: any = {}) {
+	        return new BackupLocalSettings(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.localDirectory = source["localDirectory"];
+	    }
+	}
+	export class BackupSelectLocalDirectoryResult {
+	    cancelled: boolean;
+	    localDirectory: string;
+
+	    static createFrom(source: any = {}) {
+	        return new BackupSelectLocalDirectoryResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cancelled = source["cancelled"];
+	        this.localDirectory = source["localDirectory"];
+	    }
+	}
 	export class BookmarkSyncResult {
 	    total: number;
 	    synced: number;
@@ -1888,4 +1950,3 @@ export namespace proxy {
 	}
 
 }
-

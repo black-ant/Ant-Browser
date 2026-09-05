@@ -32,6 +32,7 @@ type BackupLocalHistoryItem struct {
 	CreatedAt         string   `json:"createdAt,omitempty"`
 	MetadataAvailable bool     `json:"metadataAvailable"`
 	MetadataError     string   `json:"metadataError,omitempty"`
+	MetadataOrphan    bool     `json:"metadataOrphan,omitempty"`
 	AppName           string   `json:"appName,omitempty"`
 	AppVersion        string   `json:"appVersion,omitempty"`
 	PackageType       string   `json:"packageType,omitempty"`
@@ -232,11 +233,18 @@ func (a *App) BackupListLocalBackups(directory string) ([]BackupLocalHistoryItem
 	if err != nil {
 		return nil, fmt.Errorf("扫描本地备份目录失败: %w", err)
 	}
+	zipNames := collectLocalBackupZIPNames(entries)
 	items := make([]BackupLocalHistoryItem, 0, len(entries))
+	seenZIPNames := make(map[string]struct{}, len(zipNames))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".zip") {
 			continue
 		}
+		zipKey := localBackupFileKey(entry.Name())
+		if _, exists := seenZIPNames[zipKey]; exists {
+			continue
+		}
+		seenZIPNames[zipKey] = struct{}{}
 		zipPath := filepath.Join(absRoot, entry.Name())
 		zipInfo, statErr := entry.Info()
 		if statErr != nil || !zipInfo.Mode().IsRegular() {
@@ -248,7 +256,7 @@ func (a *App) BackupListLocalBackups(directory string) ([]BackupLocalHistoryItem
 			Size:       zipInfo.Size(),
 			ModifiedAt: zipInfo.ModTime().UTC().Format(time.RFC3339Nano),
 		}
-		metadata, metadataErr := readBackupMetadataForFile(backupMetadataPath(zipPath), entry.Name())
+		metadata, metadataErr := readOrGenerateBackupMetadataForZip(zipPath, entry.Name())
 		if metadataErr != nil {
 			if !os.IsNotExist(metadataErr) {
 				item.MetadataError = metadataErr.Error()
@@ -262,14 +270,12 @@ func (a *App) BackupListLocalBackups(directory string) ([]BackupLocalHistoryItem
 			item.AppName = strings.TrimSpace(metadata.App.Name)
 			item.AppVersion = strings.TrimSpace(metadata.App.Version)
 			item.PackageType = strings.TrimSpace(metadata.PackageType)
-			if item.PackageType == "" {
-				item.PackageType = "full"
-			}
 			item.ProfileCount = metadata.ProfileCount
 			item.ProfileNames = normalizeBackupPackageProfileNames(metadata.ProfileNames)
 		}
 		items = append(items, item)
 	}
+	items = append(items, collectOrphanBackupMetadataItems(absRoot, entries, zipNames)...)
 	sort.SliceStable(items, func(i, j int) bool {
 		left, right := parseBackupHistoryTime(items[i].ModifiedAt), parseBackupHistoryTime(items[j].ModifiedAt)
 		if !left.Equal(right) {
@@ -278,6 +284,89 @@ func (a *App) BackupListLocalBackups(directory string) ([]BackupLocalHistoryItem
 		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
 	})
 	return items, nil
+}
+
+func localBackupFileKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func collectLocalBackupZIPNames(entries []os.DirEntry) map[string]string {
+	result := make(map[string]string)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".zip") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		result[localBackupFileKey(name)] = name
+	}
+	return result
+}
+
+func collectOrphanBackupMetadataItems(root string, entries []os.DirEntry, zipNames map[string]string) []BackupLocalHistoryItem {
+	items := make([]BackupLocalHistoryItem, 0)
+	seen := make(map[string]struct{})
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".json") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		metadataPath := filepath.Join(root, entry.Name())
+		metadata, err := readBackupMetadataRecord(metadataPath)
+		if err != nil {
+			continue
+		}
+		baseZIPName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())) + ".zip"
+		targetZIPName := baseZIPName
+		if declared := strings.TrimSpace(metadata.BackupFile); declared != "" {
+			declaredName := filepath.Base(filepath.FromSlash(declared))
+			if !strings.EqualFold(declaredName, baseZIPName) {
+				continue
+			}
+			targetZIPName = declaredName
+		}
+		if _, exists := zipNames[localBackupFileKey(targetZIPName)]; exists {
+			continue
+		}
+		key := localBackupFileKey(entry.Name())
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		items = append(items, BackupLocalHistoryItem{
+			Name:           targetZIPName,
+			Path:           metadataPath,
+			ModifiedAt:     info.ModTime().UTC().Format(time.RFC3339Nano),
+			MetadataError:  fmt.Sprintf("同名 ZIP 文件不存在: %s", targetZIPName),
+			MetadataOrphan: true,
+		})
+	}
+	return items
+}
+
+func readBackupMetadataRecord(metadataPath string) (backupMetadata, error) {
+	file, err := os.Open(metadataPath)
+	if err != nil {
+		return backupMetadata{}, err
+	}
+	defer file.Close()
+	var metadata backupMetadata
+	if err := json.NewDecoder(io.LimitReader(file, backupMetadataReadLimit)).Decode(&metadata); err != nil {
+		return backupMetadata{}, fmt.Errorf("解析备份元数据失败: %w", err)
+	}
+	if strings.TrimSpace(metadata.Format) != "ant-chrome-backup-metadata" {
+		return backupMetadata{}, fmt.Errorf("备份元数据格式不支持")
+	}
+	if metadata.Version <= 0 {
+		return backupMetadata{}, fmt.Errorf("备份元数据版本无效")
+	}
+	return metadata, nil
 }
 
 func readBackupMetadataForFile(metadataPath, backupFileName string) (backupMetadata, error) {
@@ -300,6 +389,42 @@ func readBackupMetadataForFile(metadataPath, backupFileName string) (backupMetad
 		return backupMetadata{}, fmt.Errorf("备份元数据与 ZIP 文件不匹配")
 	}
 	return metadata, nil
+}
+
+func readOrGenerateBackupMetadataForZip(zipPath, backupFileName string) (backupMetadata, error) {
+	metadataPath := backupMetadataPath(zipPath)
+	metadata, err := readBackupMetadataForFile(metadataPath, backupFileName)
+	if err == nil {
+		return metadata, nil
+	}
+	if !os.IsNotExist(err) {
+		return backupMetadata{}, err
+	}
+
+	inspection, err := inspectBackupPackage(zipPath)
+	if err != nil {
+		return backupMetadata{}, fmt.Errorf("读取备份包内部 manifest.json 失败: %w", err)
+	}
+	switch {
+	case inspection.fullManifest != nil:
+		if _, err := backupWriteMetadata(zipPath, *inspection.fullManifest, inspection.includedEntries, inspection.skippedEntries); err != nil {
+			return backupMetadata{}, fmt.Errorf("生成备份元数据失败: %w", err)
+		}
+	case inspection.profileManifest != nil:
+		manifest := *inspection.profileManifest
+		if len(manifest.ProfileNames) == 0 {
+			manifest.ProfileNames = inspection.info.ProfileNames
+		}
+		if manifest.ProfileCount < len(manifest.ProfileNames) {
+			manifest.ProfileCount = len(manifest.ProfileNames)
+		}
+		if _, err := backupWriteProfileMetadata(zipPath, manifest, inspection.fileCount, "", ""); err != nil {
+			return backupMetadata{}, fmt.Errorf("生成备份元数据失败: %w", err)
+		}
+	default:
+		return backupMetadata{}, fmt.Errorf("备份包内部 manifest.json 类型不可识别")
+	}
+	return readBackupMetadataForFile(metadataPath, backupFileName)
 }
 
 func parseBackupHistoryTime(value string) time.Time {

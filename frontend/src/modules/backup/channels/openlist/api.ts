@@ -110,7 +110,7 @@ export async function listOpenListBackups(connection?: OpenListConnection): Prom
         name,
         size: Number.isFinite(item?.size) ? Math.max(0, Number(item.size)) : 0,
         modifiedAt: typeof item?.modifiedAt === 'string' ? item.modifiedAt : '',
-        ...normalizeBackupPackageInfo(item, name),
+        ...normalizeBackupPackageInfo(item),
       }
     })
     .filter(item => item.name)
