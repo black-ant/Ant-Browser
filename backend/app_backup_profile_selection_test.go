@@ -177,3 +177,99 @@ func TestBackupRestorePackageFromPathRoutesProfilePackage(t *testing.T) {
 		t.Fatalf("unexpected restore result: %#v", result)
 	}
 }
+
+func TestBackupRestoreProfilePackageRequiresConflictChoice(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	cfg.Browser.UserDataRoot = filepath.Join(root, "user-data")
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+	app.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(db.GetConn())
+
+	source := browser.Profile{
+		ProfileId:   "source-1",
+		ProfileName: "CPA",
+		UserDataDir: "source-1",
+	}
+	zipPath := filepath.Join(root, "profile-conflict.zip")
+	writeTestProfilePackage(t, zipPath, []browser.Profile{source}, nil)
+
+	target := browser.Profile{
+		ProfileId:   "target-1",
+		ProfileName: "CPA",
+		UserDataDir: "target-data",
+		CreatedAt:   "2026-09-01T00:00:00Z",
+	}
+	if _, err := db.GetConn().Exec(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, target.ProfileId, target.ProfileName, target.UserDataDir, target.CreatedAt, target.CreatedAt); err != nil {
+		t.Fatalf("insert target profile failed: %v", err)
+	}
+	targetDir := filepath.Join(cfg.Browser.UserDataRoot, target.UserDataDir)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("create target user data failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "old.txt"), []byte("old-data"), 0o644); err != nil {
+		t.Fatalf("write target user data failed: %v", err)
+	}
+	app.browserMgr.InitData()
+
+	pending, err := app.backupRestorePackageFromPathLocked(zipPath)
+	if err != nil {
+		t.Fatalf("backupRestorePackageFromPathLocked returned error: %v", err)
+	}
+	if pending["requiresProfileImportConfirmation"] != true {
+		t.Fatalf("conflicting restore must require a choice: %#v", pending)
+	}
+	preview, ok := pending["profileImportPreview"].(ProfilePackageImportPreview)
+	if !ok || preview.ConflictCount != 1 || preview.ZipPath != zipPath {
+		t.Fatalf("unexpected conflict preview: %#v", pending["profileImportPreview"])
+	}
+	app.browserMgr.Mutex.Lock()
+	for _, profile := range app.browserMgr.Profiles {
+		if profile != nil && profile.ProfileName == "CPA（导入）" {
+			t.Fatalf("restore created a suffixed profile before a choice: %#v", profile)
+		}
+	}
+	app.browserMgr.Mutex.Unlock()
+
+	created, err := app.importProfilePackageFromPathWithModeAndConfirmation(zipPath, profilePackageImportModeNew, true)
+	if err != nil {
+		t.Fatalf("confirmed new import returned error: %v", err)
+	}
+	createdID := created.ProfileMappings[source.ProfileId]
+	if createdID == "" || created.CreatedCount != 1 || created.OverwrittenCount != 0 {
+		t.Fatalf("confirmed new import returned unexpected result: %#v", created)
+	}
+	createdProfile, err := app.browserMgr.ProfileDAO.GetById(createdID)
+	if err != nil {
+		t.Fatalf("read created profile failed: %v", err)
+	}
+	if createdProfile.ProfileName != "CPA（导入）" || createdProfile.DeletedAt != "" {
+		t.Fatalf("new choice did not create the expected active profile: %#v", createdProfile)
+	}
+
+	overwritten, err := app.importProfilePackageFromPathWithModeAndConfirmation(zipPath, profilePackageImportModeOverwrite, true)
+	if err != nil {
+		t.Fatalf("confirmed overwrite import returned error: %v", err)
+	}
+	overwrittenID := overwritten.ProfileMappings[source.ProfileId]
+	if overwrittenID == "" || overwrittenID == createdID || overwritten.CreatedCount != 0 || overwritten.OverwrittenCount != 1 {
+		t.Fatalf("confirmed overwrite returned unexpected result: %#v", overwritten)
+	}
+	active, err := app.browserMgr.ProfileDAO.GetById(overwrittenID)
+	if err != nil {
+		t.Fatalf("read overwritten profile failed: %v", err)
+	}
+	if active.ProfileName != "CPA" || active.DeletedAt != "" {
+		t.Fatalf("overwrite did not create the expected active profile: %#v", active)
+	}
+	deleted, err := app.browserMgr.ProfileDAO.GetById(target.ProfileId)
+	if err != nil {
+		t.Fatalf("read trashed target failed: %v", err)
+	}
+	if deleted.DeletedAt == "" || deleted.ProfileName != target.ProfileName || deleted.UserDataDir != target.UserDataDir {
+		t.Fatalf("overwrite did not preserve the old profile in trash: %#v", deleted)
+	}
+}

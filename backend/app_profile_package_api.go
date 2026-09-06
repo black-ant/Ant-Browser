@@ -48,7 +48,8 @@ type ProfilePackageImportResult struct {
 }
 
 type ProfilePackageImportOptions struct {
-	ConflictMode string `json:"conflictMode"`
+	ConflictMode    string `json:"conflictMode"`
+	ConfirmConflict bool   `json:"confirmConflict"`
 }
 
 type ProfilePackageImportConflict struct {
@@ -177,7 +178,7 @@ func (a *App) BrowserProfilePackageImport() (ProfilePackageImportResult, error) 
 	if strings.TrimSpace(zipPath) == "" {
 		return ProfilePackageImportResult{Cancelled: true, Message: "已取消导入"}, nil
 	}
-	return a.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+	return a.importProfilePackageFromPathWithModeAndConfirmation(zipPath, profilePackageImportModeNew, false)
 }
 
 // BrowserProfilePackagePrepareImport 选择实例包并返回冲突预览，不执行导入。
@@ -214,7 +215,7 @@ func (a *App) BrowserProfilePackagePrepareImportFromPath(zipPath string) (Profil
 func (a *App) BrowserProfilePackageImportWithOptions(zipPath string, options ProfilePackageImportOptions) (ProfilePackageImportResult, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	return a.importProfilePackageFromPathWithMode(zipPath, options.ConflictMode)
+	return a.importProfilePackageFromPathWithModeAndConfirmation(zipPath, options.ConflictMode, options.ConfirmConflict)
 }
 
 func (a *App) collectProfilesForPackage(profileIds []string) ([]browser.Profile, error) {
@@ -479,6 +480,10 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 }
 
 func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) (ProfilePackageImportResult, error) {
+	return a.importProfilePackageFromPathWithModeAndConfirmation(zipPath, mode, true)
+}
+
+func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string, mode string, confirmConflict bool) (ProfilePackageImportResult, error) {
 	mode = normalizeProfilePackageImportMode(mode)
 	if mode == "" {
 		return ProfilePackageImportResult{}, fmt.Errorf("不支持的实例导入冲突处理方式")
@@ -498,6 +503,15 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 	existing, err := a.loadExistingProfilePackageProfiles()
 	if err != nil {
 		return ProfilePackageImportResult{}, err
+	}
+	if !confirmConflict {
+		conflicts, _, err := a.profilePackageImportConflicts(contents.Profiles)
+		if err != nil {
+			return ProfilePackageImportResult{}, err
+		}
+		if len(conflicts) > 0 {
+			return ProfilePackageImportResult{}, fmt.Errorf("检测到实例同名或 ID 冲突，请先在冲突提示中选择覆盖原有或创建新的")
+		}
 	}
 	now := time.Now().Format(time.RFC3339)
 	mappings := make(map[string]string, len(contents.Profiles))

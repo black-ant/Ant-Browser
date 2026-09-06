@@ -15,16 +15,17 @@ import {
 import {
   downloadOpenListBackup,
   listOpenListBackups,
-  restoreOpenListBackup,
 } from '../channels/openlist/api'
 import type { OpenListBackupFile, OpenListConnection } from '../channels/openlist/api'
 import {
   downloadS3Backup,
   listS3Backups,
-  restoreS3Backup,
 } from '../channels/s3/api'
 import type { S3BackupFile, S3Connection } from '../channels/s3/api'
 import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../packageInfo'
+import { ProfilePackageConflictModal } from './ProfilePackageConflictModal'
+import { importBrowserProfilePackageWithOptions } from '../../browser/api/profiles'
+import type { BrowserProfilePackageImportPreview } from '../../browser/types'
 
 type BackupHistorySource = 'local' | 'openlist' | 's3'
 type BackupHistoryFilter = BackupHistorySource
@@ -278,6 +279,9 @@ export function BackupHistoryTable({
   const [downloadingItemId, setDownloadingItemId] = useState('')
   const [pendingRestoreItem, setPendingRestoreItem] = useState<BackupHistoryItem | null>(null)
   const [restoreConfirming, setRestoreConfirming] = useState(false)
+  const [profileImportPreview, setProfileImportPreview] = useState<BrowserProfilePackageImportPreview | null>(null)
+  const [profileImportItem, setProfileImportItem] = useState<BackupHistoryItem | null>(null)
+  const [profileImportBusy, setProfileImportBusy] = useState(false)
   const [openingLocationId, setOpeningLocationId] = useState('')
   const [error, setError] = useState('')
   const [localDirectory, setLocalDirectory] = useState('')
@@ -290,8 +294,8 @@ export function BackupHistoryTable({
   const localItemsRef = useRef<BackupHistoryItem[]>([])
 
   useEffect(() => {
-    onBusyChange?.(busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming)
-  }, [busy, onBusyChange, pendingRestoreItem, restoreConfirming])
+    onBusyChange?.(busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy)
+  }, [busy, onBusyChange, pendingRestoreItem, profileImportBusy, profileImportPreview, restoreConfirming])
 
   const mergeHistoryItems = (
     openListFiles: OpenListBackupFile[],
@@ -510,7 +514,7 @@ export function BackupHistoryTable({
   }, [configuredConnection, configuredS3Connection, refreshToken])
 
   const handleFilterChange = (nextFilter: BackupHistoryFilter) => {
-    if (busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== '') return
+    if (busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy || openingLocationId !== '') return
     setFilter(nextFilter)
     setError('')
     if (nextFilter === 'local') {
@@ -634,12 +638,63 @@ export function BackupHistoryTable({
     void handleDownload(item)
   }
 
+  const showProfileImportResult = (item: BackupHistoryItem, result: {
+    imported?: number
+    importedCount?: number
+    profileCount?: number
+    createdCount?: number
+    overwrittenCount?: number
+    warnings?: string[]
+  }) => {
+    const importedCount = Number(result.importedCount ?? result.profileCount ?? result.imported ?? 0)
+    const overwrittenCount = Number(result.overwrittenCount ?? 0)
+    const createdCount = Number(result.createdCount ?? Math.max(0, importedCount - overwrittenCount))
+    const summary = overwrittenCount > 0
+      ? `已从${sourceLabel(item.source)}恢复：覆盖 ${overwrittenCount} 个实例，旧实例已移入回收站；新建 ${createdCount} 个实例`
+      : `已从${sourceLabel(item.source)}恢复：新建 ${createdCount} 个实例`
+    const warnings = result.warnings || []
+    if (warnings.length > 0) {
+      toast.warning(`${summary}；${warnings[0]}`)
+    } else {
+      toast.success(summary)
+    }
+  }
+
+  const executeProfileImport = async (
+    item: BackupHistoryItem,
+    preview: BrowserProfilePackageImportPreview,
+    conflictMode: 'new' | 'overwrite',
+  ) => {
+    setProfileImportPreview(null)
+    setProfileImportItem(null)
+    setProfileImportBusy(true)
+    setBusy('restore-merge')
+    setRestoringItemId(item.id)
+    setError('')
+    try {
+      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, conflictMode, true)
+      if (!result.cancelled) {
+        showProfileImportResult(item, result)
+      }
+    } catch (importError) {
+      const message = errorMessage(importError, `${sourceLabel(item.source)}实例恢复失败`)
+      setError(message)
+      toast.error(message)
+    } finally {
+      setProfileImportBusy(false)
+      setBusy('none')
+      setRestoringItemId('')
+    }
+  }
+
   const handleRestore = async (item: BackupHistoryItem) => {
     setBusy('restore-merge')
     setRestoringItemId(item.id)
     setError('')
     try {
       let result
+      let restorePath = ''
+
       if (item.source === 'local') {
         if (item.metadataOrphan) {
           throw new Error(item.metadataError || '同名 JSON 存在，但 ZIP 文件不存在')
@@ -648,7 +703,7 @@ export function BackupHistoryTable({
         if (!localPath) {
           throw new Error('本地备份路径不可用，请重新导入该 ZIP 文件')
         }
-        result = await restoreLocalSystemConfig(localPath)
+        restorePath = localPath
       } else if (item.source === 'openlist') {
         if (!item.remoteFile) {
           throw new Error('OpenList 备份文件信息不可用，请先刷新历史')
@@ -656,7 +711,18 @@ export function BackupHistoryTable({
         if (!activeConnection) {
           throw new Error('请先点击“配置”连接 OpenList')
         }
-        result = await restoreOpenListBackup(item.remoteFile.name, activeConnection)
+        const downloaded = await downloadOpenListBackup(item.remoteFile.name, activeConnection)
+        if (downloaded.cancelled) return
+        restorePath = downloaded.zipPath?.trim() || ''
+        if (!restorePath) {
+          throw new Error('下载备份完成但未返回本地文件路径')
+        }
+        const downloadedDirectory = downloaded.localDirectory?.trim() || localDirectory
+        if (downloadedDirectory && downloadedDirectory !== localDirectory) {
+          setLocalDirectory(downloadedDirectory)
+          onLocalDirectoryChange?.(downloadedDirectory)
+        }
+        await loadLocalHistory(downloadedDirectory)
       } else if (item.source === 's3') {
         if (!item.remoteFile) {
           throw new Error('S3 备份文件信息不可用，请先刷新历史')
@@ -664,11 +730,31 @@ export function BackupHistoryTable({
         if (!activeS3Connection) {
           throw new Error('请先配置 S3')
         }
-        result = await restoreS3Backup(item.remoteFile.name, activeS3Connection)
+        const downloaded = await downloadS3Backup(item.remoteFile.name, activeS3Connection)
+        if (downloaded.cancelled) return
+        restorePath = downloaded.zipPath?.trim() || ''
+        if (!restorePath) {
+          throw new Error('下载备份完成但未返回本地文件路径')
+        }
+        const downloadedDirectory = downloaded.localDirectory?.trim() || localDirectory
+        if (downloadedDirectory && downloadedDirectory !== localDirectory) {
+          setLocalDirectory(downloadedDirectory)
+          onLocalDirectoryChange?.(downloadedDirectory)
+        }
+        await loadLocalHistory(downloadedDirectory)
       } else {
         throw new Error('未知备份来源')
       }
-      if (result.partial || Number(result.componentFailed || 0) > 0) {
+
+      result = await restoreLocalSystemConfig(restorePath)
+      if (result.requiresProfileImportConfirmation && result.profileImportPreview) {
+        setProfileImportItem(item)
+        setProfileImportPreview(result.profileImportPreview)
+        return
+      }
+      if (result.packageType === 'profile') {
+        showProfileImportResult(item, result)
+      } else if (result.partial || Number(result.componentFailed || 0) > 0) {
         toast.warning('备份已恢复，但有部分模块失败，请查看导入结果')
       } else {
         toast.success(`已从${sourceLabel(item.source)}合并恢复`)
@@ -857,7 +943,7 @@ export function BackupHistoryTable({
               className="!border-[var(--color-accent)] !bg-[var(--color-accent)] !text-[var(--color-text-inverse)] hover:!bg-[var(--color-accent-hover)] disabled:!opacity-60"
               onClick={() => requestDownload(item)}
               loading={downloadingItemId === item.id}
-              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming}
+              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy}
               title="下载到本地"
             >
               <Download className="h-3.5 w-3.5" />
@@ -870,7 +956,7 @@ export function BackupHistoryTable({
             className="!border-[var(--color-border-strong)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!bg-[var(--color-border-default)] disabled:!opacity-60"
             onClick={() => requestRestore(item)}
             loading={restoringItemId === item.id}
-            disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || downloadingItemId !== '' || item.metadataOrphan === true}
+              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy || downloadingItemId !== '' || item.metadataOrphan === true}
           >
             合并恢复
           </Button>
@@ -895,7 +981,7 @@ export function BackupHistoryTable({
               role="tab"
               aria-selected={filter === filterItem.key}
               onClick={() => handleFilterChange(filterItem.key)}
-              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}
+              disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy || openingLocationId !== ''}
               className={`flex h-8 min-w-0 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-medium transition-colors duration-200 disabled:cursor-wait disabled:opacity-60 ${
                 filter === filterItem.key
                   ? '!bg-[#0f172a] !text-white shadow-sm [-webkit-text-fill-color:#ffffff]'
@@ -917,7 +1003,7 @@ export function BackupHistoryTable({
               {localDirectory}
             </span>
           )}
-          <Button size="sm" variant="secondary" className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]" onClick={handleRefresh} loading={busy === 'list'} disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || openingLocationId !== ''}>
+          <Button size="sm" variant="secondary" className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]" onClick={handleRefresh} loading={busy === 'list'} disabled={busy !== 'none' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy || openingLocationId !== ''}>
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
@@ -961,6 +1047,19 @@ export function BackupHistoryTable({
           </div>
         )}
         confirmText="开始恢复"
+      />
+      <ProfilePackageConflictModal
+        preview={profileImportPreview}
+        busy={profileImportBusy}
+        onClose={() => {
+          setProfileImportPreview(null)
+          setProfileImportItem(null)
+        }}
+        onConfirm={(mode) => {
+          if (profileImportItem && profileImportPreview) {
+            void executeProfileImport(profileImportItem, profileImportPreview, mode)
+          }
+        }}
       />
     </Card>
   )

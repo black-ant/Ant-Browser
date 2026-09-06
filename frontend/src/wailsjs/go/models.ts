@@ -808,6 +808,7 @@ export namespace backend {
 	}
 	export class ProfilePackageImportOptions {
 	    conflictMode: string;
+	    confirmConflict: boolean;
 
 	    static createFrom(source: any = {}) {
 	        return new ProfilePackageImportOptions(source);
@@ -816,6 +817,7 @@ export namespace backend {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.conflictMode = source["conflictMode"];
+	        this.confirmConflict = source["confirmConflict"];
 	    }
 	}
 	export class ProfilePackageImportPreview {

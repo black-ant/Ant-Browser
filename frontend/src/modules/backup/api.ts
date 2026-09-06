@@ -1,5 +1,6 @@
 import type { BackupChannelSelection } from './channels'
 import type { BackupPackageInfo } from './packageInfo'
+import type { BrowserProfilePackageImportPreview } from '../browser/types'
 
 export interface BackupActionResult {
   cancelled?: boolean
@@ -27,6 +28,10 @@ export interface BackupActionResult {
   profileCount?: number
   profileNames?: string[]
   importedCount?: number
+  createdCount?: number
+  overwrittenCount?: number
+  requiresProfileImportConfirmation?: boolean
+  profileImportPreview?: BrowserProfilePackageImportPreview
   warnings?: string[]
   packageType?: 'full' | 'profile' | string
   failedComponents?: Array<{

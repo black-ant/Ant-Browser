@@ -190,10 +190,11 @@ export async function prepareBrowserProfilePackageImport(): Promise<BrowserProfi
 export async function importBrowserProfilePackageWithOptions(
   zipPath: string,
   conflictMode: 'new' | 'overwrite',
+  confirmConflict = false,
 ): Promise<BrowserProfilePackageImportResult> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProfilePackageImportWithOptions) {
-    return await bindings.BrowserProfilePackageImportWithOptions(zipPath, { conflictMode })
+    return await bindings.BrowserProfilePackageImportWithOptions(zipPath, { conflictMode, confirmConflict })
   }
   return {
     cancelled: true,

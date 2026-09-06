@@ -233,6 +233,35 @@ func TestProfilePackageImportRepeatedOverwriteIgnoresTrashedTargets(t *testing.T
 	}
 }
 
+func TestProfilePackageImportNewModeRequiresConflictConfirmation(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{
+		{ProfileId: "target-1", ProfileName: "CPA", UserDataDir: "target-1"},
+	}, nil)
+	addProfilePackageTestProfile(t, app, browser.Profile{ProfileId: "target-1", ProfileName: "CPA", UserDataDir: "target-1"})
+
+	if _, err := app.importProfilePackageFromPathWithModeAndConfirmation(zipPath, profilePackageImportModeNew, false); err == nil || !strings.Contains(err.Error(), "同名或 ID 冲突") {
+		t.Fatalf("expected conflict confirmation error, got %v", err)
+	}
+	if _, err := app.importProfilePackageFromPathWithModeAndConfirmation(zipPath, profilePackageImportModeOverwrite, false); err == nil || !strings.Contains(err.Error(), "同名或 ID 冲突") {
+		t.Fatalf("unconfirmed overwrite must also require a conflict choice, got %v", err)
+	}
+
+	result, err := app.importProfilePackageFromPathWithModeAndConfirmation(zipPath, profilePackageImportModeNew, true)
+	if err != nil {
+		t.Fatalf("confirmed new import returned error: %v", err)
+	}
+	newID := result.ProfileMappings["target-1"]
+	if newID == "" || result.CreatedCount != 1 || result.OverwrittenCount != 0 {
+		t.Fatalf("confirmed new import did not create a new profile: %#v", result)
+	}
+	app.browserMgr.Mutex.Lock()
+	created := *app.browserMgr.Profiles[newID]
+	app.browserMgr.Mutex.Unlock()
+	if created.ProfileName != "CPA（导入）" {
+		t.Fatalf("confirmed new import used unexpected name: %#v", created)
+	}
+}
+
 func TestProfilePackageImportRejectsRunningOverwrite(t *testing.T) {
 	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
 		ProfileId:   "profile-1",

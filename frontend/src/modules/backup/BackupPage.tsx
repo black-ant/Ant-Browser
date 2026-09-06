@@ -17,10 +17,13 @@ import { BackupTypeModal } from './components/BackupTypeModal'
 import type { BackupTypeSelection } from './components/BackupTypeModal'
 import { BackupScopeModal } from './components/BackupScopeModal'
 import { BackupHistoryTable } from './components/BackupHistoryTable'
+import { ProfilePackageConflictModal } from './components/ProfilePackageConflictModal'
 import { fetchOpenListSettings } from './channels/openlist/api'
 import type { OpenListConnection } from './channels/openlist/api'
 import { fetchS3Settings } from './channels/s3/api'
 import type { S3Connection } from './channels/s3/api'
+import { importBrowserProfilePackageWithOptions } from '../browser/api/profiles'
+import type { BrowserProfilePackageImportPreview } from '../browser/types'
 import { createBackupRouteState } from './flow'
 import type { BackupRouteState } from './flow'
 import { useBackupProgressEffects } from './hooks/useBackupProgressEffects'
@@ -68,6 +71,8 @@ export function BackupPage() {
   const [scheduledBackupRefreshToken, setScheduledBackupRefreshToken] = useState(0)
   const [scheduledBackupBusy, setScheduledBackupBusy] = useState(false)
   const [actionLoading, setActionLoading] = useState<BackupActionLoading>('none')
+  const [profileImportPreview, setProfileImportPreview] = useState<BrowserProfilePackageImportPreview | null>(null)
+  const [profileImportBusy, setProfileImportBusy] = useState(false)
   const [exportProgress, setExportProgress] = useState<BackupExportProgress | null>(null)
   const [importProgress, setImportProgress] = useState<BackupExportProgress | null>(null)
   const [exportLogs, setExportLogs] = useState<BackupExportLogItem[]>([])
@@ -292,6 +297,12 @@ export function BackupPage() {
         toast.info('已取消导入')
         return
       }
+      if (res.requiresProfileImportConfirmation && res.profileImportPreview) {
+        setImportModalOpen(false)
+        setImportProgress(null)
+        setProfileImportPreview(res.profileImportPreview)
+        return
+      }
       const imported = res.imported ?? 0
       const skipped = res.skipped ?? 0
       const conflicts = res.conflicts ?? 0
@@ -302,10 +313,15 @@ export function BackupPage() {
 
       if (res.packageType === 'profile') {
         const importedProfiles = res.importedCount ?? res.profileCount ?? imported
+        const overwrittenCount = res.overwrittenCount ?? 0
+        const createdCount = res.createdCount ?? Math.max(0, importedProfiles - overwrittenCount)
+        const summary = overwrittenCount > 0
+          ? `实例备份导入完成：覆盖 ${overwrittenCount} 个实例，旧实例已移入回收站；新建 ${createdCount} 个实例`
+          : `实例备份导入完成：新建 ${createdCount} 个实例`
         if (warnings.length > 0) {
-          toast.warning(`实例备份导入完成：导入 ${importedProfiles} 个实例；${warnings[0]}`)
+          toast.warning(`${summary}；${warnings[0]}`)
         } else {
-          toast.success(`实例备份导入完成：导入 ${importedProfiles} 个实例`)
+          toast.success(summary)
         }
       } else if (res.partial || componentFailed > 0) {
         const moduleNames = failedComponents
@@ -336,6 +352,39 @@ export function BackupPage() {
       }))
       toast.error(error?.message || '导入失败')
     } finally {
+      setActionLoading('none')
+    }
+  }
+
+  const executeProfileImport = async (preview: BrowserProfilePackageImportPreview, conflictMode: 'new' | 'overwrite') => {
+    setProfileImportPreview(null)
+    setProfileImportBusy(true)
+    setActionLoading('import-merge')
+    setImportProgress({ phase: 'importing', progress: 40, message: '正在导入实例备份...' })
+    try {
+      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, conflictMode, true)
+      if (result.cancelled) {
+        setImportProgress(null)
+        return
+      }
+      const overwrittenCount = result.overwrittenCount ?? 0
+      const createdCount = result.createdCount ?? Math.max(0, result.importedCount - overwrittenCount)
+      const summary = overwrittenCount > 0
+        ? `实例备份导入完成：覆盖 ${overwrittenCount} 个实例，旧实例已移入回收站；新建 ${createdCount} 个实例`
+        : `实例备份导入完成：新建 ${createdCount} 个实例`
+      const warnings = result.warnings || []
+      if (warnings.length > 0) {
+        toast.warning(`${summary}；${warnings[0]}`)
+      } else {
+        toast.success(summary)
+      }
+      setImportProgress(null)
+      setHistoryRefreshToken(previous => previous + 1)
+    } catch (error: any) {
+      toast.error(error?.message || '导入实例失败')
+      setImportProgress(null)
+    } finally {
+      setProfileImportBusy(false)
       setActionLoading('none')
     }
   }
@@ -453,6 +502,17 @@ export function BackupPage() {
           setImportProgress(null)
         }}
         onImport={() => { void handleImportSystem() }}
+      />
+
+      <ProfilePackageConflictModal
+        preview={profileImportPreview}
+        busy={profileImportBusy}
+        onClose={() => setProfileImportPreview(null)}
+        onConfirm={(mode) => {
+          if (profileImportPreview) {
+            void executeProfileImport(profileImportPreview, mode)
+          }
+        }}
       />
 
       <BackupChannelConfigModal

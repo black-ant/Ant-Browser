@@ -355,7 +355,7 @@ export function BrowserListPage() {
     }
   }
 
-  const executeProfileImport = async (zipPath: string, conflictMode: 'new' | 'overwrite') => {
+  const executeProfileImport = async (zipPath: string, conflictMode: 'new' | 'overwrite', confirmConflict = false) => {
     if (!zipPath.trim()) {
       setProfileImportPreview(null)
       setProfilePackageBusy(false)
@@ -363,7 +363,7 @@ export function BrowserListPage() {
     }
     setProfileImportPreview(null)
     try {
-      const result = await importBrowserProfilePackageWithOptions(zipPath, conflictMode)
+      const result = await importBrowserProfilePackageWithOptions(zipPath, conflictMode, confirmConflict)
       if (result.cancelled) return
       const warnings = result.warnings || []
       const createdCount = result.createdCount ?? Math.max(0, result.importedCount - (result.overwrittenCount || 0))
@@ -723,7 +723,7 @@ export function BrowserListPage() {
         }}
         onConfirmProfileImport={(mode) => {
           if (profileImportPreview) {
-            void executeProfileImport(profileImportPreview.zipPath, mode)
+            void executeProfileImport(profileImportPreview.zipPath, mode, true)
           }
         }}
       />
