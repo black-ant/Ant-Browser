@@ -422,6 +422,20 @@ func (a *App) restoreProfilePackageDatabase(snapshot ProfilePackageDatabase, pre
 		}
 		profileMappings[backupImportIDKey(oldID)] = item.Profile.ProfileId
 	}
+	for _, item := range prepared {
+		if !item.Overwrite {
+			continue
+		}
+		for _, statement := range []string{
+			`DELETE FROM browser_profile_extension_runtime WHERE profile_id = ?`,
+			`DELETE FROM browser_profile_extensions WHERE profile_id = ?`,
+			`DELETE FROM browser_profile_extension_settings WHERE profile_id = ?`,
+		} {
+			if _, err := tx.Exec(statement, item.Profile.ProfileId); err != nil {
+				return fmt.Errorf("清理被覆盖实例关联数据失败(%s): %w", item.Profile.ProfileId, err)
+			}
+		}
+	}
 
 	groupMappings, err := a.restoreProfilePackageGroups(tx, snapshot.Groups, warnings)
 	if err != nil {
@@ -547,6 +561,46 @@ func (a *App) restoreProfilePackageDatabase(snapshot ProfilePackageDatabase, pre
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("提交实例数据库恢复事务失败: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+func (a *App) restoreLegacyProfilePackageDatabase(prepared []preparedProfilePackageImport) error {
+	if a == nil || a.db == nil || a.db.GetConn() == nil {
+		return fmt.Errorf("数据库未初始化，无法恢复实例配置")
+	}
+
+	tx, err := a.db.GetConn().Begin()
+	if err != nil {
+		return fmt.Errorf("开启实例配置恢复事务失败: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	for _, item := range prepared {
+		if item.Overwrite {
+			for _, statement := range []string{
+				`DELETE FROM browser_profile_extension_runtime WHERE profile_id = ?`,
+				`DELETE FROM browser_profile_extensions WHERE profile_id = ?`,
+				`DELETE FROM browser_profile_extension_settings WHERE profile_id = ?`,
+			} {
+				if _, err := tx.Exec(statement, item.Profile.ProfileId); err != nil {
+					return fmt.Errorf("清理被覆盖实例关联数据失败(%s): %w", item.Profile.ProfileId, err)
+				}
+			}
+		}
+		if err := insertProfilePackageProfile(tx, item.Profile); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交实例配置恢复事务失败: %w", err)
 	}
 	committed = true
 	return nil
@@ -964,7 +1018,27 @@ func insertProfilePackageProfile(tx *sql.Tx, profile browser.Profile) error {
 			profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config,
 			proxy_bind_source_id, proxy_bind_source_url, proxy_bind_name, proxy_bind_updated_at, memory_limit_mb,
 			launch_args, tags, keywords, group_id, created_at, updated_at, restore_last_session, deleted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(profile_id) DO UPDATE SET
+			profile_name = excluded.profile_name,
+			user_data_dir = excluded.user_data_dir,
+			core_id = excluded.core_id,
+			fingerprint_args = excluded.fingerprint_args,
+			proxy_id = excluded.proxy_id,
+			proxy_config = excluded.proxy_config,
+			proxy_bind_source_id = excluded.proxy_bind_source_id,
+			proxy_bind_source_url = excluded.proxy_bind_source_url,
+			proxy_bind_name = excluded.proxy_bind_name,
+			proxy_bind_updated_at = excluded.proxy_bind_updated_at,
+			memory_limit_mb = excluded.memory_limit_mb,
+			launch_args = excluded.launch_args,
+			tags = excluded.tags,
+			keywords = excluded.keywords,
+			group_id = excluded.group_id,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			restore_last_session = excluded.restore_last_session,
+			deleted_at = excluded.deleted_at`,
 		profile.ProfileId, profile.ProfileName, profile.UserDataDir, profile.CoreId, string(fingerprintArgs), profile.ProxyId,
 		profile.ProxyConfig, profile.ProxyBindSourceID, profile.ProxyBindSourceURL, profile.ProxyBindName,
 		profile.ProxyBindUpdatedAt, profile.MemoryLimitMB, string(launchArgs), string(tags), string(keywords), profile.GroupId,

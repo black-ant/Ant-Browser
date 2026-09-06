@@ -108,6 +108,18 @@ func (a *App) BrowserExtensionInstallManualDownloadFile(fileName string) (backen
 	return a.App.BrowserExtensionInstallManualDownloadFile(fileName)
 }
 
+func (a *App) BrowserProfilePackagePrepareImport() (backend.ProfilePackageImportPreview, error) {
+	return a.App.BrowserProfilePackagePrepareImport()
+}
+
+func (a *App) BrowserProfilePackagePrepareImportFromPath(zipPath string) (backend.ProfilePackageImportPreview, error) {
+	return a.App.BrowserProfilePackagePrepareImportFromPath(zipPath)
+}
+
+func (a *App) BrowserProfilePackageImportWithOptions(zipPath string, options backend.ProfilePackageImportOptions) (backend.ProfilePackageImportResult, error) {
+	return a.App.BrowserProfilePackageImportWithOptions(zipPath, options)
+}
+
 func (a *App) BackupGetLocalSettings() backend.BackupLocalSettings {
 	return a.App.BackupGetLocalSettings()
 }

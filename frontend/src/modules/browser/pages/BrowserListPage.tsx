@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react'
 import { toast } from '../../../shared/components'
-import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProxy } from '../types'
+import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfilePackageImportPreview, BrowserProxy } from '../types'
 import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
@@ -20,7 +20,8 @@ import {
   deleteBrowserProfile,
   exportBrowserProfilePackage,
   fetchBrowserProfileTrash,
-  importBrowserProfilePackage,
+  importBrowserProfilePackageWithOptions,
+  prepareBrowserProfilePackageImport,
   permanentlyDeleteBrowserProfile,
   restoreBrowserProfile,
   startBrowserInstance,
@@ -44,6 +45,7 @@ export function BrowserListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
+  const [profileImportPreview, setProfileImportPreview] = useState<BrowserProfilePackageImportPreview | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean
     mode: 'single' | 'batch'
@@ -353,23 +355,52 @@ export function BrowserListPage() {
     }
   }
 
-  const handleImportProfiles = async () => {
-    if (profilePackageBusy) return
-    setProfilePackageBusy(true)
+  const executeProfileImport = async (zipPath: string, conflictMode: 'new' | 'overwrite') => {
+    if (!zipPath.trim()) {
+      setProfileImportPreview(null)
+      setProfilePackageBusy(false)
+      return
+    }
+    setProfileImportPreview(null)
     try {
-      const result = await importBrowserProfilePackage()
+      const result = await importBrowserProfilePackageWithOptions(zipPath, conflictMode)
       if (result.cancelled) return
       const warnings = result.warnings || []
+      const createdCount = result.createdCount ?? Math.max(0, result.importedCount - (result.overwrittenCount || 0))
+      const overwrittenCount = result.overwrittenCount ?? 0
+      const summary = overwrittenCount > 0
+        ? `已覆盖 ${overwrittenCount} 个实例，新建 ${createdCount} 个实例`
+        : `已新建 ${createdCount} 个实例`
       if (warnings.length > 0) {
-        toast.warning(`已导入 ${result.importedCount} 个实例，${warnings.length} 条提示：${warnings[0]}`)
+        toast.warning(`${summary}，${warnings.length} 条提示：${warnings[0]}`)
       } else {
-        toast.success(`已导入 ${result.importedCount} 个实例`)
+        toast.success(summary)
       }
       setSelectedIds(new Set())
       await loadProfiles()
     } catch (error: any) {
       toast.error(error?.message || '导入实例失败')
     } finally {
+      setProfilePackageBusy(false)
+    }
+  }
+
+  const handleImportProfiles = async () => {
+    if (profilePackageBusy) return
+    setProfilePackageBusy(true)
+    try {
+      const preview = await prepareBrowserProfilePackageImport()
+      if (preview.cancelled) {
+        setProfilePackageBusy(false)
+        return
+      }
+      if (preview.conflictCount > 0) {
+        setProfileImportPreview(preview)
+        return
+      }
+      await executeProfileImport(preview.zipPath, 'new')
+    } catch (error: any) {
+      toast.error(error?.message || '导入实例失败')
       setProfilePackageBusy(false)
     }
   }
@@ -685,6 +716,16 @@ export function BrowserListPage() {
         onConfirmPermanentDelete={() => { void handleConfirmPermanentDelete() }}
         opError={opError}
         onCloseOpError={() => setOpError('')}
+        profileImportPreview={profileImportPreview}
+        onCloseProfileImport={() => {
+          setProfileImportPreview(null)
+          setProfilePackageBusy(false)
+        }}
+        onConfirmProfileImport={(mode) => {
+          if (profileImportPreview) {
+            void executeProfileImport(profileImportPreview.zipPath, mode)
+          }
+        }}
       />
     </div>
   )

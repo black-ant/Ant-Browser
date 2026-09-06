@@ -236,6 +236,12 @@ export function BrowserProfilePackageExport(arg1:Array<string>):Promise<backend.
 
 export function BrowserProfilePackageImport():Promise<backend.ProfilePackageImportResult>;
 
+export function BrowserProfilePackageImportWithOptions(arg1:string,arg2:backend.ProfilePackageImportOptions):Promise<backend.ProfilePackageImportResult>;
+
+export function BrowserProfilePackagePrepareImport():Promise<backend.ProfilePackageImportPreview>;
+
+export function BrowserProfilePackagePrepareImportFromPath(arg1:string):Promise<backend.ProfilePackageImportPreview>;
+
 export function BrowserProfilePermanentlyDelete(arg1:string):Promise<void>;
 
 export function BrowserProfileRegenerateCode(arg1:string):Promise<string>;

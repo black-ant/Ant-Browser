@@ -454,6 +454,18 @@ export function BrowserProfilePackageImport() {
   return window['go']['main']['App']['BrowserProfilePackageImport']();
 }
 
+export function BrowserProfilePackageImportWithOptions(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProfilePackageImportWithOptions'](arg1, arg2);
+}
+
+export function BrowserProfilePackagePrepareImport() {
+  return window['go']['main']['App']['BrowserProfilePackagePrepareImport']();
+}
+
+export function BrowserProfilePackagePrepareImportFromPath(arg1) {
+  return window['go']['main']['App']['BrowserProfilePackagePrepareImportFromPath'](arg1);
+}
+
 export function BrowserProfilePermanentlyDelete(arg1) {
   return window['go']['main']['App']['BrowserProfilePermanentlyDelete'](arg1);
 }

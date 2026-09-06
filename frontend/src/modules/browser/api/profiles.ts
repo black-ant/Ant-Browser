@@ -7,6 +7,7 @@ import type {
   BrowserProfileCopyOptions,
   BrowserProfileInput,
   BrowserProfilePackageExportResult,
+  BrowserProfilePackageImportPreview,
   BrowserProfilePackageImportResult,
 } from '../types'
 import { getBindings, getMockProfiles, nowISOString, setMockProfiles } from './runtime'
@@ -167,6 +168,38 @@ export async function importBrowserProfilePackage(): Promise<BrowserProfilePacka
     importedCount: 0,
     profileMappings: {},
     message: '当前环境不支持导入实例',
+  }
+}
+
+export async function prepareBrowserProfilePackageImport(): Promise<BrowserProfilePackageImportPreview> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfilePackagePrepareImport) {
+    return await bindings.BrowserProfilePackagePrepareImport()
+  }
+  return {
+    cancelled: true,
+    zipPath: '',
+    profileCount: 0,
+    conflictCount: 0,
+    canOverwrite: false,
+    conflicts: [],
+    message: '当前环境不支持导入实例冲突检查',
+  }
+}
+
+export async function importBrowserProfilePackageWithOptions(
+  zipPath: string,
+  conflictMode: 'new' | 'overwrite',
+): Promise<BrowserProfilePackageImportResult> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfilePackageImportWithOptions) {
+    return await bindings.BrowserProfilePackageImportWithOptions(zipPath, { conflictMode })
+  }
+  return {
+    cancelled: true,
+    importedCount: 0,
+    profileMappings: {},
+    message: '当前环境不支持按冲突方式导入实例',
   }
 }
 

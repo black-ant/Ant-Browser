@@ -210,7 +210,13 @@ export function BackupPage() {
       toast.info('请先配置本地备份目录，再开始备份')
       return
     }
-    if (destinations.openlist === true && !configuredOpenListConnection) return
+    if (destinations.openlist === true && !configuredOpenListConnection) {
+      openListConfigurationCompletedRef.current = false
+      openListConfiguredConnectionRef.current = null
+      setOpenListConfigModalOpen(true)
+      toast.info('请先配置 OpenList，再开始备份')
+      return
+    }
 
     if (destinations.s3 === true && !s3Connection) {
       setBackupTypeModalOpen(false)

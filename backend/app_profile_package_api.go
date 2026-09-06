@@ -38,12 +38,48 @@ type ProfilePackageExportResult struct {
 }
 
 type ProfilePackageImportResult struct {
-	Cancelled       bool              `json:"cancelled"`
-	ImportedCount   int               `json:"importedCount"`
-	ProfileMappings map[string]string `json:"profileMappings"`
-	Warnings        []string          `json:"warnings"`
-	Message         string            `json:"message"`
+	Cancelled        bool              `json:"cancelled"`
+	ImportedCount    int               `json:"importedCount"`
+	CreatedCount     int               `json:"createdCount"`
+	OverwrittenCount int               `json:"overwrittenCount"`
+	ProfileMappings  map[string]string `json:"profileMappings"`
+	Warnings         []string          `json:"warnings"`
+	Message          string            `json:"message"`
 }
+
+type ProfilePackageImportOptions struct {
+	ConflictMode string `json:"conflictMode"`
+}
+
+type ProfilePackageImportConflict struct {
+	SourceProfileID       string `json:"sourceProfileId"`
+	SourceProfileName     string `json:"sourceProfileName"`
+	TargetProfileID       string `json:"targetProfileId"`
+	TargetProfileName     string `json:"targetProfileName"`
+	MatchType             string `json:"matchType"`
+	TargetRunning         bool   `json:"targetRunning"`
+	TargetDeleted         bool   `json:"targetDeleted"`
+	Ambiguous             bool   `json:"ambiguous"`
+	TargetMatches         int    `json:"targetMatches"`
+	SourceTargetCollision bool   `json:"sourceTargetCollision"`
+}
+
+type ProfilePackageImportPreview struct {
+	Cancelled     bool                           `json:"cancelled"`
+	ZipPath       string                         `json:"zipPath"`
+	ProfileCount  int                            `json:"profileCount"`
+	ConflictCount int                            `json:"conflictCount"`
+	CanOverwrite  bool                           `json:"canOverwrite"`
+	Conflicts     []ProfilePackageImportConflict `json:"conflicts"`
+	Message       string                         `json:"message"`
+}
+
+const (
+	profilePackageImportModeNew       = "new"
+	profilePackageImportModeOverwrite = "overwrite"
+	profilePackageImportMatchID       = "profileId"
+	profilePackageImportMatchName     = "profileName"
+)
 
 type preparedProfilePackageImport struct {
 	Profile      browser.Profile
@@ -51,6 +87,31 @@ type preparedProfilePackageImport struct {
 	FinalDir     string
 	StagingDir   string
 	HasUserData  bool
+	Overwrite    bool
+}
+
+type profilePackageContents struct {
+	Reader           *zip.ReadCloser
+	Profiles         []browser.Profile
+	DatabaseSnapshot *ProfilePackageDatabase
+}
+
+type profilePackageConflictMatch struct {
+	Target     *browser.Profile
+	MatchType  string
+	Ambiguous  bool
+	TargetHits []browser.Profile
+}
+
+type profilePackageExistingProfiles struct {
+	ByID   map[string]browser.Profile
+	ByName map[string][]browser.Profile
+}
+
+type profilePackageDirectorySwap struct {
+	FinalDir    string
+	BackupDir   string
+	HadOriginal bool
 }
 
 // BrowserProfilePackageExport 导出选中的实例配置和浏览器用户数据目录。
@@ -93,7 +154,7 @@ func (a *App) BrowserProfilePackageExport(profileIds []string) (ProfilePackageEx
 	}, nil
 }
 
-// BrowserProfilePackageImport 导入实例包，冲突时始终生成新实例和新目录。
+// BrowserProfilePackageImport 导入实例包。保留该接口用于兼容旧调用方，默认选择新建。
 func (a *App) BrowserProfilePackageImport() (ProfilePackageImportResult, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
@@ -113,7 +174,44 @@ func (a *App) BrowserProfilePackageImport() (ProfilePackageImportResult, error) 
 	if strings.TrimSpace(zipPath) == "" {
 		return ProfilePackageImportResult{Cancelled: true, Message: "已取消导入"}, nil
 	}
-	return a.importProfilePackageFromPath(zipPath)
+	return a.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+}
+
+// BrowserProfilePackagePrepareImport 选择实例包并返回冲突预览，不执行导入。
+func (a *App) BrowserProfilePackagePrepareImport() (ProfilePackageImportPreview, error) {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+
+	if a.ctx == nil {
+		return ProfilePackageImportPreview{}, fmt.Errorf("应用上下文未初始化")
+	}
+	zipPath, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: "导入实例",
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
+		},
+	})
+	if err != nil {
+		return ProfilePackageImportPreview{}, fmt.Errorf("打开文件对话框失败: %w", err)
+	}
+	if strings.TrimSpace(zipPath) == "" {
+		return ProfilePackageImportPreview{Cancelled: true, Message: "已取消导入"}, nil
+	}
+	return a.prepareProfilePackageImportFromPath(zipPath)
+}
+
+// BrowserProfilePackagePrepareImportFromPath 读取指定实例包并返回冲突预览。
+func (a *App) BrowserProfilePackagePrepareImportFromPath(zipPath string) (ProfilePackageImportPreview, error) {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	return a.prepareProfilePackageImportFromPath(zipPath)
+}
+
+// BrowserProfilePackageImportWithOptions 按用户选择覆盖或新建实例。
+func (a *App) BrowserProfilePackageImportWithOptions(zipPath string, options ProfilePackageImportOptions) (ProfilePackageImportResult, error) {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	return a.importProfilePackageFromPathWithMode(zipPath, options.ConflictMode)
 }
 
 func (a *App) collectProfilesForPackage(profileIds []string) ([]browser.Profile, error) {
@@ -233,127 +331,325 @@ func (a *App) writeProfilePackage(zipPath string, profiles []browser.Profile) (i
 }
 
 func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImportResult, error) {
-	reader, err := zip.OpenReader(zipPath)
+	return a.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+}
+
+func openProfilePackageContents(zipPath string) (*profilePackageContents, error) {
+	reader, err := zip.OpenReader(strings.TrimSpace(zipPath))
 	if err != nil {
-		return ProfilePackageImportResult{}, fmt.Errorf("打开实例包失败: %w", err)
+		return nil, fmt.Errorf("打开实例包失败: %w", err)
 	}
-	defer reader.Close()
-
-	var manifest ProfilePackageManifest
-	if err := readProfilePackageJSON(reader.File, "manifest.json", &manifest); err != nil {
-		return ProfilePackageImportResult{}, err
-	}
-	if manifest.Format != profilePackageFormat || (manifest.Version != 1 && manifest.Version != profilePackageVersion) {
-		return ProfilePackageImportResult{}, fmt.Errorf("不支持的实例包格式")
-	}
-	var profiles []browser.Profile
-	var databaseSnapshot *ProfilePackageDatabase
-	if manifest.Version >= profilePackageVersion {
-		var snapshot ProfilePackageDatabase
-		if err := readProfilePackageJSON(reader.File, profilePackageDatabasePath, &snapshot); err != nil {
-			return ProfilePackageImportResult{}, err
-		}
-		if snapshot.Format != profilePackageDatabaseFormat || snapshot.Version != profilePackageDatabaseVersion {
-			return ProfilePackageImportResult{}, fmt.Errorf("不支持的实例数据库快照格式")
-		}
-		databaseSnapshot = &snapshot
-		profiles = snapshot.Profiles
-	} else if err := readProfilePackageJSON(reader.File, "profiles.json", &profiles); err != nil {
-		return ProfilePackageImportResult{}, err
-	}
-	if len(profiles) == 0 {
-		return ProfilePackageImportResult{}, fmt.Errorf("实例包为空")
-	}
-	if databaseSnapshot != nil && (a.db == nil || a.db.GetConn() == nil) {
-		return ProfilePackageImportResult{}, fmt.Errorf("数据库未初始化，无法恢复实例关联数据")
-	}
-
-	a.browserMgr.InitData()
-	now := time.Now().Format(time.RFC3339)
-	mappings := make(map[string]string, len(profiles))
-	warnings := make([]string, 0)
-	if databaseSnapshot != nil {
-		warnings = append(warnings, databaseSnapshot.Warnings...)
-	}
-	prepared := make([]preparedProfilePackageImport, 0, len(profiles))
-	batchID := uuid.NewString()
-	stagingRoot := a.profilePackageImportStagingRoot(batchID)
-	committedDirs := make([]string, 0, len(profiles))
-	committedProfiles := make([]string, 0, len(profiles))
-	committed := false
+	contents := &profilePackageContents{Reader: reader}
+	completed := false
 	defer func() {
-		_ = os.RemoveAll(stagingRoot)
-		if !committed {
-			for _, dir := range committedDirs {
-				_ = os.RemoveAll(dir)
-			}
-			if len(committedProfiles) > 0 {
-				a.browserMgr.Mutex.Lock()
-				for _, profileID := range committedProfiles {
-					delete(a.browserMgr.Profiles, profileID)
-				}
-				a.browserMgr.Mutex.Unlock()
-			}
+		if !completed {
+			_ = reader.Close()
 		}
 	}()
 
-	for _, source := range profiles {
+	var manifest ProfilePackageManifest
+	if err := readProfilePackageJSON(reader.File, "manifest.json", &manifest); err != nil {
+		return nil, err
+	}
+	if manifest.Format != profilePackageFormat || (manifest.Version != 1 && manifest.Version != profilePackageVersion) {
+		return nil, fmt.Errorf("不支持的实例包格式")
+	}
+	var profiles []browser.Profile
+	if manifest.Version >= profilePackageVersion {
+		var snapshot ProfilePackageDatabase
+		if err := readProfilePackageJSON(reader.File, profilePackageDatabasePath, &snapshot); err != nil {
+			return nil, err
+		}
+		if snapshot.Format != profilePackageDatabaseFormat || snapshot.Version != profilePackageDatabaseVersion {
+			return nil, fmt.Errorf("不支持的实例数据库快照格式")
+		}
+		contents.DatabaseSnapshot = &snapshot
+		profiles = snapshot.Profiles
+	} else if err := readProfilePackageJSON(reader.File, "profiles.json", &profiles); err != nil {
+		return nil, err
+	}
+	if len(profiles) == 0 {
+		return nil, fmt.Errorf("实例包为空")
+	}
+	contents.Profiles = profiles
+	completed = true
+	return contents, nil
+}
+
+func (a *App) prepareProfilePackageImportFromPath(zipPath string) (ProfilePackageImportPreview, error) {
+	zipPath = strings.TrimSpace(zipPath)
+	if zipPath == "" {
+		return ProfilePackageImportPreview{}, fmt.Errorf("实例包路径为空")
+	}
+	contents, err := openProfilePackageContents(zipPath)
+	if err != nil {
+		return ProfilePackageImportPreview{}, err
+	}
+	defer contents.Reader.Close()
+	if contents.DatabaseSnapshot != nil && (a.db == nil || a.db.GetConn() == nil) {
+		return ProfilePackageImportPreview{}, fmt.Errorf("数据库未初始化，无法恢复实例关联数据")
+	}
+
+	conflicts, canOverwrite, err := a.profilePackageImportConflicts(contents.Profiles)
+	if err != nil {
+		return ProfilePackageImportPreview{}, err
+	}
+	return ProfilePackageImportPreview{
+		Cancelled:     false,
+		ZipPath:       zipPath,
+		ProfileCount:  len(contents.Profiles),
+		ConflictCount: len(conflicts),
+		CanOverwrite:  canOverwrite,
+		Conflicts:     conflicts,
+		Message:       profilePackageImportPreviewMessage(conflicts),
+	}, nil
+}
+
+func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]ProfilePackageImportConflict, bool, error) {
+	existing, err := a.loadExistingProfilePackageProfiles()
+	if err != nil {
+		return nil, false, err
+	}
+	conflicts := make([]ProfilePackageImportConflict, 0)
+	canOverwrite := true
+	seenSourceIDs := make(map[string]struct{}, len(profiles))
+	claimedTargets := make(map[string]string, len(profiles))
+	for index, source := range profiles {
+		sourceID := strings.TrimSpace(source.ProfileId)
+		if sourceID != "" {
+			key := backupImportIDKey(sourceID)
+			if _, exists := seenSourceIDs[key]; exists {
+				return nil, false, fmt.Errorf("实例包包含重复 profileId: %s", sourceID)
+			}
+			seenSourceIDs[key] = struct{}{}
+		}
+		match := findProfilePackageConflict(existing, source, sourceID)
+		if match.Target == nil && !match.Ambiguous {
+			continue
+		}
+		sourceKey := backupImportIDKey(sourceID)
+		if sourceKey == "" {
+			sourceKey = fmt.Sprintf("index:%d", index)
+		}
+		targetCollision := false
+		if match.Target != nil {
+			targetKey := backupImportIDKey(match.Target.ProfileId)
+			if previousSource, claimed := claimedTargets[targetKey]; claimed && previousSource != sourceKey {
+				targetCollision = true
+			} else {
+				claimedTargets[targetKey] = sourceKey
+			}
+		}
+		conflict := ProfilePackageImportConflict{
+			SourceProfileID:       sourceID,
+			SourceProfileName:     strings.TrimSpace(source.ProfileName),
+			MatchType:             match.MatchType,
+			Ambiguous:             match.Ambiguous,
+			TargetMatches:         len(match.TargetHits),
+			SourceTargetCollision: targetCollision,
+		}
+		if match.Target != nil {
+			conflict.TargetProfileID = match.Target.ProfileId
+			conflict.TargetProfileName = match.Target.ProfileName
+			conflict.TargetRunning = profilePackageProfileIsRunning(a, *match.Target)
+			conflict.TargetDeleted = strings.TrimSpace(match.Target.DeletedAt) != ""
+		}
+		if conflict.Ambiguous || conflict.TargetRunning || conflict.SourceTargetCollision {
+			canOverwrite = false
+		}
+		conflicts = append(conflicts, conflict)
+	}
+	return conflicts, canOverwrite, nil
+}
+
+func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) (ProfilePackageImportResult, error) {
+	mode = normalizeProfilePackageImportMode(mode)
+	if mode == "" {
+		return ProfilePackageImportResult{}, fmt.Errorf("不支持的实例导入冲突处理方式")
+	}
+	contents, err := openProfilePackageContents(zipPath)
+	if err != nil {
+		return ProfilePackageImportResult{}, err
+	}
+	defer contents.Reader.Close()
+	if contents.DatabaseSnapshot != nil && (a.db == nil || a.db.GetConn() == nil) {
+		return ProfilePackageImportResult{}, fmt.Errorf("数据库未初始化，无法恢复实例关联数据")
+	}
+	if a.browserMgr == nil {
+		return ProfilePackageImportResult{}, fmt.Errorf("浏览器管理器未初始化")
+	}
+	a.browserMgr.InitData()
+	existing, err := a.loadExistingProfilePackageProfiles()
+	if err != nil {
+		return ProfilePackageImportResult{}, err
+	}
+	now := time.Now().Format(time.RFC3339)
+	mappings := make(map[string]string, len(contents.Profiles))
+	warnings := make([]string, 0)
+	if contents.DatabaseSnapshot != nil {
+		warnings = append(warnings, contents.DatabaseSnapshot.Warnings...)
+	}
+	usedIDs := make(map[string]struct{}, len(existing.ByID)+len(contents.Profiles))
+	reservedNames := make(map[string]struct{}, len(existing.ByName)+len(contents.Profiles))
+	for key := range existing.ByID {
+		usedIDs[key] = struct{}{}
+	}
+	for key := range existing.ByName {
+		reservedNames[key] = struct{}{}
+	}
+
+	prepared := make([]preparedProfilePackageImport, 0, len(contents.Profiles))
+	batchID := uuid.NewString()
+	stagingRoot := a.profilePackageImportStagingRoot(batchID)
+	swaps := make([]profilePackageDirectorySwap, 0, len(contents.Profiles))
+	originalProfiles := make(map[string]*browser.Profile, len(contents.Profiles))
+	committed := false
+	defer func() {
+		_ = os.RemoveAll(stagingRoot)
+		if committed {
+			return
+		}
+		rollbackProfilePackageDirectorySwaps(swaps)
+		if len(originalProfiles) == 0 {
+			return
+		}
+		a.browserMgr.Mutex.Lock()
+		for profileID, original := range originalProfiles {
+			if original == nil {
+				delete(a.browserMgr.Profiles, profileID)
+				continue
+			}
+			copyProfile := *original
+			a.browserMgr.Profiles[profileID] = &copyProfile
+		}
+		a.browserMgr.Mutex.Unlock()
+	}()
+
+	seenSourceIDs := make(map[string]struct{}, len(contents.Profiles))
+	claimedTargets := make(map[string]string, len(contents.Profiles))
+	for index, source := range contents.Profiles {
 		oldID := strings.TrimSpace(source.ProfileId)
 		if oldID == "" {
 			oldID = uuid.NewString()
 		}
-		newID := uuid.NewString()
-		source.ProfileId = newID
-		source.ProfileName = buildImportedProfileName(source.ProfileName)
-		source.UserDataDir = newID
-		source.Running = false
-		source.DebugPort = 0
-		source.DebugReady = false
-		source.Pid = 0
-		source.RuntimeWarning = ""
-		source.LastError = ""
-		source.LaunchCode = ""
-		source.CreatedAt = now
-		source.UpdatedAt = now
-		source.DeletedAt = ""
-		if databaseSnapshot == nil {
-			if warning := a.applyImportedProfileProxyByName(&source); warning != "" {
-				warnings = append(warnings, fmt.Sprintf("实例「%s」%s", source.ProfileName, warning))
+		if key := backupImportIDKey(oldID); key != "" {
+			if _, exists := seenSourceIDs[key]; exists {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例包包含重复 profileId: %s", oldID)
+			}
+			seenSourceIDs[key] = struct{}{}
+		}
+		match := findProfilePackageConflict(existing, source, oldID)
+		if mode == profilePackageImportModeOverwrite {
+			if match.Ambiguous {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例「%s」存在多个同名目标，无法自动覆盖，请选择新建", source.ProfileName)
+			}
+			if match.Target != nil && profilePackageProfileIsRunning(a, *match.Target) {
+				return ProfilePackageImportResult{}, fmt.Errorf("目标实例「%s」正在运行，请先停止后再覆盖", match.Target.ProfileName)
+			}
+			if match.Target != nil {
+				targetKey := backupImportIDKey(match.Target.ProfileId)
+				sourceKey := backupImportIDKey(oldID)
+				if sourceKey == "" {
+					sourceKey = fmt.Sprintf("index:%d", index)
+				}
+				if previousSource, claimed := claimedTargets[targetKey]; claimed && previousSource != sourceKey {
+					return ProfilePackageImportResult{}, fmt.Errorf("多个导入实例匹配目标实例「%s」，无法自动覆盖，请选择新建", match.Target.ProfileName)
+				}
+				claimedTargets[targetKey] = sourceKey
 			}
 		}
 
-		profile := &browser.Profile{ProfileId: newID, UserDataDir: newID}
-		finalDir := a.browserMgr.ResolveUserDataDir(profile)
+		newID := profilePackageGeneratedID(usedIDs)
+		overwrite := mode == profilePackageImportModeOverwrite && match.Target != nil
+		if overwrite {
+			newID = strings.TrimSpace(match.Target.ProfileId)
+			usedIDs[backupImportIDKey(newID)] = struct{}{}
+		}
+		profile := source
+		if overwrite {
+			profile.ProfileName = strings.TrimSpace(source.ProfileName)
+			if profile.ProfileName == "" {
+				profile.ProfileName = match.Target.ProfileName
+			}
+			profile.UserDataDir = strings.TrimSpace(match.Target.UserDataDir)
+			if profile.UserDataDir == "" {
+				profile.UserDataDir = newID
+			}
+			profile.CreatedAt = strings.TrimSpace(match.Target.CreatedAt)
+		} else {
+			profile.ProfileName = uniqueImportedProfileName(source.ProfileName, reservedNames)
+			profile.UserDataDir = newID
+		}
+		if profile.ProfileName == "" {
+			profile.ProfileName = "导入实例"
+		}
+		profile.ProfileId = newID
+		profile.Running = false
+		profile.DebugPort = 0
+		profile.DebugReady = false
+		profile.Pid = 0
+		profile.RuntimeWarning = ""
+		profile.LastError = ""
+		profile.LaunchCode = ""
+		if strings.TrimSpace(profile.CreatedAt) == "" {
+			profile.CreatedAt = now
+		}
+		profile.UpdatedAt = now
+		profile.DeletedAt = ""
+		if contents.DatabaseSnapshot == nil {
+			if warning := a.applyImportedProfileProxyByName(&profile); warning != "" {
+				warnings = append(warnings, fmt.Sprintf("实例「%s」%s", profile.ProfileName, warning))
+			}
+		}
+
+		profileRef := &browser.Profile{ProfileId: newID, UserDataDir: profile.UserDataDir}
+		finalDir := a.browserMgr.ResolveUserDataDir(profileRef)
 		stagingDir := filepath.Join(stagingRoot, newID)
-		hasUserData, err := a.extractProfileUserDataToDir(reader.File, oldID, stagingDir)
+		hasUserData, err := a.extractProfileUserDataToDir(contents.Reader.File, oldID, stagingDir)
 		if err != nil {
 			return ProfilePackageImportResult{}, err
 		}
 		if !hasUserData {
-			warnings = append(warnings, fmt.Sprintf("实例「%s」没有用户数据目录，仅导入配置", source.ProfileName))
+			warnings = append(warnings, fmt.Sprintf("实例「%s」没有用户数据目录，仅导入配置", profile.ProfileName))
 		}
-
 		prepared = append(prepared, preparedProfilePackageImport{
-			Profile:      source,
+			Profile:      profile,
 			OldProfileID: oldID,
 			FinalDir:     finalDir,
 			StagingDir:   stagingDir,
 			HasUserData:  hasUserData,
+			Overwrite:    overwrite,
 		})
 		mappings[oldID] = newID
 	}
 
 	for _, item := range prepared {
+		a.browserMgr.Mutex.Lock()
+		if current, exists := a.browserMgr.Profiles[item.Profile.ProfileId]; exists && current != nil {
+			copyProfile := *current
+			originalProfiles[item.Profile.ProfileId] = &copyProfile
+		} else {
+			originalProfiles[item.Profile.ProfileId] = nil
+		}
+		a.browserMgr.Mutex.Unlock()
+	}
+	for _, item := range prepared {
 		if !item.HasUserData {
 			continue
 		}
-		if err := replaceProfileUserDataDir(item.StagingDir, item.FinalDir); err != nil {
+		swap, err := replaceProfileUserDataDirWithBackup(item.StagingDir, item.FinalDir)
+		if err != nil {
 			return ProfilePackageImportResult{}, err
 		}
-		committedDirs = append(committedDirs, item.FinalDir)
+		swaps = append(swaps, swap)
 	}
-	if databaseSnapshot != nil {
-		if err := a.restoreProfilePackageDatabase(*databaseSnapshot, prepared, &warnings); err != nil {
+	legacyDatabaseRestore := contents.DatabaseSnapshot == nil && a.db != nil && a.db.GetConn() != nil && a.browserMgr.ProfileDAO != nil
+	if contents.DatabaseSnapshot != nil {
+		if err := a.restoreProfilePackageDatabase(*contents.DatabaseSnapshot, prepared, &warnings); err != nil {
+			return ProfilePackageImportResult{}, err
+		}
+	} else if legacyDatabaseRestore {
+		if err := a.restoreLegacyProfilePackageDatabase(prepared); err != nil {
 			return ProfilePackageImportResult{}, err
 		}
 	}
@@ -361,7 +657,6 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 	for i := range prepared {
 		profile := &prepared[i].Profile
 		a.browserMgr.Profiles[profile.ProfileId] = profile
-		committedProfiles = append(committedProfiles, profile.ProfileId)
 		if a.launchCodeSvc != nil {
 			if code, err := a.launchCodeSvc.EnsureCode(profile.ProfileId); err == nil {
 				profile.LaunchCode = code
@@ -369,20 +664,162 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 		}
 	}
 	a.browserMgr.Mutex.Unlock()
-	if databaseSnapshot == nil {
+	if contents.DatabaseSnapshot == nil && !legacyDatabaseRestore {
 		if err := a.browserMgr.SaveProfiles(); err != nil {
 			return ProfilePackageImportResult{}, err
 		}
 	}
+	finalizeProfilePackageDirectorySwaps(swaps)
 	committed = true
-
+	createdCount := 0
+	overwrittenCount := 0
+	for _, item := range prepared {
+		if item.Overwrite {
+			overwrittenCount++
+		} else {
+			createdCount++
+		}
+	}
 	return ProfilePackageImportResult{
-		Cancelled:       false,
-		ImportedCount:   len(prepared),
-		ProfileMappings: mappings,
-		Warnings:        warnings,
-		Message:         "导入完成",
+		Cancelled:        false,
+		ImportedCount:    len(prepared),
+		CreatedCount:     createdCount,
+		OverwrittenCount: overwrittenCount,
+		ProfileMappings:  mappings,
+		Warnings:         warnings,
+		Message:          "导入完成",
 	}, nil
+}
+
+func normalizeProfilePackageImportMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", profilePackageImportModeNew:
+		return profilePackageImportModeNew
+	case profilePackageImportModeOverwrite:
+		return profilePackageImportModeOverwrite
+	default:
+		return ""
+	}
+}
+
+func profilePackageImportPreviewMessage(conflicts []ProfilePackageImportConflict) string {
+	if len(conflicts) == 0 {
+		return "未发现实例冲突"
+	}
+	return fmt.Sprintf("发现 %d 个实例冲突，请选择覆盖或新建", len(conflicts))
+}
+
+func (a *App) loadExistingProfilePackageProfiles() (profilePackageExistingProfiles, error) {
+	if a == nil || a.browserMgr == nil {
+		return profilePackageExistingProfiles{}, fmt.Errorf("浏览器管理器未初始化")
+	}
+	a.browserMgr.InitData()
+	existing := profilePackageExistingProfiles{
+		ByID:   make(map[string]browser.Profile),
+		ByName: make(map[string][]browser.Profile),
+	}
+	addProfile := func(profile browser.Profile) {
+		idKey := backupImportIDKey(profile.ProfileId)
+		if idKey == "" {
+			return
+		}
+		if _, exists := existing.ByID[idKey]; !exists {
+			existing.ByID[idKey] = profile
+		}
+		nameKey := backupImportTextKey(profile.ProfileName)
+		if nameKey == "" {
+			return
+		}
+		for _, item := range existing.ByName[nameKey] {
+			if backupImportIDKey(item.ProfileId) == idKey {
+				return
+			}
+		}
+		existing.ByName[nameKey] = append(existing.ByName[nameKey], profile)
+	}
+	a.browserMgr.Mutex.Lock()
+	for _, profile := range a.browserMgr.Profiles {
+		if profile == nil {
+			continue
+		}
+		addProfile(*profile)
+	}
+	profileDAO := a.browserMgr.ProfileDAO
+	a.browserMgr.Mutex.Unlock()
+	if profileDAO != nil {
+		deleted, err := profileDAO.ListDeleted()
+		if err != nil {
+			return profilePackageExistingProfiles{}, fmt.Errorf("读取回收站实例失败: %w", err)
+		}
+		for _, profile := range deleted {
+			if profile != nil {
+				addProfile(*profile)
+			}
+		}
+	}
+	return existing, nil
+}
+
+func findProfilePackageConflict(existing profilePackageExistingProfiles, source browser.Profile, sourceID string) profilePackageConflictMatch {
+	if idKey := backupImportIDKey(sourceID); idKey != "" {
+		if target, exists := existing.ByID[idKey]; exists {
+			copyProfile := target
+			return profilePackageConflictMatch{
+				Target:     &copyProfile,
+				MatchType:  profilePackageImportMatchID,
+				TargetHits: []browser.Profile{target},
+			}
+		}
+	}
+	hits := existing.ByName[backupImportTextKey(source.ProfileName)]
+	if len(hits) == 1 {
+		copyProfile := hits[0]
+		return profilePackageConflictMatch{
+			Target:     &copyProfile,
+			MatchType:  profilePackageImportMatchName,
+			TargetHits: hits,
+		}
+	}
+	if len(hits) > 1 {
+		return profilePackageConflictMatch{
+			MatchType:  profilePackageImportMatchName,
+			Ambiguous:  true,
+			TargetHits: hits,
+		}
+	}
+	return profilePackageConflictMatch{}
+}
+
+func profilePackageProfileIsRunning(a *App, profile browser.Profile) bool {
+	if profile.Running || profile.Pid > 0 || profile.DebugPort > 0 || profile.WindowMarkerCode != "" {
+		return true
+	}
+	if a == nil || a.browserMgr == nil {
+		return false
+	}
+	a.browserMgr.Mutex.Lock()
+	defer a.browserMgr.Mutex.Unlock()
+	return a.browserMgr.BrowserProcesses[profile.ProfileId] != nil
+}
+
+func uniqueImportedProfileName(name string, reserved map[string]struct{}) string {
+	base := strings.TrimSpace(name)
+	if base == "" {
+		base = "导入实例"
+	}
+	candidate := buildImportedProfileName(base)
+	if _, exists := reserved[backupImportTextKey(candidate)]; !exists {
+		reserved[backupImportTextKey(candidate)] = struct{}{}
+		return candidate
+	}
+	for index := 2; ; index++ {
+		candidate = fmt.Sprintf("%s（导入 %d）", base, index)
+		if _, exists := reserved[backupImportTextKey(candidate)]; exists {
+			continue
+		}
+		reserved[backupImportTextKey(candidate)] = struct{}{}
+		return candidate
+	}
 }
 
 func (a *App) extractProfileUserDataToDir(files []*zip.File, oldProfileID string, destDir string) (bool, error) {
@@ -517,32 +954,63 @@ func extractProfilePackageFile(file *zip.File, destDir string, rel string) error
 }
 
 func replaceProfileUserDataDir(stagingDir string, finalDir string) error {
+	swap, err := replaceProfileUserDataDirWithBackup(stagingDir, finalDir)
+	if err != nil {
+		return err
+	}
+	finalizeProfilePackageDirectorySwaps([]profilePackageDirectorySwap{swap})
+	return nil
+}
+
+func replaceProfileUserDataDirWithBackup(stagingDir string, finalDir string) (profilePackageDirectorySwap, error) {
 	if strings.TrimSpace(stagingDir) == "" || strings.TrimSpace(finalDir) == "" {
-		return fmt.Errorf("用户数据目录不能为空")
+		return profilePackageDirectorySwap{}, fmt.Errorf("用户数据目录不能为空")
 	}
 	if err := os.MkdirAll(filepath.Dir(finalDir), 0o755); err != nil {
-		return fmt.Errorf("创建用户数据父目录失败: %w", err)
+		return profilePackageDirectorySwap{}, fmt.Errorf("创建用户数据父目录失败: %w", err)
 	}
 	backupDir := finalDir + ".profile-package-backup-" + uuid.NewString()
-	finalExisted := false
+	swap := profilePackageDirectorySwap{
+		FinalDir:  finalDir,
+		BackupDir: backupDir,
+	}
 	if _, err := os.Stat(finalDir); err == nil {
-		finalExisted = true
+		swap.HadOriginal = true
 		if err := os.Rename(finalDir, backupDir); err != nil {
-			return fmt.Errorf("备份现有用户数据目录失败: %w", err)
+			return profilePackageDirectorySwap{}, fmt.Errorf("备份现有用户数据目录失败: %w", err)
 		}
 	} else if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("检查用户数据目录失败: %w", err)
+		return profilePackageDirectorySwap{}, fmt.Errorf("检查用户数据目录失败: %w", err)
 	}
 	if err := os.Rename(stagingDir, finalDir); err != nil {
-		if finalExisted {
+		if swap.HadOriginal {
 			_ = os.Rename(backupDir, finalDir)
 		}
-		return fmt.Errorf("提交用户数据目录失败: %w", err)
+		return profilePackageDirectorySwap{}, fmt.Errorf("提交用户数据目录失败: %w", err)
 	}
-	if finalExisted {
-		_ = os.RemoveAll(backupDir)
+	return swap, nil
+}
+
+func finalizeProfilePackageDirectorySwaps(swaps []profilePackageDirectorySwap) {
+	for _, swap := range swaps {
+		if !swap.HadOriginal || strings.TrimSpace(swap.BackupDir) == "" {
+			continue
+		}
+		_ = os.RemoveAll(swap.BackupDir)
 	}
-	return nil
+}
+
+func rollbackProfilePackageDirectorySwaps(swaps []profilePackageDirectorySwap) {
+	for index := len(swaps) - 1; index >= 0; index-- {
+		swap := swaps[index]
+		if strings.TrimSpace(swap.FinalDir) == "" {
+			continue
+		}
+		_ = os.RemoveAll(swap.FinalDir)
+		if swap.HadOriginal && strings.TrimSpace(swap.BackupDir) != "" {
+			_ = os.Rename(swap.BackupDir, swap.FinalDir)
+		}
+	}
 }
 
 func (a *App) profilePackageImportStagingRoot(batchID string) string {

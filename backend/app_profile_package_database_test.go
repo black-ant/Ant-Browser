@@ -137,6 +137,185 @@ func TestProfilePackageDatabaseRoundTripSelectedProfile(t *testing.T) {
 	}
 }
 
+func TestProfilePackageDatabaseOverwriteClearsStaleProfileExtensionRelations(t *testing.T) {
+	profileID := "target-profile"
+	groupID := "source-group"
+	parentGroupID := "source-parent-group"
+	coreID := "source-core"
+	proxyID := "source-proxy"
+	sourceExtensionID := "source-extension"
+
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceCfg := config.DefaultConfig()
+	sourceCfg.Browser.UserDataRoot = filepath.Join(sourceRoot, "user-data")
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.config = sourceCfg
+	sourceApp.db = sourceDB
+	sourceApp.browserMgr = browser.NewManager(sourceCfg, sourceRoot)
+	sourceProfile := browser.Profile{
+		ProfileId:     profileID,
+		ProfileName:   "源实例",
+		UserDataDir:   profileID,
+		CoreId:        coreID,
+		ProxyId:       proxyID,
+		ProxyConfig:   "http://source-proxy:8080",
+		ProxyBindName: "源代理",
+		GroupId:       groupID,
+		CreatedAt:     "2026-08-31T00:00:00Z",
+		UpdatedAt:     "2026-08-31T00:00:00Z",
+	}
+	insertProfilePackageDatabaseFixtures(t, sourceDB.GetConn(), sourceProfile, parentGroupID, sourceExtensionID)
+	sourceUserDataDir := filepath.Join(sourceCfg.Browser.UserDataRoot, profileID)
+	if err := os.MkdirAll(sourceUserDataDir, 0o755); err != nil {
+		t.Fatalf("create source user data failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceUserDataDir, "Preferences"), []byte("source-data"), 0o644); err != nil {
+		t.Fatalf("write source user data failed: %v", err)
+	}
+	zipPath := filepath.Join(sourceRoot, "overwrite-profile.zip")
+	if _, err := sourceApp.writeProfilePackage(zipPath, []browser.Profile{sourceProfile}); err != nil {
+		t.Fatalf("writeProfilePackage returned error: %v", err)
+	}
+	_ = sourceDB.Close()
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	targetCfg := config.DefaultConfig()
+	targetCfg.Browser.UserDataRoot = filepath.Join(targetRoot, "user-data")
+	targetApp := NewApp(targetRoot)
+	targetApp.config = targetCfg
+	targetApp.db = targetDB
+	targetApp.browserMgr = browser.NewManager(targetCfg, targetRoot)
+	targetApp.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(targetDB.GetConn())
+	targetApp.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(targetDB.GetConn())
+	targetApp.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(targetDB.GetConn())
+	targetApp.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(targetDB.GetConn())
+	targetApp.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(targetDB.GetConn())
+	if _, err := targetDB.GetConn().Exec("INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", profileID, "旧实例", "target-data", "2026-08-30T00:00:00Z", "2026-08-30T00:00:00Z"); err != nil {
+		t.Fatalf("insert target profile failed: %v", err)
+	}
+	targetExtensionDAO := browser.NewSQLiteExtensionDAO(targetDB.GetConn())
+	if err := targetExtensionDAO.Upsert(browser.Extension{ExtensionID: "stale-extension", Name: "旧插件", Version: "1.0.0", ManifestJSON: "{}", InstallDir: "data/extensions/stale-extension", Enabled: true, InstalledAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension failed: %v", err)
+	}
+	if _, err := targetExtensionDAO.SetProfileSettings(profileID, []string{"stale-extension"}, true); err != nil {
+		t.Fatalf("insert stale extension settings failed: %v", err)
+	}
+	if err := targetExtensionDAO.UpsertProfileExtensionRuntime(browser.ProfileExtensionRuntime{ProfileID: profileID, ExtensionID: "stale-extension", RuntimeExtensionID: "runtime-stale-extension", Status: browser.ExtensionRuntimeStatusInstalled, CreatedAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension runtime failed: %v", err)
+	}
+	targetUserDataDir := filepath.Join(targetCfg.Browser.UserDataRoot, "target-data")
+	if err := os.MkdirAll(targetUserDataDir, 0o755); err != nil {
+		t.Fatalf("create target user data failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetUserDataDir, "old.txt"), []byte("old-data"), 0o644); err != nil {
+		t.Fatalf("write target user data failed: %v", err)
+	}
+
+	result, err := targetApp.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite)
+	if err != nil {
+		t.Fatalf("overwrite import returned error: %v", err)
+	}
+	if result.ProfileMappings[profileID] != profileID || result.OverwrittenCount != 1 {
+		t.Fatalf("unexpected overwrite result: %#v", result)
+	}
+	var settingsCount, bindingCount, runtimeCount int
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?", profileID).Scan(&settingsCount); err != nil {
+		t.Fatalf("count profile extension settings failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&bindingCount); err != nil {
+		t.Fatalf("count profile extensions failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?", profileID).Scan(&runtimeCount); err != nil {
+		t.Fatalf("count profile extension runtime failed: %v", err)
+	}
+	if settingsCount != 1 || bindingCount != 1 || runtimeCount != 1 {
+		t.Fatalf("stale extension relations were not cleared: settings=%d bindings=%d runtime=%d", settingsCount, bindingCount, runtimeCount)
+	}
+	var extensionID string
+	if err := targetDB.GetConn().QueryRow("SELECT extension_id FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&extensionID); err != nil {
+		t.Fatalf("read imported extension binding failed: %v", err)
+	}
+	if extensionID != sourceExtensionID {
+		t.Fatalf("unexpected imported extension binding: %s", extensionID)
+	}
+	stored, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(profileID)
+	if err != nil {
+		t.Fatalf("read overwritten profile failed: %v", err)
+	}
+	if stored.ProfileName != "源实例" || stored.UserDataDir != "target-data" {
+		t.Fatalf("overwritten profile fields are incorrect: %#v", stored)
+	}
+	if _, err := os.Stat(filepath.Join(targetUserDataDir, "old.txt")); !os.IsNotExist(err) {
+		t.Fatalf("old user data was not replaced, stat err=%v", err)
+	}
+}
+
+func TestProfilePackageV1OverwriteClearsStaleProfileExtensionRelations(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	cfg.Browser.UserDataRoot = filepath.Join(root, "user-data")
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+	app.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(db.GetConn())
+	app.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(db.GetConn())
+
+	profileID := "legacy-profile"
+	if _, err := db.GetConn().Exec(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, profileID, "旧实例", "target-data", "2026-08-30T00:00:00Z", "2026-08-30T00:00:00Z"); err != nil {
+		t.Fatalf("insert target profile failed: %v", err)
+	}
+	extensionDAO := browser.NewSQLiteExtensionDAO(db.GetConn())
+	if err := extensionDAO.Upsert(browser.Extension{ExtensionID: "stale-extension", Name: "旧插件", Version: "1.0.0", ManifestJSON: "{}", InstallDir: "data/extensions/stale-extension", Enabled: true, InstalledAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension failed: %v", err)
+	}
+	if _, err := extensionDAO.SetProfileSettings(profileID, []string{"stale-extension"}, true); err != nil {
+		t.Fatalf("insert stale extension settings failed: %v", err)
+	}
+	if err := extensionDAO.UpsertProfileExtensionRuntime(browser.ProfileExtensionRuntime{ProfileID: profileID, ExtensionID: "stale-extension", RuntimeExtensionID: "runtime-stale-extension", Status: browser.ExtensionRuntimeStatusInstalled, CreatedAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension runtime failed: %v", err)
+	}
+
+	zipPath := filepath.Join(root, "legacy-profile.zip")
+	writeTestProfilePackage(t, zipPath, []browser.Profile{{
+		ProfileId:   profileID,
+		ProfileName: "新实例",
+		UserDataDir: profileID,
+	}}, nil)
+
+	result, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite)
+	if err != nil {
+		t.Fatalf("legacy overwrite import returned error: %v", err)
+	}
+	if result.ProfileMappings[profileID] != profileID || result.OverwrittenCount != 1 {
+		t.Fatalf("unexpected overwrite result: %#v", result)
+	}
+
+	var settingsCount, bindingCount, runtimeCount int
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?`, profileID).Scan(&settingsCount); err != nil {
+		t.Fatalf("count profile extension settings failed: %v", err)
+	}
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?`, profileID).Scan(&bindingCount); err != nil {
+		t.Fatalf("count profile extensions failed: %v", err)
+	}
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?`, profileID).Scan(&runtimeCount); err != nil {
+		t.Fatalf("count profile extension runtime failed: %v", err)
+	}
+	if settingsCount != 0 || bindingCount != 0 || runtimeCount != 0 {
+		t.Fatalf("legacy overwrite kept stale extension relations: settings=%d bindings=%d runtime=%d", settingsCount, bindingCount, runtimeCount)
+	}
+	stored, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById(profileID)
+	if err != nil {
+		t.Fatalf("read overwritten legacy profile failed: %v", err)
+	}
+	if stored.ProfileName != "新实例" || stored.UserDataDir != "target-data" {
+		t.Fatalf("overwritten legacy profile fields are incorrect: %#v", stored)
+	}
+}
+
 func newProfilePackageDatabase(t *testing.T, root string) *database.DB {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, "data"), 0o755); err != nil {

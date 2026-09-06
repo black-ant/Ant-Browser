@@ -141,8 +141,33 @@ export interface BrowserProfilePackageExportResult {
 export interface BrowserProfilePackageImportResult {
   cancelled: boolean
   importedCount: number
+  createdCount?: number
+  overwrittenCount?: number
   profileMappings: Record<string, string>
   warnings?: string[]
+  message: string
+}
+
+export interface BrowserProfilePackageImportConflict {
+  sourceProfileId: string
+  sourceProfileName: string
+  targetProfileId: string
+  targetProfileName: string
+  matchType: 'profileId' | 'profileName' | string
+  targetRunning: boolean
+  targetDeleted: boolean
+  ambiguous: boolean
+  targetMatches: number
+  sourceTargetCollision: boolean
+}
+
+export interface BrowserProfilePackageImportPreview {
+  cancelled: boolean
+  zipPath: string
+  profileCount: number
+  conflictCount: number
+  canOverwrite: boolean
+  conflicts: BrowserProfilePackageImportConflict[]
   message: string
 }
 

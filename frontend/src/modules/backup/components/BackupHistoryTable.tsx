@@ -209,13 +209,13 @@ function backupPackageTypeLabel(item: BackupPackageInfo) {
   if (item.packageType === 'profile') {
     const count = item.profileCount || item.profileNames?.length || 0
     if (count === 1) return '单实例备份'
-    if (count > 1) return `多实例备份 · ${count} 个实例`
+    if (count > 1) return '多实例备份'
     return '实例备份'
   }
   return '备份类型未识别'
 }
 
-function renderBackupPackageInfo(item: BackupHistoryItem) {
+function renderBackupPackageType(item: BackupHistoryItem) {
   if (item.source === 'local' && item.metadataOrphan) {
     return (
       <span
@@ -236,19 +236,30 @@ function renderBackupPackageInfo(item: BackupHistoryItem) {
       </span>
     )
   }
-  const names = item.profileNames || []
-  const typeLabel = backupPackageTypeLabel(item)
-  if (item.packageType !== 'profile') {
-    return <span className="text-[var(--color-text-secondary)]">{typeLabel}</span>
+  return <span className="text-[var(--color-text-secondary)]">{backupPackageTypeLabel(item)}</span>
+}
+
+function renderBackupPackageContent(item: BackupHistoryItem) {
+  if (item.source === 'local' && (item.metadataOrphan || item.metadataAvailable !== true)) {
+    return <span className="text-[var(--color-text-muted)]">—</span>
   }
+  if (item.packageType !== 'profile') {
+    return <span className="text-[var(--color-text-muted)]">—</span>
+  }
+
+  const names = item.profileNames || []
   if (names.length === 0) {
-    return <span className="text-[var(--color-text-secondary)]">{typeLabel} · 名称未记录</span>
+    const count = item.profileCount || 0
+    return (
+      <span className="text-[var(--color-text-muted)]">
+        {count > 0 ? `共 ${count} 个实例，名称未记录` : '名称未记录'}
+      </span>
+    )
   }
   return (
-    <div className="min-w-0" title={names.join('、')}>
-      <div className="text-[var(--color-text-secondary)]">{typeLabel}</div>
-      <div className="truncate text-[var(--color-text-primary)]">{names.join('、')}</div>
-    </div>
+    <span className="block max-w-[240px] truncate text-[var(--color-text-primary)]" title={names.join('、')}>
+      {names.join('、')}
+    </span>
   )
 }
 
@@ -766,9 +777,15 @@ export function BackupHistoryTable({
     },
     {
       key: 'packageType',
+      title: '备份类型',
+      width: 180,
+      render: (_value, item) => renderBackupPackageType(item),
+    },
+    {
+      key: 'profileNames',
       title: '备份内容',
       width: 240,
-      render: (_value, item) => renderBackupPackageInfo(item),
+      render: (_value, item) => renderBackupPackageContent(item),
     },
     {
       key: 'source',
@@ -919,7 +936,7 @@ export function BackupHistoryTable({
               ? (activeConnection ? '暂无 OpenList 备份' : '请先配置 OpenList')
               : (activeS3Connection ? '暂无 S3 备份' : '请先配置 S3')}
           className="w-full"
-          tableMinWidth={1440}
+          tableMinWidth={1620}
           maxHeight="none"
          />
       </div>

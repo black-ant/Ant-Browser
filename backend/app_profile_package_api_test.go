@@ -72,6 +72,185 @@ func TestProfilePackageImportCleansFinalDirWhenSaveFails(t *testing.T) {
 	}
 }
 
+func TestProfilePackagePrepareImportDetectsIDConflict(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+		ProfileId:   "profile-1",
+		ProfileName: "源实例",
+		UserDataDir: "profile-1",
+	}}, nil)
+	addProfilePackageTestProfile(t, app, browser.Profile{
+		ProfileId:   "profile-1",
+		ProfileName: "目标实例",
+		UserDataDir: "target-data",
+	})
+
+	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("prepareProfilePackageImportFromPath returned error: %v", err)
+	}
+	if preview.ProfileCount != 1 || preview.ConflictCount != 1 {
+		t.Fatalf("unexpected preview counts: %#v", preview)
+	}
+	if !preview.CanOverwrite {
+		t.Fatal("expected safe ID conflict to allow overwrite")
+	}
+	conflict := preview.Conflicts[0]
+	if conflict.MatchType != profilePackageImportMatchID || conflict.TargetProfileID != "profile-1" || conflict.TargetProfileName != "目标实例" {
+		t.Fatalf("unexpected ID conflict: %#v", conflict)
+	}
+}
+
+func TestProfilePackageImportOverwritePreservesTargetIDAndUserDataDir(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+		ProfileId:   "profile-1",
+		ProfileName: "新配置",
+		UserDataDir: "profile-1",
+	}}, map[string]string{"profile-1/Default/Preferences": "new-data"})
+	target := browser.Profile{
+		ProfileId:   "profile-1",
+		ProfileName: "旧配置",
+		UserDataDir: "target-data",
+		CreatedAt:   "2026-09-01T00:00:00Z",
+	}
+	addProfilePackageTestProfile(t, app, target)
+	targetDir := filepath.Join(app.config.Browser.UserDataRoot, target.UserDataDir)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("create target user data failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "old.txt"), []byte("old-data"), 0o644); err != nil {
+		t.Fatalf("write target user data failed: %v", err)
+	}
+
+	result, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite)
+	if err != nil {
+		t.Fatalf("overwrite import returned error: %v", err)
+	}
+	if result.ImportedCount != 1 || result.CreatedCount != 0 || result.OverwrittenCount != 1 {
+		t.Fatalf("unexpected overwrite result: %#v", result)
+	}
+	if result.ProfileMappings["profile-1"] != "profile-1" {
+		t.Fatalf("overwrite changed profile ID: %#v", result.ProfileMappings)
+	}
+	app.browserMgr.Mutex.Lock()
+	stored := *app.browserMgr.Profiles["profile-1"]
+	app.browserMgr.Mutex.Unlock()
+	if stored.ProfileName != "新配置" || stored.UserDataDir != "target-data" || stored.CreatedAt != target.CreatedAt {
+		t.Fatalf("target profile fields were not preserved correctly: %#v", stored)
+	}
+	if content, err := os.ReadFile(filepath.Join(targetDir, "Default", "Preferences")); err != nil || string(content) != "new-data" {
+		t.Fatalf("overwritten user data missing or incorrect: content=%q err=%v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "old.txt")); !os.IsNotExist(err) {
+		t.Fatalf("old user data was not replaced, stat err=%v", err)
+	}
+}
+
+func TestProfilePackageImportRejectsRunningOverwrite(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+		ProfileId:   "profile-1",
+		ProfileName: "源实例",
+		UserDataDir: "profile-1",
+	}}, nil)
+	addProfilePackageTestProfile(t, app, browser.Profile{
+		ProfileId:   "profile-1",
+		ProfileName: "目标实例",
+		UserDataDir: "target-data",
+		Running:     true,
+	})
+
+	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("prepareProfilePackageImportFromPath returned error: %v", err)
+	}
+	if preview.CanOverwrite {
+		t.Fatal("running target must not allow overwrite")
+	}
+	if _, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite); err == nil || !strings.Contains(err.Error(), "正在运行") {
+		t.Fatalf("expected running-target error, got %v", err)
+	}
+}
+
+func TestProfilePackageImportRejectsAmbiguousNameOverwrite(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+		ProfileId:   "source-1",
+		ProfileName: "同名实例",
+		UserDataDir: "source-1",
+	}}, nil)
+	addProfilePackageTestProfile(t, app, browser.Profile{ProfileId: "target-1", ProfileName: "同名实例", UserDataDir: "target-1"})
+	addProfilePackageTestProfile(t, app, browser.Profile{ProfileId: "target-2", ProfileName: "同名实例", UserDataDir: "target-2"})
+
+	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("prepareProfilePackageImportFromPath returned error: %v", err)
+	}
+	if preview.ConflictCount != 1 || preview.CanOverwrite || !preview.Conflicts[0].Ambiguous || preview.Conflicts[0].TargetMatches != 2 {
+		t.Fatalf("unexpected ambiguous conflict preview: %#v", preview)
+	}
+	if _, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite); err == nil || !strings.Contains(err.Error(), "多个同名目标") {
+		t.Fatalf("expected ambiguous-target error, got %v", err)
+	}
+}
+
+func TestProfilePackageImportRejectsMultipleSourcesForSameTarget(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{
+		{ProfileId: "source-1", ProfileName: "同名实例", UserDataDir: "source-1"},
+		{ProfileId: "source-2", ProfileName: "同名实例", UserDataDir: "source-2"},
+	}, nil)
+	addProfilePackageTestProfile(t, app, browser.Profile{
+		ProfileId:   "target-1",
+		ProfileName: "同名实例",
+		UserDataDir: "target-1",
+	})
+
+	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("prepareProfilePackageImportFromPath returned error: %v", err)
+	}
+	if preview.ConflictCount != 2 || preview.CanOverwrite || !preview.Conflicts[1].SourceTargetCollision {
+		t.Fatalf("unexpected same-target preview: %#v", preview)
+	}
+	if _, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite); err == nil || !strings.Contains(err.Error(), "多个导入实例匹配目标实例") {
+		t.Fatalf("expected same-target overwrite error, got %v", err)
+	}
+}
+
+func TestProfilePackageImportNewModeDoesNotOverwriteConflict(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+		ProfileId:   "profile-1",
+		ProfileName: "目标实例",
+		UserDataDir: "profile-1",
+	}}, nil)
+	target := browser.Profile{
+		ProfileId:   "profile-1",
+		ProfileName: "目标实例",
+		UserDataDir: "target-data",
+	}
+	addProfilePackageTestProfile(t, app, target)
+
+	result, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+	if err != nil {
+		t.Fatalf("new-mode import returned error: %v", err)
+	}
+	newID := result.ProfileMappings["profile-1"]
+	if newID == "" || newID == target.ProfileId || result.CreatedCount != 1 || result.OverwrittenCount != 0 {
+		t.Fatalf("new-mode import overwrote conflict: result=%#v", result)
+	}
+	app.browserMgr.Mutex.Lock()
+	storedTarget := *app.browserMgr.Profiles[target.ProfileId]
+	app.browserMgr.Mutex.Unlock()
+	if storedTarget.ProfileName != target.ProfileName || storedTarget.UserDataDir != target.UserDataDir {
+		t.Fatalf("existing target was changed: %#v", storedTarget)
+	}
+}
+
+func addProfilePackageTestProfile(t *testing.T, app *App, profile browser.Profile) {
+	t.Helper()
+	app.browserMgr.Mutex.Lock()
+	copyProfile := profile
+	app.browserMgr.Profiles[profile.ProfileId] = &copyProfile
+	app.browserMgr.Mutex.Unlock()
+}
+
 func newProfilePackageImportTestApp(t *testing.T, profiles []browser.Profile, userDataFiles map[string]string) (*App, string) {
 	t.Helper()
 	root := t.TempDir()
