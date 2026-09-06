@@ -62,6 +62,7 @@ type ProfilePackageImportConflict struct {
 	Ambiguous             bool   `json:"ambiguous"`
 	TargetMatches         int    `json:"targetMatches"`
 	SourceTargetCollision bool   `json:"sourceTargetCollision"`
+	SourceNameCollision   bool   `json:"sourceNameCollision"`
 }
 
 type ProfilePackageImportPreview struct {
@@ -414,6 +415,10 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 	canOverwrite := true
 	seenSourceIDs := make(map[string]struct{}, len(profiles))
 	claimedTargets := make(map[string]string, len(profiles))
+	sourceImportNameCounts := make(map[string]int, len(profiles))
+	for _, source := range profiles {
+		sourceImportNameCounts[backupImportTextKey(buildImportedProfileName(source.ProfileName))]++
+	}
 	for index, source := range profiles {
 		sourceID := strings.TrimSpace(source.ProfileId)
 		if sourceID != "" {
@@ -424,7 +429,9 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 			seenSourceIDs[key] = struct{}{}
 		}
 		match := findProfilePackageConflict(existing, source, sourceID)
-		if match.Target == nil && !match.Ambiguous {
+		sourceNameKey := backupImportTextKey(buildImportedProfileName(source.ProfileName))
+		sourceNameCollision := sourceImportNameCounts[sourceNameKey] > 1
+		if match.Target == nil && !match.Ambiguous && !sourceNameCollision {
 			continue
 		}
 		sourceKey := backupImportIDKey(sourceID)
@@ -447,6 +454,10 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 			Ambiguous:             match.Ambiguous,
 			TargetMatches:         len(match.TargetHits),
 			SourceTargetCollision: targetCollision,
+			SourceNameCollision:   sourceNameCollision,
+		}
+		if sourceNameCollision && conflict.TargetMatches == 0 {
+			conflict.TargetMatches = sourceImportNameCounts[sourceNameKey]
 		}
 		if match.Target != nil {
 			conflict.TargetProfileID = match.Target.ProfileId
@@ -454,7 +465,7 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 			conflict.TargetRunning = profilePackageProfileIsRunning(a, *match.Target)
 			conflict.TargetDeleted = strings.TrimSpace(match.Target.DeletedAt) != ""
 		}
-		if conflict.Ambiguous || conflict.TargetRunning || conflict.SourceTargetCollision {
+		if conflict.Ambiguous || conflict.TargetRunning || conflict.SourceTargetCollision || conflict.SourceNameCollision {
 			canOverwrite = false
 		}
 		conflicts = append(conflicts, conflict)
@@ -527,6 +538,10 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 
 	seenSourceIDs := make(map[string]struct{}, len(contents.Profiles))
 	claimedTargets := make(map[string]string, len(contents.Profiles))
+	sourceImportNameCounts := make(map[string]int, len(contents.Profiles))
+	for _, source := range contents.Profiles {
+		sourceImportNameCounts[backupImportTextKey(buildImportedProfileName(source.ProfileName))]++
+	}
 	for index, source := range contents.Profiles {
 		oldID := strings.TrimSpace(source.ProfileId)
 		if oldID == "" {
@@ -539,7 +554,11 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 			seenSourceIDs[key] = struct{}{}
 		}
 		match := findProfilePackageConflict(existing, source, oldID)
+		sourceNameCollision := sourceImportNameCounts[backupImportTextKey(buildImportedProfileName(source.ProfileName))] > 1
 		if mode == profilePackageImportModeOverwrite {
+			if sourceNameCollision {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例包内存在多个同名实例，无法自动覆盖，请选择新建")
+			}
 			if match.Ambiguous {
 				return ProfilePackageImportResult{}, fmt.Errorf("实例「%s」存在多个同名目标，无法自动覆盖，请选择新建", source.ProfileName)
 			}
@@ -771,7 +790,7 @@ func findProfilePackageConflict(existing profilePackageExistingProfiles, source 
 			}
 		}
 	}
-	hits := existing.ByName[backupImportTextKey(source.ProfileName)]
+	hits := profilePackageNameConflictHits(existing, source.ProfileName)
 	if len(hits) == 1 {
 		copyProfile := hits[0]
 		return profilePackageConflictMatch{
@@ -788,6 +807,50 @@ func findProfilePackageConflict(existing profilePackageExistingProfiles, source 
 		}
 	}
 	return profilePackageConflictMatch{}
+}
+
+func profilePackageNameConflictHits(existing profilePackageExistingProfiles, sourceName string) []browser.Profile {
+	exactKey := backupImportTextKey(sourceName)
+	if hits := existing.ByName[exactKey]; len(hits) > 0 {
+		return hits
+	}
+
+	generatedName := buildImportedProfileName(sourceName)
+	prefix := backupImportTextKey(strings.TrimSuffix(generatedName, "）"))
+	if prefix == "" {
+		return nil
+	}
+	result := make([]browser.Profile, 0)
+	for nameKey, profiles := range existing.ByName {
+		if !profilePackageImportedNameVariant(nameKey, prefix) {
+			continue
+		}
+		result = append(result, profiles...)
+	}
+	return result
+}
+
+func profilePackageImportedNameVariant(nameKey string, prefix string) bool {
+	if !strings.HasPrefix(nameKey, prefix) || !strings.HasSuffix(nameKey, "）") {
+		return false
+	}
+	suffix := strings.TrimSuffix(strings.TrimPrefix(nameKey, prefix), "）")
+	if suffix == "" {
+		return true
+	}
+	if !strings.HasPrefix(suffix, " ") {
+		return false
+	}
+	number := strings.TrimSpace(suffix)
+	if number == "" || number == "0" || number == "1" {
+		return false
+	}
+	for _, character := range number {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func profilePackageProfileIsRunning(a *App, profile browser.Profile) bool {

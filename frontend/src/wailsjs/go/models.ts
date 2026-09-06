@@ -785,6 +785,7 @@ export namespace backend {
 	    ambiguous: boolean;
 	    targetMatches: number;
 	    sourceTargetCollision: boolean;
+	    sourceNameCollision: boolean;
 
 	    static createFrom(source: any = {}) {
 	        return new ProfilePackageImportConflict(source);
@@ -802,6 +803,7 @@ export namespace backend {
 	        this.ambiguous = source["ambiguous"];
 	        this.targetMatches = source["targetMatches"];
 	        this.sourceTargetCollision = source["sourceTargetCollision"];
+	        this.sourceNameCollision = source["sourceNameCollision"];
 	    }
 	}
 	export class ProfilePackageImportOptions {

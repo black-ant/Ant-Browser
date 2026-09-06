@@ -296,7 +296,9 @@ export function BrowserListDialogs({
                       {conflict.matchType === 'profileId' ? 'ID 匹配' : '名称匹配'}
                     </span>
                   </div>
-                  {conflict.sourceTargetCollision ? (
+                  {conflict.sourceNameCollision ? (
+                    <div className="mt-1 text-xs text-[var(--color-error)]">实例包内有 {conflict.targetMatches} 个同名实例，无法自动覆盖</div>
+                  ) : conflict.sourceTargetCollision ? (
                     <div className="mt-1 text-xs text-[var(--color-error)]">多个导入实例匹配同一目标，无法自动覆盖</div>
                   ) : conflict.ambiguous ? (
                     <div className="mt-1 text-xs text-[var(--color-error)]">存在 {conflict.targetMatches} 个同名实例，无法自动覆盖</div>

@@ -159,6 +159,7 @@ export interface BrowserProfilePackageImportConflict {
   ambiguous: boolean
   targetMatches: number
   sourceTargetCollision: boolean
+  sourceNameCollision: boolean
 }
 
 export interface BrowserProfilePackageImportPreview {

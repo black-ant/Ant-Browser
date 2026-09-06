@@ -209,8 +209,56 @@ func TestProfilePackageImportRejectsMultipleSourcesForSameTarget(t *testing.T) {
 	if preview.ConflictCount != 2 || preview.CanOverwrite || !preview.Conflicts[1].SourceTargetCollision {
 		t.Fatalf("unexpected same-target preview: %#v", preview)
 	}
-	if _, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite); err == nil || !strings.Contains(err.Error(), "多个导入实例匹配目标实例") {
+	if _, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite); err == nil || !strings.Contains(err.Error(), "实例包内存在多个同名实例") {
 		t.Fatalf("expected same-target overwrite error, got %v", err)
+	}
+}
+
+func TestProfilePackagePrepareImportDetectsPreviouslyImportedName(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+		ProfileId:   "source-1",
+		ProfileName: "CPA",
+		UserDataDir: "source-1",
+	}}, nil)
+
+	first, err := app.importProfilePackageFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("first import returned error: %v", err)
+	}
+	if first.ProfileMappings["source-1"] == "" {
+		t.Fatalf("first import did not create profile mapping: %#v", first.ProfileMappings)
+	}
+
+	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("prepare repeated import returned error: %v", err)
+	}
+	if preview.ConflictCount != 1 || !preview.CanOverwrite {
+		t.Fatalf("unexpected repeated-import preview: %#v", preview)
+	}
+	conflict := preview.Conflicts[0]
+	if conflict.TargetProfileName != "CPA（导入）" || conflict.MatchType != profilePackageImportMatchName {
+		t.Fatalf("repeated import did not match generated name: %#v", conflict)
+	}
+}
+
+func TestProfilePackagePrepareImportDetectsDuplicateNamesInPackage(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{
+		{ProfileId: "source-1", ProfileName: "CPA", UserDataDir: "source-1"},
+		{ProfileId: "source-2", ProfileName: "CPA", UserDataDir: "source-2"},
+	}, nil)
+
+	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("prepare duplicate-name import returned error: %v", err)
+	}
+	if preview.ConflictCount != 2 || preview.CanOverwrite {
+		t.Fatalf("unexpected duplicate-name preview: %#v", preview)
+	}
+	for _, conflict := range preview.Conflicts {
+		if !conflict.SourceNameCollision || conflict.TargetMatches != 2 {
+			t.Fatalf("duplicate source name was not reported: %#v", conflict)
+		}
 	}
 }
 
