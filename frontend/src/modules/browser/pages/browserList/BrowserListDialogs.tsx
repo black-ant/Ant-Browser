@@ -275,7 +275,7 @@ export function BrowserListDialogs({
               disabled={!profileImportPreview?.canOverwrite}
               title={!profileImportPreview?.canOverwrite ? '存在无法安全判定的目标，无法自动覆盖' : undefined}
             >
-              覆盖现有实例
+              覆盖并移入回收站
             </Button>
           </>
         )}
@@ -284,6 +284,9 @@ export function BrowserListDialogs({
           <div className="space-y-3 text-sm">
             <div className="text-[var(--color-text-secondary)]">
               发现 {profileImportPreview.conflictCount} 个冲突，共 {profileImportPreview.profileCount} 个实例。
+            </div>
+            <div className="text-xs text-[var(--color-warning)]">
+              选择覆盖后，原实例及其用户数据会移入回收站，新恢复实例会作为新的活动实例创建。
             </div>
             <div className="max-h-64 overflow-y-auto rounded-lg border border-[var(--color-border-default)]">
               {profileImportPreview.conflicts.map((conflict) => (

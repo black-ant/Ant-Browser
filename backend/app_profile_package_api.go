@@ -83,12 +83,13 @@ const (
 )
 
 type preparedProfilePackageImport struct {
-	Profile      browser.Profile
-	OldProfileID string
-	FinalDir     string
-	StagingDir   string
-	HasUserData  bool
-	Overwrite    bool
+	Profile           browser.Profile
+	OldProfileID      string
+	ReplacedProfileID string
+	FinalDir          string
+	StagingDir        string
+	HasUserData       bool
+	Overwrite         bool
 }
 
 type profilePackageContents struct {
@@ -105,8 +106,9 @@ type profilePackageConflictMatch struct {
 }
 
 type profilePackageExistingProfiles struct {
-	ByID   map[string]browser.Profile
-	ByName map[string][]browser.Profile
+	ByID    map[string]browser.Profile
+	ByName  map[string][]browser.Profile
+	UsedIDs map[string]struct{}
 }
 
 type profilePackageDirectorySwap struct {
@@ -468,6 +470,9 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 		if conflict.Ambiguous || conflict.TargetRunning || conflict.SourceTargetCollision || conflict.SourceNameCollision {
 			canOverwrite = false
 		}
+		if match.Target != nil && (a == nil || a.db == nil || a.db.GetConn() == nil) {
+			canOverwrite = false
+		}
 		conflicts = append(conflicts, conflict)
 	}
 	return conflicts, canOverwrite, nil
@@ -503,6 +508,9 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 	usedIDs := make(map[string]struct{}, len(existing.ByID)+len(contents.Profiles))
 	reservedNames := make(map[string]struct{}, len(existing.ByName)+len(contents.Profiles))
 	for key := range existing.ByID {
+		usedIDs[key] = struct{}{}
+	}
+	for key := range existing.UsedIDs {
 		usedIDs[key] = struct{}{}
 	}
 	for key := range existing.ByName {
@@ -576,24 +584,21 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 				}
 				claimedTargets[targetKey] = sourceKey
 			}
+			if match.Target != nil && (a.db == nil || a.db.GetConn() == nil) {
+				return ProfilePackageImportResult{}, fmt.Errorf("当前环境不支持覆盖并备份到回收站")
+			}
 		}
 
 		newID := profilePackageGeneratedID(usedIDs)
 		overwrite := mode == profilePackageImportModeOverwrite && match.Target != nil
-		if overwrite {
-			newID = strings.TrimSpace(match.Target.ProfileId)
-			usedIDs[backupImportIDKey(newID)] = struct{}{}
-		}
 		profile := source
 		if overwrite {
 			profile.ProfileName = strings.TrimSpace(source.ProfileName)
 			if profile.ProfileName == "" {
 				profile.ProfileName = match.Target.ProfileName
 			}
-			profile.UserDataDir = strings.TrimSpace(match.Target.UserDataDir)
-			if profile.UserDataDir == "" {
-				profile.UserDataDir = newID
-			}
+			profile.ProfileName = uniqueImportedProfileNameForOverwrite(profile.ProfileName, *match.Target, existing, reservedNames)
+			profile.UserDataDir = newID
 			profile.CreatedAt = strings.TrimSpace(match.Target.CreatedAt)
 		} else {
 			profile.ProfileName = uniqueImportedProfileName(source.ProfileName, reservedNames)
@@ -631,24 +636,35 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 		if !hasUserData {
 			warnings = append(warnings, fmt.Sprintf("实例「%s」没有用户数据目录，仅导入配置", profile.ProfileName))
 		}
+		replacedProfileID := ""
+		if overwrite && match.Target != nil {
+			replacedProfileID = strings.TrimSpace(match.Target.ProfileId)
+		}
 		prepared = append(prepared, preparedProfilePackageImport{
-			Profile:      profile,
-			OldProfileID: oldID,
-			FinalDir:     finalDir,
-			StagingDir:   stagingDir,
-			HasUserData:  hasUserData,
-			Overwrite:    overwrite,
+			Profile:           profile,
+			OldProfileID:      oldID,
+			ReplacedProfileID: replacedProfileID,
+			FinalDir:          finalDir,
+			StagingDir:        stagingDir,
+			HasUserData:       hasUserData,
+			Overwrite:         overwrite,
 		})
 		mappings[oldID] = newID
 	}
 
 	for _, item := range prepared {
 		a.browserMgr.Mutex.Lock()
-		if current, exists := a.browserMgr.Profiles[item.Profile.ProfileId]; exists && current != nil {
-			copyProfile := *current
-			originalProfiles[item.Profile.ProfileId] = &copyProfile
-		} else {
-			originalProfiles[item.Profile.ProfileId] = nil
+		for _, profileID := range []string{item.Profile.ProfileId, item.ReplacedProfileID} {
+			profileID = strings.TrimSpace(profileID)
+			if profileID == "" {
+				continue
+			}
+			if current, exists := a.browserMgr.Profiles[profileID]; exists && current != nil {
+				copyProfile := *current
+				originalProfiles[profileID] = &copyProfile
+			} else if _, recorded := originalProfiles[profileID]; !recorded {
+				originalProfiles[profileID] = nil
+			}
 		}
 		a.browserMgr.Mutex.Unlock()
 	}
@@ -662,7 +678,7 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 		}
 		swaps = append(swaps, swap)
 	}
-	legacyDatabaseRestore := contents.DatabaseSnapshot == nil && a.db != nil && a.db.GetConn() != nil && a.browserMgr.ProfileDAO != nil
+	legacyDatabaseRestore := contents.DatabaseSnapshot == nil && a.db != nil && a.db.GetConn() != nil
 	if contents.DatabaseSnapshot != nil {
 		if err := a.restoreProfilePackageDatabase(*contents.DatabaseSnapshot, prepared, &warnings); err != nil {
 			return ProfilePackageImportResult{}, err
@@ -675,6 +691,9 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 	a.browserMgr.Mutex.Lock()
 	for i := range prepared {
 		profile := &prepared[i].Profile
+		if replacedID := strings.TrimSpace(prepared[i].ReplacedProfileID); replacedID != "" {
+			delete(a.browserMgr.Profiles, replacedID)
+		}
 		a.browserMgr.Profiles[profile.ProfileId] = profile
 		if a.launchCodeSvc != nil {
 			if code, err := a.launchCodeSvc.EnsureCode(profile.ProfileId); err == nil {
@@ -734,12 +753,17 @@ func (a *App) loadExistingProfilePackageProfiles() (profilePackageExistingProfil
 	}
 	a.browserMgr.InitData()
 	existing := profilePackageExistingProfiles{
-		ByID:   make(map[string]browser.Profile),
-		ByName: make(map[string][]browser.Profile),
+		ByID:    make(map[string]browser.Profile),
+		ByName:  make(map[string][]browser.Profile),
+		UsedIDs: make(map[string]struct{}),
 	}
-	addProfile := func(profile browser.Profile) {
+	addProfile := func(profile browser.Profile, active bool) {
 		idKey := backupImportIDKey(profile.ProfileId)
 		if idKey == "" {
+			return
+		}
+		existing.UsedIDs[idKey] = struct{}{}
+		if !active || strings.TrimSpace(profile.DeletedAt) != "" {
 			return
 		}
 		if _, exists := existing.ByID[idKey]; !exists {
@@ -761,7 +785,7 @@ func (a *App) loadExistingProfilePackageProfiles() (profilePackageExistingProfil
 		if profile == nil {
 			continue
 		}
-		addProfile(*profile)
+		addProfile(*profile, true)
 	}
 	profileDAO := a.browserMgr.ProfileDAO
 	a.browserMgr.Mutex.Unlock()
@@ -772,7 +796,7 @@ func (a *App) loadExistingProfilePackageProfiles() (profilePackageExistingProfil
 		}
 		for _, profile := range deleted {
 			if profile != nil {
-				addProfile(*profile)
+				addProfile(*profile, false)
 			}
 		}
 	}
@@ -840,6 +864,19 @@ func uniqueImportedProfileName(name string, reserved map[string]struct{}) string
 		reserved[backupImportTextKey(candidate)] = struct{}{}
 		return candidate
 	}
+}
+
+func uniqueImportedProfileNameForOverwrite(name string, target browser.Profile, existing profilePackageExistingProfiles, reserved map[string]struct{}) string {
+	base := normalizeImportedProfileName(name)
+	nameKey := backupImportTextKey(base)
+	targetKey := backupImportIDKey(target.ProfileId)
+	for _, profile := range existing.ByName[nameKey] {
+		if backupImportIDKey(profile.ProfileId) != targetKey {
+			return uniqueImportedProfileName(base, reserved)
+		}
+	}
+	reserved[nameKey] = struct{}{}
+	return base
 }
 
 func (a *App) extractProfileUserDataToDir(files []*zip.File, oldProfileID string, destDir string) (bool, error) {

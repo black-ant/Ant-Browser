@@ -422,19 +422,8 @@ func (a *App) restoreProfilePackageDatabase(snapshot ProfilePackageDatabase, pre
 		}
 		profileMappings[backupImportIDKey(oldID)] = item.Profile.ProfileId
 	}
-	for _, item := range prepared {
-		if !item.Overwrite {
-			continue
-		}
-		for _, statement := range []string{
-			`DELETE FROM browser_profile_extension_runtime WHERE profile_id = ?`,
-			`DELETE FROM browser_profile_extensions WHERE profile_id = ?`,
-			`DELETE FROM browser_profile_extension_settings WHERE profile_id = ?`,
-		} {
-			if _, err := tx.Exec(statement, item.Profile.ProfileId); err != nil {
-				return fmt.Errorf("清理被覆盖实例关联数据失败(%s): %w", item.Profile.ProfileId, err)
-			}
-		}
+	if err := softDeleteProfilePackageOverwriteTargets(tx, prepared, time.Now().Format(time.RFC3339)); err != nil {
+		return err
 	}
 
 	groupMappings, err := a.restoreProfilePackageGroups(tx, snapshot.Groups, warnings)
@@ -582,18 +571,11 @@ func (a *App) restoreLegacyProfilePackageDatabase(prepared []preparedProfilePack
 		}
 	}()
 
+	if err := softDeleteProfilePackageOverwriteTargets(tx, prepared, time.Now().Format(time.RFC3339)); err != nil {
+		return err
+	}
+
 	for _, item := range prepared {
-		if item.Overwrite {
-			for _, statement := range []string{
-				`DELETE FROM browser_profile_extension_runtime WHERE profile_id = ?`,
-				`DELETE FROM browser_profile_extensions WHERE profile_id = ?`,
-				`DELETE FROM browser_profile_extension_settings WHERE profile_id = ?`,
-			} {
-				if _, err := tx.Exec(statement, item.Profile.ProfileId); err != nil {
-					return fmt.Errorf("清理被覆盖实例关联数据失败(%s): %w", item.Profile.ProfileId, err)
-				}
-			}
-		}
 		if err := insertProfilePackageProfile(tx, item.Profile); err != nil {
 			return err
 		}
@@ -603,6 +585,36 @@ func (a *App) restoreLegacyProfilePackageDatabase(prepared []preparedProfilePack
 		return fmt.Errorf("提交实例配置恢复事务失败: %w", err)
 	}
 	committed = true
+	return nil
+}
+
+func softDeleteProfilePackageOverwriteTargets(tx *sql.Tx, prepared []preparedProfilePackageImport, deletedAt string) error {
+	seen := make(map[string]struct{}, len(prepared))
+	for _, item := range prepared {
+		profileID := strings.TrimSpace(item.ReplacedProfileID)
+		if profileID == "" {
+			continue
+		}
+		key := backupImportIDKey(profileID)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result, err := tx.Exec(`
+			UPDATE browser_profiles
+			SET deleted_at = ?, updated_at = ?
+			WHERE profile_id = ? AND COALESCE(deleted_at, '') = ''`, deletedAt, deletedAt, profileID)
+		if err != nil {
+			return fmt.Errorf("将被覆盖实例移入回收站失败(%s): %w", profileID, err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("确认被覆盖实例已移入回收站失败(%s): %w", profileID, err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("被覆盖实例不存在或已在回收站: %s", profileID)
+		}
+	}
 	return nil
 }
 

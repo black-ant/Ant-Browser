@@ -72,7 +72,7 @@ func TestProfilePackageImportCleansFinalDirWhenSaveFails(t *testing.T) {
 	}
 }
 
-func TestProfilePackagePrepareImportDetectsIDConflict(t *testing.T) {
+func TestProfilePackagePrepareImportDetectsIDConflictWithoutDatabase(t *testing.T) {
 	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
 		ProfileId:   "profile-1",
 		ProfileName: "源实例",
@@ -91,8 +91,8 @@ func TestProfilePackagePrepareImportDetectsIDConflict(t *testing.T) {
 	if preview.ProfileCount != 1 || preview.ConflictCount != 1 {
 		t.Fatalf("unexpected preview counts: %#v", preview)
 	}
-	if !preview.CanOverwrite {
-		t.Fatal("expected safe ID conflict to allow overwrite")
+	if preview.CanOverwrite {
+		t.Fatal("overwrite must be disabled without database-backed trash")
 	}
 	conflict := preview.Conflicts[0]
 	if conflict.MatchType != profilePackageImportMatchID || conflict.TargetProfileID != "profile-1" || conflict.TargetProfileName != "目标实例" {
@@ -100,20 +100,35 @@ func TestProfilePackagePrepareImportDetectsIDConflict(t *testing.T) {
 	}
 }
 
-func TestProfilePackageImportOverwritePreservesTargetIDAndUserDataDir(t *testing.T) {
-	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+func TestProfilePackageImportOverwriteMovesTargetToTrash(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	cfg.Browser.UserDataRoot = filepath.Join(root, "user-data")
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+	app.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(db.GetConn())
+
+	source := browser.Profile{
 		ProfileId:   "profile-1",
 		ProfileName: "新配置",
 		UserDataDir: "profile-1",
-	}}, map[string]string{"profile-1/Default/Preferences": "new-data"})
+	}
+	zipPath := filepath.Join(root, "overwrite-profile.zip")
+	writeTestProfilePackage(t, zipPath, []browser.Profile{source}, map[string]string{"profile-1/Default/Preferences": "new-data"})
+
 	target := browser.Profile{
 		ProfileId:   "profile-1",
 		ProfileName: "旧配置",
 		UserDataDir: "target-data",
 		CreatedAt:   "2026-09-01T00:00:00Z",
 	}
-	addProfilePackageTestProfile(t, app, target)
-	targetDir := filepath.Join(app.config.Browser.UserDataRoot, target.UserDataDir)
+	if _, err := db.GetConn().Exec(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, target.ProfileId, target.ProfileName, target.UserDataDir, target.CreatedAt, target.CreatedAt); err != nil {
+		t.Fatalf("insert target profile failed: %v", err)
+	}
+	targetDir := filepath.Join(cfg.Browser.UserDataRoot, target.UserDataDir)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		t.Fatalf("create target user data failed: %v", err)
 	}
@@ -128,20 +143,93 @@ func TestProfilePackageImportOverwritePreservesTargetIDAndUserDataDir(t *testing
 	if result.ImportedCount != 1 || result.CreatedCount != 0 || result.OverwrittenCount != 1 {
 		t.Fatalf("unexpected overwrite result: %#v", result)
 	}
-	if result.ProfileMappings["profile-1"] != "profile-1" {
-		t.Fatalf("overwrite changed profile ID: %#v", result.ProfileMappings)
+	newID := result.ProfileMappings[source.ProfileId]
+	if newID == "" || newID == target.ProfileId {
+		t.Fatalf("overwrite must create a new profile ID: %#v", result.ProfileMappings)
 	}
-	app.browserMgr.Mutex.Lock()
-	stored := *app.browserMgr.Profiles["profile-1"]
-	app.browserMgr.Mutex.Unlock()
-	if stored.ProfileName != "新配置" || stored.UserDataDir != "target-data" || stored.CreatedAt != target.CreatedAt {
-		t.Fatalf("target profile fields were not preserved correctly: %#v", stored)
+
+	active, err := app.browserMgr.ProfileDAO.GetById(newID)
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
 	}
-	if content, err := os.ReadFile(filepath.Join(targetDir, "Default", "Preferences")); err != nil || string(content) != "new-data" {
-		t.Fatalf("overwritten user data missing or incorrect: content=%q err=%v", content, err)
+	if active.DeletedAt != "" || active.ProfileName != source.ProfileName || active.UserDataDir != newID {
+		t.Fatalf("imported active profile fields are incorrect: %#v", active)
 	}
-	if _, err := os.Stat(filepath.Join(targetDir, "old.txt")); !os.IsNotExist(err) {
-		t.Fatalf("old user data was not replaced, stat err=%v", err)
+	deleted, err := app.browserMgr.ProfileDAO.GetById(target.ProfileId)
+	if err != nil {
+		t.Fatalf("read trashed target profile failed: %v", err)
+	}
+	if deleted.DeletedAt == "" || deleted.ProfileName != target.ProfileName || deleted.UserDataDir != target.UserDataDir {
+		t.Fatalf("target profile was not preserved in trash: %#v", deleted)
+	}
+	trash, err := app.browserMgr.ProfileDAO.ListDeleted()
+	if err != nil {
+		t.Fatalf("list trashed profiles failed: %v", err)
+	}
+	if len(trash) != 1 || trash[0].ProfileId != target.ProfileId {
+		t.Fatalf("unexpected trash contents: %#v", trash)
+	}
+	if content, err := os.ReadFile(filepath.Join(targetDir, "old.txt")); err != nil || string(content) != "old-data" {
+		t.Fatalf("old user data backup was not preserved: content=%q err=%v", content, err)
+	}
+	if content, err := os.ReadFile(filepath.Join(cfg.Browser.UserDataRoot, newID, "Default", "Preferences")); err != nil || string(content) != "new-data" {
+		t.Fatalf("new user data missing or incorrect: content=%q err=%v", content, err)
+	}
+}
+
+func TestProfilePackageImportRepeatedOverwriteIgnoresTrashedTargets(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	cfg.Browser.UserDataRoot = filepath.Join(root, "user-data")
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+	app.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(db.GetConn())
+
+	zipPath := filepath.Join(root, "repeated-overwrite.zip")
+	writeTestProfilePackage(t, zipPath, []browser.Profile{{
+		ProfileId:   "source-1",
+		ProfileName: "CPA",
+		UserDataDir: "source-1",
+	}}, nil)
+
+	first, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+	if err != nil {
+		t.Fatalf("first import returned error: %v", err)
+	}
+	firstID := first.ProfileMappings["source-1"]
+	if firstID == "" {
+		t.Fatalf("first import did not create a profile: %#v", first.ProfileMappings)
+	}
+
+	second, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite)
+	if err != nil {
+		t.Fatalf("second import returned error: %v", err)
+	}
+	secondID := second.ProfileMappings["source-1"]
+	if secondID == "" || secondID == firstID || second.OverwrittenCount != 1 {
+		t.Fatalf("second import did not replace the active profile: %#v", second)
+	}
+
+	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("repeated import preview returned error: %v", err)
+	}
+	if preview.ConflictCount != 1 || !preview.CanOverwrite {
+		t.Fatalf("trashed targets must not make the repeated import ambiguous: %#v", preview)
+	}
+	conflict := preview.Conflicts[0]
+	if conflict.TargetProfileID != secondID || conflict.TargetMatches != 1 || conflict.Ambiguous {
+		t.Fatalf("repeated import matched the wrong targets: %#v", conflict)
+	}
+	trash, err := app.browserMgr.ProfileDAO.ListDeleted()
+	if err != nil {
+		t.Fatalf("list trashed profiles failed: %v", err)
+	}
+	if len(trash) != 1 || trash[0].ProfileId != firstID {
+		t.Fatalf("unexpected trashed profiles after repeated overwrite: %#v", trash)
 	}
 }
 
@@ -239,8 +327,8 @@ func TestProfilePackagePrepareImportDetectsRepeatedOriginalName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare repeated import returned error: %v", err)
 	}
-	if preview.ConflictCount != 1 || !preview.CanOverwrite {
-		t.Fatalf("unexpected repeated-import preview: %#v", preview)
+	if preview.ConflictCount != 1 || preview.CanOverwrite {
+		t.Fatalf("unexpected repeated-import preview without database: %#v", preview)
 	}
 	conflict := preview.Conflicts[0]
 	if conflict.TargetProfileName != "CPA" || conflict.MatchType != profilePackageImportMatchName {

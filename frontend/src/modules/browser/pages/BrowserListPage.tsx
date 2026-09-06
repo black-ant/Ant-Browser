@@ -369,7 +369,7 @@ export function BrowserListPage() {
       const createdCount = result.createdCount ?? Math.max(0, result.importedCount - (result.overwrittenCount || 0))
       const overwrittenCount = result.overwrittenCount ?? 0
       const summary = overwrittenCount > 0
-        ? `已覆盖 ${overwrittenCount} 个实例，新建 ${createdCount} 个实例`
+        ? `已覆盖 ${overwrittenCount} 个实例，旧实例已移入回收站；新建 ${createdCount} 个实例`
         : `已新建 ${createdCount} 个实例`
       if (warnings.length > 0) {
         toast.warning(`${summary}，${warnings.length} 条提示：${warnings[0]}`)

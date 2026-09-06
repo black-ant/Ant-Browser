@@ -137,7 +137,7 @@ func TestProfilePackageDatabaseRoundTripSelectedProfile(t *testing.T) {
 	}
 }
 
-func TestProfilePackageDatabaseOverwriteClearsStaleProfileExtensionRelations(t *testing.T) {
+func TestProfilePackageDatabaseOverwriteMovesTargetToTrash(t *testing.T) {
 	profileID := "target-profile"
 	groupID := "source-group"
 	parentGroupID := "source-parent-group"
@@ -217,42 +217,66 @@ func TestProfilePackageDatabaseOverwriteClearsStaleProfileExtensionRelations(t *
 	if err != nil {
 		t.Fatalf("overwrite import returned error: %v", err)
 	}
-	if result.ProfileMappings[profileID] != profileID || result.OverwrittenCount != 1 {
+	newProfileID := result.ProfileMappings[profileID]
+	if newProfileID == "" || newProfileID == profileID || result.OverwrittenCount != 1 {
 		t.Fatalf("unexpected overwrite result: %#v", result)
 	}
-	var settingsCount, bindingCount, runtimeCount int
-	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?", profileID).Scan(&settingsCount); err != nil {
-		t.Fatalf("count profile extension settings failed: %v", err)
+	var oldSettingsCount, oldBindingCount, oldRuntimeCount int
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?", profileID).Scan(&oldSettingsCount); err != nil {
+		t.Fatalf("count old profile extension settings failed: %v", err)
 	}
-	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&bindingCount); err != nil {
-		t.Fatalf("count profile extensions failed: %v", err)
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&oldBindingCount); err != nil {
+		t.Fatalf("count old profile extensions failed: %v", err)
 	}
-	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?", profileID).Scan(&runtimeCount); err != nil {
-		t.Fatalf("count profile extension runtime failed: %v", err)
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?", profileID).Scan(&oldRuntimeCount); err != nil {
+		t.Fatalf("count old profile extension runtime failed: %v", err)
 	}
-	if settingsCount != 1 || bindingCount != 1 || runtimeCount != 1 {
-		t.Fatalf("stale extension relations were not cleared: settings=%d bindings=%d runtime=%d", settingsCount, bindingCount, runtimeCount)
+	var newSettingsCount, newBindingCount, newRuntimeCount int
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?", newProfileID).Scan(&newSettingsCount); err != nil {
+		t.Fatalf("count new profile extension settings failed: %v", err)
 	}
-	var extensionID string
-	if err := targetDB.GetConn().QueryRow("SELECT extension_id FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&extensionID); err != nil {
-		t.Fatalf("read imported extension binding failed: %v", err)
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?", newProfileID).Scan(&newBindingCount); err != nil {
+		t.Fatalf("count new profile extensions failed: %v", err)
 	}
-	if extensionID != sourceExtensionID {
-		t.Fatalf("unexpected imported extension binding: %s", extensionID)
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?", newProfileID).Scan(&newRuntimeCount); err != nil {
+		t.Fatalf("count new profile extension runtime failed: %v", err)
 	}
-	stored, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(profileID)
+	if oldSettingsCount != 1 || oldBindingCount != 1 || oldRuntimeCount != 1 || newSettingsCount != 1 || newBindingCount != 1 || newRuntimeCount != 1 {
+		t.Fatalf("unexpected profile extension relation counts: old=(%d,%d,%d) new=(%d,%d,%d)", oldSettingsCount, oldBindingCount, oldRuntimeCount, newSettingsCount, newBindingCount, newRuntimeCount)
+	}
+	var oldExtensionID, newExtensionID string
+	if err := targetDB.GetConn().QueryRow("SELECT extension_id FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&oldExtensionID); err != nil {
+		t.Fatalf("read old extension binding failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT extension_id FROM browser_profile_extensions WHERE profile_id = ?", newProfileID).Scan(&newExtensionID); err != nil {
+		t.Fatalf("read new extension binding failed: %v", err)
+	}
+	if oldExtensionID != "stale-extension" || newExtensionID != sourceExtensionID {
+		t.Fatalf("profile extension bindings were not separated: old=%s new=%s", oldExtensionID, newExtensionID)
+	}
+	deleted, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(profileID)
 	if err != nil {
-		t.Fatalf("read overwritten profile failed: %v", err)
+		t.Fatalf("read trashed profile failed: %v", err)
 	}
-	if stored.ProfileName != "源实例" || stored.UserDataDir != "target-data" {
-		t.Fatalf("overwritten profile fields are incorrect: %#v", stored)
+	if deleted.DeletedAt == "" || deleted.UserDataDir != "target-data" {
+		t.Fatalf("old profile was not preserved in trash: %#v", deleted)
 	}
-	if _, err := os.Stat(filepath.Join(targetUserDataDir, "old.txt")); !os.IsNotExist(err) {
-		t.Fatalf("old user data was not replaced, stat err=%v", err)
+	stored, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(newProfileID)
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if stored.DeletedAt != "" || stored.ProfileName != "源实例" || stored.UserDataDir != newProfileID {
+		t.Fatalf("new active profile fields are incorrect: %#v", stored)
+	}
+	if content, err := os.ReadFile(filepath.Join(targetUserDataDir, "old.txt")); err != nil || string(content) != "old-data" {
+		t.Fatalf("old user data backup was not preserved: content=%q err=%v", content, err)
+	}
+	if content, err := os.ReadFile(filepath.Join(targetCfg.Browser.UserDataRoot, newProfileID, "Preferences")); err != nil || string(content) != "source-data" {
+		t.Fatalf("new user data missing or incorrect: content=%q err=%v", content, err)
 	}
 }
 
-func TestProfilePackageV1OverwriteClearsStaleProfileExtensionRelations(t *testing.T) {
+func TestProfilePackageV1OverwriteMovesTargetToTrash(t *testing.T) {
 	root := t.TempDir()
 	db := newProfilePackageDatabase(t, root)
 	cfg := config.DefaultConfig()
@@ -290,29 +314,47 @@ func TestProfilePackageV1OverwriteClearsStaleProfileExtensionRelations(t *testin
 	if err != nil {
 		t.Fatalf("legacy overwrite import returned error: %v", err)
 	}
-	if result.ProfileMappings[profileID] != profileID || result.OverwrittenCount != 1 {
+	newProfileID := result.ProfileMappings[profileID]
+	if newProfileID == "" || newProfileID == profileID || result.OverwrittenCount != 1 {
 		t.Fatalf("unexpected overwrite result: %#v", result)
 	}
 
-	var settingsCount, bindingCount, runtimeCount int
-	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?`, profileID).Scan(&settingsCount); err != nil {
-		t.Fatalf("count profile extension settings failed: %v", err)
+	var oldSettingsCount, oldBindingCount, oldRuntimeCount int
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?`, profileID).Scan(&oldSettingsCount); err != nil {
+		t.Fatalf("count old profile extension settings failed: %v", err)
 	}
-	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?`, profileID).Scan(&bindingCount); err != nil {
-		t.Fatalf("count profile extensions failed: %v", err)
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?`, profileID).Scan(&oldBindingCount); err != nil {
+		t.Fatalf("count old profile extensions failed: %v", err)
 	}
-	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?`, profileID).Scan(&runtimeCount); err != nil {
-		t.Fatalf("count profile extension runtime failed: %v", err)
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?`, profileID).Scan(&oldRuntimeCount); err != nil {
+		t.Fatalf("count old profile extension runtime failed: %v", err)
 	}
-	if settingsCount != 0 || bindingCount != 0 || runtimeCount != 0 {
-		t.Fatalf("legacy overwrite kept stale extension relations: settings=%d bindings=%d runtime=%d", settingsCount, bindingCount, runtimeCount)
+	var newSettingsCount, newBindingCount, newRuntimeCount int
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?`, newProfileID).Scan(&newSettingsCount); err != nil {
+		t.Fatalf("count new profile extension settings failed: %v", err)
 	}
-	stored, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById(profileID)
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?`, newProfileID).Scan(&newBindingCount); err != nil {
+		t.Fatalf("count new profile extensions failed: %v", err)
+	}
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?`, newProfileID).Scan(&newRuntimeCount); err != nil {
+		t.Fatalf("count new profile extension runtime failed: %v", err)
+	}
+	if oldSettingsCount != 1 || oldBindingCount != 1 || oldRuntimeCount != 1 || newSettingsCount != 0 || newBindingCount != 0 || newRuntimeCount != 0 {
+		t.Fatalf("unexpected legacy profile extension relation counts: old=(%d,%d,%d) new=(%d,%d,%d)", oldSettingsCount, oldBindingCount, oldRuntimeCount, newSettingsCount, newBindingCount, newRuntimeCount)
+	}
+	deleted, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById(profileID)
 	if err != nil {
-		t.Fatalf("read overwritten legacy profile failed: %v", err)
+		t.Fatalf("read trashed legacy profile failed: %v", err)
 	}
-	if stored.ProfileName != "新实例" || stored.UserDataDir != "target-data" {
-		t.Fatalf("overwritten legacy profile fields are incorrect: %#v", stored)
+	if deleted.DeletedAt == "" || deleted.UserDataDir != "target-data" {
+		t.Fatalf("old legacy profile was not preserved in trash: %#v", deleted)
+	}
+	stored, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById(newProfileID)
+	if err != nil {
+		t.Fatalf("read imported legacy profile failed: %v", err)
+	}
+	if stored.DeletedAt != "" || stored.ProfileName != "新实例" || stored.UserDataDir != newProfileID {
+		t.Fatalf("new legacy profile fields are incorrect: %#v", stored)
 	}
 }
 
