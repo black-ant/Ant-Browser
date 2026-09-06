@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react'
 import { toast } from '../../../shared/components'
-import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfilePackageImportPreview, BrowserProxy } from '../types'
+import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfilePackageImportAction, BrowserProfilePackageImportPreview, BrowserProxy } from '../types'
 import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
@@ -355,7 +355,7 @@ export function BrowserListPage() {
     }
   }
 
-  const executeProfileImport = async (zipPath: string, conflictMode: 'new' | 'overwrite', confirmConflict = false) => {
+  const executeProfileImport = async (zipPath: string, actions: BrowserProfilePackageImportAction[], confirmConflict = false) => {
     if (!zipPath.trim()) {
       setProfileImportPreview(null)
       setProfilePackageBusy(false)
@@ -363,14 +363,13 @@ export function BrowserListPage() {
     }
     setProfileImportPreview(null)
     try {
-      const result = await importBrowserProfilePackageWithOptions(zipPath, conflictMode, confirmConflict)
+      const result = await importBrowserProfilePackageWithOptions(zipPath, 'new', confirmConflict, actions)
       if (result.cancelled) return
       const warnings = result.warnings || []
       const createdCount = result.createdCount ?? Math.max(0, result.importedCount - (result.overwrittenCount || 0))
       const overwrittenCount = result.overwrittenCount ?? 0
-      const summary = overwrittenCount > 0
-        ? `已覆盖 ${overwrittenCount} 个实例，旧实例已移入回收站；新建 ${createdCount} 个实例`
-        : `已新建 ${createdCount} 个实例`
+      const renamedCount = result.renamedCount ?? 0
+      const summary = `已处理：新建 ${createdCount} 个，覆盖 ${overwrittenCount} 个，重命名 ${renamedCount} 个`
       if (warnings.length > 0) {
         toast.warning(`${summary}，${warnings.length} 条提示：${warnings[0]}`)
       } else {
@@ -394,11 +393,8 @@ export function BrowserListPage() {
         setProfilePackageBusy(false)
         return
       }
-      if (preview.conflictCount > 0) {
-        setProfileImportPreview(preview)
-        return
-      }
-      await executeProfileImport(preview.zipPath, 'new')
+      setProfileImportPreview(preview)
+      return
     } catch (error: any) {
       toast.error(error?.message || '导入实例失败')
       setProfilePackageBusy(false)
@@ -717,13 +713,14 @@ export function BrowserListPage() {
         opError={opError}
         onCloseOpError={() => setOpError('')}
         profileImportPreview={profileImportPreview}
+        profileImportBusy={profilePackageBusy}
         onCloseProfileImport={() => {
           setProfileImportPreview(null)
           setProfilePackageBusy(false)
         }}
-        onConfirmProfileImport={(mode) => {
+        onConfirmProfileImport={(actions) => {
           if (profileImportPreview) {
-            void executeProfileImport(profileImportPreview.zipPath, mode, true)
+            void executeProfileImport(profileImportPreview.zipPath, actions, true)
           }
         }}
       />

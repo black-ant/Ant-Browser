@@ -23,7 +23,7 @@ import type { OpenListConnection } from './channels/openlist/api'
 import { fetchS3Settings } from './channels/s3/api'
 import type { S3Connection } from './channels/s3/api'
 import { importBrowserProfilePackageWithOptions } from '../browser/api/profiles'
-import type { BrowserProfilePackageImportPreview } from '../browser/types'
+import type { BrowserProfilePackageImportAction, BrowserProfilePackageImportPreview } from '../browser/types'
 import { createBackupRouteState } from './flow'
 import type { BackupRouteState } from './flow'
 import { useBackupProgressEffects } from './hooks/useBackupProgressEffects'
@@ -356,22 +356,21 @@ export function BackupPage() {
     }
   }
 
-  const executeProfileImport = async (preview: BrowserProfilePackageImportPreview, conflictMode: 'new' | 'overwrite') => {
+  const executeProfileImport = async (preview: BrowserProfilePackageImportPreview, actions: BrowserProfilePackageImportAction[]) => {
     setProfileImportPreview(null)
     setProfileImportBusy(true)
     setActionLoading('import-merge')
     setImportProgress({ phase: 'importing', progress: 40, message: '正在导入实例备份...' })
     try {
-      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, conflictMode, true)
+      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, 'new', true, actions)
       if (result.cancelled) {
         setImportProgress(null)
         return
       }
       const overwrittenCount = result.overwrittenCount ?? 0
       const createdCount = result.createdCount ?? Math.max(0, result.importedCount - overwrittenCount)
-      const summary = overwrittenCount > 0
-        ? `实例备份导入完成：覆盖 ${overwrittenCount} 个实例，旧实例已移入回收站；新建 ${createdCount} 个实例`
-        : `实例备份导入完成：新建 ${createdCount} 个实例`
+      const renamedCount = result.renamedCount ?? 0
+      const summary = `实例备份导入完成：新建 ${createdCount} 个，覆盖 ${overwrittenCount} 个，重命名 ${renamedCount} 个`
       const warnings = result.warnings || []
       if (warnings.length > 0) {
         toast.warning(`${summary}；${warnings[0]}`)
@@ -508,9 +507,9 @@ export function BackupPage() {
         preview={profileImportPreview}
         busy={profileImportBusy}
         onClose={() => setProfileImportPreview(null)}
-        onConfirm={(mode) => {
+        onConfirm={(actions) => {
           if (profileImportPreview) {
-            void executeProfileImport(profileImportPreview, mode)
+            void executeProfileImport(profileImportPreview, actions)
           }
         }}
       />

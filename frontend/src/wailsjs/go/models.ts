@@ -774,6 +774,24 @@ export namespace backend {
 	        this.message = source["message"];
 	    }
 	}
+	export class ProfilePackageImportAction {
+	    sourceProfileId: string;
+	    sourceIndex: number;
+	    mode: string;
+	    profileName: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ProfilePackageImportAction(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceProfileId = source["sourceProfileId"];
+	        this.sourceIndex = source["sourceIndex"];
+	        this.mode = source["mode"];
+	        this.profileName = source["profileName"];
+	    }
+	}
 	export class ProfilePackageImportConflict {
 	    sourceProfileId: string;
 	    sourceProfileName: string;
@@ -807,6 +825,7 @@ export namespace backend {
 	    }
 	}
 	export class ProfilePackageImportOptions {
+	    actions?: ProfilePackageImportAction[];
 	    conflictMode: string;
 	    confirmConflict: boolean;
 
@@ -816,11 +835,71 @@ export namespace backend {
 
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.actions = this.convertValues(source["actions"], ProfilePackageImportAction);
 	        this.conflictMode = source["conflictMode"];
 	        this.confirmConflict = source["confirmConflict"];
 	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ProfilePackageImportPreviewProfile {
+	    sourceIndex: number;
+	    sourceProfileId: string;
+	    sourceProfileName: string;
+	    targetProfileId: string;
+	    targetProfileName: string;
+	    matchType: string;
+	    targetRunning: boolean;
+	    targetDeleted: boolean;
+	    ambiguous: boolean;
+	    targetMatches: number;
+	    sourceTargetCollision: boolean;
+	    sourceNameCollision: boolean;
+	    suggestedAction: string;
+	    suggestedProfileName: string;
+	    canOverwrite: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new ProfilePackageImportPreviewProfile(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceIndex = source["sourceIndex"];
+	        this.sourceProfileId = source["sourceProfileId"];
+	        this.sourceProfileName = source["sourceProfileName"];
+	        this.targetProfileId = source["targetProfileId"];
+	        this.targetProfileName = source["targetProfileName"];
+	        this.matchType = source["matchType"];
+	        this.targetRunning = source["targetRunning"];
+	        this.targetDeleted = source["targetDeleted"];
+	        this.ambiguous = source["ambiguous"];
+	        this.targetMatches = source["targetMatches"];
+	        this.sourceTargetCollision = source["sourceTargetCollision"];
+	        this.sourceNameCollision = source["sourceNameCollision"];
+	        this.suggestedAction = source["suggestedAction"];
+	        this.suggestedProfileName = source["suggestedProfileName"];
+	        this.canOverwrite = source["canOverwrite"];
+	    }
 	}
 	export class ProfilePackageImportPreview {
+	    profiles: ProfilePackageImportPreviewProfile[];
 	    cancelled: boolean;
 	    zipPath: string;
 	    profileCount: number;
@@ -835,6 +914,7 @@ export namespace backend {
 
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.profiles = this.convertValues(source["profiles"], ProfilePackageImportPreviewProfile);
 	        this.cancelled = source["cancelled"];
 	        this.zipPath = source["zipPath"];
 	        this.profileCount = source["profileCount"];
@@ -862,7 +942,9 @@ export namespace backend {
 		    return a;
 		}
 	}
+
 	export class ProfilePackageImportResult {
+	    renamedCount: number;
 	    cancelled: boolean;
 	    importedCount: number;
 	    createdCount: number;
@@ -877,6 +959,7 @@ export namespace backend {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.renamedCount = source["renamedCount"];
 	        this.cancelled = source["cancelled"];
 	        this.importedCount = source["importedCount"];
 	        this.createdCount = source["createdCount"];

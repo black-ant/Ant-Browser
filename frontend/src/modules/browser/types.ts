@@ -143,9 +143,19 @@ export interface BrowserProfilePackageImportResult {
   importedCount: number
   createdCount?: number
   overwrittenCount?: number
+  renamedCount?: number
   profileMappings: Record<string, string>
   warnings?: string[]
   message: string
+}
+
+export type BrowserProfilePackageImportActionMode = 'new' | 'overwrite' | 'rename'
+
+export interface BrowserProfilePackageImportAction {
+  sourceProfileId: string
+  sourceIndex: number
+  mode: BrowserProfilePackageImportActionMode
+  profileName?: string
 }
 
 export interface BrowserProfilePackageImportConflict {
@@ -162,12 +172,31 @@ export interface BrowserProfilePackageImportConflict {
   sourceNameCollision: boolean
 }
 
+export interface BrowserProfilePackageImportPreviewProfile {
+  sourceIndex: number
+  sourceProfileId: string
+  sourceProfileName: string
+  targetProfileId: string
+  targetProfileName: string
+  matchType: 'profileId' | 'profileName' | string
+  targetRunning: boolean
+  targetDeleted: boolean
+  ambiguous: boolean
+  targetMatches: number
+  sourceTargetCollision: boolean
+  sourceNameCollision: boolean
+  suggestedAction: BrowserProfilePackageImportActionMode
+  suggestedProfileName: string
+  canOverwrite: boolean
+}
+
 export interface BrowserProfilePackageImportPreview {
   cancelled: boolean
   zipPath: string
   profileCount: number
   conflictCount: number
   canOverwrite: boolean
+  profiles: BrowserProfilePackageImportPreviewProfile[]
   conflicts: BrowserProfilePackageImportConflict[]
   message: string
 }

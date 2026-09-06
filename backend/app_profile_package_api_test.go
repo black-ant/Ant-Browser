@@ -455,6 +455,78 @@ func TestProfilePackageImportNewModeDoesNotOverwriteConflict(t *testing.T) {
 	}
 }
 
+func TestProfilePackageImportAppliesPerProfileActions(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	cfg.Browser.UserDataRoot = filepath.Join(root, "user-data")
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+	app.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(db.GetConn())
+
+	sources := []browser.Profile{
+		{ProfileId: "source-overwrite", ProfileName: "覆盖目标", UserDataDir: "source-overwrite"},
+		{ProfileId: "source-new", ProfileName: "普通实例", UserDataDir: "source-new"},
+		{ProfileId: "source-rename", ProfileName: "重命名目标", UserDataDir: "source-rename"},
+	}
+	zipPath := filepath.Join(root, "per-profile-actions.zip")
+	writeTestProfilePackage(t, zipPath, sources, nil)
+	for _, target := range []browser.Profile{
+		{ProfileId: "target-overwrite", ProfileName: "覆盖目标", UserDataDir: "target-overwrite"},
+		{ProfileId: "target-rename", ProfileName: "重命名目标", UserDataDir: "target-rename"},
+	} {
+		if _, err := db.GetConn().Exec(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, target.ProfileId, target.ProfileName, target.UserDataDir, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z"); err != nil {
+			t.Fatalf("insert target profile failed: %v", err)
+		}
+	}
+	app.browserMgr.InitData()
+
+	result, err := app.importProfilePackageFromPathWithModeAndActions(zipPath, profilePackageImportModeNew, true, []ProfilePackageImportAction{
+		{SourceProfileID: "source-overwrite", SourceIndex: 0, Mode: profilePackageImportModeOverwrite},
+		{SourceProfileID: "source-new", SourceIndex: 1, Mode: profilePackageImportModeNew},
+		{SourceProfileID: "source-rename", SourceIndex: 2, Mode: profilePackageImportModeRename, ProfileName: "重命名后的实例"},
+	})
+	if err != nil {
+		t.Fatalf("per-profile import returned error: %v", err)
+	}
+	if result.ImportedCount != 3 || result.CreatedCount != 1 || result.OverwrittenCount != 1 || result.RenamedCount != 1 {
+		t.Fatalf("unexpected per-profile result: %#v", result)
+	}
+
+	checkImported := func(sourceID, expectedName string) {
+		t.Helper()
+		profileID := result.ProfileMappings[sourceID]
+		if profileID == "" {
+			t.Fatalf("missing mapping for %s: %#v", sourceID, result.ProfileMappings)
+		}
+		profile, err := app.browserMgr.ProfileDAO.GetById(profileID)
+		if err != nil {
+			t.Fatalf("read imported profile %s failed: %v", sourceID, err)
+		}
+		if profile.DeletedAt != "" || profile.ProfileName != expectedName {
+			t.Fatalf("unexpected imported profile for %s: %#v", sourceID, profile)
+		}
+	}
+	checkImported("source-overwrite", "覆盖目标")
+	checkImported("source-new", "普通实例")
+	checkImported("source-rename", "重命名后的实例")
+
+	for _, targetID := range []string{"target-overwrite", "target-rename"} {
+		target, err := app.browserMgr.ProfileDAO.GetById(targetID)
+		if err != nil {
+			t.Fatalf("read target %s failed: %v", targetID, err)
+		}
+		if targetID == "target-overwrite" && target.DeletedAt == "" {
+			t.Fatalf("overwrite target was not moved to trash: %#v", target)
+		}
+		if targetID == "target-rename" && target.DeletedAt != "" {
+			t.Fatalf("rename target must remain active: %#v", target)
+		}
+	}
+}
+
 func addProfilePackageTestProfile(t *testing.T, app *App, profile browser.Profile) {
 	t.Helper()
 	app.browserMgr.Mutex.Lock()

@@ -25,7 +25,7 @@ import type { S3BackupFile, S3Connection } from '../channels/s3/api'
 import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../packageInfo'
 import { ProfilePackageConflictModal } from './ProfilePackageConflictModal'
 import { importBrowserProfilePackageWithOptions } from '../../browser/api/profiles'
-import type { BrowserProfilePackageImportPreview } from '../../browser/types'
+import type { BrowserProfilePackageImportAction, BrowserProfilePackageImportPreview } from '../../browser/types'
 
 type BackupHistorySource = 'local' | 'openlist' | 's3'
 type BackupHistoryFilter = BackupHistorySource
@@ -644,14 +644,14 @@ export function BackupHistoryTable({
     profileCount?: number
     createdCount?: number
     overwrittenCount?: number
+    renamedCount?: number
     warnings?: string[]
   }) => {
     const importedCount = Number(result.importedCount ?? result.profileCount ?? result.imported ?? 0)
     const overwrittenCount = Number(result.overwrittenCount ?? 0)
     const createdCount = Number(result.createdCount ?? Math.max(0, importedCount - overwrittenCount))
-    const summary = overwrittenCount > 0
-      ? `已从${sourceLabel(item.source)}恢复：覆盖 ${overwrittenCount} 个实例，旧实例已移入回收站；新建 ${createdCount} 个实例`
-      : `已从${sourceLabel(item.source)}恢复：新建 ${createdCount} 个实例`
+    const renamedCount = Number(result.renamedCount ?? 0)
+    const summary = `已从${sourceLabel(item.source)}恢复：新建 ${createdCount} 个，覆盖 ${overwrittenCount} 个，重命名 ${renamedCount} 个`
     const warnings = result.warnings || []
     if (warnings.length > 0) {
       toast.warning(`${summary}；${warnings[0]}`)
@@ -663,7 +663,7 @@ export function BackupHistoryTable({
   const executeProfileImport = async (
     item: BackupHistoryItem,
     preview: BrowserProfilePackageImportPreview,
-    conflictMode: 'new' | 'overwrite',
+    actions: BrowserProfilePackageImportAction[],
   ) => {
     setProfileImportPreview(null)
     setProfileImportItem(null)
@@ -672,7 +672,7 @@ export function BackupHistoryTable({
     setRestoringItemId(item.id)
     setError('')
     try {
-      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, conflictMode, true)
+      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, 'new', true, actions)
       if (!result.cancelled) {
         showProfileImportResult(item, result)
       }
@@ -1055,9 +1055,9 @@ export function BackupHistoryTable({
           setProfileImportPreview(null)
           setProfileImportItem(null)
         }}
-        onConfirm={(mode) => {
+        onConfirm={(actions) => {
           if (profileImportItem && profileImportPreview) {
-            void executeProfileImport(profileImportItem, profileImportPreview, mode)
+            void executeProfileImport(profileImportItem, profileImportPreview, actions)
           }
         }}
       />

@@ -162,37 +162,18 @@ func (a *App) backupRestorePackageFromPathLocked(zipPath string) (map[string]int
 		if err != nil {
 			return nil, err
 		}
-		if preview.ConflictCount > 0 {
-			return map[string]interface{}{
-				"cancelled":                         false,
-				"packageType":                       "profile",
-				"zipPath":                           zipPath,
-				"profileCount":                      preview.ProfileCount,
-				"conflictCount":                     preview.ConflictCount,
-				"canOverwrite":                      preview.CanOverwrite,
-				"conflicts":                         preview.Conflicts,
-				"profileImportPreview":              preview,
-				"requiresProfileImportConfirmation": true,
-				"message":                           preview.Message,
-			}, nil
-		}
-
-		result, err := a.importProfilePackageFromPathWithModeAndConfirmation(zipPath, profilePackageImportModeNew, true)
-		if err != nil {
-			return nil, err
-		}
 		return map[string]interface{}{
-			"cancelled":        result.Cancelled,
-			"imported":         result.ImportedCount,
-			"importedCount":    result.ImportedCount,
-			"createdCount":     result.CreatedCount,
-			"overwrittenCount": result.OverwrittenCount,
-			"profileCount":     result.ImportedCount,
-			"profileMappings":  result.ProfileMappings,
-			"warnings":         result.Warnings,
-			"packageType":      "profile",
-			"zipPath":          zipPath,
-			"message":          result.Message,
+			"cancelled":                         false,
+			"packageType":                       "profile",
+			"zipPath":                           zipPath,
+			"profileCount":                      preview.ProfileCount,
+			"conflictCount":                     preview.ConflictCount,
+			"canOverwrite":                      preview.CanOverwrite,
+			"profiles":                          preview.Profiles,
+			"conflicts":                         preview.Conflicts,
+			"profileImportPreview":              preview,
+			"requiresProfileImportConfirmation": true,
+			"message":                           preview.Message,
 		}, nil
 	default:
 		return nil, fmt.Errorf("不支持的备份格式: %s", packageFormat)

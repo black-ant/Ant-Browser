@@ -38,6 +38,7 @@ type ProfilePackageExportResult struct {
 }
 
 type ProfilePackageImportResult struct {
+	RenamedCount     int               `json:"renamedCount"`
 	Cancelled        bool              `json:"cancelled"`
 	ImportedCount    int               `json:"importedCount"`
 	CreatedCount     int               `json:"createdCount"`
@@ -48,8 +49,16 @@ type ProfilePackageImportResult struct {
 }
 
 type ProfilePackageImportOptions struct {
-	ConflictMode    string `json:"conflictMode"`
-	ConfirmConflict bool   `json:"confirmConflict"`
+	Actions         []ProfilePackageImportAction `json:"actions,omitempty"`
+	ConflictMode    string                       `json:"conflictMode"`
+	ConfirmConflict bool                         `json:"confirmConflict"`
+}
+
+type ProfilePackageImportAction struct {
+	SourceProfileID string `json:"sourceProfileId"`
+	SourceIndex     int    `json:"sourceIndex"`
+	Mode            string `json:"mode"`
+	ProfileName     string `json:"profileName"`
 }
 
 type ProfilePackageImportConflict struct {
@@ -66,19 +75,39 @@ type ProfilePackageImportConflict struct {
 	SourceNameCollision   bool   `json:"sourceNameCollision"`
 }
 
+type ProfilePackageImportPreviewProfile struct {
+	SourceIndex           int    `json:"sourceIndex"`
+	SourceProfileID       string `json:"sourceProfileId"`
+	SourceProfileName     string `json:"sourceProfileName"`
+	TargetProfileID       string `json:"targetProfileId"`
+	TargetProfileName     string `json:"targetProfileName"`
+	MatchType             string `json:"matchType"`
+	TargetRunning         bool   `json:"targetRunning"`
+	TargetDeleted         bool   `json:"targetDeleted"`
+	Ambiguous             bool   `json:"ambiguous"`
+	TargetMatches         int    `json:"targetMatches"`
+	SourceTargetCollision bool   `json:"sourceTargetCollision"`
+	SourceNameCollision   bool   `json:"sourceNameCollision"`
+	SuggestedAction       string `json:"suggestedAction"`
+	SuggestedProfileName  string `json:"suggestedProfileName"`
+	CanOverwrite          bool   `json:"canOverwrite"`
+}
+
 type ProfilePackageImportPreview struct {
-	Cancelled     bool                           `json:"cancelled"`
-	ZipPath       string                         `json:"zipPath"`
-	ProfileCount  int                            `json:"profileCount"`
-	ConflictCount int                            `json:"conflictCount"`
-	CanOverwrite  bool                           `json:"canOverwrite"`
-	Conflicts     []ProfilePackageImportConflict `json:"conflicts"`
-	Message       string                         `json:"message"`
+	Profiles      []ProfilePackageImportPreviewProfile `json:"profiles"`
+	Cancelled     bool                                 `json:"cancelled"`
+	ZipPath       string                               `json:"zipPath"`
+	ProfileCount  int                                  `json:"profileCount"`
+	ConflictCount int                                  `json:"conflictCount"`
+	CanOverwrite  bool                                 `json:"canOverwrite"`
+	Conflicts     []ProfilePackageImportConflict       `json:"conflicts"`
+	Message       string                               `json:"message"`
 }
 
 const (
 	profilePackageImportModeNew       = "new"
 	profilePackageImportModeOverwrite = "overwrite"
+	profilePackageImportModeRename    = "rename"
 	profilePackageImportMatchID       = "profileId"
 	profilePackageImportMatchName     = "profileName"
 )
@@ -90,6 +119,7 @@ type preparedProfilePackageImport struct {
 	FinalDir          string
 	StagingDir        string
 	HasUserData       bool
+	Action            string
 	Overwrite         bool
 }
 
@@ -215,7 +245,7 @@ func (a *App) BrowserProfilePackagePrepareImportFromPath(zipPath string) (Profil
 func (a *App) BrowserProfilePackageImportWithOptions(zipPath string, options ProfilePackageImportOptions) (ProfilePackageImportResult, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	return a.importProfilePackageFromPathWithModeAndConfirmation(zipPath, options.ConflictMode, options.ConfirmConflict)
+	return a.importProfilePackageFromPathWithModeAndActions(zipPath, options.ConflictMode, options.ConfirmConflict, options.Actions)
 }
 
 func (a *App) collectProfilesForPackage(profileIds []string) ([]browser.Profile, error) {
@@ -394,7 +424,7 @@ func (a *App) prepareProfilePackageImportFromPath(zipPath string) (ProfilePackag
 		return ProfilePackageImportPreview{}, fmt.Errorf("数据库未初始化，无法恢复实例关联数据")
 	}
 
-	conflicts, canOverwrite, err := a.profilePackageImportConflicts(contents.Profiles)
+	profiles, conflicts, canOverwrite, err := a.profilePackageImportPreviewProfiles(contents.Profiles)
 	if err != nil {
 		return ProfilePackageImportPreview{}, err
 	}
@@ -404,18 +434,29 @@ func (a *App) prepareProfilePackageImportFromPath(zipPath string) (ProfilePackag
 		ProfileCount:  len(contents.Profiles),
 		ConflictCount: len(conflicts),
 		CanOverwrite:  canOverwrite,
+		Profiles:      profiles,
 		Conflicts:     conflicts,
-		Message:       profilePackageImportPreviewMessage(conflicts),
+		Message:       profilePackageImportPreviewMessage(profiles, conflicts),
 	}, nil
 }
 
 func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]ProfilePackageImportConflict, bool, error) {
+	_, conflicts, canOverwrite, err := a.profilePackageImportPreviewProfiles(profiles)
+	return conflicts, canOverwrite, err
+}
+
+func (a *App) profilePackageImportPreviewProfiles(profiles []browser.Profile) ([]ProfilePackageImportPreviewProfile, []ProfilePackageImportConflict, bool, error) {
 	existing, err := a.loadExistingProfilePackageProfiles()
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
+	previewProfiles := make([]ProfilePackageImportPreviewProfile, 0, len(profiles))
 	conflicts := make([]ProfilePackageImportConflict, 0)
 	canOverwrite := true
+	reservedNames := make(map[string]struct{}, len(existing.ByName)+len(profiles))
+	for nameKey := range existing.ByName {
+		reservedNames[nameKey] = struct{}{}
+	}
 	seenSourceIDs := make(map[string]struct{}, len(profiles))
 	claimedTargets := make(map[string]string, len(profiles))
 	sourceImportNameCounts := make(map[string]int, len(profiles))
@@ -427,16 +468,13 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 		if sourceID != "" {
 			key := backupImportIDKey(sourceID)
 			if _, exists := seenSourceIDs[key]; exists {
-				return nil, false, fmt.Errorf("实例包包含重复 profileId: %s", sourceID)
+				return nil, nil, false, fmt.Errorf("实例包包含重复 profileId: %s", sourceID)
 			}
 			seenSourceIDs[key] = struct{}{}
 		}
 		match := findProfilePackageConflict(existing, source, sourceID)
 		sourceNameKey := backupImportTextKey(normalizeImportedProfileName(source.ProfileName))
 		sourceNameCollision := sourceImportNameCounts[sourceNameKey] > 1
-		if match.Target == nil && !match.Ambiguous && !sourceNameCollision {
-			continue
-		}
 		sourceKey := backupImportIDKey(sourceID)
 		if sourceKey == "" {
 			sourceKey = fmt.Sprintf("index:%d", index)
@@ -472,11 +510,43 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 			canOverwrite = false
 		}
 		if match.Target != nil && (a == nil || a.db == nil || a.db.GetConn() == nil) {
-			canOverwrite = false
+			if match.Target != nil {
+				canOverwrite = false
+			}
 		}
-		conflicts = append(conflicts, conflict)
+		conflictPresent := match.Target != nil || match.Ambiguous || sourceNameCollision
+		rowCanOverwrite := conflictPresent && match.Target != nil && !conflict.Ambiguous && !conflict.TargetRunning && !conflict.SourceTargetCollision && !conflict.SourceNameCollision && a != nil && a.db != nil && a.db.GetConn() != nil
+		row := ProfilePackageImportPreviewProfile{
+			SourceIndex:           index,
+			SourceProfileID:       sourceID,
+			SourceProfileName:     strings.TrimSpace(source.ProfileName),
+			MatchType:             match.MatchType,
+			TargetRunning:         conflict.TargetRunning,
+			TargetDeleted:         conflict.TargetDeleted,
+			Ambiguous:             conflict.Ambiguous,
+			TargetMatches:         conflict.TargetMatches,
+			SourceTargetCollision: conflict.SourceTargetCollision,
+			SourceNameCollision:   conflict.SourceNameCollision,
+			SuggestedAction:       profilePackageImportModeNew,
+			CanOverwrite:          rowCanOverwrite,
+		}
+		if match.Target != nil {
+			row.TargetProfileID = match.Target.ProfileId
+			row.TargetProfileName = match.Target.ProfileName
+		}
+		row.SuggestedProfileName = uniqueImportedProfileName(source.ProfileName, reservedNames)
+		if rowCanOverwrite {
+			row.SuggestedAction = profilePackageImportModeOverwrite
+		}
+		previewProfiles = append(previewProfiles, row)
+		if conflictPresent {
+			if !rowCanOverwrite {
+				canOverwrite = false
+			}
+			conflicts = append(conflicts, conflict)
+		}
 	}
-	return conflicts, canOverwrite, nil
+	return previewProfiles, conflicts, canOverwrite, nil
 }
 
 func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) (ProfilePackageImportResult, error) {
@@ -484,6 +554,10 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 }
 
 func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string, mode string, confirmConflict bool) (ProfilePackageImportResult, error) {
+	return a.importProfilePackageFromPathWithModeAndActions(zipPath, mode, confirmConflict, nil)
+}
+
+func (a *App) importProfilePackageFromPathWithModeAndActions(zipPath string, mode string, confirmConflict bool, actions []ProfilePackageImportAction) (ProfilePackageImportResult, error) {
 	mode = normalizeProfilePackageImportMode(mode)
 	if mode == "" {
 		return ProfilePackageImportResult{}, fmt.Errorf("不支持的实例导入冲突处理方式")
@@ -503,6 +577,36 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 	existing, err := a.loadExistingProfilePackageProfiles()
 	if err != nil {
 		return ProfilePackageImportResult{}, err
+	}
+	hasExplicitActions := len(actions) > 0
+	actionsByIndex := make(map[int]ProfilePackageImportAction, len(actions))
+	if hasExplicitActions {
+		if len(actions) != len(contents.Profiles) {
+			return ProfilePackageImportResult{}, fmt.Errorf("实例处理表不完整，请为每个实例选择处理方式")
+		}
+		for _, action := range actions {
+			if action.SourceIndex < 0 || action.SourceIndex >= len(contents.Profiles) {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例处理表包含无效的实例行")
+			}
+			if _, exists := actionsByIndex[action.SourceIndex]; exists {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例处理表包含重复的实例行")
+			}
+			sourceID := strings.TrimSpace(contents.Profiles[action.SourceIndex].ProfileId)
+			if strings.TrimSpace(action.SourceProfileID) != "" && !strings.EqualFold(strings.TrimSpace(action.SourceProfileID), sourceID) {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例处理表与备份实例不一致")
+			}
+			action.Mode = normalizeProfilePackageImportAction(action.Mode)
+			if action.Mode == "" {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例处理表包含不支持的处理方式")
+			}
+			if action.Mode == profilePackageImportModeRename && strings.TrimSpace(action.ProfileName) == "" {
+				return ProfilePackageImportResult{}, fmt.Errorf("请选择重命名后的实例名称")
+			}
+			actionsByIndex[action.SourceIndex] = action
+		}
+	}
+	if hasExplicitActions && !confirmConflict {
+		return ProfilePackageImportResult{}, fmt.Errorf("实例处理方式尚未确认")
 	}
 	if !confirmConflict {
 		conflicts, _, err := a.profilePackageImportConflicts(contents.Profiles)
@@ -532,6 +636,7 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 	}
 
 	prepared := make([]preparedProfilePackageImport, 0, len(contents.Profiles))
+	finalNameKeys := make(map[string]struct{}, len(contents.Profiles))
 	batchID := uuid.NewString()
 	stagingRoot := a.profilePackageImportStagingRoot(batchID)
 	swaps := make([]profilePackageDirectorySwap, 0, len(contents.Profiles))
@@ -577,7 +682,13 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 		}
 		match := findProfilePackageConflict(existing, source, oldID)
 		sourceNameCollision := sourceImportNameCounts[backupImportTextKey(normalizeImportedProfileName(source.ProfileName))] > 1
-		if mode == profilePackageImportModeOverwrite {
+		actionMode := mode
+		requestedProfileName := ""
+		if action, exists := actionsByIndex[index]; exists {
+			actionMode = action.Mode
+			requestedProfileName = strings.TrimSpace(action.ProfileName)
+		}
+		if actionMode == profilePackageImportModeOverwrite {
 			if sourceNameCollision {
 				return ProfilePackageImportResult{}, fmt.Errorf("实例包内存在多个同名实例，无法自动覆盖，请选择新建")
 			}
@@ -601,10 +712,23 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 			if match.Target != nil && (a.db == nil || a.db.GetConn() == nil) {
 				return ProfilePackageImportResult{}, fmt.Errorf("当前环境不支持覆盖并备份到回收站")
 			}
+			if hasExplicitActions && match.Target == nil {
+				return ProfilePackageImportResult{}, fmt.Errorf("实例「%s」没有可覆盖的目标，请改为新建或重命名", source.ProfileName)
+			}
+		}
+		if actionMode == profilePackageImportModeRename {
+			if requestedProfileName == "" {
+				return ProfilePackageImportResult{}, fmt.Errorf("请选择重命名后的实例名称")
+			}
+			nameKey := backupImportTextKey(requestedProfileName)
+			if _, exists := reservedNames[nameKey]; exists {
+				return ProfilePackageImportResult{}, fmt.Errorf("重命名后的实例「%s」已存在，请换一个名称", requestedProfileName)
+			}
+			reservedNames[nameKey] = struct{}{}
 		}
 
 		newID := profilePackageGeneratedID(usedIDs)
-		overwrite := mode == profilePackageImportModeOverwrite && match.Target != nil
+		overwrite := actionMode == profilePackageImportModeOverwrite && match.Target != nil
 		profile := source
 		if overwrite {
 			profile.ProfileName = strings.TrimSpace(source.ProfileName)
@@ -614,6 +738,9 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 			profile.ProfileName = uniqueImportedProfileNameForOverwrite(profile.ProfileName, *match.Target, existing, reservedNames)
 			profile.UserDataDir = newID
 			profile.CreatedAt = strings.TrimSpace(match.Target.CreatedAt)
+		} else if actionMode == profilePackageImportModeRename {
+			profile.ProfileName = requestedProfileName
+			profile.UserDataDir = newID
 		} else {
 			profile.ProfileName = uniqueImportedProfileName(source.ProfileName, reservedNames)
 			profile.UserDataDir = newID
@@ -621,6 +748,11 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 		if profile.ProfileName == "" {
 			profile.ProfileName = "导入实例"
 		}
+		finalNameKey := backupImportTextKey(profile.ProfileName)
+		if _, exists := finalNameKeys[finalNameKey]; exists {
+			return ProfilePackageImportResult{}, fmt.Errorf("导入后的实例名称重复：%s，请调整重命名操作", profile.ProfileName)
+		}
+		finalNameKeys[finalNameKey] = struct{}{}
 		profile.ProfileId = newID
 		profile.Running = false
 		profile.DebugPort = 0
@@ -661,6 +793,7 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 			FinalDir:          finalDir,
 			StagingDir:        stagingDir,
 			HasUserData:       hasUserData,
+			Action:            actionMode,
 			Overwrite:         overwrite,
 		})
 		mappings[oldID] = newID
@@ -725,9 +858,12 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 	committed = true
 	createdCount := 0
 	overwrittenCount := 0
+	renameCount := 0
 	for _, item := range prepared {
 		if item.Overwrite {
 			overwrittenCount++
+		} else if item.Action == profilePackageImportModeRename {
+			renameCount++
 		} else {
 			createdCount++
 		}
@@ -737,6 +873,7 @@ func (a *App) importProfilePackageFromPathWithModeAndConfirmation(zipPath string
 		ImportedCount:    len(prepared),
 		CreatedCount:     createdCount,
 		OverwrittenCount: overwrittenCount,
+		RenamedCount:     renameCount,
 		ProfileMappings:  mappings,
 		Warnings:         warnings,
 		Message:          "导入完成",
@@ -749,16 +886,22 @@ func normalizeProfilePackageImportMode(mode string) string {
 		return profilePackageImportModeNew
 	case profilePackageImportModeOverwrite:
 		return profilePackageImportModeOverwrite
+	case profilePackageImportModeRename:
+		return profilePackageImportModeRename
 	default:
 		return ""
 	}
 }
 
-func profilePackageImportPreviewMessage(conflicts []ProfilePackageImportConflict) string {
+func normalizeProfilePackageImportAction(mode string) string {
+	return normalizeProfilePackageImportMode(mode)
+}
+
+func profilePackageImportPreviewMessage(profiles []ProfilePackageImportPreviewProfile, conflicts []ProfilePackageImportConflict) string {
 	if len(conflicts) == 0 {
-		return "未发现实例冲突"
+		return fmt.Sprintf("共 %d 个实例，未发现冲突", len(profiles))
 	}
-	return fmt.Sprintf("发现 %d 个实例冲突，请选择覆盖或新建", len(conflicts))
+	return fmt.Sprintf("共 %d 个实例，发现 %d 个冲突，请逐项确认处理方式", len(profiles), len(conflicts))
 }
 
 func (a *App) loadExistingProfilePackageProfiles() (profilePackageExistingProfiles, error) {

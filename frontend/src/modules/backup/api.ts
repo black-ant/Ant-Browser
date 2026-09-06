@@ -30,6 +30,7 @@ export interface BackupActionResult {
   importedCount?: number
   createdCount?: number
   overwrittenCount?: number
+  renamedCount?: number
   requiresProfileImportConfirmation?: boolean
   profileImportPreview?: BrowserProfilePackageImportPreview
   warnings?: string[]

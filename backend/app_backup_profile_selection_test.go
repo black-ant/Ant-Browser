@@ -173,8 +173,20 @@ func TestBackupRestorePackageFromPathRoutesProfilePackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("backupRestorePackageFromPathLocked returned error: %v", err)
 	}
-	if result["packageType"] != "profile" || result["importedCount"] != 1 {
+	if result["packageType"] != "profile" || result["requiresProfileImportConfirmation"] != true {
 		t.Fatalf("unexpected restore result: %#v", result)
+	}
+	preview, ok := result["profileImportPreview"].(ProfilePackageImportPreview)
+	if !ok || preview.ProfileCount != 1 || len(preview.Profiles) != 1 || preview.Profiles[0].SuggestedProfileName != "源实例" {
+		t.Fatalf("unexpected restore preview: %#v", result["profileImportPreview"])
+	}
+	imported, err := app.importProfilePackageFromPathWithModeAndActions(zipPath, profilePackageImportModeNew, true, []ProfilePackageImportAction{{
+		SourceProfileID: "source-1",
+		SourceIndex:     0,
+		Mode:            profilePackageImportModeNew,
+	}})
+	if err != nil || imported.ImportedCount != 1 || imported.CreatedCount != 1 {
+		t.Fatalf("confirmed restore failed: result=%#v err=%v", imported, err)
 	}
 }
 
