@@ -214,7 +214,7 @@ func TestProfilePackageImportRejectsMultipleSourcesForSameTarget(t *testing.T) {
 	}
 }
 
-func TestProfilePackagePrepareImportDetectsPreviouslyImportedName(t *testing.T) {
+func TestProfilePackagePrepareImportDetectsRepeatedOriginalName(t *testing.T) {
 	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
 		ProfileId:   "source-1",
 		ProfileName: "CPA",
@@ -228,6 +228,12 @@ func TestProfilePackagePrepareImportDetectsPreviouslyImportedName(t *testing.T) 
 	if first.ProfileMappings["source-1"] == "" {
 		t.Fatalf("first import did not create profile mapping: %#v", first.ProfileMappings)
 	}
+	app.browserMgr.Mutex.Lock()
+	firstProfile := *app.browserMgr.Profiles[first.ProfileMappings["source-1"]]
+	app.browserMgr.Mutex.Unlock()
+	if firstProfile.ProfileName != "CPA" {
+		t.Fatalf("first import changed the original profile name: %#v", firstProfile)
+	}
 
 	preview, err := app.prepareProfilePackageImportFromPath(zipPath)
 	if err != nil {
@@ -237,8 +243,49 @@ func TestProfilePackagePrepareImportDetectsPreviouslyImportedName(t *testing.T) 
 		t.Fatalf("unexpected repeated-import preview: %#v", preview)
 	}
 	conflict := preview.Conflicts[0]
-	if conflict.TargetProfileName != "CPA（导入）" || conflict.MatchType != profilePackageImportMatchName {
-		t.Fatalf("repeated import did not match generated name: %#v", conflict)
+	if conflict.TargetProfileName != "CPA" || conflict.MatchType != profilePackageImportMatchName {
+		t.Fatalf("repeated import did not match the original name: %#v", conflict)
+	}
+}
+
+func TestProfilePackageImportAddsSuffixOnlyWhenNameConflicts(t *testing.T) {
+	app, zipPath := newProfilePackageImportTestApp(t, []browser.Profile{{
+		ProfileId:   "source-1",
+		ProfileName: "CPA",
+		UserDataDir: "source-1",
+	}}, nil)
+
+	first, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+	if err != nil {
+		t.Fatalf("first import returned error: %v", err)
+	}
+	app.browserMgr.Mutex.Lock()
+	firstProfile := *app.browserMgr.Profiles[first.ProfileMappings["source-1"]]
+	app.browserMgr.Mutex.Unlock()
+	if firstProfile.ProfileName != "CPA" {
+		t.Fatalf("first import should preserve the source name: %#v", firstProfile)
+	}
+
+	second, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+	if err != nil {
+		t.Fatalf("second import returned error: %v", err)
+	}
+	app.browserMgr.Mutex.Lock()
+	secondProfile := *app.browserMgr.Profiles[second.ProfileMappings["source-1"]]
+	app.browserMgr.Mutex.Unlock()
+	if secondProfile.ProfileName != "CPA（导入）" {
+		t.Fatalf("second import should add a suffix after the name conflict: %#v", secondProfile)
+	}
+
+	third, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
+	if err != nil {
+		t.Fatalf("third import returned error: %v", err)
+	}
+	app.browserMgr.Mutex.Lock()
+	thirdProfile := *app.browserMgr.Profiles[third.ProfileMappings["source-1"]]
+	app.browserMgr.Mutex.Unlock()
+	if thirdProfile.ProfileName != "CPA（导入 2）" {
+		t.Fatalf("third import should increment the suffix: %#v", thirdProfile)
 	}
 }
 

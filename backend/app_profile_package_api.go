@@ -417,7 +417,7 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 	claimedTargets := make(map[string]string, len(profiles))
 	sourceImportNameCounts := make(map[string]int, len(profiles))
 	for _, source := range profiles {
-		sourceImportNameCounts[backupImportTextKey(buildImportedProfileName(source.ProfileName))]++
+		sourceImportNameCounts[backupImportTextKey(normalizeImportedProfileName(source.ProfileName))]++
 	}
 	for index, source := range profiles {
 		sourceID := strings.TrimSpace(source.ProfileId)
@@ -429,7 +429,7 @@ func (a *App) profilePackageImportConflicts(profiles []browser.Profile) ([]Profi
 			seenSourceIDs[key] = struct{}{}
 		}
 		match := findProfilePackageConflict(existing, source, sourceID)
-		sourceNameKey := backupImportTextKey(buildImportedProfileName(source.ProfileName))
+		sourceNameKey := backupImportTextKey(normalizeImportedProfileName(source.ProfileName))
 		sourceNameCollision := sourceImportNameCounts[sourceNameKey] > 1
 		if match.Target == nil && !match.Ambiguous && !sourceNameCollision {
 			continue
@@ -540,7 +540,7 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 	claimedTargets := make(map[string]string, len(contents.Profiles))
 	sourceImportNameCounts := make(map[string]int, len(contents.Profiles))
 	for _, source := range contents.Profiles {
-		sourceImportNameCounts[backupImportTextKey(buildImportedProfileName(source.ProfileName))]++
+		sourceImportNameCounts[backupImportTextKey(normalizeImportedProfileName(source.ProfileName))]++
 	}
 	for index, source := range contents.Profiles {
 		oldID := strings.TrimSpace(source.ProfileId)
@@ -554,7 +554,7 @@ func (a *App) importProfilePackageFromPathWithMode(zipPath string, mode string) 
 			seenSourceIDs[key] = struct{}{}
 		}
 		match := findProfilePackageConflict(existing, source, oldID)
-		sourceNameCollision := sourceImportNameCounts[backupImportTextKey(buildImportedProfileName(source.ProfileName))] > 1
+		sourceNameCollision := sourceImportNameCounts[backupImportTextKey(normalizeImportedProfileName(source.ProfileName))] > 1
 		if mode == profilePackageImportModeOverwrite {
 			if sourceNameCollision {
 				return ProfilePackageImportResult{}, fmt.Errorf("实例包内存在多个同名实例，无法自动覆盖，请选择新建")
@@ -790,7 +790,7 @@ func findProfilePackageConflict(existing profilePackageExistingProfiles, source 
 			}
 		}
 	}
-	hits := profilePackageNameConflictHits(existing, source.ProfileName)
+	hits := existing.ByName[backupImportTextKey(normalizeImportedProfileName(source.ProfileName))]
 	if len(hits) == 1 {
 		copyProfile := hits[0]
 		return profilePackageConflictMatch{
@@ -809,50 +809,6 @@ func findProfilePackageConflict(existing profilePackageExistingProfiles, source 
 	return profilePackageConflictMatch{}
 }
 
-func profilePackageNameConflictHits(existing profilePackageExistingProfiles, sourceName string) []browser.Profile {
-	exactKey := backupImportTextKey(sourceName)
-	if hits := existing.ByName[exactKey]; len(hits) > 0 {
-		return hits
-	}
-
-	generatedName := buildImportedProfileName(sourceName)
-	prefix := backupImportTextKey(strings.TrimSuffix(generatedName, "）"))
-	if prefix == "" {
-		return nil
-	}
-	result := make([]browser.Profile, 0)
-	for nameKey, profiles := range existing.ByName {
-		if !profilePackageImportedNameVariant(nameKey, prefix) {
-			continue
-		}
-		result = append(result, profiles...)
-	}
-	return result
-}
-
-func profilePackageImportedNameVariant(nameKey string, prefix string) bool {
-	if !strings.HasPrefix(nameKey, prefix) || !strings.HasSuffix(nameKey, "）") {
-		return false
-	}
-	suffix := strings.TrimSuffix(strings.TrimPrefix(nameKey, prefix), "）")
-	if suffix == "" {
-		return true
-	}
-	if !strings.HasPrefix(suffix, " ") {
-		return false
-	}
-	number := strings.TrimSpace(suffix)
-	if number == "" || number == "0" || number == "1" {
-		return false
-	}
-	for _, character := range number {
-		if character < '0' || character > '9' {
-			return false
-		}
-	}
-	return true
-}
-
 func profilePackageProfileIsRunning(a *App, profile browser.Profile) bool {
 	if profile.Running || profile.Pid > 0 || profile.DebugPort > 0 || profile.WindowMarkerCode != "" {
 		return true
@@ -866,9 +822,10 @@ func profilePackageProfileIsRunning(a *App, profile browser.Profile) bool {
 }
 
 func uniqueImportedProfileName(name string, reserved map[string]struct{}) string {
-	base := strings.TrimSpace(name)
-	if base == "" {
-		base = "导入实例"
+	base := normalizeImportedProfileName(name)
+	if _, exists := reserved[backupImportTextKey(base)]; !exists {
+		reserved[backupImportTextKey(base)] = struct{}{}
+		return base
 	}
 	candidate := buildImportedProfileName(base)
 	if _, exists := reserved[backupImportTextKey(candidate)]; !exists {
@@ -1133,11 +1090,15 @@ func ensureZipSuffix(path string) string {
 }
 
 func buildImportedProfileName(name string) string {
+	return normalizeImportedProfileName(name) + "（导入）"
+}
+
+func normalizeImportedProfileName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		name = "导入实例"
+		return "导入实例"
 	}
-	return name + "（导入）"
+	return name
 }
 
 func (a *App) prepareProfileProxyForPackage(profile *browser.Profile) {

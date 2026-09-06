@@ -97,7 +97,7 @@ func TestProfilePackageDatabaseRoundTripSelectedProfile(t *testing.T) {
 	if stored.GroupId == "" || stored.CoreId == "" || stored.ProxyId == "" {
 		t.Fatalf("profile references were lost: %#v", stored)
 	}
-	if stored.ProfileName != "源实例（导入）" || stored.ProxyConfig != "http://source-proxy:8080" {
+	if stored.ProfileName != "源实例" || stored.ProxyConfig != "http://source-proxy:8080" {
 		t.Fatalf("imported profile fields lost: %#v", stored)
 	}
 	if _, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById("other-profile"); err != nil {
