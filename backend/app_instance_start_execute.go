@@ -3,8 +3,10 @@ package backend
 import (
 	"ant-chrome/backend/internal/logger"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -16,6 +18,8 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 
 	cmd := exec.Command(plan.chromeBinaryPath, plan.args...)
 	cmd.Dir = filepath.Dir(plan.chromeBinaryPath)
+	// Linux 上 Intl 默认 locale 跟随进程环境而不是 --lang，按实例语言补齐 LANGUAGE。
+	cmd.Env = browserProcessEnv(os.Environ(), browserProcessLanguageEnv(runtime.GOOS, plan.args))
 
 	monitor, err := newBrowserProcessMonitor(cmd)
 	if err != nil {

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- 语言一致性：Linux 启动实例时按 `--lang` 补齐浏览器进程的 `LANGUAGE` 环境变量，使 Intl 默认 locale 与 `navigator.language` 一致，不再跟随宿主桌面语言。
+- 指纹配置：新增 `browser.cross_platform_font_passthrough`（默认 `true`）。设为 `false` 时，目标平台与宿主不同不再追加 `--disable-spoofing=font`，保留内核字体伪装以匹配画像。
+
 ## 1.8.1 - 2026-09-14
 
 - 备份凭据迁移：OpenList Token 和 S3 访问凭据稳定保存到用户配置目录中的 `backup.local.yaml`；兼容 Windows 旧安装目录凭据迁移，避免升级或卸载后丢失配置。

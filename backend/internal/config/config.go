@@ -177,26 +177,29 @@ type BrowserBookmark struct {
 }
 
 type BrowserConfig struct {
-	UserDataRoot           string                 `yaml:"user_data_root"`
-	DefaultFingerprintArgs []string               `yaml:"default_fingerprint_args"`
-	DefaultLaunchArgs      []string               `yaml:"default_launch_args"`
-	DefaultStartURLs       []string               `yaml:"default_start_urls"`
-	LightStartEnabled      *bool                  `yaml:"light_start_enabled,omitempty"`
-	RestoreLastSession     bool                   `yaml:"restore_last_session"`
-	StartReadyTimeoutMs    int                    `yaml:"start_ready_timeout_ms,omitempty"`
-	StartStableWindowMs    int                    `yaml:"start_stable_window_ms,omitempty"`
-	DefaultBookmarks       []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
-	Cores                  []BrowserCore          `yaml:"cores,omitempty"`
-	Proxies                []BrowserProxy         `yaml:"proxies,omitempty"`
-	Profiles               []BrowserProfileConfig `yaml:"profiles,omitempty"`
-	ChromeBinaryPath       string                 `yaml:"chrome_binary_path,omitempty"`
-	ClashBinaryPath        string                 `yaml:"clash_binary_path,omitempty"`
-	XrayBinaryPath         string                 `yaml:"xray_binary_path,omitempty"`
-	SingBoxBinaryPath      string                 `yaml:"singbox_binary_path,omitempty"`
-	CoreRoot               string                 `yaml:"core_root,omitempty"`
-	DefaultCoreId          string                 `yaml:"default_core_id,omitempty"`
-	DefaultConnectorType   string                 `yaml:"default_connector_type,omitempty"`
-	Environments           []BrowserEnvironment   `yaml:"environments,omitempty"`
+	UserDataRoot           string   `yaml:"user_data_root"`
+	DefaultFingerprintArgs []string `yaml:"default_fingerprint_args"`
+	DefaultLaunchArgs      []string `yaml:"default_launch_args"`
+	DefaultStartURLs       []string `yaml:"default_start_urls"`
+	LightStartEnabled      *bool    `yaml:"light_start_enabled,omitempty"`
+	// CrossPlatformFontPassthrough 控制目标平台与宿主不同时是否追加 --disable-spoofing=font
+	// 使用宿主真实字体（默认 true，避免缺字）；宿主已安装目标平台字体时可设为 false，保持字体列表与画像一致。
+	CrossPlatformFontPassthrough *bool                  `yaml:"cross_platform_font_passthrough,omitempty"`
+	RestoreLastSession           bool                   `yaml:"restore_last_session"`
+	StartReadyTimeoutMs          int                    `yaml:"start_ready_timeout_ms,omitempty"`
+	StartStableWindowMs          int                    `yaml:"start_stable_window_ms,omitempty"`
+	DefaultBookmarks             []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
+	Cores                        []BrowserCore          `yaml:"cores,omitempty"`
+	Proxies                      []BrowserProxy         `yaml:"proxies,omitempty"`
+	Profiles                     []BrowserProfileConfig `yaml:"profiles,omitempty"`
+	ChromeBinaryPath             string                 `yaml:"chrome_binary_path,omitempty"`
+	ClashBinaryPath              string                 `yaml:"clash_binary_path,omitempty"`
+	XrayBinaryPath               string                 `yaml:"xray_binary_path,omitempty"`
+	SingBoxBinaryPath            string                 `yaml:"singbox_binary_path,omitempty"`
+	CoreRoot                     string                 `yaml:"core_root,omitempty"`
+	DefaultCoreId                string                 `yaml:"default_core_id,omitempty"`
+	DefaultConnectorType         string                 `yaml:"default_connector_type,omitempty"`
+	Environments                 []BrowserEnvironment   `yaml:"environments,omitempty"`
 }
 
 type BrowserCore struct {

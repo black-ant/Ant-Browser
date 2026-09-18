@@ -130,6 +130,9 @@ func normalizeConfig(config *Config) {
 	if config.Browser.LightStartEnabled == nil {
 		config.Browser.LightStartEnabled = defaultConfig.Browser.LightStartEnabled
 	}
+	if config.Browser.CrossPlatformFontPassthrough == nil {
+		config.Browser.CrossPlatformFontPassthrough = defaultConfig.Browser.CrossPlatformFontPassthrough
+	}
 	if config.Browser.StartReadyTimeoutMs <= 0 {
 		config.Browser.StartReadyTimeoutMs = defaultConfig.Browser.StartReadyTimeoutMs
 	}
@@ -282,15 +285,16 @@ func DefaultConfig() *Config {
 			GCPercent:   100,
 		},
 		Browser: BrowserConfig{
-			UserDataRoot:           "data",
-			DefaultFingerprintArgs: defaultFingerprintArgsForOS(goruntime.GOOS),
-			DefaultLaunchArgs:      []string{"--disable-sync", "--no-first-run"},
-			DefaultStartURLs:       DefaultBrowserStartURLs(),
-			LightStartEnabled:      boolPtr(true),
-			RestoreLastSession:     false,
-			StartReadyTimeoutMs:    3000,
-			StartStableWindowMs:    1200,
-			DefaultConnectorType:   BrowserConnectorXray,
+			UserDataRoot:                 "data",
+			DefaultFingerprintArgs:       defaultFingerprintArgsForOS(goruntime.GOOS),
+			DefaultLaunchArgs:            []string{"--disable-sync", "--no-first-run"},
+			DefaultStartURLs:             DefaultBrowserStartURLs(),
+			LightStartEnabled:            boolPtr(true),
+			CrossPlatformFontPassthrough: boolPtr(true),
+			RestoreLastSession:           false,
+			StartReadyTimeoutMs:          3000,
+			StartStableWindowMs:          1200,
+			DefaultConnectorType:         BrowserConnectorXray,
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,
