@@ -4,6 +4,7 @@ import (
 	"ant-chrome/backend/internal/logger"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -30,7 +31,7 @@ func (m *SingBoxManager) restartBridgeOnSamePort(log *logger.Logger, key string,
 		m.mu.Unlock()
 		return errSingBoxBridgeRestartNotNeeded
 	}
-	if len(bridge.Outbound) == 0 {
+	if len(bridge.Outbounds) == 0 && len(bridge.Outbound) == 0 {
 		m.mu.Unlock()
 		return fmt.Errorf("sing-box 桥接缺少重启上下文")
 	}
@@ -45,7 +46,15 @@ func (m *SingBoxManager) restartBridgeOnSamePort(log *logger.Logger, key string,
 		logger.F("key", key[:8]),
 		logger.F("port", bridge.Port),
 	)
-	restarted, err := m.launchBridgeOnPort(log, key, binaryPath, cloneStringInterfaceMap(bridge.Outbound), bridge.Port, 1)
+	outbounds := cloneInterfaceSlice(bridge.Outbounds)
+	if len(outbounds) == 0 && len(bridge.Outbound) > 0 {
+		outbounds = []interface{}{cloneStringInterfaceMap(bridge.Outbound)}
+	}
+	routeOutbound := strings.TrimSpace(bridge.RouteOutbound)
+	if routeOutbound == "" {
+		routeOutbound = "proxy-out"
+	}
+	restarted, err := m.launchBridgeOnPort(log, key, binaryPath, outbounds, routeOutbound, bridge.Port, 1)
 	if err != nil {
 		return err
 	}

@@ -279,13 +279,13 @@ export function useProxyImportFlow({
       setImporting(false)
     }
   }
-
   const canParseImport = importMode === 'clash'
     ? !!importText.trim()
     : importMode === 'direct'
       ? !!directImportText.trim() || (!!directImportForm.server.trim() && !!directImportForm.port.trim())
-      : !!chainImportForm.first.server.trim()
-        && !!chainImportForm.first.port.trim()
+      : (chainImportForm.firstMode === 'node'
+          ? !!chainImportForm.firstProxyConfig.trim()
+          : !!chainImportForm.first.server.trim() && !!chainImportForm.first.port.trim())
         && !!chainImportForm.second.server.trim()
         && !!chainImportForm.second.port.trim()
 

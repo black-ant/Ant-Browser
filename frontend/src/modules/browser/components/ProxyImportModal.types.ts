@@ -37,12 +37,30 @@ export interface ChainHopForm {
   password: string
 }
 
+export type ChainFirstHopMode = 'standard' | 'node'
+export type ChainNodeProtocol = 'vless' | 'vmess' | 'trojan' | 'ss' | 'hysteria2'
+export type ChainNodeSource = 'pool' | 'manual'
+
 export interface ChainImportForm {
   proxyName: string
   localPort: string
+  firstMode: ChainFirstHopMode
+  firstNodeProtocol: ChainNodeProtocol
+  firstNodeSource: ChainNodeSource
+  firstProxyConfig: string
   first: ChainHopForm
   second: ChainHopForm
 }
+
+export const CHAIN_FIRST_PROTOCOL_OPTIONS = [
+  { value: 'http', label: 'HTTP' },
+  { value: 'socks5', label: 'SOCKS5' },
+  { value: 'vless', label: 'VLESS' },
+  { value: 'vmess', label: 'VMess' },
+  { value: 'trojan', label: 'Trojan' },
+  { value: 'ss', label: 'SS' },
+  { value: 'hysteria2', label: 'HY2' },
+] as const
 
 export const DIRECT_PROXY_PROTOCOL_OPTIONS = [
   { value: 'http', label: 'HTTP' },
@@ -62,6 +80,10 @@ export const INITIAL_DIRECT_IMPORT_FORM: DirectImportForm = {
 export const INITIAL_CHAIN_IMPORT_FORM: ChainImportForm = {
   proxyName: '',
   localPort: '',
+  firstMode: 'standard',
+  firstNodeProtocol: 'vless',
+  firstNodeSource: 'pool',
+  firstProxyConfig: '',
   first: {
     protocol: 'http',
     server: '',
@@ -97,11 +119,12 @@ export interface ProxyDisplayInfo {
 export const CHAIN_SOCKS5_PREFIX = 'chain+socks5://'
 
 export interface ChainSocks5HopConfig {
-  protocol: 'http' | 'socks5'
-  server: string
-  port: number
+  protocol?: 'http' | 'socks5'
+  server?: string
+  port?: number
   username?: string
   password?: string
+  proxyConfig?: string
 }
 
 export interface ChainSocks5Config {

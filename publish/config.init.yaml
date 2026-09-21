@@ -1,3 +1,4 @@
+config_version: 2
 database:
   type: sqlite
   sqlite:
@@ -42,6 +43,7 @@ browser:
   default_launch_args:
     - --disable-sync
     - --no-first-run
+  restore_last_session: true
   default_bookmarks: []
   cores: []
   proxies: []

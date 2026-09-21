@@ -1,6 +1,6 @@
 import yaml from 'js-yaml'
 import type { BrowserProxy } from '../../types'
-import type { ClashProxy, ImportCandidate, ProxyDisplayInfo } from './helpers.types'
+import type { ChainNodeProtocol, ClashProxy, ImportCandidate, ProxyDisplayInfo } from './helpers.types'
 import { BUILTIN_PROXIES } from './helpers.types'
 import { parseChainSocks5Config } from './helpers.chain'
 
@@ -20,9 +20,11 @@ export function parseProxyInfo(proxyConfig: string): { type: string; server: str
 
   const chain = parseChainSocks5Config(cfg)
   if (chain) {
-    const firstHop = `${chain.first.server}:${chain.first.port}`
-    const secondHop = `${chain.second.server}:${chain.second.port}`
-    return { type: '链式', server: `${firstHop} → ${secondHop}`, port: chain.second.port }
+    const firstHop = chain.first.proxyConfig
+      ? (chain.first.proxyConfig.match(/^([a-zA-Z0-9+.-]+):\/\//)?.[1]?.toUpperCase() || 'NODE')
+      : `${chain.first.server || '-'}:${chain.first.port || '-'}`
+    const secondHop = `${chain.second.server || '-'}:${chain.second.port || '-'}`
+    return { type: '链式', server: `${firstHop} → ${secondHop}`, port: chain.second.port || 0 }
   }
 
   const urlMatch = cfg.match(/^([a-zA-Z0-9+\-]+):\/\//)
@@ -43,6 +45,14 @@ export function parseProxyInfo(proxyConfig: string): { type: string; server: str
   } catch {
     return { type: '-', server: '-', port: 0 }
   }
+}
+
+export function detectProxyNodeProtocol(proxyConfig: string): ChainNodeProtocol | null {
+  const type = parseProxyInfo(proxyConfig).type.trim().toLowerCase()
+  if (type === 'vless' || type === 'vmess' || type === 'trojan' || type === 'ss') return type
+  if (type === 'hysteria2' || type === 'hy2') return 'hysteria2'
+  if (type === 'shadowsocks') return 'ss'
+  return null
 }
 
 export function toDisplayList(proxies: BrowserProxy[]): ProxyDisplayInfo[] {

@@ -295,12 +295,18 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
       }
     }
 
+    const normalizedPreferredKernel = chainEditMode
+      ? (chainEditForm.firstMode === 'node' && chainEditForm.firstNodeProtocol === 'hysteria2'
+          ? (editingProxy.preferredKernel === 'sing-box' ? 'sing-box' : undefined)
+          : (editingProxy.preferredKernel === 'xray' ? 'xray' : undefined))
+      : editingProxy.preferredKernel
     const nextProxies = allProxies.map(item =>
       item.proxyId === editingProxy.proxyId
         ? {
             ...item,
             proxyName: nextName,
             proxyConfig: nextConfig,
+            preferredKernel: normalizedPreferredKernel,
             groupName: editGroup.trim() || undefined,
             dnsServers: editDnsServers.trim() || undefined,
           }
@@ -461,6 +467,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
         editGroup={editGroup}
         editDnsServers={editDnsServers}
         chainEditForm={chainEditForm}
+        proxies={allProxies}
         saving={savingEdit}
         setEditName={setEditName}
         setEditConfig={setEditConfig}

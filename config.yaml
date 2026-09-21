@@ -1,3 +1,4 @@
+config_version: 2
 database:
     type: sqlite
     sqlite:
@@ -47,7 +48,7 @@ browser:
         - --no-first-run
     default_start_urls: []
     light_start_enabled: true
-    restore_last_session: false
+    restore_last_session: true
     start_ready_timeout_ms: 3000
     start_stable_window_ms: 1200
     default_connector_type: xray

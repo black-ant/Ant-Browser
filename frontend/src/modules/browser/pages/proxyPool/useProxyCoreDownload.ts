@@ -2,7 +2,7 @@
 import { toast } from '../../../../shared/components'
 import { browserProxyCoreDownload, browserProxyCoreStatus } from '../../api'
 import type { ProxyCoreDownloadProgress, ProxyCoreStatusResult } from '../../types'
-import { EventsOff, EventsOn } from '../../../../wailsjs/runtime/runtime'
+
 
 function defaultProxyCoreTarget(): { goos: string; goarch: string } {
   const platform = navigator.platform.toLowerCase()
@@ -64,8 +64,9 @@ export function useProxyCoreDownload() {
       }
       if (data.phase === 'error') toast.error(data.message || '代理内核下载失败')
     }
-    EventsOn('proxy-core:download:progress', onProgress)
-    return () => EventsOff('proxy-core:download:progress')
+    const runtime = (window as Window & { runtime?: { EventsOn?: (event: string, callback: (data: ProxyCoreDownloadProgress) => void) => (() => void) | void } }).runtime
+    const off = runtime?.EventsOn?.('proxy-core:download:progress', onProgress) || (() => {})
+    return off
   }, [refreshCurrentCoreStatus, refreshDownloadCoreStatus])
 
   useEffect(() => {

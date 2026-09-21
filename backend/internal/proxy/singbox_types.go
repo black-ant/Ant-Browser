@@ -14,22 +14,24 @@ const (
 
 // SingBoxBridge sing-box 桥接进程
 type SingBoxBridge struct {
-	NodeKey      string
-	Port         int
-	Cmd          *exec.Cmd
-	Pid          int
-	Running      bool
-	Stopping     bool
-	LastError    string
-	Outbound     map[string]interface{}
-	RefCount     int
-	LastUsedAt   time.Time
-	Restarting   bool
-	RestartCount int
-	ExitDone     chan struct{}
-	ExitErr      error
-	exitMu       sync.Mutex
-	waitOnce     sync.Once
+	NodeKey       string
+	Port          int
+	Cmd           *exec.Cmd
+	Pid           int
+	Running       bool
+	Stopping      bool
+	LastError     string
+	Outbound      map[string]interface{} // 单节点兼容上下文
+	Outbounds     []interface{}          // 多跳链恢复上下文
+	RouteOutbound string                 // socks-in 默认路由目标
+	RefCount      int
+	LastUsedAt    time.Time
+	Restarting    bool
+	RestartCount  int
+	ExitDone      chan struct{}
+	ExitErr       error
+	exitMu        sync.Mutex
+	waitOnce      sync.Once
 }
 
 // SingBoxManager sing-box 桥接管理器

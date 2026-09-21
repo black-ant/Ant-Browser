@@ -21,7 +21,11 @@ func computeNodeKey(src string) string {
 }
 
 func normalizeNodeScheme(src string) string {
-	return strings.TrimSpace(src)
+	trimmed := strings.TrimSpace(src)
+	if strings.HasPrefix(strings.ToLower(trimmed), "hy2://") {
+		return "hysteria2://" + trimmed[len("hy2://"):]
+	}
+	return trimmed
 }
 
 func resolveEnvPath(path string, appRoot string) string {

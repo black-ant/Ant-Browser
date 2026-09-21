@@ -27,7 +27,7 @@ export function CoreManagementPage() {
     defaultLaunchArgs: [],
     defaultStartUrls: [],
     lightStartEnabled: true,
-    restoreLastSession: false,
+    restoreLastSession: true,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
     defaultConnectorType: 'xray',
@@ -39,7 +39,7 @@ export function CoreManagementPage() {
     defaultLaunchArgs: '',
     defaultStartUrls: '',
     lightStartEnabled: true,
-    restoreLastSession: false,
+    restoreLastSession: true,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
   })

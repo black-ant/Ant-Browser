@@ -33,19 +33,28 @@ export interface ChainHopForm {
   password: string
 }
 
+export type ChainFirstHopMode = 'standard' | 'node'
+export type ChainNodeProtocol = 'vless' | 'vmess' | 'trojan' | 'ss' | 'hysteria2'
+export type ChainNodeSource = 'pool' | 'manual'
+
 export interface ChainImportForm {
   proxyName: string
   localPort: string
+  firstMode: ChainFirstHopMode
+  firstNodeProtocol: ChainNodeProtocol
+  firstNodeSource: ChainNodeSource
+  firstProxyConfig: string
   first: ChainHopForm
   second: ChainHopForm
 }
 
 export interface ChainSocks5HopConfig {
-  protocol: 'http' | 'socks5'
-  server: string
-  port: number
+  protocol?: 'http' | 'socks5'
+  server?: string
+  port?: number
   username?: string
   password?: string
+  proxyConfig?: string
 }
 
 export interface ChainSocks5Config {
@@ -61,14 +70,10 @@ export const CHAIN_QUICK_IMPORT_TEMPLATE = `{
   "group": "",
   "localPort": "",
   "first": {
-    "protocol": "http",
-    "server": "",
-    "port": "",
-    "username": "",
-    "password": ""
+    "proxyConfig": "vless://UUID@example.com:443?security=tls&sni=example.com&type=tcp"
   },
   "second": {
-    "protocol": "http",
+    "protocol": "socks5",
     "server": "",
     "port": "",
     "username": "",
@@ -85,6 +90,16 @@ export const DIRECT_QUICK_IMPORT_TEMPLATE = `{
   "username": "",
   "password": ""
 }`
+
+export const CHAIN_FIRST_PROTOCOL_OPTIONS = [
+  { value: 'http', label: 'HTTP' },
+  { value: 'socks5', label: 'SOCKS5' },
+  { value: 'vless', label: 'VLESS' },
+  { value: 'vmess', label: 'VMess' },
+  { value: 'trojan', label: 'Trojan' },
+  { value: 'ss', label: 'SS' },
+  { value: 'hysteria2', label: 'HY2' },
+] as const
 
 export const DIRECT_PROXY_PROTOCOL_OPTIONS = [
   { value: 'http', label: 'HTTP' },
@@ -104,6 +119,10 @@ export const INITIAL_DIRECT_IMPORT_FORM: DirectImportForm = {
 export const INITIAL_CHAIN_IMPORT_FORM: ChainImportForm = {
   proxyName: '',
   localPort: '',
+  firstMode: 'standard',
+  firstNodeProtocol: 'vless',
+  firstNodeSource: 'pool',
+  firstProxyConfig: '',
   first: {
     protocol: 'http',
     server: '',
@@ -127,7 +146,6 @@ export function createInitialChainImportForm(): ChainImportForm {
     second: { ...INITIAL_CHAIN_IMPORT_FORM.second },
   }
 }
-
 export interface ImportCandidate {
   proxyName: string
   proxyConfig: string

@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	CurrentConfigVersion            = 2
 	DefaultLaunchServerPort         = 19876
 	DefaultLaunchServerAPIKeyHeader = "X-Ant-Api-Key"
 	DefaultAutomationInstallPolicy  = "on_demand"
@@ -49,15 +50,16 @@ type AutomationConfig struct {
 
 // Config 应用配置
 type Config struct {
-	Database     DatabaseConfig     `yaml:"database"`
-	App          AppConfig          `yaml:"app"`
-	Runtime      RuntimeConfig      `yaml:"runtime"`
-	Logging      LoggingConfig      `yaml:"logging"`
-	Browser      BrowserConfig      `yaml:"browser"`
-	ProxyCheck   ProxyCheckConfig   `yaml:"proxy_check"`
-	LaunchServer LaunchServerConfig `yaml:"launch_server"`
-	Automation   AutomationConfig   `yaml:"automation"`
-	Backup       BackupConfig       `yaml:"backup"`
+	ConfigVersion int                `yaml:"config_version,omitempty"`
+	Database      DatabaseConfig     `yaml:"database"`
+	App           AppConfig          `yaml:"app"`
+	Runtime       RuntimeConfig      `yaml:"runtime"`
+	Logging       LoggingConfig      `yaml:"logging"`
+	Browser       BrowserConfig      `yaml:"browser"`
+	ProxyCheck    ProxyCheckConfig   `yaml:"proxy_check"`
+	LaunchServer  LaunchServerConfig `yaml:"launch_server"`
+	Automation    AutomationConfig   `yaml:"automation"`
+	Backup        BackupConfig       `yaml:"backup"`
 }
 
 type ProxyCheckConfig struct {

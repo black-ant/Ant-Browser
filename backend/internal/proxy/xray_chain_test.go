@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"testing"
 
@@ -82,6 +83,34 @@ func TestChainSocks5RuntimeConfigRoutesThroughSecondHop(t *testing.T) {
 	rule := rules[0].(map[string]interface{})
 	if got := rule["outboundTag"]; got != "second-hop" {
 		t.Fatalf("route outboundTag = %v, want second-hop", got)
+	}
+}
+
+func TestChainVlessFirstHopBuildsXrayTwoHopRoute(t *testing.T) {
+	raw := `{"first":{"proxyConfig":"vless://00000000-0000-0000-0000-000000000001@first-hop.invalid:443?security=tls&sni=first-hop.invalid&type=tcp"},"second":{"protocol":"socks5","server":"127.0.0.2","port":1080,"username":"u2","password":"p2"}}`
+	chainConfig := chainSocks5Prefix + url.QueryEscape(raw)
+	chainCfg, err := ParseChainSocks5Config(chainConfig)
+	if err != nil {
+		t.Fatalf("ParseChainSocks5Config returned error: %v", err)
+	}
+	first, err := chainFirstHopOutbound(chainCfg.First, "first-hop")
+	if err != nil {
+		t.Fatalf("chainFirstHopOutbound returned error: %v", err)
+	}
+	if first["protocol"] != "vless" || first["tag"] != "first-hop" {
+		t.Fatalf("unexpected first hop: %+v", first)
+	}
+	second := chainSocks5Outbound(chainCfg.Second, "second-hop", "first-hop")
+	proxySettings, ok := second["proxySettings"].(map[string]interface{})
+	if !ok || proxySettings["tag"] != "first-hop" {
+		t.Fatalf("second hop proxySettings invalid: %+v", second["proxySettings"])
+	}
+}
+
+func TestChainAdvancedNodeRejectedOnSecondHop(t *testing.T) {
+	raw := `{"first":{"protocol":"socks5","server":"127.0.0.1","port":1080},"second":{"proxyConfig":"vless://00000000-0000-0000-0000-000000000001@second-hop.invalid:443"}}`
+	if _, err := ParseChainSocks5Config(chainSocks5Prefix + url.QueryEscape(raw)); err == nil {
+		t.Fatal("expected second-hop advanced node config to be rejected")
 	}
 }
 

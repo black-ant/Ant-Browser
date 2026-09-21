@@ -5,7 +5,6 @@ import (
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -39,8 +38,6 @@ type browserStartPlan struct {
 	maxStartAttempts     int
 	totalReadyTimeout    time.Duration
 }
-
-var clearBrowserSessionRestoreData = browser.ClearSessionRestoreData
 
 func newBrowserStartInput(profileID string, extraLaunchArgs []string, startURLs []string, skipDefaultStartURLs bool, preferVisibleWindow bool, forceDirectProxy bool, proxyID string, proxyConfig string) browserStartInput {
 	normalizedExtraLaunchArgs := normalizeNonEmptyStrings(extraLaunchArgs)
@@ -310,37 +307,8 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 		)
 	}
 
-	if !profileRestoreLastSession(profile, a.config) {
-		if err := clearBrowserSessionRestoreData(userDataDir); err != nil {
-			if terminated, terminateErr := terminateBrowserProcessesByUserDataDir(userDataDir, 5*time.Second); terminateErr == nil && terminated {
-				log.Warn("会话缓存被旧浏览器进程占用，已结束占用进程并重试清理",
-					logger.F("profile_id", input.ProfileID),
-					logger.F("user_data_dir", userDataDir),
-				)
-				if retryErr := clearBrowserSessionRestoreData(userDataDir); retryErr == nil {
-					return sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, fingerprintLaunchArgs, chromeBinaryPath, userDataDir, nil
-				} else {
-					err = retryErr
-				}
-			} else if terminateErr != nil {
-				log.Warn("会话缓存清理失败后尝试结束占用进程失败",
-					logger.F("profile_id", input.ProfileID),
-					logger.F("user_data_dir", userDataDir),
-					logger.F("error", terminateErr.Error()),
-				)
-			}
-			sessionDir := filepath.Join(userDataDir, "Default", "Sessions")
-			startErr := fmt.Errorf("实例启动失败：无法清理上次会话缓存 %s。原因：%w。请关闭占用该目录的浏览器进程后重试。", sessionDir, err)
-			log.Error("会话恢复缓存清理失败",
-				logger.F("profile_id", input.ProfileID),
-				logger.F("dir", sessionDir),
-				logger.F("error", err.Error()),
-				logger.F("reason", startErr.Error()),
-			)
-			profile.LastError = startErr.Error()
-			return nil, nil, nil, "", "", startErr
-		}
-	}
+	// restore_last_session 只控制本次启动是否请求 Chromium 恢复历史会话。
+	// 禁用恢复绝不能删除 Default/Sessions；否则用户重新开启恢复后也无法找回普通标签页。
 
 	return sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, fingerprintLaunchArgs, chromeBinaryPath, userDataDir, nil
 }

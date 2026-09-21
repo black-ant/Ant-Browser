@@ -1,6 +1,9 @@
 ﻿import type { BrowserCore, BrowserProfile, BrowserProxy, BrowserSettings } from '../types'
 
 export async function getBindings() {
+  if (!(globalThis as any).go?.main?.App) {
+    return null
+  }
   try {
     return await import('../../../wailsjs/go/main/App')
   } catch {
@@ -23,7 +26,7 @@ export function createDefaultBrowserSettings(): BrowserSettings {
     defaultLaunchArgs: [],
     defaultStartUrls: [],
     lightStartEnabled: true,
-    restoreLastSession: false,
+    restoreLastSession: true,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
     defaultConnectorType: 'xray',

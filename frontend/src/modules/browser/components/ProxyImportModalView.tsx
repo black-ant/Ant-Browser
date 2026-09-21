@@ -1,8 +1,9 @@
 import { Button, FormItem, Input, Modal, Select, Table, Textarea } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserProxy } from '../types'
-import { DIRECT_QUICK_IMPORT_TEMPLATE } from '../pages/proxyPool/helpers'
+import { DIRECT_QUICK_IMPORT_TEMPLATE, detectProxyNodeProtocol } from '../pages/proxyPool/helpers'
 import {
+  CHAIN_FIRST_PROTOCOL_OPTIONS,
   DIRECT_PROXY_PROTOCOL_OPTIONS,
   type ChainHopForm,
   type ChainImportForm,
@@ -96,6 +97,10 @@ export function ProxyImportModalView({
   onPreviewModalOpenChange,
   onConfirmImport,
 }: ProxyImportModalViewProps) {
+  const chainProtocolLabel = chainImportForm.firstNodeProtocol === 'hysteria2' ? 'HY2' : chainImportForm.firstNodeProtocol.toUpperCase()
+  const chainNodeOptions = fetchProxyOptions.filter(proxy => detectProxyNodeProtocol(proxy.proxyConfig) === chainImportForm.firstNodeProtocol)
+  const selectedChainNodeId = chainNodeOptions.find(proxy => proxy.proxyConfig.trim() === chainImportForm.firstProxyConfig.trim())?.proxyId || ''
+
   return (
     <>
       <Modal
@@ -283,93 +288,88 @@ export function ProxyImportModalView({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormItem label="协议">
                     <Select
-                      value={chainImportForm.first.protocol}
-                      onChange={e => onUpdateChainHop('first', 'protocol', e.target.value)}
+                      value={chainImportForm.firstMode === 'node' ? chainImportForm.firstNodeProtocol : chainImportForm.first.protocol}
+                      onChange={e => {
+                        const value = e.target.value
+                        if (value === 'http' || value === 'socks5') {
+                          onChainImportFormChange(prev => ({ ...prev, firstMode: 'standard' }))
+                          onUpdateChainHop('first', 'protocol', value)
+                        } else {
+                          onChainImportFormChange(prev => ({ ...prev, firstMode: 'node', firstNodeProtocol: value as ChainImportForm['firstNodeProtocol'], ...(prev.firstNodeSource === 'pool' ? { firstProxyConfig: '' } : {}) }))
+                        }
+                      }}
+                      options={[...CHAIN_FIRST_PROTOCOL_OPTIONS]}
+                    />
+                  </FormItem>
+                  {chainImportForm.firstMode === 'node' && (
+                    <FormItem label="节点来源">
+                      <Select
+                        value={chainImportForm.firstNodeSource}
+                        onChange={e => onChainImportFormChange(prev => ({ ...prev, firstNodeSource: e.target.value as ChainImportForm['firstNodeSource'], ...(e.target.value === 'pool' ? { firstProxyConfig: '' } : {}) }))}
+                        options={[{ value: 'pool', label: '从代理池选择' }, { value: 'manual', label: '手动输入' }]}
+                      />
+                    </FormItem>
+                  )}
+                </div>
+                {chainImportForm.firstMode === 'node' ? chainImportForm.firstNodeSource === 'pool' ? (
+                  <FormItem label="已导入节点" required>
+                    <Select
+                      value={selectedChainNodeId}
+                      onChange={e => {
+                        const proxy = chainNodeOptions.find(item => item.proxyId === e.target.value)
+                        onChainImportFormChange(prev => ({ ...prev, firstProxyConfig: proxy?.proxyConfig || '' }))
+                      }}
                       options={[
-                        { value: 'http', label: 'HTTP' },
-                        { value: 'socks5', label: 'SOCKS5' },
+                        { value: '', label: chainNodeOptions.length ? '请选择节点' : `暂无 ${chainProtocolLabel} 节点` },
+                        ...chainNodeOptions.map(proxy => ({ value: proxy.proxyId, label: `${proxy.proxyName}${proxy.groupName ? ` · ${proxy.groupName}` : ''}` })),
                       ]}
                     />
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">选择后复制节点配置，不与原节点保持引用；原节点后续删除或改名不会影响已保存链路。</p>
                   </FormItem>
-                  <FormItem label="代理地址" required>
-                    <Input
-                      value={chainImportForm.first.server}
-                      onChange={e => onUpdateChainHop('first', 'server', e.target.value)}
-                      placeholder="例如：s1.example.com"
+                ) : (
+                  <FormItem label={`${chainProtocolLabel} 节点配置`} required>
+                    <Textarea
+                      value={chainImportForm.firstProxyConfig}
+                      onChange={e => onChainImportFormChange(prev => ({ ...prev, firstProxyConfig: e.target.value }))}
+                      rows={7}
+                      placeholder={`${chainImportForm.firstNodeProtocol}://...（也支持兼容 Clash 单节点 YAML）`}
                     />
                   </FormItem>
-                  <FormItem label="代理端口" required>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={65535}
-                      value={chainImportForm.first.port}
-                      onChange={e => onUpdateChainHop('first', 'port', e.target.value)}
-                      placeholder="例如：1080"
-                    />
-                  </FormItem>
-                  <FormItem label="账号（可选）">
-                    <Input
-                      value={chainImportForm.first.username}
-                      onChange={e => onUpdateChainHop('first', 'username', e.target.value)}
-                      placeholder="留空则不使用认证"
-                    />
-                  </FormItem>
-                  <FormItem label="密码（可选）">
-                    <Input
-                      type="password"
-                      value={chainImportForm.first.password}
-                      onChange={e => onUpdateChainHop('first', 'password', e.target.value)}
-                      placeholder="留空则不使用密码"
-                    />
-                  </FormItem>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FormItem label="代理地址" required>
+                      <Input value={chainImportForm.first.server} onChange={e => onUpdateChainHop('first', 'server', e.target.value)} placeholder="例如：s1.example.com" />
+                    </FormItem>
+                    <FormItem label="代理端口" required>
+                      <Input type="number" min={1} max={65535} value={chainImportForm.first.port} onChange={e => onUpdateChainHop('first', 'port', e.target.value)} placeholder="例如：1080" />
+                    </FormItem>
+                    <FormItem label="账号（可选）">
+                      <Input value={chainImportForm.first.username} onChange={e => onUpdateChainHop('first', 'username', e.target.value)} />
+                    </FormItem>
+                    <FormItem label="密码（可选）">
+                      <Input type="password" value={chainImportForm.first.password} onChange={e => onUpdateChainHop('first', 'password', e.target.value)} />
+                    </FormItem>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-md border border-[var(--color-border)] p-3 space-y-3">
-                <h4 className="text-sm font-medium text-[var(--color-text-primary)]">第二层代理</h4>
+                <h4 className="text-sm font-medium text-[var(--color-text-primary)]">第二层落地代理</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormItem label="协议">
-                    <Select
-                      value={chainImportForm.second.protocol}
-                      onChange={e => onUpdateChainHop('second', 'protocol', e.target.value)}
-                      options={[
-                        { value: 'http', label: 'HTTP' },
-                        { value: 'socks5', label: 'SOCKS5' },
-                      ]}
-                    />
+                    <Select value={chainImportForm.second.protocol} onChange={e => onUpdateChainHop('second', 'protocol', e.target.value)} options={[{ value: 'http', label: 'HTTP' }, { value: 'socks5', label: 'SOCKS5' }]} />
                   </FormItem>
                   <FormItem label="代理地址" required>
-                    <Input
-                      value={chainImportForm.second.server}
-                      onChange={e => onUpdateChainHop('second', 'server', e.target.value)}
-                      placeholder="例如：s2.example.com"
-                    />
+                    <Input value={chainImportForm.second.server} onChange={e => onUpdateChainHop('second', 'server', e.target.value)} placeholder="例如：s2.example.com" />
                   </FormItem>
                   <FormItem label="代理端口" required>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={65535}
-                      value={chainImportForm.second.port}
-                      onChange={e => onUpdateChainHop('second', 'port', e.target.value)}
-                      placeholder="例如：1081"
-                    />
+                    <Input type="number" min={1} max={65535} value={chainImportForm.second.port} onChange={e => onUpdateChainHop('second', 'port', e.target.value)} placeholder="例如：1081" />
                   </FormItem>
                   <FormItem label="账号（可选）">
-                    <Input
-                      value={chainImportForm.second.username}
-                      onChange={e => onUpdateChainHop('second', 'username', e.target.value)}
-                      placeholder="留空则不使用认证"
-                    />
+                    <Input value={chainImportForm.second.username} onChange={e => onUpdateChainHop('second', 'username', e.target.value)} />
                   </FormItem>
                   <FormItem label="密码（可选）">
-                    <Input
-                      type="password"
-                      value={chainImportForm.second.password}
-                      onChange={e => onUpdateChainHop('second', 'password', e.target.value)}
-                      placeholder="留空则不使用密码"
-                    />
+                    <Input type="password" value={chainImportForm.second.password} onChange={e => onUpdateChainHop('second', 'password', e.target.value)} />
                   </FormItem>
                 </div>
               </div>

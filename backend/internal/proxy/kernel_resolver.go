@@ -131,7 +131,7 @@ func DetectProxyProtocol(proxyConfig string) string {
 	if nodeType := clashNodeType(src); nodeType != "" {
 		return nodeType
 	}
-	for _, prefix := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria2://", "hysteria://", "tuic://", "anytls://"} {
+	for _, prefix := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria2://", "hy2://", "hysteria://", "tuic://", "anytls://"} {
 		if strings.HasPrefix(l, prefix) {
 			return strings.TrimSuffix(prefix, "://")
 		}
@@ -151,14 +151,22 @@ func SupportedKernelsForProtocol(protocol string, proxyConfig string, proxies []
 			return []string{ProxyKernelXray, ProxyKernelMihomo}
 		}
 		return []string{ProxyKernelNative}
-	case "vmess", "vless", "trojan", "chain+socks5":
+	case "chain+socks5":
+		if chainCfg, err := ParseChainSocks5Config(proxyConfig); err == nil {
+			firstProtocol := strings.ToLower(strings.TrimSpace(DetectProxyProtocol(chainCfg.First.ProxyConfig)))
+			if firstProtocol == "hysteria2" || firstProtocol == "hy2" {
+				return []string{ProxyKernelSingBox}
+			}
+		}
+		return []string{ProxyKernelXray}
+	case "vmess", "vless", "trojan":
 		return []string{ProxyKernelXray, ProxyKernelMihomo}
 	case "ss", "shadowsocks":
 		if IsMihomoOnlyProtocol(proxyConfig) {
 			return []string{ProxyKernelMihomo}
 		}
 		return []string{ProxyKernelXray, ProxyKernelMihomo}
-	case "hysteria", "hysteria2", "tuic", "anytls":
+	case "hysteria", "hysteria2", "hy2", "tuic", "anytls":
 		return []string{ProxyKernelSingBox, ProxyKernelMihomo}
 	case "mieru", "wireguard":
 		return []string{ProxyKernelMihomo}

@@ -12,7 +12,7 @@ import (
 // IsSingBoxProtocol 判断是否为 sing-box 支持的协议（hysteria2/tuic）
 func IsSingBoxProtocol(proxyConfig string) bool {
 	l := strings.ToLower(strings.TrimSpace(proxyConfig))
-	if strings.HasPrefix(l, "hysteria2://") || strings.HasPrefix(l, "hysteria://") || strings.HasPrefix(l, "anytls://") || strings.HasPrefix(l, "tuic://") {
+	if strings.HasPrefix(l, "hysteria2://") || strings.HasPrefix(l, "hy2://") || strings.HasPrefix(l, "hysteria://") || strings.HasPrefix(l, "anytls://") || strings.HasPrefix(l, "tuic://") {
 		return true
 	}
 	// Clash YAML 格式
@@ -27,7 +27,7 @@ func IsSingBoxProtocol(proxyConfig string) bool {
 
 // BuildSingBoxOutbound 解析节点配置，返回 sing-box outbound map
 func BuildSingBoxOutbound(node string) (map[string]interface{}, error) {
-	src := strings.TrimSpace(node)
+	src := normalizeNodeScheme(node)
 	l := strings.ToLower(src)
 
 	if strings.HasPrefix(l, "hysteria2://") {

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	goruntime "runtime"
 	"strings"
+	"time"
 )
 
 func (a *App) shutdown(ctx context.Context) {
@@ -129,15 +130,40 @@ func (a *App) stopTrackedBrowserProcesses() {
 		return
 	}
 
+	type shutdownTarget struct {
+		cmd       *exec.Cmd
+		debugPort int
+	}
+
 	a.browserMgr.Mutex.Lock()
-	cmds := make([]*exec.Cmd, 0, len(a.browserMgr.BrowserProcesses))
-	for _, cmd := range a.browserMgr.BrowserProcesses {
-		cmds = append(cmds, cmd)
+	targets := make([]shutdownTarget, 0, len(a.browserMgr.BrowserProcesses))
+	seen := make(map[string]struct{}, len(a.browserMgr.BrowserProcesses))
+	for profileID, cmd := range a.browserMgr.BrowserProcesses {
+		debugPort := 0
+		if profile := a.browserMgr.Profiles[profileID]; profile != nil {
+			debugPort = profile.DebugPort
+		}
+		targets = append(targets, shutdownTarget{cmd: cmd, debugPort: debugPort})
+		seen[profileID] = struct{}{}
+	}
+	for profileID, profile := range a.browserMgr.Profiles {
+		if profile == nil || !profile.Running {
+			continue
+		}
+		if _, ok := seen[profileID]; ok {
+			continue
+		}
+		targets = append(targets, shutdownTarget{debugPort: profile.DebugPort})
 	}
 	a.browserMgr.Mutex.Unlock()
 
-	for _, cmd := range cmds {
-		_ = a.stopProcessCmd(cmd)
+	for _, target := range targets {
+		if target.debugPort > 0 && tryCloseBrowserViaCDP(target.debugPort, 5*time.Second) {
+			continue
+		}
+		if target.cmd != nil {
+			_ = a.stopProcessCmd(target.cmd)
+		}
 	}
 
 	a.browserMgr.Mutex.Lock()

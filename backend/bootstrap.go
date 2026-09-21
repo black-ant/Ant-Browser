@@ -16,6 +16,11 @@ func LoadConfig(path string) (*Config, error) {
 	cfg, err := appconfig.Load(path)
 	repairedConfig := false
 	if err == nil {
+		if appconfig.MigrateLegacyConfig(cfg) {
+			if saveErr := cfg.Save(path); saveErr != nil {
+				return cfg, fmt.Errorf("配置已迁移到 v%d，但写回失败: %w", appconfig.CurrentConfigVersion, saveErr)
+			}
+		}
 		return cfg, nil
 	}
 

@@ -10,12 +10,13 @@ import (
 const chainSocks5Prefix = "chain+socks5://"
 
 type chainSocks5Hop struct {
-	Protocol string `json:"protocol"`
-	Server   string `json:"server"`
-	Port     int    `json:"port"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
-	TLS      bool   `json:"tls,omitempty"`
+	Protocol    string `json:"protocol,omitempty"`
+	Server      string `json:"server,omitempty"`
+	Port        int    `json:"port,omitempty"`
+	Username    string `json:"username,omitempty"`
+	Password    string `json:"password,omitempty"`
+	TLS         bool   `json:"tls,omitempty"`
+	ProxyConfig string `json:"proxyConfig,omitempty"`
 }
 
 type chainSocks5Config struct {
@@ -48,10 +49,10 @@ func ParseChainSocks5Config(src string) (*chainSocks5Config, error) {
 		return nil, fmt.Errorf("链式代理配置 JSON 解析失败: %w", err)
 	}
 
-	if err := validateChainSocks5Hop("第一层", cfg.First); err != nil {
+	if err := validateChainSocks5Hop("第一层", cfg.First, true); err != nil {
 		return nil, err
 	}
-	if err := validateChainSocks5Hop("第二层", cfg.Second); err != nil {
+	if err := validateChainSocks5Hop("第二层", cfg.Second, false); err != nil {
 		return nil, err
 	}
 	if cfg.LocalPort < 0 || cfg.LocalPort > 65535 {
@@ -70,7 +71,35 @@ func normalizeChainHopProtocol(protocol string) string {
 	return normalized
 }
 
-func validateChainSocks5Hop(label string, hop chainSocks5Hop) error {
+func validateChainSocks5Hop(label string, hop chainSocks5Hop, allowProxyConfig bool) error {
+	if proxyConfig := strings.TrimSpace(hop.ProxyConfig); proxyConfig != "" {
+		if !allowProxyConfig {
+			return fmt.Errorf("%s不支持高级节点配置", label)
+		}
+		if IsChainSocks5Proxy(proxyConfig) {
+			return fmt.Errorf("%s不支持嵌套链式代理", label)
+		}
+		protocol := strings.ToLower(strings.TrimSpace(DetectProxyProtocol(proxyConfig)))
+		if protocol == "hysteria2" || protocol == "hy2" {
+			if _, err := BuildSingBoxOutbound(proxyConfig); err != nil {
+				return fmt.Errorf("%s HY2 节点解析失败: %w", label, err)
+			}
+			return nil
+		}
+		switch protocol {
+		case "vless", "vmess", "trojan", "ss", "shadowsocks":
+		default:
+			return fmt.Errorf("%s高级节点仅支持 VLESS、VMess、Trojan、SS、HY2 或兼容的 Clash 节点", label)
+		}
+		standardProxy, outbound, err := ParseProxyNode(proxyConfig)
+		if err != nil {
+			return fmt.Errorf("%s高级节点解析失败: %w", label, err)
+		}
+		if strings.TrimSpace(standardProxy) != "" || outbound == nil {
+			return fmt.Errorf("%s高级节点仅支持 VLESS、VMess、Trojan、SS、HY2 或兼容的 Clash 节点", label)
+		}
+		return nil
+	}
 	if strings.TrimSpace(hop.Server) == "" {
 		return fmt.Errorf("%s代理地址不能为空", label)
 	}

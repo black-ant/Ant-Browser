@@ -130,14 +130,34 @@ func buildMihomoDiagnostic(src string, manager *ClashManager, result *ProxyBuild
 
 func buildSingBoxDiagnostic(src string, manager *SingBoxManager, result *ProxyBuildDiagnostic) {
 	result.Engine = "sing-box"
-	outbound, err := BuildSingBoxOutbound(src)
-	if err != nil {
-		result.Errors = append(result.Errors, err.Error())
-		return
+	if IsChainSocks5Proxy(src) {
+		chainCfg, err := ParseChainSocks5Config(src)
+		if err != nil {
+			result.Errors = append(result.Errors, err.Error())
+			return
+		}
+		outbounds, routeOutbound, err := buildSingBoxChainOutbounds(chainCfg)
+		if err != nil {
+			result.Errors = append(result.Errors, err.Error())
+			return
+		}
+		result.Outbounds = make([]interface{}, 0, len(outbounds))
+		for _, outbound := range outbounds {
+			if item, ok := outbound.(map[string]interface{}); ok {
+				result.Outbounds = append(result.Outbounds, sanitizeDiagnosticMap(item))
+			}
+		}
+		result.Routes = []interface{}{map[string]interface{}{"inbound": []string{"socks-in"}, "outbound": routeOutbound}}
+	} else {
+		outbound, err := BuildSingBoxOutbound(src)
+		if err != nil {
+			result.Errors = append(result.Errors, err.Error())
+			return
+		}
+		result.Outbound = sanitizeDiagnosticMap(outbound)
 	}
 	result.Ok = true
 	result.NodeKey = computeNodeKey(src)
-	result.Outbound = sanitizeDiagnosticMap(outbound)
 	if manager != nil {
 		workDir := manager.resolveWorkdir(result.NodeKey)
 		result.Runtime = buildRuntimeDiagnostic(workDir, "singbox-config.json", "singbox-stderr.log", "singbox.log", "")
@@ -154,8 +174,13 @@ func buildXrayDiagnostic(src string, proxies []config.BrowserProxy, proxyId stri
 			result.Errors = append(result.Errors, err.Error())
 			return
 		}
+		firstHop, err := chainFirstHopOutbound(chainCfg.First, "first-hop")
+		if err != nil {
+			result.Errors = append(result.Errors, err.Error())
+			return
+		}
 		result.Outbounds = []interface{}{
-			sanitizeDiagnosticMap(chainSocks5Outbound(chainCfg.First, "first-hop", "")),
+			sanitizeDiagnosticMap(firstHop),
 			sanitizeDiagnosticMap(chainSocks5Outbound(chainCfg.Second, "second-hop", "first-hop")),
 		}
 		result.Routes = []interface{}{map[string]interface{}{"type": "field", "inboundTag": []string{"socks-in"}, "outboundTag": "second-hop"}}

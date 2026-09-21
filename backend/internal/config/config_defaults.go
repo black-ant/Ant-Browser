@@ -262,6 +262,7 @@ func isLegacyVerificationStartURLs(urls []string) bool {
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
+		ConfigVersion: CurrentConfigVersion,
 		Database: DatabaseConfig{
 			Type: "sqlite",
 			SQLite: SQLiteConfig{
@@ -287,7 +288,7 @@ func DefaultConfig() *Config {
 			DefaultLaunchArgs:      []string{"--disable-sync", "--no-first-run"},
 			DefaultStartURLs:       DefaultBrowserStartURLs(),
 			LightStartEnabled:      boolPtr(true),
-			RestoreLastSession:     false,
+			RestoreLastSession:     true,
 			StartReadyTimeoutMs:    3000,
 			StartStableWindowMs:    1200,
 			DefaultConnectorType:   BrowserConnectorXray,

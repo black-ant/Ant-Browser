@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from '../../../../shared/components'
-import { EventsOn } from '../../../../wailsjs/runtime/runtime'
+
 import {
   browserProxyBatchCheckIPHealth,
   browserProxyBatchTestSpeed,
@@ -134,12 +134,13 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       return next
     })
 
-    const off = EventsOn('proxy:speed:result', (data: ProxySpeedTestResult) => {
+    const speedRuntime = (window as Window & { runtime?: { EventsOn?: (event: string, callback: (data: ProxySpeedTestResult) => void) => (() => void) | void } }).runtime
+    const off = speedRuntime?.EventsOn?.('proxy:speed:result', (data: ProxySpeedTestResult) => {
       const val = toLatencyValue(data.ok, data.latencyMs, data.error)
       setLatencyMap(prev => ({ ...prev, [data.proxyId]: val }))
       if (data.error) setLatencyErrorMap(prev => ({ ...prev, [data.proxyId]: data.error || '' }))
       if (data.engine) setLatencyEngineMap(prev => ({ ...prev, [data.proxyId]: data.engine || '' }))
-    })
+    }) || (() => {})
 
     try {
       const proxyIds = testable.map(p => p.proxyId)
@@ -243,7 +244,8 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
     const idSet = new Set(ids)
     setCheckingIPHealthIds(prev => new Set([...Array.from(prev), ...ids]))
 
-    const off = EventsOn('proxy:iphealth:result', (data: ProxyIPHealthResult) => {
+    const healthRuntime = (window as Window & { runtime?: { EventsOn?: (event: string, callback: (data: ProxyIPHealthResult) => void) => (() => void) | void } }).runtime
+    const off = healthRuntime?.EventsOn?.('proxy:iphealth:result', (data: ProxyIPHealthResult) => {
       if (!data?.proxyId || !idSet.has(data.proxyId)) return
       setIPHealthMap(prev => ({ ...prev, [data.proxyId]: data }))
       setCheckingIPHealthIds(prev => {
@@ -251,7 +253,7 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
         next.delete(data.proxyId)
         return next
       })
-    })
+    }) || (() => {})
 
     try {
       const results = await browserProxyBatchCheckIPHealth(ids, 10)

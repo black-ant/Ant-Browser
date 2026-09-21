@@ -18,7 +18,8 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config Config
+	config := Config{}
+	config.Browser.RestoreLastSession = DefaultConfig().Browser.RestoreLastSession
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
@@ -26,6 +27,20 @@ func Load(configPath string) (*Config, error) {
 	normalizeConfig(&config)
 
 	return &config, nil
+}
+
+// MigrateLegacyConfig 将 1.8.0 之前没有 config_version 的配置迁移到当前语义。
+// 历史发布配置默认写入 restore_last_session=false，无法区分用户选择与旧默认值；
+// 因此首次迁移统一恢复为 true。迁移完成后，用户显式关闭恢复会继续保留。
+func MigrateLegacyConfig(config *Config) bool {
+	if config == nil || config.ConfigVersion >= CurrentConfigVersion {
+		return false
+	}
+	if config.ConfigVersion == 0 {
+		config.Browser.RestoreLastSession = true
+	}
+	config.ConfigVersion = CurrentConfigVersion
+	return true
 }
 
 // Save 保存配置到文件

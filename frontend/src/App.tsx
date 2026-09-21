@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useRef, useState } from "react";
-import { BrowserRouter as Router } from "react-router-dom";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { BrowserRouter as Router, useLocation } from "react-router-dom";
 import { ThemeProvider } from "./shared/theme";
 import { Layout } from "./shared/layout";
 import { MODAL_EXIT_DURATION_MS, ToastContainer, Modal, Button, Loading, toast } from "./shared/components";
@@ -8,6 +8,7 @@ import { AppRoutes } from "./routes/AppRoutes";
 import { lazyNamed } from "./routes/lazyNamed";
 import { useNotificationStore } from "./store/notificationStore";
 import { useBackupStore } from "./store/backupStore";
+import { FishShell } from "./ui-v2/fish/FishShell";
 import { installWailsOperationLogger } from "./utils/wailsOperationLogger";
 import {
   ForceQuit as ForceQuitApp,
@@ -342,6 +343,65 @@ function CloseConfirmModal() {
   );
 }
 
+function AppFrame({
+  routeFallback,
+  onOpenQuickLaunch,
+}: {
+  routeFallback: ReactNode;
+  onOpenQuickLaunch: () => void;
+}) {
+  const location = useLocation();
+  const path = location.pathname;
+  const isFishEditRoute = path.startsWith("/browser/edit/");
+  const isFishDetailRoute = path.startsWith("/browser/detail/");
+  const isFishCopyRoute = path.startsWith("/browser/copy/");
+  const isFishAutomationRoute =
+    path === "/browser/automation" || path.startsWith("/browser/automation/");
+  const isFishStandaloneRoute = [
+    "/browser/list",
+    "/browser/list-v2",
+    "/browser/proxy-pool",
+    "/browser/cores",
+    "/browser/extensions",
+    "/browser/bookmarks",
+    "/browser/logs",
+    "/browser/tags",
+    "/system/docs",
+    "/settings",
+    "/profile",
+    "/charts",
+  ].includes(path);
+  const isFishRoute =
+    isFishEditRoute ||
+    isFishDetailRoute ||
+    isFishCopyRoute ||
+    isFishAutomationRoute ||
+    isFishStandaloneRoute;
+  const content = (
+    <Suspense
+      fallback={
+        isFishRoute ? (
+          <div className="fish-content">
+            <div className="fish-empty">
+              <strong>页面加载中</strong>
+              <span>正在加载 Fish 界面。</span>
+            </div>
+          </div>
+        ) : (
+          routeFallback
+        )
+      }
+    >
+      <AppRoutes />
+    </Suspense>
+  );
+
+  if (isFishRoute) {
+    return <FishShell onOpenQuickLaunch={onOpenQuickLaunch}>{content}</FishShell>;
+  }
+  return <Layout>{content}</Layout>;
+}
+
 function App() {
   useEffect(() => {
     installWailsOperationLogger();
@@ -373,11 +433,10 @@ function App() {
   return (
     <ThemeProvider>
       <Router>
-        <Layout>
-          <Suspense fallback={routeFallback}>
-            <AppRoutes />
-          </Suspense>
-        </Layout>
+        <AppFrame
+          routeFallback={routeFallback}
+          onOpenQuickLaunch={() => setQuickLaunchOpen(true)}
+        />
         <ToastContainer />
         <CloseConfirmModal />
         <Suspense fallback={null}>

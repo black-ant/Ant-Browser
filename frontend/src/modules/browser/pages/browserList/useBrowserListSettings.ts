@@ -17,7 +17,7 @@ const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
   defaultLaunchArgs: [],
   defaultStartUrls: [],
   lightStartEnabled: true,
-  restoreLastSession: false,
+  restoreLastSession: true,
   startReadyTimeoutMs: 3000,
   startStableWindowMs: 1200,
   defaultConnectorType: 'xray',

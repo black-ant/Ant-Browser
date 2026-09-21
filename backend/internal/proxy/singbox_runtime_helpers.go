@@ -80,6 +80,10 @@ func (m *SingBoxManager) resolveBinary() (string, error) {
 }
 
 func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}, port int) (string, error) {
+	return m.buildConfigWithOutbounds(key, []interface{}{outbound}, "proxy-out", port)
+}
+
+func (m *SingBoxManager) buildConfigWithOutbounds(key string, outbounds []interface{}, routeOutbound string, port int) (string, error) {
 	baseDir := m.resolveWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return "", err
@@ -100,13 +104,10 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 				"listen_port": port,
 			},
 		},
-		"outbounds": []interface{}{
-			outbound,
-			map[string]interface{}{
-				"type": "direct",
-				"tag":  "direct",
-			},
-		},
+		"outbounds": append(cloneInterfaceSlice(outbounds), map[string]interface{}{
+			"type": "direct",
+			"tag":  "direct",
+		}),
 		"route": map[string]interface{}{
 			"default_domain_resolver": "public-dns",
 			"rules": []interface{}{
@@ -116,7 +117,7 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 				},
 				map[string]interface{}{
 					"inbound":  []string{"socks-in"},
-					"outbound": "proxy-out",
+					"outbound": routeOutbound,
 				},
 			},
 		},
