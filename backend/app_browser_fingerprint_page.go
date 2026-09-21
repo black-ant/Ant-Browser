@@ -552,6 +552,7 @@ var latestReport = null;
 var latestContext = __FINGERPRINT_CHECK_CONTEXT__;
 var fingerprintCheckRunning = false;
 var latestBeforeSnapshot = null;
+var FINGERPRINT_BASELINE_SCHEMA = '2026-09-22-v2';
 var FINGERPRINT_AUTO_REFRESH_MS = 60 * 60 * 1000;
 var FINGERPRINT_AUTO_REFRESH_CHECK_MS = 60 * 1000;
 var currentUILang = latestContext && latestContext.uiLanguage === 'en' ? 'en' : 'zh';
@@ -595,6 +596,18 @@ var UI_ZH = {
   'Config Sent': '配置下发',
   'Built-in Expected': '内置期望',
   'Known Ineffective': '实测无效',
+  'Built-in Guardrail': '内置合理性门禁',
+  'Mitigation': '规避策略',
+  'Core Limitation': '内核限制',
+  'Mitigated': '已规避',
+  'Observed': '已观测',
+  'browser default': '浏览器默认值',
+  'unset': '未设置',
+  'fixed profile characteristic': 'profile 固定特征',
+  'native canvas': '原生 Canvas',
+  '1-16 logical cores': '1–16 个逻辑核心',
+  'no hidden Windows/CJK font leak': '不暴露已隐藏的 Windows/CJK 字体',
+  'no CPU model or software renderer': '不暴露 CPU 型号或软件渲染器',
   'Before/After': '修改前后',
   'Changed': '已变化',
   'Unchanged': '未变化',
@@ -679,6 +692,7 @@ var UI_ZH = {
   'Compare navigator.maxTouchPoints': '比对 navigator.maxTouchPoints',
   'Compare navigator.doNotTrack': '比对 navigator.doNotTrack',
   'Compare window.outerWidth/outerHeight': '比对 window.outerWidth/outerHeight',
+  'Allow up to 4 CSS pixels for Linux window-manager decorations': 'Linux 窗口管理器边框允许最大 4 CSS 像素差异',
   'Compare screen.colorDepth': '比对 screen.colorDepth',
   'Compare whether User-Agent contains expected brand': '比对 User-Agent 是否包含期望品牌',
   'Prefer full browser version comparison; if User-Agent exposes only major version, compare by major version': '优先比对完整浏览器版本；User-Agent 只暴露主版本时按主版本口径匹配',
@@ -705,6 +719,13 @@ var UI_ZH = {
   'Compare MIME list': '比对 MIME 列表',
   'Compare screen size': '比对屏幕尺寸',
   'Compare DPR': '比对 DPR',
+  'Linux desktop guardrail: use a plausible logical core count from 1 to 16': 'Linux 桌面画像门禁：逻辑核心数应为 1–16 之间的合理值',
+  'Chromium deviceMemory should use the standard bucket set and must not exceed 8 GB': 'Chromium deviceMemory 应使用标准分档，且不应超过 8 GB',
+  'Linux font mitigation should not expose the hidden Windows or CJK font set': 'Linux 字体规避不应暴露被隐藏的 Windows 或 CJK 字体集',
+  'WebGL renderer should not expose a CPU model or software renderer': 'WebGL Renderer 不应暴露 CPU 型号或软件渲染器',
+  'Canvas spoofing is intentionally disabled because this core corrupts measureText when it is enabled; keep one stable profile per account and do not rotate Seed casually': '因当前内核启用 Canvas 伪装会破坏 measureText，已有意关闭该伪装；应为每个账号固定一个 profile，不要随意更换 Seed',
+  'This standalone control is ineffective in the current core. Treat the observed value as a fixed profile characteristic and avoid workflows that require per-profile spoofing of this field.': '当前内核的该独立控制无效。应将观测值视为 profile 固定特征，避免使用必须逐 profile 伪装该字段的业务流程。',
+  'No explicit config; the browser default is retained': '未显式配置；保留浏览器默认值',
   'No explicit config and no actual value collected; runtime baseline cannot be created': '未显式配置，且本次没有可用实际值，无法建立运行基线',
   'Actual value matches expected value': '实际值与期望值一致',
   'Actual value does not match expected value': '实际值与期望值不一致',
@@ -1309,6 +1330,29 @@ function compareContainsStatus(expected, actual) {
   if (!hasExpected(expected)) return 'unknown';
   return String(actual || '').indexOf(String(expected)) >= 0 ? 'match' : 'mismatch';
 }
+function compareWindowSizeStatus(expected, actual) {
+  var expectedParts = String(expected || '').split(',').map(function (item) { return parseInt(item, 10); });
+  var actualParts = String(actual || '').split(',').map(function (item) { return parseInt(item, 10); });
+  if (expectedParts.length !== 2 || actualParts.length !== 2 || expectedParts.some(isNaN) || actualParts.some(isNaN)) return 'mismatch';
+  return Math.abs(expectedParts[0] - actualParts[0]) <= 4 && Math.abs(expectedParts[1] - actualParts[1]) <= 4 ? 'compatible' : 'mismatch';
+}
+function hardwareConcurrencyGuardrailStatus(actual) {
+  var value = Number(actual);
+  return Number.isInteger(value) && value >= 1 && value <= 16 ? 'match' : 'warning';
+}
+function deviceMemoryGuardrailStatus(actual) {
+  var value = Number(actual);
+  return [0.25, 0.5, 1, 2, 4, 8].indexOf(value) >= 0 ? 'match' : 'warning';
+}
+function linuxFontGuardrailStatus(actual) {
+  var fonts = (actual || []).map(function (item) { return String(item).trim().toLowerCase(); });
+  var hidden = ['calibri', 'cambria', 'consolas', 'microsoft yahei', 'noto sans cjk sc', 'segoe ui'];
+  return hidden.some(function (font) { return fonts.indexOf(font) >= 0; }) ? 'warning' : 'match';
+}
+function webGLRendererGuardrailStatus(actual) {
+  var value = String(actual || '');
+  return /(?:swiftshader|llvmpipe|software rasterizer|amd ryzen|intel\(r\) core|\bcpu\b|processor\s*\()/i.test(value) ? 'warning' : 'match';
+}
 function versionParts(value) {
   var normalized = String(value || '').replace(/_/g, '.');
   var match = normalized.match(/\d+(?:\.\d+)*/);
@@ -1374,6 +1418,11 @@ function statusText(status, source) {
   if (status === 'compatible') return 'Compatible';
   if (status === 'mismatch') return 'Mismatch';
   if (status === 'warning') return 'Risk';
+  if (status === 'configured') return 'Configured';
+  if (status === 'mitigated') return 'Mitigated';
+  if (status === 'limitation') return 'Core Limitation';
+  if (status === 'info') return 'Observed';
+  if (status === 'not_configured') return 'Not Configured';
   if (status === 'unreadable') return 'Configured';
   if (status === 'unsupported') return 'Unsupported';
   if (status === 'baseline') return 'Baseline Set';
@@ -1387,6 +1436,7 @@ function statusClass(status, source) {
   if (source === 'Runtime Baseline' && status === 'mismatch') return 'warn';
   if (status === 'mismatch') return 'bad';
   if (status === 'warning') return 'warn';
+  if (status === 'mitigated' || status === 'limitation') return 'warn';
   return 'muted';
 }
 function reasonFor(status, reason) {
@@ -1422,7 +1472,7 @@ function baselineStorageKey(context) {
   var expected = context && context.expected ? context.expected : {};
   var profileId = context && context.profileId ? context.profileId : 'unknown';
   var seed = expected.seed || 'no-seed';
-  return 'ant:fingerprint-check:baseline:' + profileId + ':' + seed;
+  return 'ant:fingerprint-check:baseline:' + FINGERPRINT_BASELINE_SCHEMA + ':' + profileId + ':' + seed;
 }
 function loadFingerprintBaseline(context) {
   latestBaselineCreated = {};
@@ -1541,17 +1591,25 @@ function buildFingerprintRows(report, context) {
   loadFingerprintBaseline(context);
   var expected = context && context.expected ? context.expected : {};
   var uaVersion = report.identity.userAgent + (report.identity.userAgentData ? ' / ' + JSON.stringify(report.identity.userAgentData) : '');
+  var disabledSpoofing = csvItems(expected.disableSpoofing).map(function (item) { return item.toLowerCase(); });
+  var linuxPersona = normalizePlatformForCompare(expected.platform || report.identity.platform) === 'linux';
   var rows = [];
-  rows.push(fingerprintRow('Fingerprint Seed', expected.seed, 'JS unreadable', expected.seed ? 'unreadable' : 'unknown', 'Seed is a launch parameter and cannot be read back from page JS'));
-  rows.push(fingerprintRow('Native Exposure Disabled', expected.disableSpoofing, 'JS unreadable', expected.disableSpoofing ? 'unreadable' : 'unknown', 'This is a launch protection policy and cannot be read back from page JS'));
+  rows.push(fingerprintRow('Fingerprint Seed', expected.seed, 'JS unreadable', expected.seed ? 'configured' : 'not_configured', 'Seed is a launch parameter and cannot be read back from page JS', expected.seed ? 'Config Sent' : 'Not Configured'));
+  rows.push(fingerprintRow('Native Exposure Disabled', expected.disableSpoofing, 'JS unreadable', expected.disableSpoofing ? 'configured' : 'not_configured', 'This is a launch protection policy and cannot be read back from page JS', expected.disableSpoofing ? 'Config Sent' : 'Not Configured'));
   rows.push(observedFingerprintRow('Language', context, 'language', expected.language, report.locale.language, compareExactStatus, 'Compare navigator.language'));
   rows.push(observedFingerprintRow('Languages', context, 'languages', expected.acceptLanguage, report.locale.languages, compareArrayPrefixStatus, 'Compare navigator.languages prefix'));
   rows.push(observedFingerprintRow('Timezone', context, 'timezone', expected.timezone, report.locale.timezone, compareExactStatus, 'Compare Intl.DateTimeFormat().resolvedOptions().timeZone'));
-  rows.push(observedFingerprintRow('CPU Cores', context, 'hardwareConcurrency', expected.hardwareConcurrency, report.hardware.hardwareConcurrency, compareExactStatus, 'Compare navigator.hardwareConcurrency'));
-  rows.push(observedFingerprintRow('Device Memory', context, 'deviceMemory', expected.deviceMemory, report.hardware.deviceMemory, compareExactStatus, 'Compare navigator.deviceMemory'));
+  rows.push(hasExpected(expected.hardwareConcurrency)
+    ? observedFingerprintRow('CPU Cores', context, 'hardwareConcurrency', expected.hardwareConcurrency, report.hardware.hardwareConcurrency, compareExactStatus, 'Compare navigator.hardwareConcurrency')
+    : fingerprintRow('CPU Cores', '1-16 logical cores', report.hardware.hardwareConcurrency, hardwareConcurrencyGuardrailStatus(report.hardware.hardwareConcurrency), 'Linux desktop guardrail: use a plausible logical core count from 1 to 16', 'Built-in Guardrail'));
+  rows.push(hasExpected(expected.deviceMemory)
+    ? observedFingerprintRow('Device Memory', context, 'deviceMemory', expected.deviceMemory, report.hardware.deviceMemory, compareExactStatus, 'Compare navigator.deviceMemory')
+    : fingerprintRow('Device Memory', '0.25 / 0.5 / 1 / 2 / 4 / 8 GB', report.hardware.deviceMemory, deviceMemoryGuardrailStatus(report.hardware.deviceMemory), 'Chromium deviceMemory should use the standard bucket set and must not exceed 8 GB', 'Built-in Guardrail'));
   rows.push(observedFingerprintRow('Touch Points', context, 'maxTouchPoints', expected.touchPoints, report.hardware.maxTouchPoints, compareExactStatus, 'Compare navigator.maxTouchPoints'));
-  rows.push(observedFingerprintRow('Do Not Track', context, 'doNotTrack', expected.doNotTrack, report.hardware.doNotTrack, compareExactStatus, 'Compare navigator.doNotTrack'));
-  rows.push(observedFingerprintRow('Window Size', context, 'windowSize', expected.windowSize, report.screen.outerWidth + ',' + report.screen.outerHeight, compareExactStatus, 'Compare window.outerWidth/outerHeight'));
+  rows.push(hasExpected(expected.doNotTrack)
+    ? observedFingerprintRow('Do Not Track', context, 'doNotTrack', expected.doNotTrack, report.hardware.doNotTrack, compareExactStatus, 'Compare navigator.doNotTrack')
+    : fingerprintRow('Do Not Track', 'browser default', report.hardware.doNotTrack || 'unset', 'info', 'No explicit config; the browser default is retained', 'Observed'));
+  rows.push(observedFingerprintRow('Window Size', context, 'windowSize', expected.windowSize, report.screen.outerWidth + ',' + report.screen.outerHeight, compareWindowSizeStatus, 'Allow up to 4 CSS pixels for Linux window-manager decorations'));
   rows.push(observedFingerprintRow('Color Depth', context, 'colorDepth', expected.colorDepth, report.screen.colorDepth, compareExactStatus, 'Compare screen.colorDepth'));
   rows.push(fingerprintRow('Brand', expected.brand, report.identity.userAgent, compareContainsStatus(expected.brand, report.identity.userAgent), 'Compare whether User-Agent contains expected brand'));
   rows.push(observedFingerprintRow('Brand Version', context, 'brandVersion', expected.brandVersion, report.identity.userAgent, compareBrowserVersionStatus, 'Prefer full browser version comparison; if User-Agent exposes only major version, compare by major version'));
@@ -1560,17 +1618,25 @@ function buildFingerprintRows(report, context) {
   rows.push(fingerprintRow('Webdriver', 'false', report.identity.webdriver ? 'true' : 'false', report.identity.webdriver ? 'mismatch' : 'match', 'Expected navigator.webdriver not to expose automation', 'Built-in Expected'));
   var expectsWebRTCBlocked = hasExpected(expected.webrtcPolicy);
   rows.push(fingerprintRow('WebRTC Host', expectsWebRTCBlocked ? '0 host candidates' : '', report.network.localCandidateCount + ' host candidates', expectsWebRTCBlocked ? (report.network.localCandidateCount > 0 ? 'mismatch' : 'match') : 'unknown', expectsWebRTCBlocked ? 'Compare whether local host candidate is exposed' : 'No WebRTC expected value configured; showing actual collected value only'));
-  rows.push(fingerprintRow('Media Device Count', 'Not used as expected', 'JS unreadable', 'unsupported', 'Standalone media device count parameter is ineffective in local Chrom-144 test and is not passed as runtime parameter', 'Known Ineffective'));
-  rows.push(fingerprintRow('Canvas Noise', expected.canvasNoise, 'JS unreadable', expected.canvasNoise ? 'unreadable' : 'unknown', 'Canvas noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check Canvas Hash stability for effect.'));
-  rows.push(fingerprintRow('Audio Noise', 'Not used as expected', 'JS unreadable', 'unsupported', 'Standalone audio noise parameter is ineffective in local Chrom-144 test; observe audio changes through Seed and Audio Hash', 'Known Ineffective'));
-  rows.push(fingerprintRow('ClientRects Noise', expected.clientRectsNoise, 'JS unreadable', expected.clientRectsNoise ? 'unreadable' : 'unknown', 'ClientRects noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check ClientRects Hash stability for effect.'));
+  rows.push(fingerprintRow('Media Device Count', 'fixed profile characteristic', 'JS unreadable', 'limitation', 'This standalone control is ineffective in the current core. Treat the observed value as a fixed profile characteristic and avoid workflows that require per-profile spoofing of this field.', 'Known Ineffective'));
+  rows.push(disabledSpoofing.indexOf('canvas') >= 0
+    ? fingerprintRow('Canvas Noise', 'native canvas', 'native canvas', 'mitigated', 'Canvas spoofing is intentionally disabled because this core corrupts measureText when it is enabled; keep one stable profile per account and do not rotate Seed casually', 'Mitigation')
+    : fingerprintRow('Canvas Noise', expected.canvasNoise, 'JS unreadable', expected.canvasNoise ? 'configured' : 'not_configured', 'Canvas noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check Canvas Hash stability for effect.', expected.canvasNoise ? 'Config Sent' : 'Not Configured'));
+  rows.push(fingerprintRow('Audio Noise', 'fixed profile characteristic', 'JS unreadable', 'limitation', 'This standalone control is ineffective in the current core. Treat the observed value as a fixed profile characteristic and avoid workflows that require per-profile spoofing of this field.', 'Known Ineffective'));
+  rows.push(fingerprintRow('ClientRects Noise', expected.clientRectsNoise, 'JS unreadable', expected.clientRectsNoise ? 'configured' : 'not_configured', 'ClientRects noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check ClientRects Hash stability for effect.', expected.clientRectsNoise ? 'Config Sent' : 'Not Configured'));
   rows.push(effectObservedFingerprintRow('Canvas Hash', context, 'canvasHash', report.advanced.canvasHash, expected.canvasNoise ? 'Canvas Hash is an effect observation for Canvas noise, not expected config' : 'Canvas Hash is detected output hash, not expected config'));
   rows.push(effectObservedFingerprintRow('Audio Hash', context, 'audioHash', report.advanced.audioHash, 'Audio Hash is detected output hash, not expected config'));
   rows.push(effectObservedFingerprintRow('ClientRects Hash', context, 'clientRectsHash', report.advanced.clientRectsHash, expected.clientRectsNoise ? 'ClientRects Hash is an effect observation for ClientRects noise, not expected config' : 'ClientRects Hash is detected output hash, not expected config'));
   rows.push(effectObservedFingerprintRow('Fonts Hash', context, 'fontHash', report.advanced.fontHash, 'Fonts Hash is detected output hash, not expected config'));
-  rows.push(observedFingerprintRow('Detected Fonts', context, 'detectedFonts', expected.fontList, report.advanced.detectedFonts, compareArrayContainsAllStatus, 'Compare whether detected fonts include configured list'));
+  rows.push(hasExpected(expected.fontList)
+    ? observedFingerprintRow('Detected Fonts', context, 'detectedFonts', expected.fontList, report.advanced.detectedFonts, compareArrayContainsAllStatus, 'Compare whether detected fonts include configured list')
+    : (linuxPersona
+      ? fingerprintRow('Detected Fonts', 'no hidden Windows/CJK font leak', report.advanced.detectedFonts, linuxFontGuardrailStatus(report.advanced.detectedFonts), 'Linux font mitigation should not expose the hidden Windows or CJK font set', 'Built-in Guardrail')
+      : observedFingerprintRow('Detected Fonts', context, 'detectedFonts', '', report.advanced.detectedFonts, compareArrayContainsAllStatus, 'Compare whether detected fonts include configured list')));
   rows.push(observedFingerprintRow('WebGL Vendor', context, 'webglVendor', expected.webGLVendor || expected.webglVendor, report.advanced.webglVendor, compareExactStatus, 'Compare WebGL Vendor'));
-  rows.push(observedFingerprintRow('WebGL Renderer', context, 'webglRenderer', expected.webGLRenderer || expected.webglRenderer, report.advanced.webglRenderer, compareExactStatus, 'Compare WebGL Renderer'));
+  rows.push(hasExpected(expected.webGLRenderer || expected.webglRenderer)
+    ? observedFingerprintRow('WebGL Renderer', context, 'webglRenderer', expected.webGLRenderer || expected.webglRenderer, report.advanced.webglRenderer, compareExactStatus, 'Compare WebGL Renderer')
+    : fingerprintRow('WebGL Renderer', 'no CPU model or software renderer', report.advanced.webglRenderer, webGLRendererGuardrailStatus(report.advanced.webglRenderer), 'WebGL renderer should not expose a CPU model or software renderer', 'Built-in Guardrail'));
   rows.push(effectObservedFingerprintRow('WebGL Hash', context, 'webglHash', report.advanced.webglHash, 'WebGL Hash is detected output hash, not expected config'));
   rows.push(observedFingerprintRow('Plugins', context, 'plugins', '', report.advanced.plugins, compareExactStatus, 'Compare plugin list'));
   rows.push(observedFingerprintRow('MIME Types', context, 'mimeTypes', '', report.advanced.mimeTypes, compareExactStatus, 'Compare MIME list'));
@@ -1579,7 +1645,7 @@ function buildFingerprintRows(report, context) {
   return rows;
 }
 function shouldShowReason(status) {
-  return status === 'mismatch' || status === 'warning' || status === 'unreadable' || status === 'unsupported' || status === 'baseline' || status === 'unknown';
+  return status === 'mismatch' || status === 'warning' || status === 'unreadable' || status === 'unsupported' || status === 'baseline' || status === 'unknown' || status === 'mitigated' || status === 'limitation';
 }
 function renderFingerprintTable(rows) {
   return '<section><h2>' + uiText('Fingerprint Check') + '</h2><table><thead><tr><th>' + uiText('Item') + '</th><th>' + uiText('Value') + '</th><th>' + uiText('Expected Source') + '</th><th>' + uiText('Result') + '</th><th>' + uiText('Reason') + '</th></tr></thead><tbody>' + rows.map(function (item) {
