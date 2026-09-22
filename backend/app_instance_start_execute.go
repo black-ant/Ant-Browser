@@ -73,6 +73,19 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 			if plan.extensionWarning != "" {
 				profile.RuntimeWarning = plan.extensionWarning
 			}
+			if err := syncConfiguredBrowserWindowSize(stableDebugPort, plan.args); err != nil {
+				windowWarning := fmt.Sprintf("浏览器已启动，但配置的窗口尺寸未能自动校正：%v", err)
+				if profile.RuntimeWarning != "" {
+					profile.RuntimeWarning += "；" + windowWarning
+				} else {
+					profile.RuntimeWarning = windowWarning
+				}
+				log.Warn("浏览器已就绪，但窗口尺寸校正失败",
+					logger.F("profile_id", input.ProfileID),
+					logger.F("debug_port", stableDebugPort),
+					logger.F("error", err.Error()),
+				)
+			}
 			a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
 			if plan.acquiredProxyBridge.valid() {
 				a.bindProfileProxyBridge(input.ProfileID, plan.acquiredProxyBridge)
