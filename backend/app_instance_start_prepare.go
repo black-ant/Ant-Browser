@@ -29,6 +29,7 @@ type browserStartPlan struct {
 
 	deferredStartTargets []string
 	deferredStartNewTabs bool
+	deferredActivateLast bool
 	effectiveProxy       string
 	acquiredProxyBridge  profileProxyBridgeRef
 	releaseProxyBridge   bool
@@ -105,7 +106,7 @@ func (a *App) resolveBrowserStartProfile(input browserStartInput) (*BrowserProfi
 
 	fingerprintExpectedArgs := a.fingerprintCheckExpectedArgsForRunningProfile(profile, input.ExtraLaunchArgs)
 	resolvedStartURLs := a.resolveFingerprintCheckStartURLsForExpectedArgsAndProfile(profile.ProfileId, fingerprintExpectedArgs, profile, input.StartURLs)
-	if err := a.openBrowserTabForRunningProfile(profile, input.ExtraLaunchArgs, resolvedStartURLs); err != nil {
+	if err := a.openBrowserTabForRunningProfile(profile, input.ExtraLaunchArgs, resolvedStartURLs, input.PreferVisibleWindow); err != nil {
 		startErr := fmt.Errorf("实例已在运行，但新标签打开失败：%w", err)
 		log.Error("运行中实例新标签打开失败",
 			logger.F("profile_id", input.ProfileID),
@@ -181,6 +182,7 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		args:                 instanceArgs,
 		deferredStartTargets: deferredStartTargets,
 		deferredStartNewTabs: deferredStartNewTabs,
+		deferredActivateLast: input.PreferVisibleWindow,
 		effectiveProxy:       effectiveProxy,
 		acquiredProxyBridge:  acquiredProxyBridge,
 		releaseProxyBridge:   releaseProxyBridge,
@@ -286,7 +288,7 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 		}
 		fingerprintExpectedArgs := a.fingerprintCheckExpectedArgsForRunningProfile(profile, input.ExtraLaunchArgs)
 		resolvedStartURLs := a.resolveFingerprintCheckStartURLsForExpectedArgsAndProfile(profile.ProfileId, fingerprintExpectedArgs, profile, input.StartURLs)
-		if err := a.openBrowserTabForRunningProfile(profile, input.ExtraLaunchArgs, resolvedStartURLs); err != nil {
+		if err := a.openBrowserTabForRunningProfile(profile, input.ExtraLaunchArgs, resolvedStartURLs, input.PreferVisibleWindow); err != nil {
 			startErr := fmt.Errorf("实例已在运行，但新标签打开失败：%w", err)
 			profile.LastError = startErr.Error()
 			return nil, nil, nil, "", "", startErr

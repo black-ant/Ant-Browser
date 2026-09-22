@@ -126,7 +126,7 @@ func syncConfiguredBrowserWindowSizeWithCall(debugPort int, args []string, call 
 		if err := decodeBrowserWindowCDPResult(verifiedResult, &verified); err != nil {
 			return fmt.Errorf("解析浏览器窗口校正结果失败: %w", err)
 		}
-		if verified.Bounds.Width != width || verified.Bounds.Height != height || strings.ToLower(strings.TrimSpace(verified.Bounds.WindowState)) != "normal" {
+		if !browserWindowSizeWithinTolerance(verified.Bounds.Width, verified.Bounds.Height, width, height) || strings.ToLower(strings.TrimSpace(verified.Bounds.WindowState)) != "normal" {
 			return fmt.Errorf("浏览器窗口尺寸仍为 %d,%d (%s)，期望 %d,%d", verified.Bounds.Width, verified.Bounds.Height, verified.Bounds.WindowState, width, height)
 		}
 		if state == "minimized" {
@@ -139,4 +139,17 @@ func syncConfiguredBrowserWindowSizeWithCall(debugPort int, args []string, call 
 		}
 	}
 	return nil
+}
+
+func browserWindowSizeWithinTolerance(actualWidth, actualHeight, expectedWidth, expectedHeight int) bool {
+	const linuxWindowManagerTolerance = 4
+	widthDelta := actualWidth - expectedWidth
+	if widthDelta < 0 {
+		widthDelta = -widthDelta
+	}
+	heightDelta := actualHeight - expectedHeight
+	if heightDelta < 0 {
+		heightDelta = -heightDelta
+	}
+	return widthDelta <= linuxWindowManagerTolerance && heightDelta <= linuxWindowManagerTolerance
 }

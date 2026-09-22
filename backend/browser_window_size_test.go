@@ -31,6 +31,15 @@ func TestConfiguredBrowserWindowSize(t *testing.T) {
 	}
 }
 
+func TestBrowserWindowSizeWithinTolerance(t *testing.T) {
+	if !browserWindowSizeWithinTolerance(1442, 998, 1440, 1000) {
+		t.Fatal("Linux window-manager decoration delta should be accepted")
+	}
+	if browserWindowSizeWithinTolerance(1356, 792, 1440, 1000) {
+		t.Fatal("content viewport should not satisfy native window bounds")
+	}
+}
+
 func TestSyncConfiguredBrowserWindowSizeRestoresMinimizedStateAndDeduplicatesWindow(t *testing.T) {
 	type callRecord struct {
 		method string

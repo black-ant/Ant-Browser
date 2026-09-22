@@ -223,6 +223,7 @@ func (a *App) runtimeBookmarksForProfileExpectedArgsAndProfile(profileId string,
 
 type fingerprintCheckPageContext struct {
 	ProfileId  string                         `json:"profileId"`
+	CoreId     string                         `json:"coreId,omitempty"`
 	Expected   BrowserFingerprintExpectedInfo `json:"expected"`
 	Proxy      fingerprintCheckProxyContext   `json:"proxy"`
 	UILanguage string                         `json:"uiLanguage"`
@@ -262,8 +263,13 @@ func (a *App) buildFingerprintCheckPageContextForExpectedArgs(profileId string, 
 
 func (a *App) buildFingerprintCheckPageContextForExpectedArgsAndProfile(profileId string, expectedArgs []string, profile *BrowserProfile) ([]byte, error) {
 	expected := buildBrowserFingerprintExpected(expectedArgs)
+	coreId := ""
+	if profile != nil {
+		coreId = strings.TrimSpace(profile.CoreId)
+	}
 	data, err := json.MarshalIndent(fingerprintCheckPageContext{
 		ProfileId:  profileId,
+		CoreId:     coreId,
 		Expected:   expected,
 		Proxy:      a.buildFingerprintCheckProxyContext(profile),
 		UILanguage: fingerprintCheckPreferredUILanguage(expected),
@@ -551,8 +557,9 @@ const fingerprintCheckHTML = `<!doctype html>
 var latestReport = null;
 var latestContext = __FINGERPRINT_CHECK_CONTEXT__;
 var fingerprintCheckRunning = false;
+var fingerprintVisibilityRefreshPending = false;
 var latestBeforeSnapshot = null;
-var FINGERPRINT_BASELINE_SCHEMA = '2026-09-22-v2';
+var FINGERPRINT_BASELINE_SCHEMA = '2026-09-22-v3';
 var FINGERPRINT_AUTO_REFRESH_MS = 60 * 60 * 1000;
 var FINGERPRINT_AUTO_REFRESH_CHECK_MS = 60 * 1000;
 var currentUILang = latestContext && latestContext.uiLanguage === 'en' ? 'en' : 'zh';
@@ -836,6 +843,13 @@ async function audioHash() {
     var data = buffer.getChannelData(0).slice(4500, 5000);
     return hashString(Array.prototype.map.call(data, function (v) { return v.toFixed(6); }).join(','));
   }, '');
+}
+async function mediaDeviceCount() {
+  return await safe(async function () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return 0;
+    var devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.length;
+  }, 0);
 }
 function clientRectsHash() {
   return safe(function () {
@@ -1225,9 +1239,10 @@ async function collect() {
   } : null;
   var fonts = fontProbe();
   var gl = webglInfo();
-  var networkResults = await Promise.all([webrtcCandidates(), collectPublicIPInfo()]);
+  var networkResults = await Promise.all([webrtcCandidates(), collectPublicIPInfo(), mediaDeviceCount()]);
   var candidates = networkResults[0];
   var proxyInfo = networkResults[1];
+  var mediaCount = networkResults[2];
   return {
     generatedAt: new Date().toISOString(),
     urlProfileId: new URLSearchParams(location.search).get('profileId') || '',
@@ -1248,7 +1263,8 @@ async function collect() {
       deviceMemory: navigator.deviceMemory || 0,
       maxTouchPoints: navigator.maxTouchPoints || 0,
       cookieEnabled: navigator.cookieEnabled === true,
-      doNotTrack: navigator.doNotTrack || ''
+      doNotTrack: navigator.doNotTrack || '',
+      mediaDeviceCount: mediaCount
     },
     screen: {
       width: screen.width || 0,
@@ -1334,7 +1350,15 @@ function compareWindowSizeStatus(expected, actual) {
   var expectedParts = String(expected || '').split(',').map(function (item) { return parseInt(item, 10); });
   var actualParts = String(actual || '').split(',').map(function (item) { return parseInt(item, 10); });
   if (expectedParts.length !== 2 || actualParts.length !== 2 || expectedParts.some(isNaN) || actualParts.some(isNaN)) return 'mismatch';
-  return Math.abs(expectedParts[0] - actualParts[0]) <= 4 && Math.abs(expectedParts[1] - actualParts[1]) <= 4 ? 'compatible' : 'mismatch';
+  var widthDelta = expectedParts[0] - actualParts[0];
+  var heightDelta = expectedParts[1] - actualParts[1];
+  if (Math.abs(widthDelta) <= 4 && Math.abs(heightDelta) <= 4) return 'compatible';
+  // Chrome's --window-size is a native window-bounds request. Linux browser
+  // chrome, side panels and window-manager insets can make JS outerWidth /
+  // outerHeight smaller even though CDP confirms the configured native bounds.
+  // Keep restored/maximized oversized windows as mismatches.
+  if (widthDelta >= 0 && widthDelta <= 128 && heightDelta >= 0 && heightDelta <= 256 && actualParts[0] >= 800 && actualParts[1] >= 600) return 'compatible';
+  return 'mismatch';
 }
 function hardwareConcurrencyGuardrailStatus(actual) {
   var value = Number(actual);
@@ -1472,7 +1496,8 @@ function baselineStorageKey(context) {
   var expected = context && context.expected ? context.expected : {};
   var profileId = context && context.profileId ? context.profileId : 'unknown';
   var seed = expected.seed || 'no-seed';
-  return 'ant:fingerprint-check:baseline:' + FINGERPRINT_BASELINE_SCHEMA + ':' + profileId + ':' + seed;
+  var coreId = context && context.coreId ? context.coreId : 'no-core';
+  return 'ant:fingerprint-check:baseline:' + FINGERPRINT_BASELINE_SCHEMA + ':' + profileId + ':' + coreId + ':' + seed;
 }
 function loadFingerprintBaseline(context) {
   latestBaselineCreated = {};
@@ -1593,9 +1618,12 @@ function buildFingerprintRows(report, context) {
   var uaVersion = report.identity.userAgent + (report.identity.userAgentData ? ' / ' + JSON.stringify(report.identity.userAgentData) : '');
   var disabledSpoofing = csvItems(expected.disableSpoofing).map(function (item) { return item.toLowerCase(); });
   var linuxPersona = normalizePlatformForCompare(expected.platform || report.identity.platform) === 'linux';
+  var clearcoteCore = /clearcote/i.test(String(context && context.coreId || ''));
   var rows = [];
   rows.push(fingerprintRow('Fingerprint Seed', expected.seed, 'JS unreadable', expected.seed ? 'configured' : 'not_configured', 'Seed is a launch parameter and cannot be read back from page JS', expected.seed ? 'Config Sent' : 'Not Configured'));
-  rows.push(fingerprintRow('Native Exposure Disabled', expected.disableSpoofing, 'JS unreadable', expected.disableSpoofing ? 'configured' : 'not_configured', 'This is a launch protection policy and cannot be read back from page JS', expected.disableSpoofing ? 'Config Sent' : 'Not Configured'));
+  rows.push(expected.disableSpoofing
+    ? fingerprintRow('Native Exposure Disabled', expected.disableSpoofing, 'JS unreadable', 'configured', 'This is a launch protection policy and cannot be read back from page JS', 'Config Sent')
+    : fingerprintRow('Native Exposure Disabled', 'none', 'none', 'info', 'No native fingerprint surface has been explicitly disabled.', 'Observed'));
   rows.push(observedFingerprintRow('Language', context, 'language', expected.language, report.locale.language, compareExactStatus, 'Compare navigator.language'));
   rows.push(observedFingerprintRow('Languages', context, 'languages', expected.acceptLanguage, report.locale.languages, compareArrayPrefixStatus, 'Compare navigator.languages prefix'));
   rows.push(observedFingerprintRow('Timezone', context, 'timezone', expected.timezone, report.locale.timezone, compareExactStatus, 'Compare Intl.DateTimeFormat().resolvedOptions().timeZone'));
@@ -1609,7 +1637,7 @@ function buildFingerprintRows(report, context) {
   rows.push(hasExpected(expected.doNotTrack)
     ? observedFingerprintRow('Do Not Track', context, 'doNotTrack', expected.doNotTrack, report.hardware.doNotTrack, compareExactStatus, 'Compare navigator.doNotTrack')
     : fingerprintRow('Do Not Track', 'browser default', report.hardware.doNotTrack || 'unset', 'info', 'No explicit config; the browser default is retained', 'Observed'));
-  rows.push(observedFingerprintRow('Window Size', context, 'windowSize', expected.windowSize, report.screen.outerWidth + ',' + report.screen.outerHeight, compareWindowSizeStatus, 'Allow up to 4 CSS pixels for Linux window-manager decorations'));
+  rows.push(observedFingerprintRow('Window Size', context, 'windowSize', expected.windowSize, report.screen.outerWidth + ',' + report.screen.outerHeight, compareWindowSizeStatus, 'Accept Linux browser chrome and window-manager insets; reject oversized restored windows'));
   rows.push(observedFingerprintRow('Color Depth', context, 'colorDepth', expected.colorDepth, report.screen.colorDepth, compareExactStatus, 'Compare screen.colorDepth'));
   rows.push(fingerprintRow('Brand', expected.brand, report.identity.userAgent, compareContainsStatus(expected.brand, report.identity.userAgent), 'Compare whether User-Agent contains expected brand'));
   rows.push(observedFingerprintRow('Brand Version', context, 'brandVersion', expected.brandVersion, report.identity.userAgent, compareBrowserVersionStatus, 'Prefer full browser version comparison; if User-Agent exposes only major version, compare by major version'));
@@ -1618,12 +1646,18 @@ function buildFingerprintRows(report, context) {
   rows.push(fingerprintRow('Webdriver', 'false', report.identity.webdriver ? 'true' : 'false', report.identity.webdriver ? 'mismatch' : 'match', 'Expected navigator.webdriver not to expose automation', 'Built-in Expected'));
   var expectsWebRTCBlocked = hasExpected(expected.webrtcPolicy);
   rows.push(fingerprintRow('WebRTC Host', expectsWebRTCBlocked ? '0 host candidates' : '', report.network.localCandidateCount + ' host candidates', expectsWebRTCBlocked ? (report.network.localCandidateCount > 0 ? 'mismatch' : 'match') : 'unknown', expectsWebRTCBlocked ? 'Compare whether local host candidate is exposed' : 'No WebRTC expected value configured; showing actual collected value only'));
-  rows.push(fingerprintRow('Media Device Count', 'fixed profile characteristic', 'JS unreadable', 'limitation', 'This standalone control is ineffective in the current core. Treat the observed value as a fixed profile characteristic and avoid workflows that require per-profile spoofing of this field.', 'Known Ineffective'));
-  rows.push(disabledSpoofing.indexOf('canvas') >= 0
+  rows.push(observedFingerprintRow('Media Device Count', context, 'mediaDeviceCount', expected.mediaDevices, report.hardware.mediaDeviceCount, compareExactStatus, 'Observe enumerateDevices count; labels and device IDs remain permission-scoped'));
+  rows.push(clearcoteCore && disabledSpoofing.indexOf('canvas') < 0
+    ? fingerprintRow('Canvas Noise', 'seed and site scoped', 'enabled by core', 'configured', 'Clearcote enables native seed-derived per-site Canvas protection; verify stability through Canvas Hash.', 'Built-in Expected')
+    : (disabledSpoofing.indexOf('canvas') >= 0
     ? fingerprintRow('Canvas Noise', 'native canvas', 'native canvas', 'mitigated', 'Canvas spoofing is intentionally disabled because this core corrupts measureText when it is enabled; keep one stable profile per account and do not rotate Seed casually', 'Mitigation')
-    : fingerprintRow('Canvas Noise', expected.canvasNoise, 'JS unreadable', expected.canvasNoise ? 'configured' : 'not_configured', 'Canvas noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check Canvas Hash stability for effect.', expected.canvasNoise ? 'Config Sent' : 'Not Configured'));
-  rows.push(fingerprintRow('Audio Noise', 'fixed profile characteristic', 'JS unreadable', 'limitation', 'This standalone control is ineffective in the current core. Treat the observed value as a fixed profile characteristic and avoid workflows that require per-profile spoofing of this field.', 'Known Ineffective'));
-  rows.push(fingerprintRow('ClientRects Noise', expected.clientRectsNoise, 'JS unreadable', expected.clientRectsNoise ? 'configured' : 'not_configured', 'ClientRects noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check ClientRects Hash stability for effect.', expected.clientRectsNoise ? 'Config Sent' : 'Not Configured'));
+    : fingerprintRow('Canvas Noise', expected.canvasNoise, 'JS unreadable', expected.canvasNoise ? 'configured' : 'not_configured', 'Canvas noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check Canvas Hash stability for effect.', expected.canvasNoise ? 'Config Sent' : 'Not Configured')));
+  rows.push(expected.audioNoise
+    ? fingerprintRow('Audio Noise', expected.audioNoise, 'JS unreadable', 'configured', 'Audio noise is a launch policy; verify its effect through Audio Hash stability.', 'Config Sent')
+    : fingerprintRow('Audio Noise', 'fixed profile characteristic', 'native / seed-derived', 'info', 'No independent audio override is configured; use Audio Hash as the observed stable characteristic.', 'Observed'));
+  rows.push(clearcoteCore
+    ? fingerprintRow('ClientRects Noise', 'seed and site scoped', 'enabled by core', 'configured', 'Clearcote enables native seed-derived per-site ClientRects protection; verify stability through ClientRects Hash.', 'Built-in Expected')
+    : fingerprintRow('ClientRects Noise', expected.clientRectsNoise, 'JS unreadable', expected.clientRectsNoise ? 'configured' : 'not_configured', 'ClientRects noise flag is passed as a launch parameter; page JS cannot read the flag directly. Check ClientRects Hash stability for effect.', expected.clientRectsNoise ? 'Config Sent' : 'Not Configured'));
   rows.push(effectObservedFingerprintRow('Canvas Hash', context, 'canvasHash', report.advanced.canvasHash, expected.canvasNoise ? 'Canvas Hash is an effect observation for Canvas noise, not expected config' : 'Canvas Hash is detected output hash, not expected config'));
   rows.push(effectObservedFingerprintRow('Audio Hash', context, 'audioHash', report.advanced.audioHash, 'Audio Hash is detected output hash, not expected config'));
   rows.push(effectObservedFingerprintRow('ClientRects Hash', context, 'clientRectsHash', report.advanced.clientRectsHash, expected.clientRectsNoise ? 'ClientRects Hash is an effect observation for ClientRects noise, not expected config' : 'ClientRects Hash is detected output hash, not expected config'));
@@ -1872,6 +1906,14 @@ document.getElementById('copyBtn').onclick = function () {
   navigator.clipboard.writeText(JSON.stringify(latestReport, null, 2)).catch(function () {});
 };
 setInterval(maybeAutoRefresh, FINGERPRINT_AUTO_REFRESH_CHECK_MS);
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden || fingerprintVisibilityRefreshPending) return;
+  fingerprintVisibilityRefreshPending = true;
+  setTimeout(function () {
+    fingerprintVisibilityRefreshPending = false;
+    run();
+  }, 150);
+});
 updateUILanguage(null);
 loadBeforeSnapshot(latestContext);
 run();
