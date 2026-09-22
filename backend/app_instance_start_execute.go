@@ -3,8 +3,10 @@ package backend
 import (
 	"ant-chrome/backend/internal/logger"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -16,6 +18,8 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 
 	cmd := exec.Command(plan.chromeBinaryPath, plan.args...)
 	cmd.Dir = filepath.Dir(plan.chromeBinaryPath)
+	// Linux 上 Intl 默认 locale 跟随进程环境而不是 --lang，按实例语言补齐 LANGUAGE。
+	cmd.Env = browserProcessEnv(os.Environ(), browserProcessLanguageEnv(runtime.GOOS, plan.args))
 
 	monitor, err := newBrowserProcessMonitor(cmd)
 	if err != nil {
@@ -69,13 +73,26 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 			if plan.extensionWarning != "" {
 				profile.RuntimeWarning = plan.extensionWarning
 			}
+			if err := syncConfiguredBrowserWindowSize(stableDebugPort, plan.args); err != nil {
+				windowWarning := fmt.Sprintf("浏览器已启动，但配置的窗口尺寸未能自动校正：%v", err)
+				if profile.RuntimeWarning != "" {
+					profile.RuntimeWarning += "；" + windowWarning
+				} else {
+					profile.RuntimeWarning = windowWarning
+				}
+				log.Warn("浏览器已就绪，但窗口尺寸校正失败",
+					logger.F("profile_id", input.ProfileID),
+					logger.F("debug_port", stableDebugPort),
+					logger.F("error", err.Error()),
+				)
+			}
 			a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
 			if plan.acquiredProxyBridge.valid() {
 				a.bindProfileProxyBridge(input.ProfileID, plan.acquiredProxyBridge)
 				plan.releaseProxyBridge = false
 			}
 			if len(plan.deferredStartTargets) > 0 {
-				deferredPlan := deferredStartTargetsPlan{targets: plan.deferredStartTargets, newTabs: plan.deferredStartNewTabs}
+				deferredPlan := deferredStartTargetsPlan{targets: plan.deferredStartTargets, newTabs: plan.deferredStartNewTabs, activateLast: plan.deferredActivateLast}
 				if err := openDeferredStartTargets(stableDebugPort, deferredPlan); err != nil {
 					warning := deferredStartTargetsWarning(plan.deferredStartTargets, err)
 					if plan.extensionWarning != "" {
@@ -154,7 +171,7 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 		a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, plan.assignedDebugPort, false, runtimeWarning)
 		a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
 		if len(plan.deferredStartTargets) > 0 {
-			a.storeDeferredStartTargets(input.ProfileID, plan.deferredStartTargets, plan.deferredStartNewTabs)
+			a.storeDeferredStartTargets(input.ProfileID, plan.deferredStartTargets, plan.deferredStartNewTabs, plan.deferredActivateLast)
 		}
 		if plan.acquiredProxyBridge.valid() {
 			a.bindProfileProxyBridge(input.ProfileID, plan.acquiredProxyBridge)

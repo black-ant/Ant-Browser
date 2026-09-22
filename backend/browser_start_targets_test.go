@@ -62,6 +62,17 @@ func TestBuildBrowserLaunchTargetsLightStartDefersWithoutNewTabs(t *testing.T) {
 	}
 }
 
+func TestBrowserStartTargetParamsActivatesVisibleTarget(t *testing.T) {
+	visible := browserStartTargetParams("https://example.com/fingerprint", true)
+	if visible["url"] != "https://example.com/fingerprint" || visible["background"] != false {
+		t.Fatalf("visible target params = %#v", visible)
+	}
+	background := browserStartTargetParams("https://example.com/background", false)
+	if background["background"] != true {
+		t.Fatalf("background target params = %#v", background)
+	}
+}
+
 func TestProfileRestoreLastSessionOverridesBrowserDefault(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Browser.RestoreLastSession = false

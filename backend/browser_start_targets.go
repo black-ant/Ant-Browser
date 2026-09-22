@@ -48,8 +48,9 @@ func buildBrowserLaunchTargets(startURLs []string, defaultStartURLs []string, sk
 }
 
 type deferredStartTargetsPlan struct {
-	targets []string
-	newTabs bool
+	targets      []string
+	newTabs      bool
+	activateLast bool
 }
 
 func deferredStartTargetsWarning(targets []string, err error) string {
@@ -60,7 +61,7 @@ func deferredStartTargetsWarning(targets []string, err error) string {
 	return fmt.Sprintf("浏览器已启动，但 %d 个启动页未能自动打开：%v。可稍后手动打开。", len(normalized), err)
 }
 
-func (a *App) storeDeferredStartTargets(profileId string, targets []string, newTabs bool) {
+func (a *App) storeDeferredStartTargets(profileId string, targets []string, newTabs bool, activateLast bool) {
 	if a == nil {
 		return
 	}
@@ -73,7 +74,7 @@ func (a *App) storeDeferredStartTargets(profileId string, targets []string, newT
 		delete(a.deferredStartTargets, profileId)
 		return
 	}
-	a.deferredStartTargets[profileId] = deferredStartTargetsPlan{targets: append([]string{}, normalized...), newTabs: newTabs}
+	a.deferredStartTargets[profileId] = deferredStartTargetsPlan{targets: append([]string{}, normalized...), newTabs: newTabs, activateLast: activateLast}
 }
 
 func (a *App) consumeDeferredStartTargets(profileId string) deferredStartTargetsPlan {
@@ -136,14 +137,19 @@ func cdpBrowserCallResult(debugPort int, method string, params map[string]any) (
 	return cdpResp.Result, nil
 }
 
-func createBrowserStartTarget(debugPort int, url string) error {
-	_, err := cdpBrowserCallResult(debugPort, "Target.createTarget", map[string]any{
-		"url": url,
-	})
+func createBrowserStartTarget(debugPort int, url string, activate bool) error {
+	_, err := cdpBrowserCallResult(debugPort, "Target.createTarget", browserStartTargetParams(url, activate))
 	return err
 }
 
-func openBrowserStartTargets(debugPort int, targets []string) error {
+func browserStartTargetParams(url string, activate bool) map[string]any {
+	return map[string]any{
+		"url":        url,
+		"background": !activate,
+	}
+}
+
+func openBrowserStartTargets(debugPort int, targets []string, activateLast bool) error {
 	normalized := normalizeNonEmptyStrings(targets)
 	if len(normalized) == 0 {
 		return nil
@@ -153,26 +159,29 @@ func openBrowserStartTargets(debugPort int, targets []string) error {
 		"url": normalized[0],
 	})
 	if navigateErr == nil {
-		for _, url := range normalized[1:] {
-			if err := createBrowserStartTarget(debugPort, url); err != nil {
+		for index, url := range normalized[1:] {
+			activate := activateLast && index == len(normalized[1:])-1
+			if err := createBrowserStartTarget(debugPort, url, activate); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 
-	for _, url := range normalized {
-		if err := createBrowserStartTarget(debugPort, url); err != nil {
+	for index, url := range normalized {
+		activate := activateLast && index == len(normalized)-1
+		if err := createBrowserStartTarget(debugPort, url, activate); err != nil {
 			return fmt.Errorf("首个页面改为新标签回退失败：navigate=%v, createTarget=%w", navigateErr, err)
 		}
 	}
 	return nil
 }
 
-func openBrowserStartTargetsInNewTabs(debugPort int, targets []string) error {
+func openBrowserStartTargetsInNewTabs(debugPort int, targets []string, activateLast bool) error {
 	normalized := normalizeNonEmptyStrings(targets)
-	for _, url := range normalized {
-		if err := createBrowserStartTarget(debugPort, url); err != nil {
+	for index, url := range normalized {
+		activate := activateLast && index == len(normalized)-1
+		if err := createBrowserStartTarget(debugPort, url, activate); err != nil {
 			return err
 		}
 	}
@@ -181,9 +190,9 @@ func openBrowserStartTargetsInNewTabs(debugPort int, targets []string) error {
 
 func openDeferredStartTargets(debugPort int, plan deferredStartTargetsPlan) error {
 	if plan.newTabs {
-		return openBrowserStartTargetsInNewTabs(debugPort, plan.targets)
+		return openBrowserStartTargetsInNewTabs(debugPort, plan.targets, plan.activateLast)
 	}
-	return openBrowserStartTargets(debugPort, plan.targets)
+	return openBrowserStartTargets(debugPort, plan.targets, plan.activateLast)
 }
 
 func (a *App) setProfileRuntimeWarning(profileId string, debugPort int, warning string) (*BrowserProfile, bool) {

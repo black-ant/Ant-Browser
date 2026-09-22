@@ -84,7 +84,7 @@ func (a *App) BrowserInstanceOpenUrl(profileId string, targetUrl string) (bool, 
 	normalizedTargetURL = a.resolveFingerprintCheckStartURLForExpectedArgsAndProfile(snapshot.ProfileId, fingerprintExpectedArgs, snapshot, normalizedTargetURL)
 
 	if snapshot.DebugReady && snapshot.DebugPort > 0 {
-		if err := createBrowserStartTarget(snapshot.DebugPort, normalizedTargetURL); err == nil {
+		if err := createBrowserStartTarget(snapshot.DebugPort, normalizedTargetURL, true); err == nil {
 			log.Info("复用运行中实例通过 CDP 打开地址",
 				logger.F("profile_id", profileId),
 				logger.F("debug_port", snapshot.DebugPort),

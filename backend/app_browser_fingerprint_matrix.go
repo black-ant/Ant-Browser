@@ -138,7 +138,7 @@ func (a *App) buildBrowserFingerprintCapabilityReport(profileId string, coreId s
 		chromeVersion = a.browserMgr.GetChromeVersion(core.CorePath)
 	}
 
-	plan := buildBrowserFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+	plan := buildBrowserFingerprintLaunchPlanForHostWithOptions(profileId, fingerprintArgs, chromeVersion, runtime.GOOS, a.browserFingerprintPlanOptions())
 	report := BrowserFingerprintCapabilityReport{
 		ProfileId:     profileId,
 		ChromeVersion: chromeVersion,
@@ -179,6 +179,10 @@ func buildBrowserFingerprintLaunchPlan(profileId string, rawArgs []string, chrom
 }
 
 func buildBrowserFingerprintLaunchPlanForHost(profileId string, rawArgs []string, chromeVersion string, hostPlatform string) browserFingerprintLaunchPlan {
+	return buildBrowserFingerprintLaunchPlanForHostWithOptions(profileId, rawArgs, chromeVersion, hostPlatform, defaultBrowserFingerprintPlanOptions())
+}
+
+func buildBrowserFingerprintLaunchPlanForHostWithOptions(profileId string, rawArgs []string, chromeVersion string, hostPlatform string, options browserFingerprintPlanOptions) browserFingerprintLaunchPlan {
 	profileId = strings.TrimSpace(profileId)
 	originalArgs := normalizeNonEmptyStrings(rawArgs)
 	args := normalizeBrowserLanguageArgs(originalArgs)
@@ -432,7 +436,16 @@ func buildBrowserFingerprintLaunchPlanForHost(profileId string, rawArgs []string
 	}
 
 	targetPlatform, targetPlatformArg := fingerprintPlatformFromArgs(args)
-	if targetPlatform != "" && hostPlatform != "" && targetPlatform != hostPlatform && !hasStringValue(disableSpoofingValues, "font") {
+	crossPlatform := targetPlatform != "" && hostPlatform != "" && targetPlatform != hostPlatform
+	if crossPlatform && !options.crossPlatformFontPassthrough && !hasStringValue(disableSpoofingValues, "font") {
+		plan.rows = append(plan.rows, BrowserFingerprintCapabilityRow{
+			Capability: "跨平台字体渲染",
+			Status:     "kept",
+			InputArg:   targetPlatformArg,
+			Action:     "保留内核字体伪装",
+			Note:       fmt.Sprintf("目标平台 %s 与宿主平台 %s 不同，但配置 browser.cross_platform_font_passthrough=false，保留内核字体伪装以匹配画像；宿主缺少目标平台字体时可能缺字", targetPlatform, hostPlatform),
+		})
+	} else if crossPlatform && !hasStringValue(disableSpoofingValues, "font") {
 		disableSpoofingValues = appendUniqueStringValues(disableSpoofingValues, "font")
 		runtimeArg := "--disable-spoofing=" + strings.Join(disableSpoofingValues, ",")
 		if disableSpoofingIndex >= 0 {

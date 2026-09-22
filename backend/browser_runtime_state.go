@@ -229,6 +229,18 @@ func (a *App) waitBrowserDebugReadyAsync(profileId string, debugPort int, timeou
 	if snapshot == nil {
 		return
 	}
+	if err := syncConfiguredBrowserWindowSize(debugPort, snapshot.LastLaunchArgs); err != nil {
+		warning := fmt.Sprintf("浏览器调试接口已就绪，但配置的窗口尺寸未能自动校正：%v", err)
+		if warningSnapshot, warningChanged := a.setProfileRuntimeWarningForMonitor(profileId, debugPort, warning, monitor); warningSnapshot != nil {
+			snapshot = warningSnapshot
+			changed = changed || warningChanged
+		}
+		logger.New("Browser").Warn("浏览器后台附着后窗口尺寸校正失败",
+			logger.F("profile_id", profileId),
+			logger.F("debug_port", debugPort),
+			logger.F("error", err.Error()),
+		)
+	}
 
 	if warningSnapshot, warningChanged := a.finalizeDeferredStartTargetsForMonitor(profileId, debugPort, monitor); warningSnapshot != nil {
 		snapshot = warningSnapshot

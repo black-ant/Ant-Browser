@@ -73,6 +73,9 @@ func TestEnsureFingerprintCheckPageURL(t *testing.T) {
 	if !strings.Contains(text, "FINGERPRINT_AUTO_REFRESH_MS = 60 * 60 * 1000") || !strings.Contains(text, "maybeAutoRefresh") || !strings.Contains(text, "setInterval(maybeAutoRefresh") {
 		t.Fatalf("generated page missing one-hour auto refresh")
 	}
+	if !strings.Contains(text, "visibilitychange") || !strings.Contains(text, "document.hidden") || !strings.Contains(text, "fingerprintVisibilityRefreshPending") {
+		t.Fatalf("generated page missing foreground refresh")
+	}
 	if !strings.Contains(text, "resolveIPAttribution") || !strings.Contains(text, "Location Conflict") || !strings.Contains(text, "Source Details") || !strings.Contains(text, "rdap.db.ripe.net") {
 		t.Fatalf("generated page missing multi-source proxy attribution")
 	}
@@ -109,6 +112,9 @@ func TestFingerprintCheckPageBuildsRuntimeBaseline(t *testing.T) {
 	if !strings.Contains(text, "baselineStorageKey") || !strings.Contains(text, "latestBaselineCreated") {
 		t.Fatalf("generated page missing runtime baseline storage")
 	}
+	if !strings.Contains(text, "FINGERPRINT_BASELINE_SCHEMA = '2026-09-22-v3'") || !strings.Contains(text, "coreId = context && context.coreId") || !strings.Contains(text, "FINGERPRINT_BASELINE_SCHEMA + ':' + profileId + ':' + coreId") {
+		t.Fatalf("generated page missing versioned runtime baseline key")
+	}
 	if !strings.Contains(text, "resetBaselineBtn") || !strings.Contains(text, "resetFingerprintBaseline") || !strings.Contains(text, "重建基线") {
 		t.Fatalf("generated page missing runtime baseline reset action")
 	}
@@ -144,6 +150,21 @@ func TestFingerprintCheckPageBuildsRuntimeBaseline(t *testing.T) {
 	}
 	if !strings.Contains(text, "已配置") || !strings.Contains(text, "配置下发") || !strings.Contains(text, "效果看 Canvas Hash") || !strings.Contains(text, "效果看 ClientRects Hash") {
 		t.Fatalf("generated page missing unreadable launch switch labels")
+	}
+	for _, marker := range []string{
+		"compareWindowSizeStatus",
+		"hardwareConcurrencyGuardrailStatus",
+		"deviceMemoryGuardrailStatus",
+		"linuxFontGuardrailStatus",
+		"webGLRendererGuardrailStatus",
+		"Accept Linux browser chrome and window-manager insets; reject oversized restored windows",
+		"Canvas spoofing is intentionally disabled because this core corrupts measureText",
+		"Core Limitation",
+		"Built-in Guardrail",
+	} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("generated page missing risk/mitigation marker %q", marker)
+		}
 	}
 	if strings.Contains(text, "无期望") {
 		t.Fatalf("generated page still contains misleading unknown expectation text")

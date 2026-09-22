@@ -183,15 +183,16 @@ func (a *App) openBrowserWindowForRunningProfile(profile *BrowserProfile, extraL
 	return nil
 }
 
-func (a *App) openBrowserTabForRunningProfile(profile *BrowserProfile, extraLaunchArgs []string, startURLs []string) error {
+func (a *App) openBrowserTabForRunningProfile(profile *BrowserProfile, extraLaunchArgs []string, startURLs []string, preferVisible bool) error {
 	explicitTargets := normalizeNonEmptyStrings(startURLs)
 	targets := explicitTargets
 	if len(targets) == 0 {
 		targets = []string{"about:blank"}
 	}
 	if profile != nil && profile.DebugReady && profile.DebugPort > 0 {
-		for _, target := range targets {
-			if err := createBrowserStartTarget(profile.DebugPort, target); err != nil {
+		for index, target := range targets {
+			activate := preferVisible && index == len(targets)-1
+			if err := createBrowserStartTarget(profile.DebugPort, target, activate); err != nil {
 				if len(explicitTargets) == 0 && len(normalizeNonEmptyStrings(extraLaunchArgs)) == 0 {
 					return nil
 				}
