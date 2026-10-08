@@ -114,7 +114,9 @@ func browserExtensionInstallerExitHint(userDataDir string) string {
 	return ""
 }
 
-func ensurePersistentExternalExtensionRegistry(runtimeID string, packagePath string, version string) error {
+// ensurePersistentExternalExtensionRegistry 在 Windows 上写入当前用户注册表项；
+// userDataDir 仅用于非 Windows 平台的 profile 级外部安装清单。
+func ensurePersistentExternalExtensionRegistry(_ string, runtimeID string, packagePath string, version string) error {
 	externalExtensionInstallMutex.Lock()
 	defer externalExtensionInstallMutex.Unlock()
 	return ensureExternalExtensionRegistry(runtimeID, packagePath, version)

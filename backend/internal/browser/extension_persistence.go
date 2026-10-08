@@ -289,10 +289,11 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 	}
 	if runtimeErr == nil && runtimeState.Status == ExtensionRuntimeStatusInstalled &&
 		runtimeState.InstalledVersion == extension.Version && runtimeState.PackageHash == packageHash {
-		expectedArtifactPath := persistentExtensionCodePath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version)
-		if artifactPath := persistentExtensionArtifactPath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version); artifactPath != "" && sameProfileExtensionPath(artifactPath, expectedArtifactPath) {
+		// 同一版本可能落在 <version>_0 之外的目录（例如 <version>_1），
+		// 只要 manifest 版本一致即视为已安装，避免每次启动都重跑一次安装流程。
+		if artifactPath := persistentExtensionArtifactPath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version); artifactPath != "" {
 			if err := ensureProfileExtensionRegistration(userDataDir, artifactPath, runtimeState.RuntimeExtensionID, packagePath); err == nil {
-				if err := ensurePersistentExternalExtensionRegistry(runtimeState.RuntimeExtensionID, packagePath, extension.Version); err != nil {
+				if err := ensurePersistentExternalExtensionRegistry(userDataDir, runtimeState.RuntimeExtensionID, packagePath, extension.Version); err != nil {
 					return "", err
 				}
 				runtimeState.LastVerifiedAt = time.Now().Format(time.RFC3339)
@@ -325,7 +326,7 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 		return "", fmt.Errorf("插件持久安装失败（%s）：%w；安装前备份已保留在 %s", extension.Name, err, backupPath)
 	}
 
-	if err := ensurePersistentExternalExtensionRegistry(runtimeExtensionID, packagePath, extension.Version); err != nil {
+	if err := ensurePersistentExternalExtensionRegistry(userDataDir, runtimeExtensionID, packagePath, extension.Version); err != nil {
 		installErr := fmt.Errorf("persistent external extension registration failed: %w", err)
 		_ = restoreProfileExtensionState(userDataDir, backupPath, legacyRuntimeIDs, runtimeExtensionID)
 		m.recordProfileExtensionRuntimeError(profile.ProfileId, extension, runtimeState, packageHash, backupPath, installErr)
@@ -393,7 +394,7 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 		_ = restoreProfileExtensionState(userDataDir, backupPath, legacyRuntimeIDs, runtimeExtensionID)
 		return "", err
 	}
-	return persistentExtensionCodePath(userDataDir, runtimeExtensionID, extension.Version), nil
+	return artifactPath, nil
 }
 
 func (m *Manager) recordProfileExtensionRuntimeError(profileID string, extension Extension, runtimeState ProfileExtensionRuntime, packageHash string, backupPath string, installErr error) {
