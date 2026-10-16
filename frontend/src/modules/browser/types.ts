@@ -298,6 +298,30 @@ export interface BrowserProxy {
   lastIPHealthJson?: string
 }
 
+export interface BrowserProxyVirtualGroup {
+  groupId: string
+  groupName: string
+  strategy: 'round_robin' | 'sticky' | string
+  selectedProxyId?: string
+  memberProxyIds: string[]
+  memberGroupNames?: string[]
+  sortOrder?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface BrowserProxyVirtualGroup {
+  groupId: string
+  groupName: string
+  strategy: 'round_robin' | 'sticky' | string
+  selectedProxyId?: string
+  memberProxyIds: string[]
+  memberGroupNames?: string[]
+  sortOrder?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface ProxyIPHealthResult {
   proxyId: string
   ok: boolean

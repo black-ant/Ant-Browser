@@ -144,6 +144,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	conn := db.GetConn()
 	a.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(conn)
 	a.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(conn)
+	a.browserMgr.ProxyVirtualGroupDAO = browser.NewSQLiteProxyVirtualGroupDAO(conn)
 	a.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(conn)
 	a.browserMgr.BookmarkDAO = browser.NewSQLiteBookmarkDAO(conn)
 	a.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(conn)

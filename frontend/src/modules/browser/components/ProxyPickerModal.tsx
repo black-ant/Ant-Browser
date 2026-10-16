@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, Search, Wifi, X } from 'lucide-react'
 import { ConfirmModal, toast } from '../../../shared/components'
-import type { BrowserProxy } from '../types'
-import { browserProxyBatchTestSpeed, browserProxyTestSpeed, fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
+import type { BrowserProxy, BrowserProxyVirtualGroup } from '../types'
+import { browserProxyBatchTestSpeed, browserProxyTestSpeed, fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies } from '../api'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import { ProxyImportModal } from './ProxyImportModal'
 import { ProxyEditModal } from './ProxyPickerModal.edit'
@@ -11,6 +11,11 @@ import { GroupItem, ProxyRow } from './ProxyPickerModal.rows'
 import { ALL_GROUP, BATCH_TEST_CONCURRENCY, DIRECT_PROXY_ID, INITIAL_CHAIN_EDIT_FORM, SPEED_RESULT_EVENT, buildChainProxyConfig, formatProxyConfigForDisplay, parseChainSocks5Config, toChainEditForm, type ChainEditForm, type ChainHopForm, type SpeedResult } from './ProxyPickerModal.helpers'
 
 const DIRECT_GROUP = '__direct_proxy__'
+const VIRTUAL_GROUP_PREFIX = '__virtual_proxy_group__:'
+
+function getVirtualGroupKey(group: BrowserProxyVirtualGroup) {
+  return `${VIRTUAL_GROUP_PREFIX}${group.groupId.trim() || group.groupName.trim().toLowerCase()}`
+}
 const BUILTIN_DIRECT_PROXY: BrowserProxy = {
   proxyId: DIRECT_PROXY_ID,
   proxyName: '\u76f4\u8fde\uff08\u4e0d\u8d70\u4ee3\u7406\uff09',
@@ -28,6 +33,7 @@ interface ProxyPickerModalProps {
   open: boolean
   currentProxyId: string
   title?: string
+  showVirtualGroups?: boolean
   onSelect: (proxy: BrowserProxy) => void
   onClose: () => void
   onProxyListUpdated?: (proxies: BrowserProxy[]) => void
@@ -35,8 +41,9 @@ interface ProxyPickerModalProps {
   onProxyTested?: (proxyId: string, result: SpeedResult) => void
 }
 
-export function ProxyPickerModal({ open, currentProxyId, title = '从代理池选择', onSelect, onClose, onProxyListUpdated, onProxyDeleted, onProxyTested }: ProxyPickerModalProps) {
+export function ProxyPickerModal({ open, currentProxyId, title = '从代理池选择', showVirtualGroups = false, onSelect, onClose, onProxyListUpdated, onProxyDeleted, onProxyTested }: ProxyPickerModalProps) {
   const [groups, setGroups] = useState<string[]>([])
+  const [virtualGroups, setVirtualGroups] = useState<BrowserProxyVirtualGroup[]>([])
   const [allProxies, setAllProxies] = useState<BrowserProxy[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUP)
   const [search, setSearch] = useState('')
@@ -58,12 +65,14 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
   const loadData = async () => {
     setLoading(true)
     try {
-      const [groupList, proxyList] = await Promise.all([
+      const [groupList, virtualGroupList, proxyList] = await Promise.all([
         fetchBrowserProxyGroups(),
+        fetchBrowserProxyVirtualGroups(),
         fetchBrowserProxies(),
       ])
       const nextProxies = ensureBuiltinDirectProxy(proxyList)
       setGroups(groupList)
+      setVirtualGroups(virtualGroupList)
       setAllProxies(nextProxies)
       onProxyListUpdated?.(nextProxies)
       const initMap: Record<string, SpeedResult> = {}
@@ -96,10 +105,28 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     return () => { abortRef.current = true }
   }, [open])
 
+  const virtualGroupMembers = useMemo(() => {
+    const result = new Map<string, Set<string>>()
+    virtualGroups.forEach(group => {
+      const memberIDs = new Set((group.memberProxyIds || []).map(proxyId => proxyId.trim().toLowerCase()).filter(Boolean))
+      const memberGroupNames = new Set((group.memberGroupNames || []).map(groupName => groupName.trim().toLowerCase()).filter(Boolean))
+      allProxies.forEach(proxy => {
+        if (memberGroupNames.has((proxy.groupName || '').trim().toLowerCase())) {
+          memberIDs.add(proxy.proxyId.trim().toLowerCase())
+        }
+      })
+      result.set(getVirtualGroupKey(group), memberIDs)
+    })
+    return result
+  }, [allProxies, virtualGroups])
+
   const displayProxies = useMemo(() => {
     let list = allProxies
     if (selectedGroup === DIRECT_GROUP) {
       list = list.filter(proxy => proxy.proxyId === DIRECT_PROXY_ID)
+    } else if (selectedGroup.startsWith(VIRTUAL_GROUP_PREFIX)) {
+      const memberIDs = virtualGroupMembers.get(selectedGroup) || new Set<string>()
+      list = list.filter(proxy => memberIDs.has(proxy.proxyId.trim().toLowerCase()))
     } else if (selectedGroup !== ALL_GROUP) {
       list = list.filter(proxy => proxy.groupName === selectedGroup)
     }
@@ -142,7 +169,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
         proxy,
         displayConfig: formatProxyConfigForDisplay(proxy.proxyConfig),
       }))
-  }, [selectedGroup, search, allProxies, speedMap])
+  }, [selectedGroup, search, allProxies, speedMap, virtualGroupMembers])
 
   const groupCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -152,6 +179,13 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     })
     return counts
   }, [allProxies])
+
+  const virtualGroupCounts = useMemo(() => new Map(
+    Array.from(virtualGroupMembers.entries()).map(([groupKey, memberIDs]) => [
+      groupKey,
+      allProxies.filter(proxy => memberIDs.has(proxy.proxyId.trim().toLowerCase())).length,
+    ]),
+  ), [allProxies, virtualGroupMembers])
 
   const testOne = async (proxyId: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -383,7 +417,21 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
                 onClick={() => setSelectedGroup(groupName)}
               />
             ))}
-            {groups.length === 0 && <p className="text-xs text-[var(--color-text-muted)] px-3 py-2">暂无分组</p>}
+            {showVirtualGroups && virtualGroups.map(group => {
+              const groupKey = getVirtualGroupKey(group)
+              return (
+                <GroupItem
+                  key={groupKey}
+                  label={`虚拟：${group.groupName}`}
+                  active={selectedGroup === groupKey}
+                  count={virtualGroupCounts.get(groupKey) || 0}
+                  onClick={() => setSelectedGroup(groupKey)}
+                />
+              )
+            })}
+            {groups.length === 0 && (!showVirtualGroups || virtualGroups.length === 0) && (
+              <p className="px-3 py-2 text-xs text-[var(--color-text-muted)]">暂无分组</p>
+            )}
           </div>
 
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">

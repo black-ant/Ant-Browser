@@ -49,6 +49,9 @@ type App struct {
 	backgroundTasksBlocked        bool
 	maintenanceMu                 sync.Mutex
 	bridgeMu                      sync.Mutex
+	proxyVirtualGroupMu           sync.Mutex
+	proxyVirtualGroupCursor       map[string]int
+	proxyVirtualGroupLocks        map[string]*sync.Mutex
 	profileBridgeRefs             map[string]profileProxyBridgeRef
 	deferredStartTargetsMu        sync.Mutex
 	deferredStartTargets          map[string]deferredStartTargetsPlan
@@ -69,13 +72,15 @@ func NewApp(appRoot string, appVersion ...string) *App {
 		version = strings.TrimSpace(appVersion[0])
 	}
 	return &App{
-		appRoot:                strings.TrimSpace(appRoot),
-		version:                version,
-		profileBridgeRefs:      make(map[string]profileProxyBridgeRef),
-		deferredStartTargets:   make(map[string]deferredStartTargetsPlan),
-		automationTargetCursor: make(map[string]string),
-		profileWindowMarkers:   make(map[string]*profileWindowMarker),
-		browserProcessMonitors: make(map[string]*browserProcessMonitor),
+		appRoot:                 strings.TrimSpace(appRoot),
+		version:                 version,
+		profileBridgeRefs:       make(map[string]profileProxyBridgeRef),
+		proxyVirtualGroupCursor: make(map[string]int),
+		proxyVirtualGroupLocks:  make(map[string]*sync.Mutex),
+		deferredStartTargets:    make(map[string]deferredStartTargetsPlan),
+		automationTargetCursor:  make(map[string]string),
+		profileWindowMarkers:    make(map[string]*profileWindowMarker),
+		browserProcessMonitors:  make(map[string]*browserProcessMonitor),
 	}
 }
 

@@ -1,6 +1,35 @@
 ﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySpeedTestResult } from '../types'
 import { getBindings, getGoApp, getMockProxies, nowISOString, setMockProxies } from './runtime'
 
+import type { BrowserProxyVirtualGroup } from '../types'
+
+let mockProxyVirtualGroups: BrowserProxyVirtualGroup[] = []
+
+function normalizeBrowserProxyVirtualGroup(value: unknown): BrowserProxyVirtualGroup | null {
+  if (!value || typeof value !== 'object') return null
+  const source = value as Record<string, unknown>
+  return {
+    groupId: typeof source.groupId === 'string' ? source.groupId.trim() : '',
+    groupName: typeof source.groupName === 'string' ? source.groupName.trim() : '',
+    strategy: source.strategy === 'sticky' ? 'sticky' : 'round_robin',
+    selectedProxyId: typeof source.selectedProxyId === 'string' ? source.selectedProxyId.trim() : '',
+    memberProxyIds: Array.isArray(source.memberProxyIds)
+      ? source.memberProxyIds.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean)
+      : [],
+    memberGroupNames: Array.isArray(source.memberGroupNames)
+      ? source.memberGroupNames.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean)
+      : [],
+    sortOrder: typeof source.sortOrder === 'number' ? source.sortOrder : 0,
+    createdAt: typeof source.createdAt === 'string' ? source.createdAt : undefined,
+    updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : undefined,
+  }
+}
+
+function normalizeBrowserProxyVirtualGroups(value: unknown): BrowserProxyVirtualGroup[] {
+  if (!Array.isArray(value)) return []
+  return value.map(normalizeBrowserProxyVirtualGroup).filter((item): item is BrowserProxyVirtualGroup => item !== null)
+}
+
 export interface ClashImportURLResult {
   url: string
   content: string
@@ -27,6 +56,58 @@ export async function fetchBrowserProxyGroups(): Promise<string[]> {
     return (await bindings.BrowserProxyListGroups()) || []
   }
   return []
+}
+
+export async function fetchBrowserProxyVirtualGroups(): Promise<BrowserProxyVirtualGroup[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyVirtualGroupList) {
+    return normalizeBrowserProxyVirtualGroups(await bindings.BrowserProxyVirtualGroupList())
+  }
+  const goApp = getGoApp()
+  if (goApp?.BrowserProxyVirtualGroupList) {
+    return normalizeBrowserProxyVirtualGroups(await goApp.BrowserProxyVirtualGroupList())
+  }
+  return normalizeBrowserProxyVirtualGroups(mockProxyVirtualGroups)
+}
+
+export async function saveBrowserProxyVirtualGroup(group: BrowserProxyVirtualGroup): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.SaveBrowserProxyVirtualGroup) {
+    await bindings.SaveBrowserProxyVirtualGroup(group)
+    return true
+  }
+  const goApp = getGoApp()
+  if (goApp?.SaveBrowserProxyVirtualGroup) {
+    await goApp.SaveBrowserProxyVirtualGroup(group)
+    return true
+  }
+  const nextGroup = {
+    ...group,
+    groupId: group.groupId || `virtual-${Date.now()}`,
+    strategy: group.strategy === 'sticky' ? 'sticky' : 'round_robin',
+    selectedProxyId: group.strategy === 'sticky' ? (group.selectedProxyId || '').trim() : '',
+    memberProxyIds: group.memberProxyIds.map(proxyId => proxyId.trim()).filter(Boolean),
+  }
+  const existingIndex = mockProxyVirtualGroups.findIndex(item => item.groupId === nextGroup.groupId)
+  mockProxyVirtualGroups = existingIndex < 0
+    ? [...mockProxyVirtualGroups, nextGroup]
+    : mockProxyVirtualGroups.map((item, index) => index === existingIndex ? nextGroup : item)
+  return true
+}
+
+export async function deleteBrowserProxyVirtualGroup(groupId: string): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.DeleteBrowserProxyVirtualGroup) {
+    await bindings.DeleteBrowserProxyVirtualGroup(groupId)
+    return true
+  }
+  const goApp = getGoApp()
+  if (goApp?.DeleteBrowserProxyVirtualGroup) {
+    await goApp.DeleteBrowserProxyVirtualGroup(groupId)
+    return true
+  }
+  mockProxyVirtualGroups = mockProxyVirtualGroups.filter(group => group.groupId !== groupId)
+  return true
 }
 
 export async function fetchBrowserProxiesByGroup(groupName: string): Promise<BrowserProxy[]> {

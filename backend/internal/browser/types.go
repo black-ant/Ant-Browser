@@ -140,6 +140,7 @@ type Proxy = config.BrowserProxy
 type Core = config.BrowserCore
 type Environment = config.BrowserEnvironment
 type ProfileConfig = config.BrowserProfileConfig
+type ProxyVirtualGroup = config.BrowserProxyVirtualGroup
 
 // CodeProvider 提供 LaunchCode 的接口（由 launchcode.LaunchCodeService 实现）
 type CodeProvider interface {
@@ -166,12 +167,13 @@ type Manager struct {
 	CoreDownloadHTTPClientFactory          CoreDownloadHTTPClientFactory
 
 	// DAO 层（注入后使用 SQLite 存储，未注入时降级到 config.yaml）
-	ProfileDAO   ProfileDAO
-	ProxyDAO     ProxyDAO
-	CoreDAO      CoreDAO
-	BookmarkDAO  BookmarkDAO
-	GroupDAO     GroupDAO
-	ExtensionDAO ExtensionDAO
+	ProfileDAO           ProfileDAO
+	ProxyDAO             ProxyDAO
+	ProxyVirtualGroupDAO ProxyVirtualGroupDAO
+	CoreDAO              CoreDAO
+	BookmarkDAO          BookmarkDAO
+	GroupDAO             GroupDAO
+	ExtensionDAO         ExtensionDAO
 }
 
 // XrayBridge Xray 桥接进程

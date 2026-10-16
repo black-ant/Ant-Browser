@@ -5,6 +5,8 @@ import { DIRECT_PROXY_ID, type SpeedResult } from './ProxyPickerModal.helpers'
 export function GroupItem({ label, active, count, onClick }: { label: string; active: boolean; count: number; onClick: () => void }) {
   return (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors ${
         active

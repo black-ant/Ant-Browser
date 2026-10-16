@@ -13,7 +13,12 @@ const dynamicProxyMaxTestAge = browser.DefaultProxySpeedInterval
 
 func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *BrowserProfile, proxies []BrowserProxy) (string, profileProxyBridgeRef, bool, error) {
 	groupName := browser.NormalizeProxyGroupName(profile.ProxyGroupName)
+	virtualGroup, isVirtualGroup := a.findProxyVirtualGroup(groupName)
 	candidates := selectDynamicBrowserProxyCandidates(proxies, groupName)
+	if isVirtualGroup {
+		virtualGroup = browser.ResolveProxyVirtualGroup(virtualGroup, proxies)
+		candidates = selectVirtualDynamicBrowserProxyCandidates(proxies, virtualGroup)
+	}
 	log := logger.New("Browser")
 	if len(candidates) == 0 {
 		groupLabel := "全部分组"
@@ -25,13 +30,34 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 		return "", profileProxyBridgeRef{}, false, startErr
 	}
 
+	orderedCandidates := candidates
+	virtualGroupKey := ""
+	memberOrder := []string(nil)
+	var releaseVirtualGroup func()
+	selectionMode := "latency_priority"
+	if isVirtualGroup {
+		virtualGroupKey = proxyVirtualGroupCursorKey(virtualGroup.GroupId, virtualGroup.GroupName)
+		releaseVirtualGroup = a.lockProxyVirtualGroup(virtualGroupKey)
+		defer releaseVirtualGroup()
+		if latestGroup, found := a.findProxyVirtualGroup(groupName); found {
+			virtualGroup = browser.ResolveProxyVirtualGroup(latestGroup, proxies)
+		}
+		orderedCandidates, memberOrder = a.orderVirtualProxyCandidates(virtualGroupKey, virtualGroup, candidates, proxies)
+		if browser.NormalizeProxyVirtualGroupStrategy(virtualGroup.Strategy) == browser.ProxyVirtualGroupStrategySticky {
+			selectionMode = "virtual_sticky"
+		} else {
+			selectionMode = "virtual_round_robin"
+		}
+	}
+
 	log.Info("动态代理开始尝试候选节点",
 		logger.F("profile_id", profileID),
 		logger.F("proxy_group_name", groupName),
+		logger.F("selection_mode", selectionMode),
 		logger.F("candidate_count", len(candidates)),
 	)
 	failures := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
+	for _, candidate := range orderedCandidates {
 		candidateProfile := *profile
 		candidateProfile.ProxyMode = browser.ProxyModeFixed
 		candidateProfile.ProxyGroupName = ""
@@ -39,6 +65,12 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 		candidateProfile.ProxyConfig = strings.TrimSpace(candidate.ProxyConfig)
 		proxyURL, bridgeRef, releaseBridge, err := a.resolveBrowserStartProxy(browserStartInput{ProfileID: profileID}, &candidateProfile)
 		if err == nil {
+			if isVirtualGroup {
+				a.commitVirtualProxyCursor(virtualGroupKey, candidate.ProxyId, memberOrder, candidates)
+				if browser.NormalizeProxyVirtualGroupStrategy(virtualGroup.Strategy) == browser.ProxyVirtualGroupStrategySticky {
+					a.rememberProxyVirtualGroupSelection(virtualGroup, candidate.ProxyId)
+				}
+			}
 			log.Info("动态代理节点已选择",
 				logger.F("profile_id", profileID),
 				logger.F("proxy_id", candidate.ProxyId),
@@ -66,6 +98,28 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 	startErr := fmt.Errorf("实例启动失败：动态代理候选节点均不可用（%s）。请重新测速或检查代理内核配置。", strings.Join(failures, "；"))
 	profile.LastError = startErr.Error()
 	return "", profileProxyBridgeRef{}, false, startErr
+}
+
+func selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group browser.ProxyVirtualGroup) []BrowserProxy {
+	memberIDs := make(map[string]struct{})
+	for _, member := range browser.ExpandProxyVirtualGroup(group, proxies) {
+		proxyID := strings.ToLower(strings.TrimSpace(member.ProxyId))
+		if proxyID != "" {
+			memberIDs[proxyID] = struct{}{}
+		}
+	}
+	if len(memberIDs) == 0 {
+		return []BrowserProxy{}
+	}
+
+	available := selectDynamicBrowserProxyCandidates(proxies, "")
+	candidates := make([]BrowserProxy, 0, len(memberIDs))
+	for _, candidate := range available {
+		if _, exists := memberIDs[strings.ToLower(strings.TrimSpace(candidate.ProxyId))]; exists {
+			candidates = append(candidates, candidate)
+		}
+	}
+	return candidates
 }
 
 func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName string) []BrowserProxy {

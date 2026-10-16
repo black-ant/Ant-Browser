@@ -27,6 +27,7 @@ interface TableProps<T> {
   onRowClick?: (record: T) => void
   className?: string
   tableMinWidth?: string | number
+  tableLayout?: 'auto' | 'fixed'
   maxHeight?: string  // 表格最大高度，默认 'calc(100vh - 320px)'
   stickyHeader?: boolean  // 是否固定表头，默认 true
   onSort?: (sorterResult: SorterResult) => void // 排序变化回调
@@ -43,6 +44,7 @@ export function Table<T extends Record<string, any>>({
   onRowClick,
   className,
   tableMinWidth,
+  tableLayout = 'auto',
   maxHeight = 'calc(100vh - 320px)',
   stickyHeader = true,
   onSort,
@@ -109,7 +111,7 @@ export function Table<T extends Record<string, any>>({
       )}
       style={{ maxHeight }}
     >
-      <table className="min-w-full" style={{ minWidth: tableMinWidth }}>
+      <table className="min-w-full" style={{ minWidth: tableMinWidth, tableLayout }}>
         <thead className={clsx(stickyHeader && maxHeight !== 'none' && 'sticky top-0 z-10')}>
           <tr>
             {columns.map((col) => (

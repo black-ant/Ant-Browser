@@ -5,6 +5,7 @@ import type { SortOrder, TableColumn } from '../../../../shared/components/Table
 import type { ProxyIPHealthResult } from '../../types'
 
 import { BUILTIN_PROXY_IDS, sourceHostLabel, type ProxyDisplayInfo } from './helpers'
+import { BrowserEditSelect } from '../../components/BrowserEditSelect'
 
 interface ProxyPoolTableCardProps {
   allFilteredSelected: boolean
@@ -18,6 +19,7 @@ interface ProxyPoolTableCardProps {
   globalRefreshInterval: number
   globalRefreshIntervalM: string
   groups: string[]
+  virtualGroupOptions: Array<{ value: string; label: string }>
   ipHealthMap: Record<string, ProxyIPHealthResult>
   loading: boolean
   onCheckOneIPHealth: (record: ProxyDisplayInfo) => void
@@ -61,6 +63,7 @@ export function ProxyPoolTableCard({
   globalRefreshInterval,
   globalRefreshIntervalM,
   groups,
+  virtualGroupOptions,
   ipHealthMap,
   loading,
   onCheckOneIPHealth,
@@ -369,23 +372,27 @@ export function ProxyPoolTableCard({
           placeholder="搜索名称或服务器..."
           style={{ width: '220px' }}
         />
-        <select
+        <BrowserEditSelect
+          label="代理协议筛选"
           value={filterProtocol}
-          onChange={event => onFilterProtocolChange(event.target.value)}
-          className="h-9 px-3 text-sm rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-strong)] focus:ring-1 focus:ring-[var(--color-border-strong)] transition-colors duration-150"
-        >
-          {protocolOptions.map(protocol => (
-            <option key={protocol} value={protocol}>{protocol === 'all' ? '全部协议' : protocol.toUpperCase()}</option>
-          ))}
-        </select>
-        <select
+          onChange={onFilterProtocolChange}
+          options={protocolOptions.map(protocol => ({
+            value: protocol,
+            label: protocol === 'all' ? '全部协议' : protocol.toUpperCase(),
+          }))}
+          className="w-40 shrink-0"
+        />
+        <BrowserEditSelect
+          label="代理分组筛选"
           value={filterGroup}
-          onChange={event => onFilterGroupChange(event.target.value)}
-          className="h-9 px-3 text-sm rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-strong)] focus:ring-1 focus:ring-[var(--color-border-strong)] transition-colors duration-150"
-        >
-          <option value="all">全部分组</option>
-          {groups.map(group => <option key={group} value={group}>{group}</option>)}
-        </select>
+          onChange={onFilterGroupChange}
+          options={[
+            { value: 'all', label: '全部分组' },
+            ...groups.map(group => ({ value: group, label: group })),
+            ...virtualGroupOptions,
+          ]}
+          className="w-48 shrink-0"
+        />
         {hasActiveFilters && (
           <Button size="sm" variant="ghost" onClick={onClearFilters}>清除筛选</Button>
         )}

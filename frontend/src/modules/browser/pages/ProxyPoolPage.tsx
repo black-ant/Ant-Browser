@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfirmModal, toast } from '../../../shared/components'
 import type { SortOrder } from '../../../shared/components/Table'
-import type { BrowserProxy, ProxyIPHealthResult } from '../types'
-import { fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
+import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyIPHealthResult } from '../types'
+import { fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies } from '../api'
 import {
   buildChainImportCandidate,
   buildDirectImportCandidate,
@@ -63,6 +63,7 @@ export function ProxyPoolPage() {
     closeCoreDownload,
   } = useProxyCoreDownload()
   const [groups, setGroups] = useState<string[]>([])
+  const [virtualGroups, setVirtualGroups] = useState<BrowserProxyVirtualGroup[]>([])
 
   const [filterProtocol, setFilterProtocol] = useState<string>('all')
   const [filterKeyword, setFilterKeyword] = useState('')
@@ -109,8 +110,12 @@ export function ProxyPoolPage() {
     await saveBrowserProxies(list)
     setProxies(list)
     setDisplayList(toDisplayList(list))
-    const grps = await fetchBrowserProxyGroups()
+    const [grps, nextVirtualGroups] = await Promise.all([
+      fetchBrowserProxyGroups(),
+      fetchBrowserProxyVirtualGroups(),
+    ])
     setGroups(grps)
+    setVirtualGroups(nextVirtualGroups)
   }, [])
 
   const {
@@ -167,14 +172,16 @@ export function ProxyPoolPage() {
   const loadProxies = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, groupList] = await Promise.all([
+      const [list, groupList, virtualGroupList] = await Promise.all([
         fetchBrowserProxies(),
         fetchBrowserProxyGroups(),
+        fetchBrowserProxyVirtualGroups(),
       ])
       const finalList = await ensureBuiltinProxies(list)
       setProxies(finalList)
       setDisplayList(toDisplayList(finalList))
       setGroups(groupList)
+      setVirtualGroups(virtualGroupList)
 
       setLatencyMap(prev => {
         const validIds = new Set(finalList.map(p => p.proxyId))
@@ -220,11 +227,17 @@ export function ProxyPoolPage() {
     filterKeyword,
     filterGroup,
     filterAvailableOnly,
+    virtualGroups,
     sortColumn,
     sortOrder,
     latencyMap,
     ipHealthMap,
   })
+
+  const virtualGroupOptions = virtualGroups.map(group => ({
+    value: `__virtual_proxy_group__:${group.groupId.trim() || group.groupName.trim().toLowerCase()}`,
+    label: `虚拟：${group.groupName}`,
+  }))
 
   const {
     selectedIds,
@@ -369,6 +382,7 @@ export function ProxyPoolPage() {
         globalRefreshInterval={globalRefreshInterval}
         globalRefreshIntervalM={globalRefreshIntervalM}
         groups={groups}
+        virtualGroupOptions={virtualGroupOptions}
         ipHealthMap={ipHealthMap}
         latencyMap={latencyMap}
         latencyEngineMap={latencyEngineMap}

@@ -13,6 +13,7 @@ type BrowserProfileInput = browser.ProfileInput
 type BrowserTab = browser.Tab
 type BrowserSettings = browser.Settings
 type BrowserProxy = browser.Proxy
+type BrowserProxyVirtualGroup = browser.ProxyVirtualGroup
 type BrowserCore = browser.Core
 type BrowserCoreInput = browser.CoreInput
 type BrowserCoreValidateResult = browser.CoreValidateResult
@@ -126,6 +127,44 @@ func (a *App) migrateToSQLite() {
 		}
 		if len(srcProxies) > 0 {
 			log.Info("代理数据已初始化", logger.F("count", len(srcProxies)))
+		}
+	}
+
+	if a.browserMgr.ProxyVirtualGroupDAO != nil {
+		groups, err := a.browserMgr.ProxyVirtualGroupDAO.List()
+		if err != nil {
+			log.Error("读取虚拟代理分组失败", logger.F("error", err))
+		} else {
+			existingIDs := make(map[string]struct{}, len(groups))
+			existingNames := make(map[string]struct{}, len(groups))
+			for _, group := range groups {
+				group = browser.NormalizeProxyVirtualGroup(group)
+				if group.GroupId != "" {
+					existingIDs[group.GroupId] = struct{}{}
+				}
+				if group.GroupName != "" {
+					existingNames[strings.ToLower(group.GroupName)] = struct{}{}
+				}
+			}
+			for _, configuredGroup := range a.config.Browser.ProxyVirtualGroups {
+				group := browser.NormalizeProxyVirtualGroup(browser.ProxyVirtualGroup(configuredGroup))
+				if _, exists := existingIDs[group.GroupId]; group.GroupId != "" && exists {
+					continue
+				}
+				if _, exists := existingNames[strings.ToLower(group.GroupName)]; group.GroupName != "" && exists {
+					continue
+				}
+				if err := a.browserMgr.ProxyVirtualGroupDAO.Upsert(group); err != nil {
+					log.Error("虚拟代理分组迁移失败", logger.F("group_id", group.GroupId), logger.F("group_name", group.GroupName), logger.F("error", err))
+					continue
+				}
+				if group.GroupId != "" {
+					existingIDs[group.GroupId] = struct{}{}
+				}
+				if group.GroupName != "" {
+					existingNames[strings.ToLower(group.GroupName)] = struct{}{}
+				}
+			}
 		}
 	}
 

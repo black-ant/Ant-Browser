@@ -267,6 +267,24 @@ var migrations = []migration{
 			`ALTER TABLE browser_profiles ADD COLUMN proxy_group_name TEXT NOT NULL DEFAULT ''`,
 		},
 	},
+	{
+		version: 25,
+		desc:    "添加代理虚拟连接分组及成员选择策略",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_proxy_virtual_groups (
+				group_id           TEXT PRIMARY KEY,
+				group_name         TEXT NOT NULL COLLATE NOCASE UNIQUE,
+				strategy           TEXT NOT NULL DEFAULT 'round_robin',
+				selected_proxy_id  TEXT NOT NULL DEFAULT '',
+				member_proxy_ids   TEXT NOT NULL DEFAULT '[]',
+				member_group_names TEXT NOT NULL DEFAULT '[]',
+				sort_order         INTEGER NOT NULL DEFAULT 0,
+				created_at         TEXT NOT NULL DEFAULT '',
+				updated_at         TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_proxy_virtual_groups_sort_order ON browser_proxy_virtual_groups(sort_order, group_name)`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

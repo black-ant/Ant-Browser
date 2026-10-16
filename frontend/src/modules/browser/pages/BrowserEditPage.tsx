@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
 import { Button, Card, ConfirmModal, FormItem, Input, Modal, Textarea, toast } from '../../../shared/components'
-import type { BrowserCore, BrowserFingerprintCapabilityReport, BrowserFingerprintCapabilityRow, BrowserFingerprintCheckResult, BrowserProfileInput, BrowserProxy, BrowserGroup, ProxyLocationResolveResult } from '../types'
-import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, updateBrowserProfile, validateProxyConfig } from '../api'
+import type { BrowserCore, BrowserFingerprintCapabilityReport, BrowserFingerprintCapabilityRow, BrowserFingerprintCheckResult, BrowserProfileInput, BrowserProxy, BrowserProxyVirtualGroup, BrowserGroup, ProxyLocationResolveResult } from '../types'
+import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserProxyVirtualGroups, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, updateBrowserProfile, validateProxyConfig } from '../api'
 import { FingerprintPanel } from '../components/FingerprintPanel'
 import { applyLocaleToFingerprintArgs, validateFingerprintArgs, withAdaptiveDefaultWindowSize } from '../utils/fingerprintSerializer'
 import { TagInput } from '../components/TagInput'
@@ -275,6 +275,7 @@ export function BrowserEditPage() {
   })
   const [cores, setCores] = useState<BrowserCore[]>([])
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
+  const [proxyVirtualGroups, setProxyVirtualGroups] = useState<BrowserProxyVirtualGroup[]>([])
   const [groups, setGroups] = useState<BrowserGroup[]>([])
   const [launchArgsText, setLaunchArgsText] = useState('')
   const [allTags, setAllTags] = useState<string[]>([])
@@ -297,9 +298,10 @@ export function BrowserEditPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [coreList, proxyList, tagList, groupList, settings] = await Promise.all([
+      const [coreList, proxyList, proxyVirtualGroupList, tagList, groupList, settings] = await Promise.all([
         fetchBrowserCores(),
         fetchBrowserProxies(),
+        fetchBrowserProxyVirtualGroups(),
         fetchAllTags(),
         fetchGroups(),
         fetchBrowserSettings(),
@@ -307,6 +309,7 @@ export function BrowserEditPage() {
       const resolvedDefaultLaunchArgs = resolveDefaultLaunchArgs(settings.defaultLaunchArgs || [])
       setCores(coreList)
       setProxies(proxyList)
+      setProxyVirtualGroups(proxyVirtualGroupList)
       setAllTags(tagList)
       setGroups(groupList)
 
@@ -531,6 +534,17 @@ export function BrowserEditPage() {
     (formData.proxyGroupName || '').trim(),
   ].filter(Boolean)))
     .sort((left, right) => left.localeCompare(right, 'zh-CN'))
+  const selectedVirtualProxyGroup = proxyVirtualGroups.find(group => (
+    group.groupName.trim().toLowerCase() === (formData.proxyGroupName || '').trim().toLowerCase()
+  ))
+  const selectedVirtualProxyCount = selectedVirtualProxyGroup
+    ? proxies.filter(proxy => proxy.proxyConfig.trim().toLowerCase() !== 'direct://'
+      && ((selectedVirtualProxyGroup.memberProxyIds || []).some(proxyId => (
+        proxyId.trim().toLowerCase() === proxy.proxyId.trim().toLowerCase()
+      )) || (selectedVirtualProxyGroup.memberGroupNames || []).some(groupName => (
+        groupName.trim().toLowerCase() === (proxy.groupName || '').trim().toLowerCase()
+      )))).length
+    : 0
 
   const handleOpenUserDataDir = async () => {
     if (!formData.userDataDir.trim()) {
@@ -668,7 +682,16 @@ export function BrowserEditPage() {
                 onChange={value => handleChange('proxyGroupName', value)}
                 options={[
                   { value: '', label: '全部代理分组' },
-                  ...dynamicProxyGroups.map(groupName => ({ value: groupName, label: groupName })),
+                  ...dynamicProxyGroups
+                    .filter(groupName => !proxyVirtualGroups.some(group => group.groupName.toLowerCase() === groupName.toLowerCase()))
+                    .map(groupName => ({ value: groupName, label: `实体：${groupName}` })),
+                  ...proxyVirtualGroups.map(group => ({
+                    value: group.groupName,
+                    label: `虚拟：${group.groupName}（${group.strategy === 'sticky' ? '代理保持' : '绝对轮询'}）`,
+                  })),
+                  ...(formData.proxyGroupName && !dynamicProxyGroups.includes(formData.proxyGroupName.trim())
+                    ? [{ value: formData.proxyGroupName, label: `已保存：${formData.proxyGroupName}` }]
+                    : []),
                 ]}
               />
             </FormItem>
@@ -718,12 +741,19 @@ export function BrowserEditPage() {
             </FormItem>
           )}
         </div>
-        {proxyMode === 'dynamic' && <p className="mt-2 text-xs text-[var(--color-text-muted)]">启动时按测速延迟尝试有效节点；失败节点会自动跳过。</p>}
+        {proxyMode === 'dynamic' && (
+          <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+            {selectedVirtualProxyGroup
+              ? `虚拟分组「${selectedVirtualProxyGroup.groupName}」当前包含 ${selectedVirtualProxyCount} 个节点，策略：${selectedVirtualProxyGroup.strategy === 'sticky' ? '代理保持' : '绝对轮询'}。启动失败时切换到下一成员。`
+              : '启动时按测速结果依次尝试实体分组中的有效节点。'}
+          </p>
+        )}
       </Card>
 
       <ProxyPickerModal
         open={proxyPickerOpen}
         currentProxyId={formData.proxyId}
+        showVirtualGroups
         onSelect={proxy => { handleChange('proxyId', proxy.proxyId); setLocationResult(null) }}
         onProxyListUpdated={handleProxyListUpdated}
         onProxyDeleted={handleProxyDeleted}

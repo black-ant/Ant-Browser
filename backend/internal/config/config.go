@@ -189,26 +189,27 @@ type BrowserBookmark struct {
 }
 
 type BrowserConfig struct {
-	UserDataRoot           string                 `yaml:"user_data_root"`
-	DefaultFingerprintArgs []string               `yaml:"default_fingerprint_args"`
-	DefaultLaunchArgs      []string               `yaml:"default_launch_args"`
-	DefaultStartURLs       []string               `yaml:"default_start_urls"`
-	LightStartEnabled      *bool                  `yaml:"light_start_enabled,omitempty"`
-	RestoreLastSession     bool                   `yaml:"restore_last_session"`
-	StartReadyTimeoutMs    int                    `yaml:"start_ready_timeout_ms,omitempty"`
-	StartStableWindowMs    int                    `yaml:"start_stable_window_ms,omitempty"`
-	DefaultBookmarks       []BrowserBookmark      `yaml:"default_bookmarks,omitempty"`
-	Cores                  []BrowserCore          `yaml:"cores,omitempty"`
-	Proxies                []BrowserProxy         `yaml:"proxies,omitempty"`
-	Profiles               []BrowserProfileConfig `yaml:"profiles,omitempty"`
-	ChromeBinaryPath       string                 `yaml:"chrome_binary_path,omitempty"`
-	ClashBinaryPath        string                 `yaml:"clash_binary_path,omitempty"`
-	XrayBinaryPath         string                 `yaml:"xray_binary_path,omitempty"`
-	SingBoxBinaryPath      string                 `yaml:"singbox_binary_path,omitempty"`
-	CoreRoot               string                 `yaml:"core_root,omitempty"`
-	DefaultCoreId          string                 `yaml:"default_core_id,omitempty"`
-	DefaultConnectorType   string                 `yaml:"default_connector_type,omitempty"`
-	Environments           []BrowserEnvironment   `yaml:"environments,omitempty"`
+	UserDataRoot           string                     `yaml:"user_data_root"`
+	DefaultFingerprintArgs []string                   `yaml:"default_fingerprint_args"`
+	DefaultLaunchArgs      []string                   `yaml:"default_launch_args"`
+	DefaultStartURLs       []string                   `yaml:"default_start_urls"`
+	LightStartEnabled      *bool                      `yaml:"light_start_enabled,omitempty"`
+	RestoreLastSession     bool                       `yaml:"restore_last_session"`
+	StartReadyTimeoutMs    int                        `yaml:"start_ready_timeout_ms,omitempty"`
+	StartStableWindowMs    int                        `yaml:"start_stable_window_ms,omitempty"`
+	DefaultBookmarks       []BrowserBookmark          `yaml:"default_bookmarks,omitempty"`
+	Cores                  []BrowserCore              `yaml:"cores,omitempty"`
+	Proxies                []BrowserProxy             `yaml:"proxies,omitempty"`
+	ProxyVirtualGroups     []BrowserProxyVirtualGroup `yaml:"proxy_virtual_groups,omitempty"`
+	Profiles               []BrowserProfileConfig     `yaml:"profiles,omitempty"`
+	ChromeBinaryPath       string                     `yaml:"chrome_binary_path,omitempty"`
+	ClashBinaryPath        string                     `yaml:"clash_binary_path,omitempty"`
+	XrayBinaryPath         string                     `yaml:"xray_binary_path,omitempty"`
+	SingBoxBinaryPath      string                     `yaml:"singbox_binary_path,omitempty"`
+	CoreRoot               string                     `yaml:"core_root,omitempty"`
+	DefaultCoreId          string                     `yaml:"default_core_id,omitempty"`
+	DefaultConnectorType   string                     `yaml:"default_connector_type,omitempty"`
+	Environments           []BrowserEnvironment       `yaml:"environments,omitempty"`
 }
 
 type BrowserCore struct {
@@ -236,6 +237,18 @@ type BrowserProxy struct {
 	LastTestOk             bool   `yaml:"-" json:"lastTestOk"`
 	LastTestedAt           string `yaml:"-" json:"lastTestedAt"`
 	LastIPHealthJSON       string `yaml:"-" json:"lastIPHealthJson,omitempty"`
+}
+
+type BrowserProxyVirtualGroup struct {
+	GroupId          string   `yaml:"group_id" json:"groupId"`
+	GroupName        string   `yaml:"group_name" json:"groupName"`
+	Strategy         string   `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+	SelectedProxyId  string   `yaml:"selected_proxy_id,omitempty" json:"selectedProxyId,omitempty"`
+	MemberProxyIds   []string `yaml:"member_proxy_ids,omitempty" json:"memberProxyIds,omitempty"`
+	MemberGroupNames []string `yaml:"member_group_names,omitempty" json:"memberGroupNames,omitempty"`
+	SortOrder        int      `yaml:"sort_order,omitempty" json:"sortOrder,omitempty"`
+	CreatedAt        string   `yaml:"created_at,omitempty" json:"createdAt,omitempty"`
+	UpdatedAt        string   `yaml:"updated_at,omitempty" json:"updatedAt,omitempty"`
 }
 
 type BrowserEnvironment struct {
