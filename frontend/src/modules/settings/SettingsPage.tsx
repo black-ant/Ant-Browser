@@ -117,9 +117,10 @@ export function SettingsPage() {
 
     try {
       const nextSettings = await resetSettings()
-      const [automation, launchServer] = await Promise.all([
+      const [automation, launchServer, mcpSettings] = await Promise.all([
         fetchAutomationState(),
         fetchLaunchServerSettings(),
+        fetchMCPSettings(),
       ])
       setSettings(nextSettings)
       setTheme('light')
@@ -133,6 +134,7 @@ export function SettingsPage() {
       setLaunchServerPortDraft(String(launchServer.preferredPort || launchServer.port || 19876))
       setLaunchServerBaseUrl(launchServer.baseUrl)
       setLaunchServerReady(launchServer.ready)
+      setMcp(mcpSettings)
       setHasChanges(false)
       toast.success('设置已重置')
     } catch (error: any) {
