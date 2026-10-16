@@ -34,7 +34,7 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 	}
 	fingerprintArgs := append([]string{}, input.FingerprintArgs...)
 	if len(fingerprintArgs) == 0 && m.Config != nil {
-		fingerprintArgs = append([]string{}, m.Config.Browser.DefaultFingerprintArgs...)
+		fingerprintArgs = m.defaultFingerprintArgsForCore(coreId)
 	}
 	profile := &Profile{
 		ProfileId:          profileId,

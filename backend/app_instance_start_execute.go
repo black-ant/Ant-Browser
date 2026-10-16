@@ -16,6 +16,10 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 
 	cmd := exec.Command(plan.chromeBinaryPath, plan.args...)
 	cmd.Dir = filepath.Dir(plan.chromeBinaryPath)
+	// processEnv 为 nil 时保持继承父进程环境，与历史行为一致。
+	if len(plan.processEnv) > 0 {
+		cmd.Env = plan.processEnv
+	}
 
 	monitor, err := newBrowserProcessMonitor(cmd)
 	if err != nil {
