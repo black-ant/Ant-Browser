@@ -25,6 +25,8 @@ const (
 	methodMOVE     = `MOVE`
 	methodPROPFIND = `PROPFIND`
 	propfindBody   = `<?xml version='1.0' encoding='utf-8'?><d:propfind xmlns:d='DAV:'><d:prop><d:displayname/><d:getcontentlength/><d:getlastmodified/><d:resourcetype/></d:prop></d:propfind>`
+	authModeBasic  = `basic`
+	authModeToken  = `token`
 
 	TransferTimeout            = 2 * time.Hour
 	ControlTimeout             = time.Minute
@@ -36,6 +38,9 @@ const (
 type Config struct {
 	BaseURL             string
 	RemotePath          string
+	AuthMode            string
+	Username            string
+	Password            string
 	Token               string
 	UploadRateLimitMBps int
 }
@@ -58,9 +63,18 @@ func NewClient(cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Token = strings.TrimSpace(cfg.Token)
-	if cfg.Token == "" {
-		return nil, fmt.Errorf(`OpenList token is empty`)
+	cfg.AuthMode = normalizeAuthMode(cfg.AuthMode, cfg.Username, cfg.Token)
+	cfg.Username = strings.TrimSpace(cfg.Username)
+	cfg.Password = strings.TrimSpace(cfg.Password)
+	cfg.Token = normalizeToken(cfg.Token)
+	if cfg.AuthMode == authModeBasic && cfg.Username == "" {
+		return nil, fmt.Errorf(`OpenList WebDAV username is empty`)
+	}
+	if cfg.AuthMode == authModeBasic && cfg.Password == "" {
+		return nil, fmt.Errorf(`OpenList WebDAV password is empty`)
+	}
+	if cfg.AuthMode == authModeToken && cfg.Token == "" {
+		return nil, fmt.Errorf(`OpenList global token is empty`)
 	}
 	if cfg.UploadRateLimitMBps < 0 || cfg.UploadRateLimitMBps > maxUploadRateLimitMBps {
 		return nil, fmt.Errorf(`OpenList upload rate limit must be between 0 and %d MB/s`, maxUploadRateLimitMBps)
@@ -82,9 +96,17 @@ func NewClient(cfg Config) (*Client, error) {
 func newHTTPClient() *http.Client {
 	client := &http.Client{
 		Timeout: TransferTimeout,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+	}
+	client.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if len(via) == 0 {
+			return nil
+		}
+		switch via[len(via)-1].Method {
+		case http.MethodGet, http.MethodHead:
+			return nil
+		default:
 			return http.ErrUseLastResponse
-		},
+		}
 	}
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -655,8 +677,13 @@ func (c *Client) requestAtPath(ctx context.Context, method, remotePath string, b
 	for key, value := range headers {
 		request.Header.Set(key, value)
 	}
-	if token := strings.TrimSpace(c.config.Token); token != `` {
-		request.Header.Set(`Authorization`, `Bearer `+token)
+	switch c.config.AuthMode {
+	case authModeBasic:
+		request.SetBasicAuth(c.config.Username, c.config.Password)
+	case authModeToken:
+		if token := strings.TrimSpace(c.config.Token); token != `` {
+			request.Header.Set(`Authorization`, `Bearer `+token)
+		}
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {
@@ -705,6 +732,30 @@ func directoryRemotePath(value string) string {
 		return value
 	}
 	return value + `/`
+}
+
+func normalizeAuthMode(value, username, token string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case authModeBasic:
+		return authModeBasic
+	case authModeToken:
+		return authModeToken
+	}
+	if strings.TrimSpace(username) != `` {
+		return authModeBasic
+	}
+	if strings.TrimSpace(token) != `` {
+		return authModeToken
+	}
+	return authModeBasic
+}
+
+func normalizeToken(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= len(`Bearer `) && strings.EqualFold(value[:len(`Bearer `)], `Bearer `) {
+		return strings.TrimSpace(value[len(`Bearer `):])
+	}
+	return value
 }
 
 func normalizeBaseURL(value string) (*url.URL, error) {
@@ -911,6 +962,9 @@ func responseError(response *http.Response) error {
 	uploadCommitted, committedMessage := committedUploadResponse(response.StatusCode, body)
 	if response.StatusCode == http.StatusRequestEntityTooLarge {
 		return fmt.Errorf(`remote request failed: HTTP 413 Request Entity Too Large：远端反向代理拒绝了过大的请求体（通常是 OpenResty/Nginx 的 client_max_body_size），请将其调大到超过备份文件大小；客户端限速和超时无法绕过此限制`)
+	}
+	if response.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf(`OpenList WebDAV 认证失败：请使用 WebDAV 用户名/密码，或 OpenList 服务端全局 Token；/api/auth/login 返回的登录 Token 不能直接用于 WebDAV`)
 	}
 	if isRedirectStatus(response.StatusCode) {
 		if location := strings.TrimSpace(response.Header.Get(`Location`)); location != `` {

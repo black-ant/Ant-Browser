@@ -111,7 +111,10 @@ type backupLocalChannelsSecrets struct {
 }
 
 type backupLocalOpenListSecrets struct {
-	Token string `yaml:"token,omitempty"`
+	AuthMode string `yaml:"auth_mode,omitempty"`
+	Username string `yaml:"username,omitempty"`
+	Password string `yaml:"password,omitempty"`
+	Token    string `yaml:"token,omitempty"`
 }
 
 type backupLocalS3Config struct {
@@ -163,6 +166,16 @@ func normalizeBackupSettings(value config.BackupConfig) config.BackupConfig {
 	if value.Channels.OpenList.RemotePath == "" {
 		value.Channels.OpenList.RemotePath = defaults.Channels.OpenList.RemotePath
 	}
+	value.Channels.OpenList.AuthMode = strings.ToLower(strings.TrimSpace(value.Channels.OpenList.AuthMode))
+	if value.Channels.OpenList.AuthMode != "basic" && value.Channels.OpenList.AuthMode != "token" {
+		if strings.TrimSpace(value.Channels.OpenList.Username) != "" {
+			value.Channels.OpenList.AuthMode = "basic"
+		} else {
+			value.Channels.OpenList.AuthMode = "token"
+		}
+	}
+	value.Channels.OpenList.Username = strings.TrimSpace(value.Channels.OpenList.Username)
+	value.Channels.OpenList.Password = strings.TrimSpace(value.Channels.OpenList.Password)
 	value.Channels.OpenList.Token = strings.TrimSpace(value.Channels.OpenList.Token)
 	value.Channels.S3.Endpoint = strings.TrimSpace(value.Channels.S3.Endpoint)
 	value.Channels.S3.Region = strings.TrimSpace(value.Channels.S3.Region)
@@ -188,6 +201,9 @@ func backupConfigsEqual(left, right config.BackupConfig) bool {
 	return left.LocalDirectory == right.LocalDirectory &&
 		left.Channels.OpenList.BaseURL == right.Channels.OpenList.BaseURL &&
 		left.Channels.OpenList.RemotePath == right.Channels.OpenList.RemotePath &&
+		left.Channels.OpenList.AuthMode == right.Channels.OpenList.AuthMode &&
+		left.Channels.OpenList.Username == right.Channels.OpenList.Username &&
+		left.Channels.OpenList.Password == right.Channels.OpenList.Password &&
 		left.Channels.OpenList.Token == right.Channels.OpenList.Token &&
 		left.Channels.OpenList.UploadRateLimitMBps == right.Channels.OpenList.UploadRateLimitMBps &&
 		left.Channels.S3.Endpoint == right.Channels.S3.Endpoint &&
@@ -216,7 +232,9 @@ func backupScheduleTimesEqual(left, right []string) bool {
 }
 
 func backupHasLocalSecrets(value config.BackupConfig) bool {
-	return strings.TrimSpace(value.Channels.OpenList.Token) != "" ||
+	return strings.TrimSpace(value.Channels.OpenList.Username) != "" ||
+		strings.TrimSpace(value.Channels.OpenList.Password) != "" ||
+		strings.TrimSpace(value.Channels.OpenList.Token) != "" ||
 		strings.TrimSpace(value.Channels.S3.AccessKeyID) != "" ||
 		strings.TrimSpace(value.Channels.S3.SecretAccessKey) != "" ||
 		strings.TrimSpace(value.Channels.S3.SessionToken) != ""
@@ -262,6 +280,15 @@ func loadBackupLocalConfig(path string, base config.BackupConfig) (config.Backup
 	if strings.TrimSpace(localOpenList.RemotePath) == "" {
 		localOpenList.RemotePath = legacyOpenList.RemotePath
 	}
+	if strings.TrimSpace(localOpenList.AuthMode) == "" {
+		localOpenList.AuthMode = legacyOpenList.AuthMode
+	}
+	if strings.TrimSpace(localOpenList.Username) == "" {
+		localOpenList.Username = legacyOpenList.Username
+	}
+	if strings.TrimSpace(localOpenList.Password) == "" {
+		localOpenList.Password = legacyOpenList.Password
+	}
 	if strings.TrimSpace(localOpenList.Token) == "" {
 		localOpenList.Token = legacyOpenList.Token
 	}
@@ -277,6 +304,15 @@ func loadBackupLocalConfig(path string, base config.BackupConfig) (config.Backup
 	}
 	if strings.TrimSpace(localOpenList.Token) != "" {
 		settings.Channels.OpenList.Token = strings.TrimSpace(localOpenList.Token)
+	}
+	if strings.TrimSpace(localOpenList.AuthMode) != "" {
+		settings.Channels.OpenList.AuthMode = strings.TrimSpace(localOpenList.AuthMode)
+	}
+	if strings.TrimSpace(localOpenList.Username) != "" {
+		settings.Channels.OpenList.Username = strings.TrimSpace(localOpenList.Username)
+	}
+	if strings.TrimSpace(localOpenList.Password) != "" {
+		settings.Channels.OpenList.Password = strings.TrimSpace(localOpenList.Password)
 	}
 	if value := strings.TrimSpace(localS3.Endpoint); value != "" {
 		settings.Channels.S3.Endpoint = value
@@ -313,6 +349,9 @@ func loadBackupLocalConfig(path string, base config.BackupConfig) (config.Backup
 }
 
 func saveBackupLocalConfig(path string, value config.BackupConfig) error {
+	authMode := strings.TrimSpace(value.Channels.OpenList.AuthMode)
+	username := strings.TrimSpace(value.Channels.OpenList.Username)
+	password := strings.TrimSpace(value.Channels.OpenList.Password)
 	token := strings.TrimSpace(value.Channels.OpenList.Token)
 	s3Config := backupLocalS3Config{}
 	if backupHasS3Config(value) {
@@ -327,7 +366,7 @@ func saveBackupLocalConfig(path string, value config.BackupConfig) error {
 			ForcePathStyle:  value.Channels.S3.ForcePathStyle,
 		}
 	}
-	if token == "" && !backupHasS3Config(value) {
+	if !backupHasLocalConfig(value) {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("删除本地备份配置失败: %w", err)
 		}
@@ -337,8 +376,13 @@ func saveBackupLocalConfig(path string, value config.BackupConfig) error {
 	stored := backupLocalConfigFile{
 		Backup: backupLocalSecrets{
 			Channels: backupLocalChannelsSecrets{
-				OpenList: backupLocalOpenListSecrets{Token: token},
-				S3:       s3Config,
+				OpenList: backupLocalOpenListSecrets{
+					AuthMode: authMode,
+					Username: username,
+					Password: password,
+					Token:    token,
+				},
+				S3: s3Config,
 			},
 		},
 	}

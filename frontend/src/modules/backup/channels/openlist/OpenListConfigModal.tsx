@@ -3,6 +3,7 @@ import { CheckCircle2, Eye, EyeOff, Settings2, XCircle } from 'lucide-react'
 
 import { Button, FormItem, Input, Modal, toast } from '../../../../shared/components'
 import { NotificationMessage } from '../../../../shared/notifications/NotificationMessage'
+import { OpenListAuthModeDropdown } from './OpenListAuthModeDropdown'
 import {
   defaultOpenListSettings,
   fetchOpenListSettings,
@@ -27,11 +28,14 @@ type OpenListBusy = 'none' | 'load' | 'test' | 'save'
 const emptyDraft: OpenListDraft = {
   baseURL: '',
   remotePath: defaultOpenListSettings.remotePath,
+  authMode: defaultOpenListSettings.authMode,
+  username: '',
+  password: '',
   token: '',
   uploadRateLimitMBps: String(defaultOpenListSettings.uploadRateLimitMBps),
 }
 
-function validateConnection(draft: OpenListDraft, tokenConfigured: boolean): OpenListFieldErrors {
+function validateConnection(draft: OpenListDraft, settings: OpenListSettings): OpenListFieldErrors {
 	const errors: OpenListFieldErrors = {}
 	const baseURL = draft.baseURL.trim()
 
@@ -59,9 +63,16 @@ function validateConnection(draft: OpenListDraft, tokenConfigured: boolean): Ope
     errors.remotePath = '远程目录不能包含 ..'
   }
 
-	if (!draft.token.trim() && !tokenConfigured) {
-		errors.token = '请输入 OpenList Token'
-  }
+	if (draft.authMode === 'basic') {
+		if (!draft.username.trim()) {
+			errors.username = '请输入 WebDAV 用户名'
+		}
+		if (!draft.password && !settings.passwordConfigured) {
+			errors.password = '请输入 WebDAV 密码'
+		}
+	} else if (!draft.token.trim() && !settings.tokenConfigured) {
+		errors.token = '请输入 OpenList 服务端全局 Token'
+	}
 
   const uploadRateLimit = draft.uploadRateLimitMBps.trim()
   if (!/^\d+$/.test(uploadRateLimit)) {
@@ -88,6 +99,7 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
   const [fieldErrors, setFieldErrors] = useState<OpenListFieldErrors>({})
 	const [testResult, setTestResult] = useState<OpenListTestResult | null>(null)
   const [tokenVisible, setTokenVisible] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [revealingToken, setRevealingToken] = useState(false)
 
 	useEffect(() => {
@@ -96,8 +108,9 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
 		setBusy('load')
 		setError('')
 		setFieldErrors({})
-		setTestResult(null)
+    setTestResult(null)
     setTokenVisible(false)
+    setPasswordVisible(false)
     setRevealingToken(false)
 		void fetchOpenListSettings()
 			.then(next => {
@@ -106,6 +119,9 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
 				setDraft({
 					baseURL: next.baseURL,
 					remotePath: next.remotePath,
+					authMode: next.authMode,
+					username: next.username,
+					password: '',
 					token: '',
 					uploadRateLimitMBps: String(next.uploadRateLimitMBps),
 				})
@@ -130,11 +146,12 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
 		...draft,
 		baseURL: draft.baseURL.trim(),
 		remotePath: draft.remotePath.trim(),
+		username: draft.username.trim(),
 		token: draft.token.trim(),
 		uploadRateLimitMBps: draft.uploadRateLimitMBps.trim(),
 	}), [draft])
 
-	const updateDraft = (key: OpenListField, value: string) => {
+	const updateDraft = <K extends OpenListField>(key: K, value: OpenListDraft[K]) => {
 		setDraft(current => ({ ...current, [key]: value }))
     setError('')
     setFieldErrors({})
@@ -142,7 +159,7 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
   }
 
 	const validate = () => {
-		const nextErrors = validateConnection(normalizedDraft, settings.tokenConfigured)
+		const nextErrors = validateConnection(normalizedDraft, settings)
     if (Object.keys(nextErrors).length === 0) return true
     setFieldErrors(nextErrors)
     setError('')
@@ -203,7 +220,7 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
     try {
       const next = await saveOpenListSettings(normalizedDraft)
       setSettings(next)
-      onConfigured?.({ baseURL: next.baseURL, remotePath: next.remotePath })
+      onConfigured?.({ baseURL: next.baseURL, remotePath: next.remotePath, authMode: next.authMode, username: next.username })
       toast.success('OpenList 配置已保存')
       onClose()
     } catch (saveError) {
@@ -272,6 +289,88 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
             error={Boolean(fieldErrors.remotePath)}
           />
         </FormItem>
+        <FormItem label="认证方式">
+          <OpenListAuthModeDropdown
+            value={draft.authMode}
+            onChange={value => updateDraft('authMode', value)}
+            disabled={!canClose}
+          />
+        </FormItem>
+        {draft.authMode === 'basic' ? (
+          <>
+            <FormItem label="WebDAV 用户名" required error={fieldErrors.username}>
+              <Input
+                value={draft.username}
+                onChange={event => updateDraft('username', event.target.value)}
+                placeholder={settings.usernameConfigured ? settings.username : 'OpenList 用户名'}
+                autoComplete="username"
+                error={Boolean(fieldErrors.username)}
+                disabled={!canClose}
+              />
+            </FormItem>
+            <FormItem
+              label="WebDAV 密码"
+              required={!settings.passwordConfigured}
+              hint={settings.passwordConfigured ? '留空沿用已保存密码' : 'OpenList WebDAV 用户密码'}
+              error={fieldErrors.password}
+            >
+              <div className="relative">
+                <Input
+                  type={passwordVisible ? 'text' : 'password'}
+                  value={draft.password}
+                  placeholder={settings.passwordConfigured ? '****' : undefined}
+                  onChange={event => updateDraft('password', event.target.value)}
+                  autoComplete="new-password"
+                  error={Boolean(fieldErrors.password)}
+                  className="pr-10"
+                  disabled={!canClose}
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => setPasswordVisible(value => !value)}
+                  disabled={!canClose}
+                  aria-label={passwordVisible ? '隐藏 WebDAV 密码' : '显示 WebDAV 密码'}
+                  title={passwordVisible ? '隐藏 WebDAV 密码' : '显示 WebDAV 密码'}
+                >
+                  {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </FormItem>
+          </>
+        ) : (
+          <FormItem
+            label="OpenList 全局 Token"
+            required={!settings.tokenConfigured}
+            hint={settings.tokenConfigured
+              ? '留空沿用已保存 Token；必须是 OpenList 服务端全局 Token，不是 /api/auth/login 返回的登录 Token'
+              : '必须是 OpenList 服务端全局 Token，不是 /api/auth/login 返回的登录 Token'}
+            error={fieldErrors.token}
+          >
+            <div className="relative">
+              <Input
+                type={tokenVisible ? 'text' : 'password'}
+                value={draft.token}
+                placeholder={settings.tokenConfigured ? '****' : undefined}
+                onChange={event => updateDraft('token', event.target.value)}
+                autoComplete="new-password"
+                error={Boolean(fieldErrors.token)}
+                className="pr-10"
+                disabled={!canClose}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => { void toggleTokenVisibility() }}
+                disabled={!canClose}
+                aria-label={tokenVisible ? '隐藏 OpenList Token' : '显示 OpenList Token'}
+                title={tokenVisible ? '隐藏 OpenList Token' : '显示 OpenList Token'}
+              >
+                {tokenVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </FormItem>
+        )}
         <FormItem label="上传限速（MB/s）" hint="0 表示不限速" error={fieldErrors.uploadRateLimitMBps}>
           <Input
             type="number"
@@ -284,30 +383,6 @@ export function OpenListConfigModal({ open, onClose, onConfigured, onBusyChange 
             autoComplete="off"
             error={Boolean(fieldErrors.uploadRateLimitMBps)}
           />
-        </FormItem>
-        <FormItem label="Token" required={!settings.tokenConfigured} hint={settings.tokenConfigured ? '留空沿用已保存 Token' : '用于 OpenList 请求认证'} error={fieldErrors.token}>
-          <div className="relative">
-            <Input
-              type={tokenVisible ? 'text' : 'password'}
-              value={draft.token}
-              placeholder={settings.tokenConfigured ? '****' : undefined}
-              onChange={event => updateDraft('token', event.target.value)}
-              autoComplete="new-password"
-              error={Boolean(fieldErrors.token)}
-              className="pr-10"
-              disabled={!canClose}
-            />
-            <button
-              type="button"
-              className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => { void toggleTokenVisibility() }}
-              disabled={!canClose}
-              aria-label={tokenVisible ? '隐藏 OpenList Token' : '显示 OpenList Token'}
-              title={tokenVisible ? '隐藏 OpenList Token' : '显示 OpenList Token'}
-            >
-              {tokenVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
         </FormItem>
         {testResult && (
           <div

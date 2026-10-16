@@ -178,6 +178,16 @@ func normalizeConfig(config *Config) {
 	} else {
 		config.Backup.Channels.OpenList.RemotePath = strings.TrimSpace(config.Backup.Channels.OpenList.RemotePath)
 	}
+	config.Backup.Channels.OpenList.AuthMode = strings.ToLower(strings.TrimSpace(config.Backup.Channels.OpenList.AuthMode))
+	if config.Backup.Channels.OpenList.AuthMode != "basic" && config.Backup.Channels.OpenList.AuthMode != "token" {
+		if strings.TrimSpace(config.Backup.Channels.OpenList.Username) != "" {
+			config.Backup.Channels.OpenList.AuthMode = "basic"
+		} else {
+			config.Backup.Channels.OpenList.AuthMode = "token"
+		}
+	}
+	config.Backup.Channels.OpenList.Username = strings.TrimSpace(config.Backup.Channels.OpenList.Username)
+	config.Backup.Channels.OpenList.Password = strings.TrimSpace(config.Backup.Channels.OpenList.Password)
 	config.Backup.Channels.OpenList.Token = strings.TrimSpace(config.Backup.Channels.OpenList.Token)
 	if config.Backup.Channels.OpenList.UploadRateLimitMBps < 0 {
 		config.Backup.Channels.OpenList.UploadRateLimitMBps = defaultConfig.Backup.Channels.OpenList.UploadRateLimitMBps

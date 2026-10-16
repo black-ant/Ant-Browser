@@ -98,8 +98,13 @@ export function BackupPage() {
       if (!active) return
       if (openListResult.status === 'fulfilled') {
         const settings = openListResult.value
-        if (settings.tokenConfigured && settings.baseURL) {
-          setOpenListConnection({ baseURL: settings.baseURL, remotePath: settings.remotePath })
+        if (settings.authConfigured && settings.baseURL) {
+          setOpenListConnection({
+            baseURL: settings.baseURL,
+            remotePath: settings.remotePath,
+            authMode: settings.authMode,
+            username: settings.username,
+          })
         }
       }
       if (s3Result.status === 'fulfilled') {

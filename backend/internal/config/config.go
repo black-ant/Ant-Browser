@@ -100,6 +100,9 @@ type BackupChannelsConfig struct {
 type OpenListChannelConfig struct {
 	BaseURL             string `yaml:"base_url,omitempty"`
 	RemotePath          string `yaml:"remote_path,omitempty"`
+	AuthMode            string `yaml:"auth_mode,omitempty"`
+	Username            string `yaml:"username,omitempty"`
+	Password            string `yaml:"password,omitempty"`
 	Token               string `yaml:"token,omitempty"`
 	UploadRateLimitMBps int    `yaml:"upload_rate_limit_mbps,omitempty"`
 }
@@ -136,6 +139,15 @@ func (c *BackupConfig) UnmarshalYAML(node *yaml.Node) error {
 	}
 	if strings.TrimSpace(openList.Token) == "" {
 		openList.Token = decoded.OpenList.Token
+	}
+	if strings.TrimSpace(openList.AuthMode) == "" {
+		openList.AuthMode = decoded.OpenList.AuthMode
+	}
+	if strings.TrimSpace(openList.Username) == "" {
+		openList.Username = decoded.OpenList.Username
+	}
+	if strings.TrimSpace(openList.Password) == "" {
+		openList.Password = decoded.OpenList.Password
 	}
 	if openList.UploadRateLimitMBps == 0 {
 		openList.UploadRateLimitMBps = decoded.OpenList.UploadRateLimitMBps

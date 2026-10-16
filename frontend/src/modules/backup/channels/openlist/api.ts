@@ -1,17 +1,29 @@
 import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../../packageInfo'
 
+export type OpenListAuthMode = 'basic' | 'token'
+
 export interface OpenListConnection {
   baseURL: string
   remotePath: string
+  authMode?: OpenListAuthMode
+  username?: string
   token?: string
 }
 
 export interface OpenListDraft extends OpenListConnection {
+  authMode: OpenListAuthMode
+  username: string
+  password: string
   token: string
   uploadRateLimitMBps: string
 }
 
 export interface OpenListSettings extends OpenListConnection {
+  authMode: OpenListAuthMode
+  username: string
+  usernameConfigured: boolean
+  passwordConfigured: boolean
+  authConfigured: boolean
   tokenConfigured: boolean
   uploadRateLimitMBps: number
 }
@@ -25,6 +37,11 @@ export interface OpenListBackupFile extends BackupPackageInfo {
 export const defaultOpenListSettings: OpenListSettings = {
   baseURL: '',
   remotePath: 'ant-chrome/backups',
+  authMode: 'token',
+  username: '',
+  usernameConfigured: false,
+  passwordConfigured: false,
+  authConfigured: false,
   tokenConfigured: false,
   uploadRateLimitMBps: 0,
 }
@@ -42,6 +59,15 @@ function toPayload(value?: Partial<OpenListDraft>): Record<string, string> {
     baseURL: value?.baseURL?.trim() || '',
     remotePath: value?.remotePath?.trim() || '',
   }
+  if (value?.authMode === 'basic' || value?.authMode === 'token') {
+    payload.authMode = value.authMode
+  }
+  if (typeof value?.username === 'string') {
+    payload.username = value.username.trim()
+  }
+  if (typeof value?.password === 'string') {
+    payload.password = value.password
+  }
   if (typeof value?.token === 'string') {
     payload.token = value.token.trim()
   }
@@ -53,11 +79,21 @@ function toPayload(value?: Partial<OpenListDraft>): Record<string, string> {
 
 function normalizeOpenListSettings(raw: any): OpenListSettings {
   const rateLimit = Number(raw?.uploadRateLimitMBps)
+  const username = typeof raw?.username === 'string' ? raw.username : ''
+  const tokenConfigured = raw?.tokenConfigured === true
+  const authMode: OpenListAuthMode = raw?.authMode === 'basic' || raw?.authMode === 'token'
+    ? raw.authMode
+    : username.trim() ? 'basic' : 'token'
   return {
     ...defaultOpenListSettings,
     baseURL: typeof raw?.baseURL === 'string' ? raw.baseURL : '',
     remotePath: typeof raw?.remotePath === 'string' && raw.remotePath ? raw.remotePath : defaultOpenListSettings.remotePath,
-    tokenConfigured: raw?.tokenConfigured === true,
+    authMode,
+    username,
+    usernameConfigured: raw?.usernameConfigured === true || Boolean(username.trim()),
+    passwordConfigured: raw?.passwordConfigured === true,
+    authConfigured: raw?.authConfigured === true || tokenConfigured,
+    tokenConfigured,
     uploadRateLimitMBps: Number.isInteger(rateLimit) && rateLimit >= 0 ? rateLimit : defaultOpenListSettings.uploadRateLimitMBps,
   }
 }

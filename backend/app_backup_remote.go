@@ -481,6 +481,9 @@ func (a *App) backupOpenListClientWithConfig(input map[string]string) (config.Op
 	client, err := openlist.NewClient(openlist.Config{
 		BaseURL:             settings.BaseURL,
 		RemotePath:          settings.RemotePath,
+		AuthMode:            settings.AuthMode,
+		Username:            settings.Username,
+		Password:            settings.Password,
 		Token:               settings.Token,
 		UploadRateLimitMBps: settings.UploadRateLimitMBps,
 	})
@@ -501,13 +504,11 @@ func (a *App) backupResolvedOpenListConfig(input map[string]string) (config.Open
 	if !remotePathProvided {
 		remotePath = settings.RemotePath
 	}
-	token := backupOpenListInputValue(input, `token`)
-	if token == `` {
-		token = settings.Token
-	}
 	settings.BaseURL = baseURL
 	settings.RemotePath = remotePath
-	settings.Token = token
+	if err := applyOpenListAuthInput(&settings, input); err != nil {
+		return config.OpenListChannelConfig{}, err
+	}
 	if value := backupOpenListInputValue(input, `uploadRateLimitMBps`, `uploadRateLimitMbps`, `upload_rate_limit_mbps`); value != `` {
 		rateLimit, err := strconv.Atoi(value)
 		if err != nil || rateLimit < 0 {
@@ -516,6 +517,57 @@ func (a *App) backupResolvedOpenListConfig(input map[string]string) (config.Open
 		settings.UploadRateLimitMBps = rateLimit
 	}
 	return settings, nil
+}
+
+func applyOpenListAuthInput(settings *config.OpenListChannelConfig, input map[string]string) error {
+	if settings == nil {
+		return nil
+	}
+	authMode, authModeProvided := backupOpenListInputValueWithPresence(input, `authMode`, `auth_mode`)
+	username, usernameProvided := backupOpenListInputValueWithPresence(input, `username`, `user`)
+	password, passwordProvided := backupOpenListInputValueWithPresence(input, `password`, `pass`)
+	token, tokenProvided := backupOpenListInputValueWithPresence(input, `token`)
+
+	if authModeProvided {
+		switch strings.ToLower(strings.TrimSpace(authMode)) {
+		case `basic`:
+			settings.AuthMode = `basic`
+			if usernameProvided {
+				settings.Username = username
+			}
+			if passwordProvided && password != `` {
+				settings.Password = password
+			}
+			settings.Token = ``
+		case `token`:
+			settings.AuthMode = `token`
+			if tokenProvided && token != `` {
+				settings.Token = token
+			}
+			settings.Username = ``
+			settings.Password = ``
+		default:
+			return fmt.Errorf(`OpenList 认证方式无效`)
+		}
+		return nil
+	}
+
+	if usernameProvided && username != `` {
+		settings.AuthMode = `basic`
+		settings.Username = username
+		if passwordProvided && password != `` {
+			settings.Password = password
+		}
+		settings.Token = ``
+		return nil
+	}
+	if tokenProvided && token != `` {
+		settings.AuthMode = `token`
+		settings.Token = token
+		settings.Username = ``
+		settings.Password = ``
+	}
+	return nil
 }
 
 func backupRemoteUploadProgressMessage(localPath, artifactName, channelLabel string, uploadRateLimitMBps int) (string, int64, error) {

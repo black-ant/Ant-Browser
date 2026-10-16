@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const testBaseURL = "https" + "://example.test/dav"
+
 func TestClientRejectsInvalidInput(t *testing.T) {
 	if _, err := NewClient(Config{BaseURL: `ftp://example.test`}); err == nil {
 		t.Fatal(`expected invalid scheme error`)
@@ -73,6 +75,89 @@ func TestClientDoesNotFollowWebDAVRedirectAsGet(t *testing.T) {
 	}
 	if len(methods) != 1 || methods[0] != methodPROPFIND {
 		t.Fatalf(`redirect methods = %v, want one PROPFIND request`, methods)
+	}
+}
+
+func TestClientUsesBasicAuth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok := r.BasicAuth()
+		if !ok || username != `webdav-user` || password != `webdav-password` {
+			t.Fatalf(`basic auth = (%q, %q, %t), want configured credentials`, username, password, ok)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:  server.URL + `/dav`,
+		AuthMode: authModeBasic,
+		Username: `webdav-user`,
+		Password: `webdav-password`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.request(context.Background(), methodPROPFIND, ``, nil, -1, nil)
+	if err != nil {
+		t.Fatalf(`basic-auth request failed: %v`, err)
+	}
+	defer response.Body.Close()
+}
+
+func TestClientNormalizesBearerPrefix(t *testing.T) {
+	client, err := NewClient(Config{
+		BaseURL: testBaseURL,
+		Token:   `  Bearer secret-token  `,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.config.AuthMode != authModeToken || client.config.Token != `secret-token` {
+		t.Fatalf(`normalized token config = %+v, want token mode with stripped bearer prefix`, client.config)
+	}
+}
+
+func TestClientFollowsGetRedirect(t *testing.T) {
+	paths := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+` `+r.URL.Path)
+		if r.Header.Get(`Authorization`) != `Bearer secret-token` {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case `/dav/backup.zip`:
+			w.Header().Set(`Location`, `/download/backup.zip`)
+			w.WriteHeader(http.StatusFound)
+		case `/download/backup.zip`:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`redirected-backup`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		BaseURL: server.URL + `/dav`,
+		Token:   `secret-token`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localPath := t.TempDir() + `/backup.zip`
+	if err := client.Download(context.Background(), `backup.zip`, localPath); err != nil {
+		t.Fatalf(`download through redirect failed: %v`, err)
+	}
+	content, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != `redirected-backup` {
+		t.Fatalf(`downloaded content = %q, want redirected response`, content)
+	}
+	if strings.Join(paths, `,`) != `GET /dav/backup.zip,GET /download/backup.zip` {
+		t.Fatalf(`redirect request sequence = %v, want two GET requests`, paths)
 	}
 }
 

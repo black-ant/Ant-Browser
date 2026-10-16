@@ -1,6 +1,7 @@
 export interface ScheduledBackupSettings {
   enabled: boolean
   dailyTime: string
+  authConfigured: boolean
   tokenConfigured: boolean
   status: 'never' | 'running' | 'success' | 'skipped' | 'failed'
   lastRunAt: string
@@ -18,6 +19,7 @@ export interface ScheduledBackupDraft {
 export const defaultScheduledBackupSettings: ScheduledBackupSettings = {
   enabled: false,
   dailyTime: '02:00',
+  authConfigured: false,
   tokenConfigured: false,
   status: 'never',
   lastRunAt: '',
@@ -41,6 +43,7 @@ function normalizeScheduledBackupSettings(raw: any): ScheduledBackupSettings {
     ...defaultScheduledBackupSettings,
     enabled: raw?.enabled === true,
     dailyTime: typeof raw?.dailyTime === 'string' && raw.dailyTime ? raw.dailyTime : defaultScheduledBackupSettings.dailyTime,
+    authConfigured: raw?.authConfigured === true || raw?.tokenConfigured === true,
     tokenConfigured: raw?.tokenConfigured === true,
     status: ['never', 'running', 'success', 'skipped', 'failed'].includes(status) ? status as ScheduledBackupSettings['status'] : 'never',
     lastRunAt: typeof raw?.lastRunAt === 'string' ? raw.lastRunAt : '',

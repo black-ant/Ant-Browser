@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/config"
 	"fmt"
+	"strings"
 )
 
 func (a *App) ensureBackupScheduler() (*backupScheduler, error) {
@@ -51,9 +52,23 @@ func (a *App) BackupOpenListSaveSettings(input map[string]string) (map[string]in
 }
 
 func backupOpenListSettingsResult(settings config.OpenListChannelConfig) map[string]interface{} {
+	authMode := strings.ToLower(strings.TrimSpace(settings.AuthMode))
+	if authMode != "basic" && authMode != "token" {
+		if strings.TrimSpace(settings.Username) != "" {
+			authMode = "basic"
+		} else {
+			authMode = "token"
+		}
+	}
+	authConfigured := openListAuthConfigured(settings)
 	return map[string]interface{}{
 		"baseURL":             settings.BaseURL,
 		"remotePath":          settings.RemotePath,
+		"authMode":            authMode,
+		"username":            settings.Username,
+		"usernameConfigured":  strings.TrimSpace(settings.Username) != "",
+		"passwordConfigured":  strings.TrimSpace(settings.Password) != "",
+		"authConfigured":      authConfigured,
 		"tokenConfigured":     settings.Token != "",
 		"uploadRateLimitMBps": settings.UploadRateLimitMBps,
 	}

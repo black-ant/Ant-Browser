@@ -115,8 +115,8 @@ export function ScheduledBackupModal({ open, onClose, refreshToken = 0, onReques
       setErrors(nextErrors)
       return
     }
-    if (draft.enabled && !settings.tokenConfigured) {
-      setError('请先配置 OpenList Token')
+    if (draft.enabled && !settings.authConfigured) {
+      setError('请先配置 OpenList 认证信息')
       return
     }
 
@@ -165,7 +165,7 @@ export function ScheduledBackupModal({ open, onClose, refreshToken = 0, onReques
             </div>
           </FormItem>
 
-          {!settings.tokenConfigured && onRequestOpenListConfig && (
+          {!settings.authConfigured && onRequestOpenListConfig && (
             <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-3 py-2 text-sm">
               <span className="text-[var(--color-text-secondary)]">OpenList 尚未配置</span>
               <Button variant="secondary" size="sm" onClick={onRequestOpenListConfig} disabled={saving}>去配置</Button>

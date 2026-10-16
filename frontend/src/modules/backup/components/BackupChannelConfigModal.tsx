@@ -38,12 +38,15 @@ export function BackupChannelConfigModal({
     try {
       if (channelId === 'openlist') {
         const settings = await fetchOpenListSettings()
-        if (!settings.baseURL.trim() || !settings.tokenConfigured) {
+        if (!settings.baseURL.trim() || !settings.authConfigured) {
           throw new Error('请先保存完整 OpenList 配置')
         }
         await testOpenListConnection({
           baseURL: settings.baseURL,
           remotePath: settings.remotePath,
+          authMode: settings.authMode,
+          username: settings.username,
+          password: '',
           token: '',
           uploadRateLimitMBps: String(settings.uploadRateLimitMBps),
         })

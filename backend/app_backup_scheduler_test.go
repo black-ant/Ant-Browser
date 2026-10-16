@@ -91,6 +91,67 @@ func TestBackupScheduledSaveSettingsStoresTokenLocally(t *testing.T) {
 	}
 }
 
+func TestBackupScheduledSaveSettingsStoresBasicCredentialsLocally(t *testing.T) {
+	appRoot := t.TempDir()
+	app := NewApp(appRoot)
+	app.config = config.DefaultConfig()
+	scheduler := newBackupScheduler(app)
+
+	result, err := scheduler.saveOpenList(map[string]string{
+		"baseURL":  "http" + "://127.0.0.1:5244/dav",
+		"authMode": "basic",
+		"username": "webdav-user",
+		"password": "webdav-password",
+	})
+	if err != nil {
+		t.Fatalf("save returned error: %v", err)
+	}
+	if result["authMode"] != "basic" || result["authConfigured"] != true {
+		t.Fatalf("saved auth result = %#v, want configured basic auth", result)
+	}
+	if result["tokenConfigured"] != false {
+		t.Fatalf("tokenConfigured = %#v, want false", result["tokenConfigured"])
+	}
+	if _, ok := result["passwordConfigured"]; !ok {
+		t.Fatal("saved settings must expose passwordConfigured")
+	}
+	if _, ok := result["password"]; ok {
+		t.Fatal("saved settings response must not include password")
+	}
+
+	if _, err := scheduler.saveSchedule(map[string]string{
+		"enabled":   "true",
+		"dailyTime": "03:15",
+	}); err != nil {
+		t.Fatalf("basic-auth schedule save returned error: %v", err)
+	}
+
+	localData, err := os.ReadFile(filepath.Join(appRoot, backupLocalConfigFileName))
+	if err != nil {
+		t.Fatalf("read local backup config: %v", err)
+	}
+	if !containsString(string(localData), "webdav-user") || !containsString(string(localData), "webdav-password") {
+		t.Fatalf("basic credentials must be written to local backup config: %s", localData)
+	}
+	configData, err := os.ReadFile(filepath.Join(appRoot, "config.yaml"))
+	if err == nil && (containsString(string(configData), "webdav-user") || containsString(string(configData), "webdav-password")) {
+		t.Fatal("basic credentials must not be written to config.yaml")
+	}
+
+	persistedConfig, err := config.Load(filepath.Join(appRoot, "config.yaml"))
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	reloadedScheduler := newBackupScheduler(&App{appRoot: appRoot, config: persistedConfig})
+	if err := reloadedScheduler.loadLocalConfig(); err != nil {
+		t.Fatalf("reload local backup config: %v", err)
+	}
+	openList := reloadedScheduler.settings.Channels.OpenList
+	if openList.AuthMode != "basic" || openList.Username != "webdav-user" || openList.Password != "webdav-password" {
+		t.Fatalf("reloaded OpenList basic settings = %+v", openList)
+	}
+}
+
 func TestBackupScheduledSettingsDefaults(t *testing.T) {
 	app := NewApp(t.TempDir())
 	app.config = config.DefaultConfig()
