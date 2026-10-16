@@ -81,6 +81,21 @@ func (m *Manager) copyProfile(profileId string, newName string, fingerprintResol
 	if profileName == "" {
 		profileName = buildProfileCopyName(src.ProfileName, now)
 	}
+	proxyMode := NormalizeProxyMode(src.ProxyMode)
+	proxyID := src.ProxyId
+	proxyConfig := src.ProxyConfig
+	proxyBindSourceID := src.ProxyBindSourceID
+	proxyBindSourceURL := src.ProxyBindSourceURL
+	proxyBindName := src.ProxyBindName
+	proxyBindUpdatedAt := src.ProxyBindUpdatedAt
+	if proxyMode == ProxyModeDynamic {
+		proxyID = ""
+		proxyConfig = ""
+		proxyBindSourceID = ""
+		proxyBindSourceURL = ""
+		proxyBindName = ""
+		proxyBindUpdatedAt = ""
+	}
 
 	profile := &Profile{
 		ProfileId:          newId,
@@ -89,12 +104,14 @@ func (m *Manager) copyProfile(profileId string, newName string, fingerprintResol
 		CoreId:             normalizeProfileCoreID(src.CoreId),
 		RestoreLastSession: NormalizeRestoreLastSessionMode(src.RestoreLastSession),
 		FingerprintArgs:    fingerprintResolver(src),
-		ProxyId:            src.ProxyId,
-		ProxyConfig:        src.ProxyConfig,
-		ProxyBindSourceID:  src.ProxyBindSourceID,
-		ProxyBindSourceURL: src.ProxyBindSourceURL,
-		ProxyBindName:      src.ProxyBindName,
-		ProxyBindUpdatedAt: src.ProxyBindUpdatedAt,
+		ProxyMode:          proxyMode,
+		ProxyId:            proxyID,
+		ProxyConfig:        proxyConfig,
+		ProxyGroupName:     NormalizeProxyGroupName(src.ProxyGroupName),
+		ProxyBindSourceID:  proxyBindSourceID,
+		ProxyBindSourceURL: proxyBindSourceURL,
+		ProxyBindName:      proxyBindName,
+		ProxyBindUpdatedAt: proxyBindUpdatedAt,
 		MemoryLimitMB:      normalizeMemoryLimitMB(src.MemoryLimitMB),
 		LaunchArgs:         append([]string{}, src.LaunchArgs...),
 		Tags:               append([]string{}, src.Tags...),

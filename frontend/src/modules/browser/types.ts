@@ -5,8 +5,10 @@
   coreId: string
   restoreLastSession?: '' | 'enabled' | 'disabled' | string
   fingerprintArgs: string[]
+  proxyMode?: 'fixed' | 'dynamic' | 'local' | string
   proxyId: string
   proxyConfig: string
+  proxyGroupName?: string
   proxyBindSourceId?: string
   proxyBindSourceUrl?: string
   proxyBindName?: string
@@ -38,8 +40,10 @@ export interface BrowserProfileInput {
   coreId: string
   restoreLastSession?: '' | 'enabled' | 'disabled' | string
   fingerprintArgs: string[]
+  proxyMode?: 'fixed' | 'dynamic' | 'local' | string
   proxyId: string
   proxyConfig: string
+  proxyGroupName?: string
   memoryLimitMb: number
   launchArgs: string[]
   tags: string[]

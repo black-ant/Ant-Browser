@@ -399,6 +399,8 @@ func backupBuildProfileMergeSQL(tx *sql.Tx) (string, error) {
 			{name: "fingerprint_args", fallback: "'[]'"},
 			{name: "proxy_id", fallback: "''"},
 			{name: "proxy_config", fallback: "''"},
+			{name: "proxy_mode", fallback: "''"},
+			{name: "proxy_group_name", fallback: "''"},
 			{name: "proxy_bind_source_id", fallback: "''"},
 			{name: "proxy_bind_source_url", fallback: "''"},
 			{name: "proxy_bind_name", fallback: "''"},

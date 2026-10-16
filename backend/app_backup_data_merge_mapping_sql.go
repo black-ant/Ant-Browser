@@ -27,7 +27,8 @@ func backupBuildMappedProfileMergeSQL(tx *sql.Tx) (string, error) {
 	return backupBuildMappedTableMergeSQL(tx, "browser_profiles", []backupSourceColumnSpec{
 		{name: "profile_id", fallback: "''"}, {name: "profile_name", fallback: "''"}, {name: "user_data_dir", fallback: "''"},
 		{name: "core_id", fallback: "''"}, {name: "fingerprint_args", fallback: "'[]'"}, {name: "proxy_id", fallback: "''"},
-		{name: "proxy_config", fallback: "''"}, {name: "proxy_bind_source_id", fallback: "''"}, {name: "proxy_bind_source_url", fallback: "''"},
+		{name: "proxy_config", fallback: "''"}, {name: "proxy_mode", fallback: "''"}, {name: "proxy_group_name", fallback: "''"},
+		{name: "proxy_bind_source_id", fallback: "''"}, {name: "proxy_bind_source_url", fallback: "''"},
 		{name: "proxy_bind_name", fallback: "''"}, {name: "proxy_bind_updated_at", fallback: "''"}, {name: "memory_limit_mb", fallback: "0"},
 		{name: "launch_args", fallback: "'[]'"}, {name: "tags", fallback: "'[]'"}, {name: "keywords", fallback: "'[]'"},
 		{name: "group_id", fallback: "''"}, {name: "created_at", fallback: "CURRENT_TIMESTAMP"}, {name: "updated_at", fallback: "CURRENT_TIMESTAMP"},

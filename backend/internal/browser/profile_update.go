@@ -19,7 +19,7 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 		log.Error("浏览器配置不存在", logger.F("profile_id", profileId))
 		return nil, fmt.Errorf("profile not found")
 	}
-	resolvedProxy, err := m.resolveProfileProxyInput(input.ProxyId, input.ProxyConfig)
+	resolvedProxy, err := m.resolveProfileProxyInput(input)
 	if err != nil {
 		log.Error("代理绑定失败", logger.F("profile_id", profileId), logger.F("proxy_id", strings.TrimSpace(input.ProxyId)), logger.F("error", err.Error()))
 		return nil, err
@@ -30,6 +30,8 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 	profile.CoreId = normalizeProfileCoreID(input.CoreId)
 	profile.RestoreLastSession = NormalizeRestoreLastSessionMode(input.RestoreLastSession)
 	profile.FingerprintArgs = input.FingerprintArgs
+	profile.ProxyMode = resolvedProxy.ProxyMode
+	profile.ProxyGroupName = resolvedProxy.ProxyGroupName
 	if resolvedProxy.HasSelectedProxy {
 		_ = BindProfileToProxy(profile, resolvedProxy.SelectedProxy, true)
 	} else if resolvedProxy.FallbackToDirect {

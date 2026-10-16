@@ -1027,10 +1027,10 @@ func insertProfilePackageProfile(tx *sql.Tx, profile browser.Profile) error {
 	}
 	_, err = tx.Exec(`
 		INSERT INTO browser_profiles (
-			profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config,
+			profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, proxy_mode, proxy_group_name,
 			proxy_bind_source_id, proxy_bind_source_url, proxy_bind_name, proxy_bind_updated_at, memory_limit_mb,
 			launch_args, tags, keywords, group_id, created_at, updated_at, restore_last_session, deleted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(profile_id) DO UPDATE SET
 			profile_name = excluded.profile_name,
 			user_data_dir = excluded.user_data_dir,
@@ -1038,6 +1038,8 @@ func insertProfilePackageProfile(tx *sql.Tx, profile browser.Profile) error {
 			fingerprint_args = excluded.fingerprint_args,
 			proxy_id = excluded.proxy_id,
 			proxy_config = excluded.proxy_config,
+			proxy_mode = excluded.proxy_mode,
+			proxy_group_name = excluded.proxy_group_name,
 			proxy_bind_source_id = excluded.proxy_bind_source_id,
 			proxy_bind_source_url = excluded.proxy_bind_source_url,
 			proxy_bind_name = excluded.proxy_bind_name,
@@ -1052,7 +1054,7 @@ func insertProfilePackageProfile(tx *sql.Tx, profile browser.Profile) error {
 			restore_last_session = excluded.restore_last_session,
 			deleted_at = excluded.deleted_at`,
 		profile.ProfileId, profile.ProfileName, profile.UserDataDir, profile.CoreId, string(fingerprintArgs), profile.ProxyId,
-		profile.ProxyConfig, profile.ProxyBindSourceID, profile.ProxyBindSourceURL, profile.ProxyBindName,
+		profile.ProxyConfig, profile.ProxyMode, profile.ProxyGroupName, profile.ProxyBindSourceID, profile.ProxyBindSourceURL, profile.ProxyBindName,
 		profile.ProxyBindUpdatedAt, profile.MemoryLimitMB, string(launchArgs), string(tags), string(keywords), profile.GroupId,
 		createdAt, updatedAt, profile.RestoreLastSession, profile.DeletedAt,
 	)

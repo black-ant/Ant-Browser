@@ -17,8 +17,10 @@ type Profile struct {
 	CoreId             string   `json:"coreId"`
 	RestoreLastSession string   `json:"restoreLastSession"`
 	FingerprintArgs    []string `json:"fingerprintArgs"`
+	ProxyMode          string   `json:"proxyMode"`
 	ProxyId            string   `json:"proxyId"`
 	ProxyConfig        string   `json:"proxyConfig"`
+	ProxyGroupName     string   `json:"proxyGroupName"`
 	ProxyBindSourceID  string   `json:"proxyBindSourceId"`
 	ProxyBindSourceURL string   `json:"proxyBindSourceUrl"`
 	ProxyBindName      string   `json:"proxyBindName"`
@@ -51,8 +53,10 @@ type ProfileInput struct {
 	CoreId             string   `json:"coreId"`
 	RestoreLastSession string   `json:"restoreLastSession"`
 	FingerprintArgs    []string `json:"fingerprintArgs"`
+	ProxyMode          string   `json:"proxyMode"`
 	ProxyId            string   `json:"proxyId"`
 	ProxyConfig        string   `json:"proxyConfig"`
+	ProxyGroupName     string   `json:"proxyGroupName"`
 	MemoryLimitMB      int      `json:"memoryLimitMb"`
 	LaunchArgs         []string `json:"launchArgs"`
 	Tags               []string `json:"tags"`

@@ -259,6 +259,14 @@ var migrations = []migration{
 			`UPDATE browser_extensions SET default_install = 0`,
 		},
 	},
+	{
+		version: 24,
+		desc:    "添加实例代理模式与代理池分组字段",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN proxy_mode TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_profiles ADD COLUMN proxy_group_name TEXT NOT NULL DEFAULT ''`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

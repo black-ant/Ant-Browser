@@ -26,6 +26,29 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 		}
 	}
 
+	proxyMode := NormalizeProxyMode(profile.ProxyMode)
+	if proxyMode == ProxyModeDynamic || proxyMode == ProxyModeLocal {
+		changed := false
+		if strings.TrimSpace(profile.ProxyId) != "" {
+			profile.ProxyId = ""
+			changed = true
+		}
+		if proxyMode == ProxyModeDynamic && strings.TrimSpace(profile.ProxyConfig) != "" {
+			profile.ProxyConfig = ""
+			changed = true
+		}
+		if ClearProfileProxyBinding(profile) {
+			changed = true
+		}
+		if proxyMode == ProxyModeDynamic {
+			profile.ProxyGroupName = NormalizeProxyGroupName(profile.ProxyGroupName)
+		} else if profile.ProxyGroupName != "" {
+			profile.ProxyGroupName = ""
+			changed = true
+		}
+		return changed
+	}
+
 	proxyChanged := false
 	bindChanged, boundInPool, bindMode := m.ResolveProfileProxyBinding(profile)
 	if bindChanged {

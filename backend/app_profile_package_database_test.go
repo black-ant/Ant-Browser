@@ -137,6 +137,59 @@ func TestProfilePackageDatabaseRoundTripSelectedProfile(t *testing.T) {
 	}
 }
 
+func TestProfilePackageDatabaseRoundTripsDynamicProxySelection(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceProfile := &browser.Profile{
+		ProfileId:      "source-dynamic-profile",
+		ProfileName:    "动态代理实例",
+		ProxyMode:      browser.ProxyModeDynamic,
+		ProxyGroupName: "mobile",
+	}
+	sourceDAO := browser.NewSQLiteProfileDAO(sourceDB.GetConn())
+	if err := sourceDAO.Upsert(sourceProfile); err != nil {
+		t.Fatalf("save source profile failed: %v", err)
+	}
+	storedSource, err := sourceDAO.GetById(sourceProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read source profile failed: %v", err)
+	}
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.db = sourceDB
+	snapshot, err := sourceApp.collectProfilePackageDatabase([]browser.Profile{*storedSource})
+	if err != nil {
+		t.Fatalf("collect profile package database failed: %v", err)
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("encode profile package database failed: %v", err)
+	}
+	if err := json.Unmarshal(encoded, &snapshot); err != nil {
+		t.Fatalf("decode profile package database failed: %v", err)
+	}
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	targetApp := NewApp(targetRoot)
+	targetApp.db = targetDB
+	preparedProfile := snapshot.Profiles[0]
+	preparedProfile.ProfileId = "target-dynamic-profile"
+	prepared := []preparedProfilePackageImport{{
+		Profile:      preparedProfile,
+		OldProfileID: sourceProfile.ProfileId,
+	}}
+	if err := targetApp.restoreProfilePackageDatabase(snapshot, prepared, nil); err != nil {
+		t.Fatalf("restore profile package database failed: %v", err)
+	}
+	storedTarget, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(preparedProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if storedTarget.ProxyMode != browser.ProxyModeDynamic || storedTarget.ProxyGroupName != "mobile" {
+		t.Fatalf("dynamic proxy selection = (%q, %q), want (%q, %q)", storedTarget.ProxyMode, storedTarget.ProxyGroupName, browser.ProxyModeDynamic, "mobile")
+	}
+}
+
 func TestProfilePackageDatabaseOverwriteMovesTargetToTrash(t *testing.T) {
 	profileID := "target-profile"
 	groupID := "source-group"

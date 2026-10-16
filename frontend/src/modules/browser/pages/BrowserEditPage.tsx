@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
-import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Textarea, toast } from '../../../shared/components'
+import { Button, Card, ConfirmModal, FormItem, Input, Modal, Textarea, toast } from '../../../shared/components'
 import type { BrowserCore, BrowserFingerprintCapabilityReport, BrowserFingerprintCapabilityRow, BrowserFingerprintCheckResult, BrowserProfileInput, BrowserProxy, BrowserGroup, ProxyLocationResolveResult } from '../types'
 import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, updateBrowserProfile, validateProxyConfig } from '../api'
 import { FingerprintPanel } from '../components/FingerprintPanel'
@@ -9,6 +9,7 @@ import { applyLocaleToFingerprintArgs, validateFingerprintArgs, withAdaptiveDefa
 import { TagInput } from '../components/TagInput'
 import { GroupSelector } from '../components/GroupSelector'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
+import { BrowserEditSelect } from '../components/BrowserEditSelect'
 
 const fallbackLowLaunchArgs = ['--disable-sync', '--no-first-run']
 const directProxyID = '__direct__'
@@ -17,7 +18,7 @@ const RESTORE_LAST_SESSION_OPTIONS = [
   { value: 'enabled', label: '开启：恢复历史标签' },
   { value: 'disabled', label: '关闭：不恢复历史标签' },
 ]
-type ProxySourceMode = 'pool' | 'local'
+type ProxySourceMode = 'fixed' | 'dynamic' | 'local'
 type BrowserProfileEditForm = BrowserProfileInput & { lastLaunchArgs?: string[] }
 
 function normalizeLaunchArgs(args: string[]): string[] {
@@ -211,12 +212,12 @@ function resolvePoolProxySelection(
   proxyId: string,
   proxyConfig: string,
   proxies: BrowserProxy[],
-): { mode: ProxySourceMode; proxyId: string; proxyConfig: string } {
+): { mode: Exclude<ProxySourceMode, 'dynamic'>; proxyId: string; proxyConfig: string } {
   const normalizedProxyId = proxyId.trim()
   if (normalizedProxyId) {
     const matchedByID = proxies.find((proxy) => proxy.proxyId.trim() === normalizedProxyId)
     if (matchedByID?.proxyId) {
-      return { mode: 'pool', proxyId: matchedByID.proxyId, proxyConfig: '' }
+      return { mode: 'fixed', proxyId: matchedByID.proxyId, proxyConfig: '' }
     }
   }
 
@@ -225,13 +226,30 @@ function resolvePoolProxySelection(
   if (normalizedConfig) {
     const matchedByConfig = proxies.find((proxy) => (proxy.proxyConfig || '').trim().toLowerCase() === normalizedConfig)
     if (matchedByConfig?.proxyId) {
-      return { mode: 'pool', proxyId: matchedByConfig.proxyId, proxyConfig: '' }
+      return { mode: 'fixed', proxyId: matchedByConfig.proxyId, proxyConfig: '' }
     }
     return { mode: 'local', proxyId: '', proxyConfig: rawProxyConfig }
   }
 
   const directProxy = proxies.find((proxy) => proxy.proxyId === directProxyID)
-  return { mode: 'pool', proxyId: directProxy?.proxyId || '', proxyConfig: '' }
+  return { mode: 'fixed', proxyId: directProxy?.proxyId || '', proxyConfig: '' }
+}
+
+function resolveProfileProxySelection(
+  mode: string | undefined,
+  proxyId: string,
+  proxyConfig: string,
+  proxyGroupName: string | undefined,
+  proxies: BrowserProxy[],
+): { mode: ProxySourceMode; proxyId: string; proxyConfig: string; proxyGroupName: string } {
+  if (mode?.trim().toLowerCase() === 'dynamic') {
+    return { mode: 'dynamic', proxyId: '', proxyConfig: '', proxyGroupName: (proxyGroupName || '').trim() }
+  }
+  if (mode?.trim().toLowerCase() === 'local') {
+    return { mode: 'local', proxyId: '', proxyConfig: proxyConfig.trim(), proxyGroupName: '' }
+  }
+  const resolved = resolvePoolProxySelection(proxyId, proxyConfig, proxies)
+  return { ...resolved, proxyGroupName: '' }
 }
 
 export function BrowserEditPage() {
@@ -244,8 +262,10 @@ export function BrowserEditPage() {
     coreId: '',
     restoreLastSession: '',
     fingerprintArgs: [],
+    proxyMode: 'fixed',
     proxyId: directProxyID,
     proxyConfig: '',
+    proxyGroupName: '',
     memoryLimitMb: 0,
     launchArgs: [],
     lastLaunchArgs: [],
@@ -260,7 +280,7 @@ export function BrowserEditPage() {
   const [allTags, setAllTags] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [proxyPickerOpen, setProxyPickerOpen] = useState(false)
-  const [proxyMode, setProxyMode] = useState<ProxySourceMode>('pool')
+  const [proxyMode, setProxyMode] = useState<ProxySourceMode>('fixed')
   const [isDirty, setIsDirty] = useState(false)
   const [leaveConfirm, setLeaveConfirm] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -292,11 +312,13 @@ export function BrowserEditPage() {
 
       if (isCreate) {
         const resolved = resolvePoolProxySelection('', '', proxyList)
-        setProxyMode('pool')
+        setProxyMode('fixed')
         setFormData((prev) => ({
           ...prev,
+          proxyMode: 'fixed',
           proxyId: resolved.proxyId || directProxyID,
           proxyConfig: '',
+          proxyGroupName: '',
           restoreLastSession: '',
           fingerprintArgs: withAdaptiveDefaultWindowSize(settings.defaultFingerprintArgs || []),
         }))
@@ -310,7 +332,7 @@ export function BrowserEditPage() {
       const normalizedCoreId = !current.coreId || current.coreId.toLowerCase() === 'default'
         ? ''
         : current.coreId
-      const resolvedProxy = resolvePoolProxySelection(current.proxyId || '', current.proxyConfig || '', proxyList)
+      const resolvedProxy = resolveProfileProxySelection(current.proxyMode, current.proxyId || '', current.proxyConfig || '', current.proxyGroupName, proxyList)
       setProxyMode(resolvedProxy.mode)
       setFormData({
         profileName: current.profileName,
@@ -318,8 +340,10 @@ export function BrowserEditPage() {
         coreId: normalizedCoreId,
         restoreLastSession: current.restoreLastSession || '',
         fingerprintArgs: current.fingerprintArgs,
+        proxyMode: resolvedProxy.mode,
         proxyId: resolvedProxy.proxyId,
         proxyConfig: resolvedProxy.proxyConfig,
+        proxyGroupName: resolvedProxy.proxyGroupName,
         memoryLimitMb: current.memoryLimitMb || 0,
         launchArgs: currentLaunchArgs,
         lastLaunchArgs: current.lastLaunchArgs || [],
@@ -361,22 +385,17 @@ export function BrowserEditPage() {
   const handleProxyModeChange = (mode: ProxySourceMode) => {
     setIsDirty(true)
     setProxyMode(mode)
-    if (mode === 'pool') {
-      setFormData((prev) => {
-        if (prev.proxyId.trim()) {
-          return prev
-        }
-        const directProxy = proxies.find((proxy) => proxy.proxyId === directProxyID)
-        return {
-          ...prev,
-          proxyId: directProxy?.proxyId || '',
-        }
-      })
-    }
+    setLocationResult(null)
+    setFormData(prev => ({
+      ...prev,
+      proxyMode: mode,
+      proxyId: mode === 'fixed' ? prev.proxyId || directProxyID : '',
+      proxyConfig: mode === 'local' ? prev.proxyConfig : '',
+    }))
   }
 
   const handleSave = async () => {
-    const resolvedProxyId = proxyMode === 'pool' ? (formData.proxyId || '').trim() : ''
+    const resolvedProxyId = proxyMode === 'fixed' ? (formData.proxyId || '').trim() : ''
     const resolvedProxyConfig = proxyMode === 'local' ? (formData.proxyConfig || '').trim() : ''
     if (proxyMode === 'local' && !resolvedProxyConfig) {
       setSaveError('请输入本地代理地址')
@@ -389,11 +408,13 @@ export function BrowserEditPage() {
       coreId: formData.coreId,
       restoreLastSession: formData.restoreLastSession || '',
       fingerprintArgs: formData.fingerprintArgs,
+      proxyMode,
       tags: formData.tags,
       keywords: formData.keywords,
       groupId: formData.groupId,
       proxyId: resolvedProxyId,
       proxyConfig: resolvedProxyConfig,
+      proxyGroupName: proxyMode === 'dynamic' ? (formData.proxyGroupName || '').trim() : '',
       memoryLimitMb: Math.max(0, Math.floor(Number(formData.memoryLimitMb) || 0)),
       launchArgs: normalizeLaunchArgs(launchArgsText.split('\n')),
     }
@@ -402,17 +423,19 @@ export function BrowserEditPage() {
       setSaveError(fingerprintValidation.issues.filter(issue => issue.level === 'error').map(issue => issue.message).join('\n'))
       return
     }
-    if (proxyMode === 'pool' && !resolvedProxyId) {
+    if (proxyMode === 'fixed' && !resolvedProxyId) {
       payload.proxyId = directProxyID
       payload.proxyConfig = ''
     }
 
     setSaving(true)
     try {
-      const validation = await validateProxyConfig(payload.proxyConfig, payload.proxyId)
-      if (!validation.supported) {
-        setSaveError(validation.errorMsg || '代理配置无效')
-        return
+      if (proxyMode !== 'dynamic') {
+        const validation = await validateProxyConfig(payload.proxyConfig, payload.proxyId)
+        if (!validation.supported) {
+          setSaveError(validation.errorMsg || '代理配置无效')
+          return
+        }
       }
       if (isCreate) {
         await createBrowserProfile(payload)
@@ -435,7 +458,7 @@ export function BrowserEditPage() {
   }
 
   const handleApplyProxyLocation = async () => {
-    if (proxyMode !== 'pool' || !formData.proxyId || formData.proxyId === directProxyID) {
+    if (proxyMode !== 'fixed' || !formData.proxyId || formData.proxyId === directProxyID) {
       toast.error('请选择代理池中的非直连节点')
       return
     }
@@ -503,7 +526,11 @@ export function BrowserEditPage() {
   }
 
   const defaultCore = cores.find(c => c.isDefault)
-  const selectedPoolProxy = proxies.find((proxy) => proxy.proxyId === formData.proxyId)
+  const dynamicProxyGroups = Array.from(new Set([
+    ...proxies.map(proxy => (proxy.groupName || '').trim()),
+    (formData.proxyGroupName || '').trim(),
+  ].filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, 'zh-CN'))
 
   const handleOpenUserDataDir = async () => {
     if (!formData.userDataDir.trim()) {
@@ -567,9 +594,10 @@ export function BrowserEditPage() {
             </div>
           </FormItem>
           <FormItem label="内核">
-            <Select
+            <BrowserEditSelect
+              label="内核"
               value={formData.coreId}
-              onChange={e => handleChange('coreId', e.target.value)}
+              onChange={value => handleChange('coreId', value)}
               options={
                 cores.length > 0 ? [
                   { value: '', label: defaultCore ? `使用默认 (${defaultCore.coreName})` : '使用默认内核' },
@@ -581,9 +609,10 @@ export function BrowserEditPage() {
             />
           </FormItem>
           <FormItem label="历史标签">
-            <Select
+            <BrowserEditSelect
+              label="历史标签"
               value={formData.restoreLastSession || ''}
-              onChange={e => handleChange('restoreLastSession', e.target.value)}
+              onChange={value => handleChange('restoreLastSession', value)}
               options={RESTORE_LAST_SESSION_OPTIONS}
             />
           </FormItem>
@@ -619,22 +648,37 @@ export function BrowserEditPage() {
 
       <Card title="代理与定位">
         <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-4 items-start">
-          <FormItem label="代理来源">
-            <Select
+          <FormItem label="代理策略">
+            <BrowserEditSelect
+              label="代理策略"
               value={proxyMode}
-              onChange={e => handleProxyModeChange(e.target.value as ProxySourceMode)}
+              onChange={value => handleProxyModeChange(value as ProxySourceMode)}
               options={[
-                { value: 'pool', label: '代理池' },
+                { value: 'fixed', label: '固定代理' },
+                { value: 'dynamic', label: '动态代理' },
                 { value: 'local', label: '本地代理' },
               ]}
             />
           </FormItem>
-          {proxyMode === 'pool' ? (
+          {proxyMode === 'dynamic' ? (
+            <FormItem label="代理池分组">
+              <BrowserEditSelect
+                label="代理池分组"
+                value={formData.proxyGroupName || ''}
+                onChange={value => handleChange('proxyGroupName', value)}
+                options={[
+                  { value: '', label: '全部代理分组' },
+                  ...dynamicProxyGroups.map(groupName => ({ value: groupName, label: groupName })),
+                ]}
+              />
+            </FormItem>
+          ) : proxyMode === 'fixed' ? (
             <FormItem label="代理地址选择">
               <div className="flex flex-col sm:flex-row gap-2">
-                <Select
+                <BrowserEditSelect
+                  label="代理地址选择"
                   value={formData.proxyId}
-                  onChange={e => { handleChange('proxyId', e.target.value); setLocationResult(null) }}
+                  onChange={value => { handleChange('proxyId', value); setLocationResult(null) }}
                   options={
                     proxies.length > 0
                       ? proxies.map(p => ({ value: p.proxyId, label: p.proxyName || p.proxyId }))
@@ -674,11 +718,7 @@ export function BrowserEditPage() {
             </FormItem>
           )}
         </div>
-        <p className="text-xs text-[var(--color-text-muted)] mt-2">
-          {proxyMode === 'pool'
-            ? `当前使用代理池节点${selectedPoolProxy?.proxyName ? `：${selectedPoolProxy.proxyName}` : '。'}`
-            : '本地代理不会进入代理池，只对当前实例保存生效。'}
-        </p>
+        {proxyMode === 'dynamic' && <p className="mt-2 text-xs text-[var(--color-text-muted)]">启动时按测速延迟尝试有效节点；失败节点会自动跳过。</p>}
       </Card>
 
       <ProxyPickerModal

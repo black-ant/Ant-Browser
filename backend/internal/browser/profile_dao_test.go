@@ -21,6 +21,8 @@ func TestSQLiteProfileDAOPersistsMemoryLimitMB(t *testing.T) {
 	profile := &Profile{
 		ProfileId:       "profile-memory-limit",
 		ProfileName:     "memory limit",
+		ProxyMode:       ProxyModeDynamic,
+		ProxyGroupName:  " mobile ",
 		MemoryLimitMB:   768,
 		FingerprintArgs: []string{},
 		LaunchArgs:      []string{},
@@ -40,6 +42,9 @@ func TestSQLiteProfileDAOPersistsMemoryLimitMB(t *testing.T) {
 	}
 	if stored.MemoryLimitMB != profile.MemoryLimitMB {
 		t.Fatalf("MemoryLimitMB = %d, want %d", stored.MemoryLimitMB, profile.MemoryLimitMB)
+	}
+	if stored.ProxyMode != ProxyModeDynamic || stored.ProxyGroupName != "mobile" {
+		t.Fatalf("proxy selection = (%q, %q), want (%q, %q)", stored.ProxyMode, stored.ProxyGroupName, ProxyModeDynamic, "mobile")
 	}
 
 	listed, err := dao.List()

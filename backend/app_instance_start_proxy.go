@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
@@ -48,6 +49,9 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 				break
 			}
 		}
+	}
+	if !usingTemporaryProxy && browser.IsDynamicProxyMode(profile.ProxyMode) {
+		return a.resolveDynamicBrowserStartProxy(profileID, profile, proxies)
 	}
 
 	log.Info("代理配置检查",
