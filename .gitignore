@@ -58,7 +58,10 @@ publish/staging/
 publish/output/
 
 # Internal docs / scratch files
-docs/
+# 注意用 docs/* 而不是 docs/：Git 不会进入被排除的目录，
+# 目录级排除会让下面的 ! 例外规则失效。
+docs/*
+!docs/mcp-server.md
 DEPLOYMENT_GUIDE.md
 plan.md
 pic/

@@ -62,6 +62,9 @@ launch_server:
         enabled: false
         api_key: ""
         header: X-Ant-Api-Key
+mcp:
+    enabled: true
+    path: /mcp
 automation:
     enabled: true
     install_policy: on_demand
@@ -71,3 +74,5 @@ automation:
     node_source: auto
     node_version: 22.15.1
     playwright_core_version: 1.59.0
+    # MCP 常驻页面会话的空闲回收时间（毫秒），默认 5 分钟
+    page_session_idle_ms: 300000
