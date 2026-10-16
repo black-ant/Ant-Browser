@@ -134,6 +134,108 @@ FROM browser_profiles WHERE profile_id = 'profile-source'`).Scan(
 	}
 }
 
+func TestBackupMergeMapsVirtualGroupMembersAndRenamesConflicts(t *testing.T) {
+	root := t.TempDir()
+	targetPath := filepath.Join(root, "target.db")
+	sourcePath := filepath.Join(root, "source.db")
+	targetDB, err := database.NewDB(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetDB.Close()
+	if err := targetDB.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	sourceDB, err := database.NewDB(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceDB.Migrate(); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, sort_order, created_at)
+VALUES ('shared-proxy-id', '源代理', 'socks5://source:1080', 0, '2026-08-30T00:00:00Z')`); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxy_virtual_groups (
+	group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+) VALUES ('source-virtual-group', 'mobile', 'sticky', 'shared-proxy-id', '["shared-proxy-id"]', '[]', 0, '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_profiles (
+	profile_id, profile_name, user_data_dir, proxy_mode, proxy_group_name, created_at, updated_at
+) VALUES ('dynamic-source-profile', '动态实例', 'dynamic-source-profile', 'dynamic', 'mobile', '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := targetDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, sort_order, created_at)
+VALUES ('shared-proxy-id', '本地代理', 'socks5://local:1080', 0, '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := targetDB.GetConn().Exec(`INSERT INTO browser_proxy_virtual_groups (
+	group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+) VALUES ('target-local-group', 'mobile', 'round_robin', '', '["local-proxy"]', '[]', 0, '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+
+	incoming := config.DefaultConfig()
+	incoming.Browser.Profiles = []config.BrowserProfileConfig{{
+		ProfileId: "dynamic-source-profile", UserDataDir: "dynamic-source-profile",
+		ProxyMode: "dynamic", ProxyGroupName: "mobile",
+	}}
+	incoming.Browser.ProxyVirtualGroups = []config.BrowserProxyVirtualGroup{{
+		GroupId: "source-virtual-group", GroupName: "mobile",
+		SelectedProxyId: "shared-proxy-id", MemberProxyIds: []string{"shared-proxy-id"},
+	}}
+	app := NewApp(root)
+	app.db = targetDB
+	stats := &backupMergeStats{}
+	mappings, err := app.backupMergeDatabaseFromSource(sourcePath, incoming, stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupApplyImportReferenceMappings(incoming, mappings)
+
+	groupName := mappings.ProxyVirtualGroups[backupImportTextKey("mobile")].TargetID
+	proxyID := mappings.Proxies[backupImportIDKey("shared-proxy-id")].TargetID
+	if groupName != "mobile (导入)" || proxyID == "" || proxyID == "shared-proxy-id" {
+		t.Fatalf("unexpected imported mappings: group=%q proxy=%q", groupName, proxyID)
+	}
+	var localMembers string
+	if err := targetDB.GetConn().QueryRow(`SELECT member_proxy_ids FROM browser_proxy_virtual_groups WHERE group_name = 'mobile'`).Scan(&localMembers); err != nil {
+		t.Fatal(err)
+	}
+	if localMembers != `["local-proxy"]` {
+		t.Fatalf("local virtual group was modified: %s", localMembers)
+	}
+	var importedMembers, importedSelectedProxyID string
+	if err := targetDB.GetConn().QueryRow(`SELECT member_proxy_ids, selected_proxy_id FROM browser_proxy_virtual_groups WHERE group_name = ?`, groupName).Scan(&importedMembers, &importedSelectedProxyID); err != nil {
+		t.Fatal(err)
+	}
+	if importedMembers != `["`+proxyID+`"]` || importedSelectedProxyID != proxyID {
+		t.Fatalf("imported virtual group refs = (%s, %q), want mapped proxy %q", importedMembers, importedSelectedProxyID, proxyID)
+	}
+	var storedProfileGroup string
+	if err := targetDB.GetConn().QueryRow(`SELECT proxy_group_name FROM browser_profiles WHERE profile_id = 'dynamic-source-profile'`).Scan(&storedProfileGroup); err != nil {
+		t.Fatal(err)
+	}
+	if storedProfileGroup != groupName || incoming.Browser.Profiles[0].ProxyGroupName != groupName || incoming.Browser.ProxyVirtualGroups[0].GroupName != groupName {
+		t.Fatalf("virtual group references were not remapped: db=%q configProfile=%q configGroup=%q want=%q", storedProfileGroup, incoming.Browser.Profiles[0].ProxyGroupName, incoming.Browser.ProxyVirtualGroups[0].GroupName, groupName)
+	}
+	if len(incoming.Browser.ProxyVirtualGroups[0].MemberProxyIds) != 1 || incoming.Browser.ProxyVirtualGroups[0].MemberProxyIds[0] != proxyID || incoming.Browser.ProxyVirtualGroups[0].SelectedProxyId != proxyID {
+		t.Fatalf("config virtual group proxy refs were not remapped: %#v", incoming.Browser.ProxyVirtualGroups[0])
+	}
+	if stats.Conflicts == 0 {
+		t.Fatal("expected same-name virtual group conflict to be reported")
+	}
+}
+
 func TestBackupMergeDatabaseDetachesSourceConnection(t *testing.T) {
 	root := t.TempDir()
 	targetPath := filepath.Join(root, "target.db")

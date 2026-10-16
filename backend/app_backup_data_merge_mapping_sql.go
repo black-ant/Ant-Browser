@@ -36,6 +36,7 @@ func backupBuildMappedProfileMergeSQL(tx *sql.Tx) (string, error) {
 	}, map[string]string{
 		"profile_id": backupImportProfileMapTable, "core_id": backupImportCoreMapTable,
 		"proxy_id": backupImportProxyMapTable, "group_id": backupImportGroupMapTable,
+		"proxy_group_name": backupImportProxyVirtualGroupMapTable,
 	}, backupImportMapExistsExpression("s.profile_id", backupImportProfileMapTable, true))
 }
 
@@ -61,6 +62,27 @@ func backupApplyImportReferenceMappings(incomingCfg *config.Config, mappings *ba
 		profile.ProfileId = backupImportMappedIDOrOriginal(mappings.Profiles, profile.ProfileId)
 		profile.CoreId = backupImportMappedIDOrOriginal(mappings.Cores, profile.CoreId)
 		profile.ProxyId = backupImportMappedIDOrOriginal(mappings.Proxies, profile.ProxyId)
+		profile.ProxyGroupName = backupImportMappedIDOrOriginal(mappings.ProxyVirtualGroups, profile.ProxyGroupName)
+	}
+	for i := range incomingCfg.Browser.ProxyVirtualGroups {
+		group := &incomingCfg.Browser.ProxyVirtualGroups[i]
+		group.GroupName = backupImportMappedIDOrOriginal(mappings.ProxyVirtualGroups, group.GroupName)
+		mappedProxyIDs := make([]string, 0, len(group.MemberProxyIds))
+		seenProxyIDs := make(map[string]struct{}, len(group.MemberProxyIds))
+		for _, proxyID := range group.MemberProxyIds {
+			mappedProxyID := backupImportMappedIDOrOriginal(mappings.Proxies, proxyID)
+			key := backupImportIDKey(mappedProxyID)
+			if key == "" {
+				continue
+			}
+			if _, exists := seenProxyIDs[key]; exists {
+				continue
+			}
+			seenProxyIDs[key] = struct{}{}
+			mappedProxyIDs = append(mappedProxyIDs, mappedProxyID)
+		}
+		group.MemberProxyIds = mappedProxyIDs
+		group.SelectedProxyId = backupImportMappedIDOrOriginal(mappings.Proxies, group.SelectedProxyId)
 	}
 	incomingCfg.Browser.DefaultCoreId = backupImportMappedIDOrOriginal(mappings.Cores, incomingCfg.Browser.DefaultCoreId)
 	for i := range incomingCfg.Browser.Environments {

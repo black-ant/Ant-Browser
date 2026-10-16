@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	backupImportGroupMapTable     = "backup_import_group_map"
-	backupImportCoreMapTable      = "backup_import_core_map"
-	backupImportProxyMapTable     = "backup_import_proxy_map"
-	backupImportProfileMapTable   = "backup_import_profile_map"
-	backupImportExtensionMapTable = "backup_import_extension_map"
+	backupImportGroupMapTable             = "backup_import_group_map"
+	backupImportCoreMapTable              = "backup_import_core_map"
+	backupImportProxyMapTable             = "backup_import_proxy_map"
+	backupImportProfileMapTable           = "backup_import_profile_map"
+	backupImportExtensionMapTable         = "backup_import_extension_map"
+	backupImportProxyVirtualGroupMapTable = "backup_import_proxy_virtual_group_map"
 )
 
 type backupImportIDMapping struct {
@@ -23,11 +24,12 @@ type backupImportIDMapping struct {
 }
 
 type backupImportReferenceMappings struct {
-	Groups     map[string]backupImportIDMapping
-	Cores      map[string]backupImportIDMapping
-	Proxies    map[string]backupImportIDMapping
-	Profiles   map[string]backupImportIDMapping
-	Extensions map[string]backupImportIDMapping
+	Groups             map[string]backupImportIDMapping
+	Cores              map[string]backupImportIDMapping
+	Proxies            map[string]backupImportIDMapping
+	Profiles           map[string]backupImportIDMapping
+	Extensions         map[string]backupImportIDMapping
+	ProxyVirtualGroups map[string]backupImportIDMapping
 }
 
 type backupImportGroupRecord struct {
@@ -60,11 +62,12 @@ type backupImportProfileRecord struct {
 
 func newBackupImportReferenceMappings() *backupImportReferenceMappings {
 	return &backupImportReferenceMappings{
-		Groups:     make(map[string]backupImportIDMapping),
-		Cores:      make(map[string]backupImportIDMapping),
-		Proxies:    make(map[string]backupImportIDMapping),
-		Profiles:   make(map[string]backupImportIDMapping),
-		Extensions: make(map[string]backupImportIDMapping),
+		Groups:             make(map[string]backupImportIDMapping),
+		Cores:              make(map[string]backupImportIDMapping),
+		Proxies:            make(map[string]backupImportIDMapping),
+		Profiles:           make(map[string]backupImportIDMapping),
+		Extensions:         make(map[string]backupImportIDMapping),
+		ProxyVirtualGroups: make(map[string]backupImportIDMapping),
 	}
 }
 
@@ -125,6 +128,9 @@ func (a *App) backupBuildImportReferenceMappings(tx *sql.Tx, incomingCfg *config
 		return nil, err
 	}
 	if err := a.backupMapImportProxies(tx, incomingCfg, mappings, stats); err != nil {
+		return nil, err
+	}
+	if err := a.backupMapImportProxyVirtualGroups(tx, incomingCfg, mappings, stats); err != nil {
 		return nil, err
 	}
 	if err := a.backupMapImportProfiles(tx, incomingCfg, mappings, stats); err != nil {
@@ -451,6 +457,102 @@ func (a *App) backupMapImportProxies(tx *sql.Tx, incomingCfg *config.Config, map
 	return nil
 }
 
+func (a *App) backupMapImportProxyVirtualGroups(tx *sql.Tx, incomingCfg *config.Config, mappings *backupImportReferenceMappings, stats *backupMergeStats) error {
+	exists, err := backupSrcTableExists(tx, "browser_proxy_virtual_groups")
+	if err != nil {
+		return err
+	}
+	sourceNames := make([]string, 0)
+	if exists {
+		hasGroupName, err := backupSrcColumnExists(tx, "browser_proxy_virtual_groups", "group_name")
+		if err != nil {
+			return err
+		}
+		if hasGroupName {
+			rows, err := tx.Query(`SELECT COALESCE(group_name,'') FROM src.browser_proxy_virtual_groups ORDER BY rowid`)
+			if err != nil {
+				return fmt.Errorf("读取备份虚拟代理分组名称失败: %w", err)
+			}
+			for rows.Next() {
+				var sourceName string
+				if err := rows.Scan(&sourceName); err != nil {
+					rows.Close()
+					return err
+				}
+				sourceNames = append(sourceNames, sourceName)
+			}
+			if err := rows.Err(); err != nil {
+				rows.Close()
+				return err
+			}
+			if err := rows.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	if incomingCfg != nil {
+		for _, group := range incomingCfg.Browser.ProxyVirtualGroups {
+			sourceNames = append(sourceNames, group.GroupName)
+		}
+	}
+	if len(sourceNames) == 0 {
+		return nil
+	}
+
+	usedNames := make(map[string]struct{})
+	rows, err := tx.Query(`SELECT COALESCE(group_name,'') FROM browser_proxy_virtual_groups`)
+	if err != nil {
+		return fmt.Errorf("读取现有虚拟代理分组名称失败: %w", err)
+	}
+	for rows.Next() {
+		var groupName string
+		if err := rows.Scan(&groupName); err != nil {
+			rows.Close()
+			return err
+		}
+		if key := backupImportTextKey(groupName); key != "" {
+			usedNames[key] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	for _, sourceName := range sourceNames {
+		sourceName = strings.TrimSpace(sourceName)
+		key := backupImportTextKey(sourceName)
+		if key == "" {
+			continue
+		}
+		if _, mapped := mappings.ProxyVirtualGroups[key]; mapped {
+			continue
+		}
+		targetName := sourceName
+		if _, exists := usedNames[key]; exists {
+			targetName = backupImportUniqueProxyVirtualGroupName(sourceName, usedNames)
+			backupRecordImportConflict(stats)
+		}
+		usedNames[backupImportTextKey(targetName)] = struct{}{}
+		backupImportSetMapping(mappings.ProxyVirtualGroups, sourceName, targetName, true)
+	}
+	return nil
+}
+
+func backupImportUniqueProxyVirtualGroupName(groupName string, used map[string]struct{}) string {
+	base := strings.TrimSpace(groupName)
+	candidate := base + " (导入)"
+	for suffix := 2; ; suffix++ {
+		if _, exists := used[backupImportTextKey(candidate)]; !exists {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s (导入 %d)", base, suffix)
+	}
+}
+
 func (a *App) backupMapImportProfiles(tx *sql.Tx, incomingCfg *config.Config, mappings *backupImportReferenceMappings, stats *backupMergeStats) error {
 	targetRows, err := backupQueryImportProfiles(tx, "browser_profiles")
 	if err != nil {
@@ -653,6 +755,7 @@ var backupImportReferenceMapTables = []string{
 	backupImportProxyMapTable,
 	backupImportProfileMapTable,
 	backupImportExtensionMapTable,
+	backupImportProxyVirtualGroupMapTable,
 }
 
 func backupDropImportReferenceMapTables(tx *sql.Tx) {
@@ -679,6 +782,8 @@ func backupImportMappingsForTable(mappings *backupImportReferenceMappings, table
 		return mappings.Profiles
 	case backupImportExtensionMapTable:
 		return mappings.Extensions
+	case backupImportProxyVirtualGroupMapTable:
+		return mappings.ProxyVirtualGroups
 	default:
 		return nil
 	}
@@ -687,11 +792,12 @@ func backupImportMappingsForTable(mappings *backupImportReferenceMappings, table
 func backupInstallImportReferenceMapTables(tx *sql.Tx, mappings *backupImportReferenceMappings) error {
 	backupDropImportReferenceMapTables(tx)
 	definitions := map[string]string{
-		backupImportGroupMapTable:     `CREATE TEMP TABLE backup_import_group_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
-		backupImportCoreMapTable:      `CREATE TEMP TABLE backup_import_core_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
-		backupImportProxyMapTable:     `CREATE TEMP TABLE backup_import_proxy_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
-		backupImportProfileMapTable:   `CREATE TEMP TABLE backup_import_profile_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
-		backupImportExtensionMapTable: `CREATE TEMP TABLE backup_import_extension_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
+		backupImportGroupMapTable:             `CREATE TEMP TABLE backup_import_group_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
+		backupImportCoreMapTable:              `CREATE TEMP TABLE backup_import_core_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
+		backupImportProxyMapTable:             `CREATE TEMP TABLE backup_import_proxy_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
+		backupImportProfileMapTable:           `CREATE TEMP TABLE backup_import_profile_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
+		backupImportExtensionMapTable:         `CREATE TEMP TABLE backup_import_extension_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
+		backupImportProxyVirtualGroupMapTable: `CREATE TEMP TABLE backup_import_proxy_virtual_group_map (source_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, imported INTEGER NOT NULL)`,
 	}
 	for _, table := range backupImportReferenceMapTables {
 		if _, err := tx.Exec(definitions[table]); err != nil {

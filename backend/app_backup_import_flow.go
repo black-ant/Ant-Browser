@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/config"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,6 +57,16 @@ func (a *App) backupImportFromPathLocked(zipPath string) (map[string]interface{}
 	a.backupEmitImportProgress("importing", 84, "正在合并代理配置...")
 	if err := a.backupMergeProxiesFile(payloadRoot, stats); err != nil {
 		issueTracker.RecordIssue("system_config_proxies", "代理配置文件", err)
+	}
+	incomingProxies := make([]config.BrowserProxy, 0)
+	if incomingCfg != nil {
+		incomingProxies = append(incomingProxies, incomingCfg.Browser.Proxies...)
+	}
+	if loaded, loadErr := config.LoadProxies(filepath.Join(payloadRoot, "system", "proxies.yaml")); loadErr == nil {
+		incomingProxies = append(incomingProxies, loaded...)
+	}
+	if err := a.backupReconcileProxyReferencesWithDatabase(incomingProxies); err != nil {
+		issueTracker.RecordIssue("database_sqlite_main", "SQLite 主数据库", err)
 	}
 
 	a.backupEmitImportProgress("importing", 86, "正在同步文件数据...")
