@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// 用户库里已记录 15/16/17（插件迁移）时，内核字段迁移仍要生效，
-// 迁移完成后必须保证代码依赖的列真实存在。
+// 用户库的版本水位已高于本迁移号（其他构建或分叉用过 18、19）时，内核字段迁移会被跳过，
+// 迁移完成后仍必须保证代码依赖的列真实存在。
 func TestMigrateAddsCoreColumnsDespiteHigherVersionWatermark(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy.db")
 	db, err := NewDB(dbPath)
@@ -37,8 +37,8 @@ func TestMigrateAddsCoreColumnsDespiteHigherVersionWatermark(t *testing.T) {
 		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
 		t.Fatalf("create schema_migrations: %v", err)
 	}
-	for _, version := range []int{15, 16, 17} {
-		if _, err := conn.Exec(`INSERT INTO schema_migrations (version, desc) VALUES (?, ?)`, version, "历史插件迁移"); err != nil {
+	for _, version := range []int{15, 16, 17, 18, 19} {
+		if _, err := conn.Exec(`INSERT INTO schema_migrations (version, desc) VALUES (?, ?)`, version, "已记录的迁移"); err != nil {
 			t.Fatalf("seed version %d: %v", version, err)
 		}
 	}
