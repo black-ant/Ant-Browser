@@ -260,8 +260,7 @@ var migrations = []migration{
 		},
 	},
 	{
-		// 注意：15/16/17 已被历史插件相关迁移占用（部分用户库里已记录），
-		// 这里从 18 开始，避免版本号撞车导致本迁移被当成"已执行"而跳过。
+		// 新增列同时登记在 expectedColumns，版本号撞车被跳过时由 ensureExpectedColumns 补齐。
 		version: 18,
 		desc:    "内核表添加后端类型与环境变量字段",
 		stmts: []string{

@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// 复现真实故障：用户库里已记录 15/16/17（历史插件迁移），
-// 版本水位 MAX(version)=17 会让新追加的迁移被当成"已执行"而跳过。
+// 用户库里已记录 15/16/17（插件迁移）时，内核字段迁移仍要生效，
 // 迁移完成后必须保证代码依赖的列真实存在。
 func TestMigrateAddsCoreColumnsDespiteHigherVersionWatermark(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy.db")
