@@ -149,15 +149,17 @@ type CoreDownloadHTTPClientFactory func(proxyConfig string, timeout time.Duratio
 
 // Manager 浏览器管理器
 type Manager struct {
-	Config                        *config.Config
-	AppRoot                       string // 应用根目录，所有相对路径基于此解析（生产=exe目录，dev=项目根目录）
-	Profiles                      map[string]*Profile
-	Mutex                         sync.Mutex
-	BrowserProcesses              map[string]*exec.Cmd
-	XrayBridges                   map[string]*XrayBridge
-	CodeProvider                  CodeProvider
-	EventEmitter                  RuntimeEventEmitter
-	CoreDownloadHTTPClientFactory CoreDownloadHTTPClientFactory
+	Config                                 *config.Config
+	AppRoot                                string // 应用根目录，所有相对路径基于此解析（生产=exe目录，dev=项目根目录）
+	Profiles                               map[string]*Profile
+	Mutex                                  sync.Mutex
+	externalExtensionRegistryMigrationOnce sync.Once
+	externalExtensionRegistryMigrationErr  error
+	BrowserProcesses                       map[string]*exec.Cmd
+	XrayBridges                            map[string]*XrayBridge
+	CodeProvider                           CodeProvider
+	EventEmitter                           RuntimeEventEmitter
+	CoreDownloadHTTPClientFactory          CoreDownloadHTTPClientFactory
 
 	// DAO 层（注入后使用 SQLite 存储，未注入时降级到 config.yaml）
 	ProfileDAO   ProfileDAO

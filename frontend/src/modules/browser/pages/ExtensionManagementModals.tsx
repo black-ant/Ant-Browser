@@ -136,7 +136,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
       }).filter((task): task is Promise<BrowserProfileExtensionSettings> => task !== null)
 
       if (saveTasks.length > 0) await Promise.all(saveTasks)
-      toast.success('实例插件设置已保存，下次启动时写入')
+      toast.success('实例插件设置已保存；运行中的实例下次启动生效')
       onClose()
     } catch (error: any) {
       toast.error(error?.message || '保存实例限制失败')

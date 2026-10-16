@@ -49,7 +49,7 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
     setSaving(true)
     try {
       await saveBrowserProfileExtensionSettings(profile.profileId, selectedIds, configured)
-      toast.success('实例插件配置已保存，下次启动时写入')
+      toast.success('实例插件配置已保存；运行中的实例下次启动生效')
       onClose()
     } catch (error: any) {
       toast.error(error?.message || '保存实例插件配置失败')

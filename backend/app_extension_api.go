@@ -328,6 +328,9 @@ func (a *App) BrowserExtensionDelete(extensionID string) error {
 	if _, err := a.resolveBrowserExtensionInstallDir(extension.InstallDir); err != nil {
 		return err
 	}
+	if err := a.browserMgr.MigrateLegacyExternalExtensionRegistry(); err != nil {
+		return fmt.Errorf("迁移旧版插件外部注册失败，已阻止删除插件：%w", err)
+	}
 	if err := a.browserMgr.RemoveExtensionFromStoppedProfiles(extensionID); err != nil {
 		return err
 	}
@@ -506,5 +509,5 @@ func (a *App) BrowserProfileExtensionSave(profileID string, extensionIDs []strin
 	if a.browserMgr == nil || a.browserMgr.ExtensionDAO == nil {
 		return BrowserProfileExtensionSettings{}, fmt.Errorf("插件管理器未初始化")
 	}
-	return a.browserMgr.ExtensionDAO.SetProfileSettings(profileID, extensionIDs, configured)
+	return a.browserMgr.SaveProfileExtensionSettings(profileID, extensionIDs, configured)
 }
