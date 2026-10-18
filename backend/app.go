@@ -49,6 +49,11 @@ type App struct {
 	backgroundTasksBlocked        bool
 	maintenanceMu                 sync.Mutex
 	bridgeMu                      sync.Mutex
+	proxySpeedMu                  sync.Mutex
+	proxySpeedTasks               map[string]*proxySpeedTask
+	proxySpeedGateMu              sync.Mutex
+	proxySpeedGateCond            *sync.Cond
+	proxySpeedActive              int
 	proxyVirtualGroupMu           sync.Mutex
 	proxyVirtualGroupCursor       map[string]int
 	proxyVirtualGroupLocks        map[string]*sync.Mutex
@@ -75,6 +80,7 @@ func NewApp(appRoot string, appVersion ...string) *App {
 		appRoot:                 strings.TrimSpace(appRoot),
 		version:                 version,
 		profileBridgeRefs:       make(map[string]profileProxyBridgeRef),
+		proxySpeedTasks:         make(map[string]*proxySpeedTask),
 		proxyVirtualGroupCursor: make(map[string]int),
 		proxyVirtualGroupLocks:  make(map[string]*sync.Mutex),
 		deferredStartTargets:    make(map[string]deferredStartTargetsPlan),

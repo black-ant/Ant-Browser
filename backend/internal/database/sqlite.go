@@ -285,6 +285,15 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_browser_proxy_virtual_groups_sort_order ON browser_proxy_virtual_groups(sort_order, group_name)`,
 		},
 	},
+	{
+		version: 26,
+		desc:    "记录代理测速来源与配置指纹",
+		stmts: []string{
+			`ALTER TABLE browser_proxies ADD COLUMN last_test_engine TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxies ADD COLUMN last_test_connector_type TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxies ADD COLUMN last_test_fingerprint TEXT NOT NULL DEFAULT ''`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

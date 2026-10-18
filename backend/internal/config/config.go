@@ -62,6 +62,8 @@ type Config struct {
 
 type ProxyCheckConfig struct {
 	BridgeStartTimeoutMs int                `yaml:"bridge_start_timeout_ms" json:"bridgeStartTimeoutMs"`
+	FailureRetryMinutes  int                `yaml:"failure_retry_minutes" json:"-"`
+	SpeedConcurrency     int                `yaml:"speed_concurrency" json:"-"`
 	SpeedTargetID        string             `yaml:"speed_target_id" json:"speedTargetId"`
 	IPHealthTargetID     string             `yaml:"ip_health_target_id" json:"ipHealthTargetId"`
 	Targets              []ProxyCheckTarget `yaml:"targets" json:"targets"`
@@ -236,6 +238,9 @@ type BrowserProxy struct {
 	LastLatencyMs          int64  `yaml:"-" json:"lastLatencyMs"`
 	LastTestOk             bool   `yaml:"-" json:"lastTestOk"`
 	LastTestedAt           string `yaml:"-" json:"lastTestedAt"`
+	LastTestEngine         string `yaml:"-" json:"-"`
+	LastTestConnectorType  string `yaml:"-" json:"-"`
+	LastTestFingerprint    string `yaml:"-" json:"-"`
 	LastIPHealthJSON       string `yaml:"-" json:"lastIPHealthJson,omitempty"`
 }
 

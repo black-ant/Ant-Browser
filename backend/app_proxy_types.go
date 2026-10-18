@@ -13,11 +13,14 @@ type ProxyValidationResult struct {
 
 // ProxyTestResult 代理测试结果
 type ProxyTestResult struct {
-	ProxyId   string `json:"proxyId"`
-	Ok        bool   `json:"ok"`
-	LatencyMs int64  `json:"latencyMs"`
-	Engine    string `json:"engine"`
-	Error     string `json:"error"`
+	ProxyId       string `json:"proxyId"`
+	Ok            bool   `json:"ok"`
+	LatencyMs     int64  `json:"latencyMs"`
+	Engine        string `json:"engine"`
+	Error         string `json:"error"`
+	testedAt      string
+	fingerprint   string
+	connectorType string
 }
 
 func buildProxyTestResult(result proxy.TestResult) ProxyTestResult {

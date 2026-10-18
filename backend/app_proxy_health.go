@@ -15,12 +15,7 @@ import (
 func (a *App) BrowserProxyTestSpeed(proxyId string) ProxyTestResult {
 	proxies := a.getLatestProxies()
 	connectorType := a.defaultProxyConnectorType()
-	result := proxy.SpeedTestWithConnector(proxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, connectorType, a.proxySpeedTestConfig())
-	if a.browserMgr.ProxyDAO != nil {
-		testedAt := time.Now().Format(time.RFC3339)
-		_ = a.browserMgr.ProxyDAO.UpdateSpeedResult(proxyId, result.Ok, result.LatencyMs, testedAt)
-	}
-	return buildProxyTestResult(result)
+	return a.testSharedProxySpeedWithOptions(proxyId, true, proxies, connectorType, a.proxySpeedTestConfig())
 }
 
 const (
@@ -58,12 +53,7 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
-				result := proxy.SpeedTestWithConnector(job.ProxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, connectorType, a.proxySpeedTestConfig())
-				if a.browserMgr.ProxyDAO != nil {
-					testedAt := time.Now().Format(time.RFC3339)
-					_ = a.browserMgr.ProxyDAO.UpdateSpeedResult(job.ProxyId, result.Ok, result.LatencyMs, testedAt)
-				}
-				item := buildProxyTestResult(result)
+				item := a.testSharedProxySpeedWithOptions(job.ProxyId, true, proxies, connectorType, a.proxySpeedTestConfig())
 				results[job.Idx] = item
 
 				a.emitRuntimeEvent("proxy:speed:result", item)
@@ -80,8 +70,8 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 	return results
 }
 
-func (a *App) testProxySpeedWithConnector(proxyId string, proxies []BrowserProxy, connectorType string) proxy.TestResult {
-	return proxy.SpeedTestWithConnector(proxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, config.NormalizeBrowserConnectorType(connectorType), a.proxySpeedTestConfig())
+func (a *App) testProxySpeedWithConnector(proxyId string, proxies []BrowserProxy, connectorType string, speedConfig *proxy.SpeedTestConfig) proxy.TestResult {
+	return proxy.SpeedTestWithConnector(proxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, config.NormalizeBrowserConnectorType(connectorType), speedConfig)
 }
 
 func (a *App) defaultProxyConnectorType() string {

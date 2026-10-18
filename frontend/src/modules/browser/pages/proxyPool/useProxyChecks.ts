@@ -38,6 +38,33 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
   }, [])
 
   useEffect(() => {
+    const markBridgeFailure = (proxyIds: string[], message: string) => {
+      const uniqueIds = Array.from(new Set(proxyIds.filter(Boolean)))
+      if (uniqueIds.length === 0) return
+      setLatencyMap(prev => {
+        const next = { ...prev }
+        uniqueIds.forEach(proxyId => { next[proxyId] = -1 })
+        return next
+      })
+      setLatencyErrorMap(prev => {
+        const next = { ...prev }
+        uniqueIds.forEach(proxyId => { next[proxyId] = message })
+        return next
+      })
+    }
+    const offFailed = EventsOn('proxy:bridge:failed', (data: { proxyId?: string; error?: string }) => {
+      if (data.proxyId) markBridgeFailure([data.proxyId], data.error || '代理桥接启动失败')
+    })
+    const offDied = EventsOn('proxy:bridge:died', (data: { proxyIds?: string[]; error?: string }) => {
+      markBridgeFailure(data.proxyIds || [], data.error || '代理桥接进程已退出')
+    })
+    return () => {
+      offFailed()
+      offDied()
+    }
+  }, [])
+
+  useEffect(() => {
     writeLatencyCache(latencyMap)
   }, [latencyMap])
 

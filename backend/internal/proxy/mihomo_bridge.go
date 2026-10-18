@@ -348,6 +348,7 @@ func (m *ClashManager) watchMihomoNodeBridge(bridge *MihomoNodeBridge) {
 	go func() {
 		err := bridge.Cmd.Wait()
 		m.mu.Lock()
+		unexpected := bridge.Running && m.NodeBridges[bridge.NodeKey] == bridge
 		bridge.Running = false
 		bridge.ExitErr = err
 		if current := m.NodeBridges[bridge.NodeKey]; current == bridge {
@@ -355,6 +356,12 @@ func (m *ClashManager) watchMihomoNodeBridge(bridge *MihomoNodeBridge) {
 		}
 		m.mu.Unlock()
 		close(bridge.ExitDone)
+		if unexpected && m.OnNodeBridgeDied != nil {
+			if err == nil {
+				err = fmt.Errorf("mihomo 桥接进程意外退出")
+			}
+			m.OnNodeBridgeDied(bridge.NodeKey, err)
+		}
 	}()
 }
 

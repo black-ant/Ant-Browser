@@ -37,6 +37,24 @@ func TestNormalizeConfigDoesNotOverrideCustomDefaultFingerprintArgs(t *testing.T
 	assertStringSliceContains(t, config.Browser.DefaultFingerprintArgs, "--fingerprint-brand=Chrome")
 }
 
+func TestNormalizeConfigSetsAndBoundsProxySpeedSettings(t *testing.T) {
+	config := &Config{}
+	normalizeConfig(config)
+	if config.ProxyCheck.FailureRetryMinutes != DefaultProxyFailureRetryMinutes {
+		t.Fatalf("default failure retry = %d, want %d", config.ProxyCheck.FailureRetryMinutes, DefaultProxyFailureRetryMinutes)
+	}
+	if config.ProxyCheck.SpeedConcurrency != DefaultProxySpeedConcurrency {
+		t.Fatalf("default speed concurrency = %d, want %d", config.ProxyCheck.SpeedConcurrency, DefaultProxySpeedConcurrency)
+	}
+
+	config.ProxyCheck.FailureRetryMinutes = 24*60 + 1
+	config.ProxyCheck.SpeedConcurrency = MaxProxySpeedConcurrency + 1
+	normalizeConfig(config)
+	if config.ProxyCheck.FailureRetryMinutes != 24*60 || config.ProxyCheck.SpeedConcurrency != MaxProxySpeedConcurrency {
+		t.Fatalf("bounded speed settings = retry %d, concurrency %d", config.ProxyCheck.FailureRetryMinutes, config.ProxyCheck.SpeedConcurrency)
+	}
+}
+
 func assertStringSliceContains(t *testing.T, values []string, expected string) {
 	t.Helper()
 	for _, value := range values {

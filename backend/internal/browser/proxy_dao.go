@@ -35,6 +35,7 @@ func (d *SQLiteProxyDAO) List() ([]Proxy, error) {
 		       COALESCE(source_id, ''), COALESCE(source_url, ''), COALESCE(source_name_prefix, ''),
 		       COALESCE(source_auto_refresh, 0), COALESCE(source_refresh_interval_m, 0), COALESCE(source_last_refresh_at, ''),
 		       COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
+		       COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
 		       COALESCE(last_ip_health_json, ''),
 		       sort_order
 		FROM browser_proxies ORDER BY sort_order ASC, created_at ASC`)
@@ -52,6 +53,7 @@ func (d *SQLiteProxyDAO) ListByGroup(groupName string) ([]Proxy, error) {
 		       COALESCE(source_id, ''), COALESCE(source_url, ''), COALESCE(source_name_prefix, ''),
 		       COALESCE(source_auto_refresh, 0), COALESCE(source_refresh_interval_m, 0), COALESCE(source_last_refresh_at, ''),
 		       COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
+		       COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
 		       COALESCE(last_ip_health_json, ''),
 		       sort_order
 		FROM browser_proxies WHERE group_name = ?
@@ -146,10 +148,37 @@ func (d *SQLiteProxyDAO) UpdateSpeedResult(proxyId string, ok bool, latencyMs in
 		okInt = 1
 	}
 	_, err := d.db.Exec(`
-		UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?
+		UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?,
+		last_test_engine='', last_test_connector_type='', last_test_fingerprint=''
 		WHERE proxy_id=?`, latencyMs, okInt, testedAt, proxyId)
 	if err != nil {
 		return fmt.Errorf("更新测速结果失败: %w", err)
+	}
+	return nil
+}
+
+func (d *SQLiteProxyDAO) UpdateSpeedResultWithProvenance(proxyId string, ok bool, latencyMs int64, testedAt string, engine string, connectorType string, fingerprint string) error {
+	okInt := 0
+	if ok {
+		okInt = 1
+	}
+	_, err := d.db.Exec(`
+		UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?,
+		last_test_engine=?, last_test_connector_type=?, last_test_fingerprint=?
+		WHERE proxy_id=?`, latencyMs, okInt, testedAt, engine, connectorType, fingerprint, proxyId)
+	if err != nil {
+		return fmt.Errorf("更新测速结果来源失败: %w", err)
+	}
+	return nil
+}
+
+func (d *SQLiteProxyDAO) InvalidateSpeedResult(proxyId string) error {
+	_, err := d.db.Exec(`
+		UPDATE browser_proxies SET last_latency_ms=-1, last_test_ok=0, last_tested_at='',
+		last_test_engine='', last_test_connector_type='', last_test_fingerprint=''
+		WHERE proxy_id=?`, proxyId)
+	if err != nil {
+		return fmt.Errorf("使代理测速结果失效失败: %w", err)
 	}
 	return nil
 }
@@ -174,7 +203,8 @@ func scanProxies(rows *sql.Rows) ([]Proxy, error) {
 		if err := rows.Scan(
 			&p.ProxyId, &p.ProxyName, &p.ProxyConfig, &p.PreferredKernel, &p.DnsServers, &p.GroupName,
 			&p.SourceID, &p.SourceURL, &p.SourceNamePrefix, &autoRefreshInt, &p.SourceRefreshIntervalM, &p.SourceLastRefreshAt,
-			&p.LastLatencyMs, &okInt, &p.LastTestedAt, &p.LastIPHealthJSON, &p.SortOrder,
+			&p.LastLatencyMs, &okInt, &p.LastTestedAt, &p.LastTestEngine, &p.LastTestConnectorType, &p.LastTestFingerprint,
+			&p.LastIPHealthJSON, &p.SortOrder,
 		); err != nil {
 			return nil, fmt.Errorf("读取代理行失败: %w", err)
 		}

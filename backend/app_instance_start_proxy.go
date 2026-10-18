@@ -105,9 +105,10 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			startErr := fmt.Errorf("实例启动失败：mihomo 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(mihomo)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
 			profile.LastError = startErr.Error()
+			a.reportProxyBridgeFailure(profileID, profile.ProfileName, resolvedProxyID, profileProxyBridgeEngineMihomo, bridgeErr)
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		return proxyURL, newProfileProxyBridgeRef(profileProxyBridgeEngineMihomo, bridgeKey), bridgeKey != "", nil
+		return proxyURL, newProfileProxyBridgeRef(profileProxyBridgeEngineMihomo, bridgeKey, resolvedProxyID), bridgeKey != "", nil
 	case proxy.ProxyKernelSingBox:
 		if a.singboxMgr == nil {
 			startErr := fmt.Errorf("实例启动失败：sing-box 管理器未初始化，无法启动该协议代理。请检查 sing-box 内核配置。")
@@ -119,9 +120,10 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			startErr := fmt.Errorf("实例启动失败：sing-box 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(sing-box)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
 			profile.LastError = startErr.Error()
+			a.reportProxyBridgeFailure(profileID, profile.ProfileName, resolvedProxyID, profileProxyBridgeEngineSingBox, bridgeErr)
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineSingBox, bridgeKey), bridgeKey != "", nil
+		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineSingBox, bridgeKey, resolvedProxyID), bridgeKey != "", nil
 	case proxy.ProxyKernelXray:
 		if a.xrayMgr == nil {
 			startErr := fmt.Errorf("实例启动失败：xray 管理器未初始化，无法启动该协议代理。")
@@ -133,9 +135,10 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			startErr := fmt.Errorf("实例启动失败：Xray 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(xray)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
 			profile.LastError = startErr.Error()
+			a.reportProxyBridgeFailure(profileID, profile.ProfileName, resolvedProxyID, profileProxyBridgeEngineXray, bridgeErr)
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineXray, bridgeKey), bridgeKey != "", nil
+		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineXray, bridgeKey, resolvedProxyID), bridgeKey != "", nil
 	case proxy.ProxyKernelNative:
 		return resolvedProxyConfig, profileProxyBridgeRef{}, false, nil
 	default:

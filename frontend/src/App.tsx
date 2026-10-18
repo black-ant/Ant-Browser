@@ -64,8 +64,8 @@ function useWailsNotifications() {
               path: `/browser/detail/${encodeURIComponent(data.profileId)}`,
             }
           : undefined;
-        toast.warning(`「${data.profileName || data.profileId}」代理桥接失败，已直连启动`, 8_000, {
-          title: "代理已降级直连",
+        toast.warning(`「${data.profileName || data.profileId}」代理桥接失败：${data.error}`, 8_000, {
+          title: "代理桥接失败",
           source: "runtime",
           dedupeKey: `proxy:bridge:failed:${data.profileId}`,
           persistent: true,
@@ -76,11 +76,15 @@ function useWailsNotifications() {
 
     const offBridgeDied = runtime.EventsOn(
       "proxy:bridge:died",
-      (data: { key: string; error: string }) => {
+      (data: { key: string; error: string; proxyIds?: string[]; profileIds?: string[] }) => {
+        const proxyIds = data.proxyIds?.filter(Boolean) || [];
+        const profileIds = data.profileIds?.filter(Boolean) || [];
+        const target = proxyIds.length > 0 ? proxyIds.join("、") : data.key;
+        const profileHint = profileIds.length > 0 ? `，影响实例 ${profileIds.join("、")}` : "";
         addNotification({
           type: "warning",
           title: "连接池节点失效",
-          message: `代理节点 ${data.key} 连接中断，相关实例可能无法访问网络`,
+          message: `代理节点 ${target} 连接中断${profileHint}，相关实例可能无法访问网络`,
           source: "runtime",
           dedupeKey: `proxy:bridge:died:${data.key}`,
           persistent: true,

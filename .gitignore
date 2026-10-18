@@ -58,7 +58,8 @@ publish/staging/
 publish/output/
 
 # Internal docs / scratch files
-docs/
+docs/*
+!docs/feature-difference-approval.md
 DEPLOYMENT_GUIDE.md
 plan.md
 pic/

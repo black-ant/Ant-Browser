@@ -12,12 +12,13 @@ import (
 
 // ClashManager Clash 进程管理器
 type ClashManager struct {
-	Config      *config.Config
-	AppRoot     string // 应用根目录，所有相对路径基于此解析
-	Processes   map[string]*exec.Cmd
-	NodeBridges map[string]*MihomoNodeBridge
-	mu          sync.Mutex
-	launchLocks map[string]*bridgeLaunchLock
+	Config           *config.Config
+	AppRoot          string // 应用根目录，所有相对路径基于此解析
+	Processes        map[string]*exec.Cmd
+	NodeBridges      map[string]*MihomoNodeBridge
+	OnNodeBridgeDied func(key string, err error)
+	mu               sync.Mutex
+	launchLocks      map[string]*bridgeLaunchLock
 }
 
 // NewClashManager 创建 Clash 管理器

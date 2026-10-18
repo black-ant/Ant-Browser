@@ -21,8 +21,18 @@ func (a *App) SaveProxyCheckSettings(settings ProxyCheckSettings) error {
 	if a.config == nil {
 		return nil
 	}
+	if settings.FailureRetryMinutes <= 0 {
+		settings.FailureRetryMinutes = a.config.ProxyCheck.FailureRetryMinutes
+	}
+	if settings.SpeedConcurrency <= 0 {
+		settings.SpeedConcurrency = a.config.ProxyCheck.SpeedConcurrency
+	}
 	a.config.ProxyCheck = proxy.NormalizeCheckSettings(settings)
-	return a.config.Save(a.resolveAppPath("config.yaml"))
+	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
+		return err
+	}
+	a.ensureSpeedScheduler()
+	return nil
 }
 
 func (a *App) proxySpeedTestConfig() *proxy.SpeedTestConfig {

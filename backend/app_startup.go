@@ -198,19 +198,20 @@ func (a *App) startupInitAutomation() {
 }
 
 func (a *App) startupInitBridgeHooks() {
-	a.xrayMgr.OnBridgeDied = func(key string, err error) {
-		a.emitRuntimeEvent("proxy:bridge:died", map[string]interface{}{
-			"engine": "xray",
-			"key":    bridgeEventKey(key),
-			"error":  errorMessage(err),
-		})
+	if a.xrayMgr != nil {
+		a.xrayMgr.OnBridgeDied = func(key string, err error) {
+			a.handleProxyBridgeDied(profileProxyBridgeEngineXray, key, err)
+		}
 	}
-	a.singboxMgr.OnBridgeDied = func(key string, err error) {
-		a.emitRuntimeEvent("proxy:bridge:died", map[string]interface{}{
-			"engine": "singbox",
-			"key":    bridgeEventKey(key),
-			"error":  errorMessage(err),
-		})
+	if a.singboxMgr != nil {
+		a.singboxMgr.OnBridgeDied = func(key string, err error) {
+			a.handleProxyBridgeDied(profileProxyBridgeEngineSingBox, key, err)
+		}
+	}
+	if a.clashMgr != nil {
+		a.clashMgr.OnNodeBridgeDied = func(key string, err error) {
+			a.handleProxyBridgeDied(profileProxyBridgeEngineMihomo, key, err)
+		}
 	}
 }
 
@@ -236,17 +237,24 @@ func (a *App) ensureSpeedScheduler() {
 	if a == nil || a.config == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil {
 		return
 	}
+	settings := proxy.NormalizeCheckSettings(a.config.ProxyCheck)
 	if a.speedScheduler == nil {
-		a.speedScheduler = browser.NewProxySpeedScheduler(
+		a.speedScheduler = browser.NewProxySpeedSchedulerWithRetry(
 			a.browserMgr.ProxyDAO,
-			func(proxyId string) (bool, int64, string) {
-				connectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
-				r := a.testProxySpeedWithConnector(proxyId, a.getLatestProxies(), connectorType)
-				return r.Ok, r.LatencyMs, r.Error
-			},
+			nil,
 			browser.DefaultProxySpeedInterval,
-			browser.DefaultProxySpeedConcurrency,
+			time.Duration(settings.FailureRetryMinutes)*time.Minute,
+			settings.SpeedConcurrency,
 		)
+		a.speedScheduler.SetProxySpeedTestFunc(func(item browser.Proxy) (bool, int64, string) {
+			result := a.testSharedProxySpeed(item.ProxyId, true)
+			a.emitRuntimeEvent("proxy:speed:result", result)
+			return result.Ok, result.LatencyMs, result.Error
+		})
+		a.speedScheduler.SetResultCurrentFunc(func(item browser.Proxy, proxies []browser.Proxy) bool {
+			return a.proxySpeedResultIsCurrent(item, proxies)
+		})
+		a.speedScheduler.SetResultPersistence(false)
 	}
 	a.speedScheduler.Start()
 }

@@ -21,6 +21,12 @@ const (
 	BrowserConnectorMihomoStack = BrowserConnectorMihomo
 )
 
+const (
+	DefaultProxyFailureRetryMinutes = 5
+	DefaultProxySpeedConcurrency    = 2
+	MaxProxySpeedConcurrency        = 10
+)
+
 // NormalizeBrowserConnectorType 规范化连接栈配置。
 func NormalizeBrowserConnectorType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
@@ -151,6 +157,16 @@ func normalizeConfig(config *Config) {
 	}
 	if config.ProxyCheck.BridgeStartTimeoutMs <= 0 {
 		config.ProxyCheck.BridgeStartTimeoutMs = defaultConfig.ProxyCheck.BridgeStartTimeoutMs
+	}
+	if config.ProxyCheck.FailureRetryMinutes <= 0 {
+		config.ProxyCheck.FailureRetryMinutes = defaultConfig.ProxyCheck.FailureRetryMinutes
+	} else if config.ProxyCheck.FailureRetryMinutes > 24*60 {
+		config.ProxyCheck.FailureRetryMinutes = 24 * 60
+	}
+	if config.ProxyCheck.SpeedConcurrency <= 0 {
+		config.ProxyCheck.SpeedConcurrency = defaultConfig.ProxyCheck.SpeedConcurrency
+	} else if config.ProxyCheck.SpeedConcurrency > MaxProxySpeedConcurrency {
+		config.ProxyCheck.SpeedConcurrency = MaxProxySpeedConcurrency
 	}
 	if strings.TrimSpace(config.ProxyCheck.SpeedTargetID) == "" {
 		config.ProxyCheck.SpeedTargetID = defaultConfig.ProxyCheck.SpeedTargetID
@@ -304,6 +320,8 @@ func DefaultConfig() *Config {
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,
+			FailureRetryMinutes:  DefaultProxyFailureRetryMinutes,
+			SpeedConcurrency:     DefaultProxySpeedConcurrency,
 			SpeedTargetID:        "",
 			IPHealthTargetID:     "",
 			Targets:              []ProxyCheckTarget{},

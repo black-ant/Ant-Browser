@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -9,6 +10,72 @@ type blockingProxySpeedDAO struct {
 	started  chan struct{}
 	released chan struct{}
 	finished chan struct{}
+}
+
+type proxySpeedSchedulerTestDAO struct {
+	proxies []Proxy
+	updates chan string
+}
+
+func (dao *proxySpeedSchedulerTestDAO) List() ([]Proxy, error)              { return dao.proxies, nil }
+func (dao *proxySpeedSchedulerTestDAO) ListByGroup(string) ([]Proxy, error) { return nil, nil }
+func (dao *proxySpeedSchedulerTestDAO) ListGroups() ([]string, error)       { return nil, nil }
+func (dao *proxySpeedSchedulerTestDAO) Upsert(Proxy) error                  { return nil }
+func (dao *proxySpeedSchedulerTestDAO) Delete(string) error                 { return nil }
+func (dao *proxySpeedSchedulerTestDAO) DeleteAll() error                    { return nil }
+func (dao *proxySpeedSchedulerTestDAO) UpdateSpeedResult(proxyID string, _ bool, _ int64, _ string) error {
+	dao.updates <- proxyID
+	return nil
+}
+func (dao *proxySpeedSchedulerTestDAO) UpdateIPHealthResult(string, string) error { return nil }
+
+func TestProxySpeedSchedulerRetriesFailedAndStaleResults(t *testing.T) {
+	testedAt := time.Now().Add(-10 * time.Minute).Format(time.RFC3339)
+	dao := &proxySpeedSchedulerTestDAO{
+		proxies: []Proxy{{ProxyId: "failed", ProxyConfig: "http://127.0.0.1:8080", LastTestedAt: testedAt}},
+		updates: make(chan string, 2),
+	}
+	var testMu sync.Mutex
+	var tested []string
+	scheduler := NewProxySpeedSchedulerWithRetry(dao, nil, 30*time.Minute, 5*time.Minute, 1)
+	scheduler.SetProxySpeedTestFunc(func(item Proxy) (bool, int64, string) {
+		testMu.Lock()
+		tested = append(tested, item.ProxyId)
+		testMu.Unlock()
+		return true, 20, ""
+	})
+	scheduler.SetResultCurrentFunc(func(item Proxy, _ []Proxy) bool { return item.LastTestOk })
+	scheduler.RunOnce()
+	select {
+	case proxyID := <-dao.updates:
+		if proxyID != "failed" {
+			t.Fatalf("updated proxy = %q, want failed", proxyID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("failed result was not retried")
+	}
+
+	if len(tested) != 1 {
+		t.Fatalf("tested proxies = %#v, want one retry", tested)
+	}
+	scheduler.Stop()
+
+	dao.proxies = []Proxy{{ProxyId: "stale", ProxyConfig: "http://127.0.0.1:8080", LastTestOk: true, LastTestedAt: time.Now().Add(-time.Minute).Format(time.RFC3339)}}
+	staleScheduler := NewProxySpeedSchedulerWithRetry(dao, nil, 30*time.Minute, 5*time.Minute, 1)
+	staleScheduler.SetProxySpeedTestFunc(func(item Proxy) (bool, int64, string) {
+		return true, 20, ""
+	})
+	staleScheduler.SetResultCurrentFunc(func(Proxy, []Proxy) bool { return false })
+	staleScheduler.RunOnce()
+	select {
+	case proxyID := <-dao.updates:
+		if proxyID != "stale" {
+			t.Fatalf("updated proxy = %q, want stale", proxyID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stale result was not retested")
+	}
+	staleScheduler.Stop()
 }
 
 func (dao *blockingProxySpeedDAO) List() ([]Proxy, error) {

@@ -12,6 +12,14 @@ const defaultIPHealthTargetTimeoutMs = 10000
 
 func NormalizeCheckSettings(settings config.ProxyCheckConfig) config.ProxyCheckConfig {
 	settings.BridgeStartTimeoutMs = normalizePositiveInt(settings.BridgeStartTimeoutMs, defaultBridgeStartTimeoutMs)
+	settings.FailureRetryMinutes = normalizePositiveInt(settings.FailureRetryMinutes, config.DefaultProxyFailureRetryMinutes)
+	if settings.FailureRetryMinutes > 24*60 {
+		settings.FailureRetryMinutes = 24 * 60
+	}
+	settings.SpeedConcurrency = normalizePositiveInt(settings.SpeedConcurrency, config.DefaultProxySpeedConcurrency)
+	if settings.SpeedConcurrency > config.MaxProxySpeedConcurrency {
+		settings.SpeedConcurrency = config.MaxProxySpeedConcurrency
+	}
 	settings.SpeedTargetID = strings.TrimSpace(settings.SpeedTargetID)
 	settings.IPHealthTargetID = strings.TrimSpace(settings.IPHealthTargetID)
 	settings.Targets = NormalizeCheckTargets(settings.Targets)
