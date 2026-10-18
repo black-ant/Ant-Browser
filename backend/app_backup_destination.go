@@ -95,8 +95,9 @@ func (a *App) BackupCreatePackage(input map[string]string) (map[string]interface
 	}
 
 	var result map[string]interface{}
+	portableSessionPassword := input["portableSessionPassword"]
 	if len(profileIDs) > 0 {
-		result, err = a.backupExportProfilePackageToPath(packagePath, profileIDs)
+		result, err = a.backupExportProfilePackageToPath(packagePath, profileIDs, portableSessionPassword)
 	} else {
 		result, err = a.backupExportPackageToPath(packagePath)
 	}

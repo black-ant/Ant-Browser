@@ -200,6 +200,7 @@ type BrowserConfig struct {
 	StartReadyTimeoutMs    int                        `yaml:"start_ready_timeout_ms,omitempty"`
 	StartStableWindowMs    int                        `yaml:"start_stable_window_ms,omitempty"`
 	DefaultBookmarks       []BrowserBookmark          `yaml:"default_bookmarks,omitempty"`
+	DeletedBookmarkURLs    []string                   `yaml:"deleted_bookmark_urls,omitempty"`
 	Cores                  []BrowserCore              `yaml:"cores,omitempty"`
 	Proxies                []BrowserProxy             `yaml:"proxies,omitempty"`
 	ProxyVirtualGroups     []BrowserProxyVirtualGroup `yaml:"proxy_virtual_groups,omitempty"`

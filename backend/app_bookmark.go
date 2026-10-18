@@ -30,13 +30,6 @@ var defaultBookmarkList = []BrowserBookmark{
 	{Name: "Ping0", URL: "https://ping0.cc/"},
 }
 
-var verificationBookmarkList = []BrowserBookmark{
-	{Name: "指纹检测", URL: fingerprintCheckBookmarkURL},
-	{Name: "IPPure", URL: "https://ippure.com/"},
-	{Name: "IPLark", URL: "https://iplark.com/"},
-	{Name: "Ping0", URL: "https://ping0.cc/"},
-}
-
 var protectedBookmarkList = []BrowserBookmark{
 	{Name: "指纹检测", URL: fingerprintCheckBookmarkURL},
 }
@@ -73,11 +66,22 @@ func (a *App) BookmarkSave(items []BrowserBookmark) error {
 			log.Error("书签保存到数据库失败", logger.F("error", err.Error()))
 			return err
 		}
+		if deletionDAO, ok := a.browserMgr.BookmarkDAO.(browser.BookmarkDeletionDAO); ok {
+			deletedURLs, err := deletionDAO.DeletedURLs()
+			if err != nil {
+				log.Error("读取书签删除标记失败", logger.F("error", err.Error()))
+				return err
+			}
+			a.config.Browser.DeletedBookmarkURLs = deletedURLs
+		}
+		a.config.Browser.DefaultBookmarks = valid
 		log.Info("书签已保存到数据库", logger.F("count", len(valid)))
 		return nil
 	}
 
 	// 降级：写入 config.yaml
+	previous := a.BookmarkList()
+	a.config.Browser.DeletedBookmarkURLs = updateDeletedBookmarkURLs(a.config.Browser.DeletedBookmarkURLs, previous, valid)
 	a.config.Browser.DefaultBookmarks = valid
 	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
 		log.Error("书签保存失败", logger.F("error", err.Error()))
@@ -85,6 +89,21 @@ func (a *App) BookmarkSave(items []BrowserBookmark) error {
 	}
 	log.Info("书签已保存到 config.yaml", logger.F("count", len(valid)))
 	return nil
+}
+
+func updateDeletedBookmarkURLs(existing []string, previous, current []BrowserBookmark) []string {
+	return filterBookmarkDeletionsByActiveURLs(
+		mergeBookmarkDeletionURLs(existing, bookmarkURLs(previous)),
+		activeBookmarkURLSet(current),
+	)
+}
+
+func bookmarkURLs(bookmarks []BrowserBookmark) []string {
+	urls := make([]string, 0, len(bookmarks))
+	for _, bookmark := range bookmarks {
+		urls = append(urls, bookmark.URL)
+	}
+	return urls
 }
 
 // BookmarkReset 恢复默认书签
@@ -101,7 +120,7 @@ func mergeBookmarksByURL(items []BrowserBookmark, required []BrowserBookmark) []
 		if name == "" || url == "" {
 			return
 		}
-		key := strings.ToLower(url)
+		key := bookmarkURLKey(url)
 		if _, ok := seen[key]; ok {
 			return
 		}
@@ -120,7 +139,7 @@ func mergeBookmarksByURL(items []BrowserBookmark, required []BrowserBookmark) []
 func normalizeBookmarkList(items []BrowserBookmark) []BrowserBookmark {
 	protectedOpenOnStart := map[string]bool{}
 	for _, item := range items {
-		if strings.EqualFold(strings.TrimSpace(item.URL), fingerprintCheckBookmarkURL) {
+		if isProtectedBookmarkURL(item.URL) {
 			protectedOpenOnStart[fingerprintCheckBookmarkURL] = item.OpenOnStart
 		}
 	}
@@ -129,18 +148,15 @@ func normalizeBookmarkList(items []BrowserBookmark) []BrowserBookmark {
 		item.OpenOnStart = protectedOpenOnStart[item.URL]
 		protected = append(protected, item)
 	}
-	regular := make([]BrowserBookmark, 0, len(items)+len(verificationBookmarkList))
-	regular = append(regular, items...)
-	regular = append(regular, verificationBookmarkList...)
-	mergedRegular := mergeBookmarksByURL(regular, nil)
+	mergedRegular := mergeBookmarksByURL(items, nil)
 	out := append([]BrowserBookmark{}, protected...)
 	seen := map[string]struct{}{}
 	for _, item := range out {
-		seen[strings.ToLower(strings.TrimSpace(item.URL))] = struct{}{}
+		seen[bookmarkURLKey(item.URL)] = struct{}{}
 	}
 	for _, item := range mergedRegular {
-		key := strings.ToLower(strings.TrimSpace(item.URL))
-		if key == "" || key == strings.ToLower(fingerprintCheckBookmarkURL) {
+		key := bookmarkURLKey(item.URL)
+		if key == "" || isProtectedBookmarkURL(key) {
 			continue
 		}
 		if _, ok := seen[key]; ok {

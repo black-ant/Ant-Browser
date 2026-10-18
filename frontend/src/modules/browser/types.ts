@@ -139,6 +139,8 @@ export interface BrowserProfilePackageExportResult {
   zipPath: string
   profileCount: number
   fileCount: number
+  portableSessionProfileCount?: number
+  portableSessionWarning?: string
   message: string
 }
 
@@ -202,6 +204,8 @@ export interface BrowserProfilePackageImportPreview {
   canOverwrite: boolean
   profiles: BrowserProfilePackageImportPreviewProfile[]
   conflicts: BrowserProfilePackageImportConflict[]
+  portableSessionAvailable?: boolean
+  portableSessionProfileCount?: number
   message: string
 }
 

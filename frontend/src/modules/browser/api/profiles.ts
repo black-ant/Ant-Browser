@@ -145,9 +145,15 @@ export async function fetchAllTags(): Promise<string[]> {
   return Array.from(tags).sort()
 }
 
-export async function exportBrowserProfilePackage(profileIds: string[]): Promise<BrowserProfilePackageExportResult> {
+export async function exportBrowserProfilePackage(profileIds: string[], portableSessionPassword = ''): Promise<BrowserProfilePackageExportResult> {
   const bindings: any = await getBindings()
+  if (bindings?.BrowserProfilePackageExportWithOptions) {
+    return await bindings.BrowserProfilePackageExportWithOptions(profileIds, { portableSessionPassword })
+  }
   if (bindings?.BrowserProfilePackageExport) {
+    if (portableSessionPassword) {
+      throw new Error('当前版本不支持跨电脑登录态迁移，请更新应用后重试')
+    }
     return await bindings.BrowserProfilePackageExport(profileIds)
   }
   return {
@@ -194,10 +200,11 @@ export async function importBrowserProfilePackageWithOptions(
   conflictMode: 'new' | 'overwrite' | 'rename',
   confirmConflict = false,
   actions: BrowserProfilePackageImportAction[] = [],
+  portableSessionPassword = '',
 ): Promise<BrowserProfilePackageImportResult> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProfilePackageImportWithOptions) {
-    return await bindings.BrowserProfilePackageImportWithOptions(zipPath, { conflictMode, confirmConflict, actions })
+    return await bindings.BrowserProfilePackageImportWithOptions(zipPath, { conflictMode, confirmConflict, actions, portableSessionPassword })
   }
   return {
     cancelled: true,

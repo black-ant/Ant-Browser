@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/database"
 	"path/filepath"
@@ -275,6 +276,203 @@ VALUES ('core-source', 'Source Core', 'chrome/external/core-source')`); err != n
 	if _, err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
 		t.Fatalf("second database merge failed after source detach: %v", err)
 	}
+}
+
+func TestBackupMergeDatabaseDoesNotRestoreDeletedBookmarks(t *testing.T) {
+	root := t.TempDir()
+	targetDB, err := database.NewDB(filepath.Join(root, "target.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetDB.Close()
+	if err := targetDB.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+
+	targetBookmarks := browser.NewSQLiteBookmarkDAO(targetDB.GetConn())
+	deletedURL := "https://ping0.cc/"
+	if err := targetBookmarks.ReplaceAll([]config.BrowserBookmark{{Name: "Ping0", URL: deletedURL}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := targetBookmarks.ReplaceAll(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	sourcePath := filepath.Join(root, "old-backup.db")
+	sourceDB, err := database.NewDB(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceDB.Migrate(); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_bookmarks (name, url, sort_order) VALUES
+		('Ping0', ?, 0), ('New', 'https://new.example/', 1)`, deletedURL); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp(root)
+	app.db = targetDB
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
+			t.Fatalf("backup merge attempt %d failed: %v", attempt+1, err)
+		}
+	}
+
+	var deletedCount, newCount int
+	if err := targetDB.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_bookmarks WHERE lower(trim(url)) = lower(?)`, deletedURL).Scan(&deletedCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := targetDB.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_bookmarks WHERE url = 'https://new.example/'`).Scan(&newCount); err != nil {
+		t.Fatal(err)
+	}
+	if deletedCount != 0 || newCount != 1 {
+		t.Fatalf("bookmark counts after repeated import: deleted=%d new=%d, want deleted=0 new=1", deletedCount, newCount)
+	}
+	deletedURLs, err := targetBookmarks.DeletedURLs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deletedURLs) != 1 || deletedURLs[0] != deletedURL {
+		t.Fatalf("deletion markers after import = %#v, want %q to remain authoritative", deletedURLs, deletedURL)
+	}
+}
+
+func TestBackupMergeDatabaseHonorsConfigDeletionMarkers(t *testing.T) {
+	root := t.TempDir()
+	targetDB, err := database.NewDB(filepath.Join(root, "target.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetDB.Close()
+	if err := targetDB.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+
+	sourcePath := filepath.Join(root, "source.db")
+	sourceDB, err := database.NewDB(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceDB.Migrate(); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_bookmarks (name, url, sort_order) VALUES
+		('Ping0', 'https://ping0.cc/', 0), ('New', 'https://new.example/', 1)`); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp(root)
+	app.db = targetDB
+	app.config = config.DefaultConfig()
+	app.config.Browser.DeletedBookmarkURLs = []string{"https://ping0.cc/"}
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
+			t.Fatalf("backup merge attempt %d failed: %v", attempt+1, err)
+		}
+	}
+
+	var deletedCount, newCount int
+	if err := targetDB.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_bookmarks WHERE url = 'https://ping0.cc/'`).Scan(&deletedCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := targetDB.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_bookmarks WHERE url = 'https://new.example/'`).Scan(&newCount); err != nil {
+		t.Fatal(err)
+	}
+	if deletedCount != 0 || newCount != 1 {
+		t.Fatalf("bookmark counts after repeated config-marked import: deleted=%d new=%d, want deleted=0 new=1", deletedCount, newCount)
+	}
+}
+
+func TestBackupMergeDatabaseUsesBookmarkURLKeyRules(t *testing.T) {
+	root := t.TempDir()
+	targetDB, err := database.NewDB(filepath.Join(root, "target.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetDB.Close()
+	if err := targetDB.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	targetBookmarks := browser.NewSQLiteBookmarkDAO(targetDB.GetConn())
+	if err := targetBookmarks.ReplaceAll([]config.BrowserBookmark{{
+		Name: "Deleted",
+		URL:  "https://EXAMPLE.com/Path?Query=One",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := targetBookmarks.ReplaceAll(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	sourcePath := filepath.Join(root, "source.db")
+	sourceDB, err := database.NewDB(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceDB.Migrate(); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_bookmarks (name, url, sort_order) VALUES
+		('Same host/path/query', 'https://example.com/Path?Query=One', 0),
+		('Different path', 'https://example.com/path?Query=One', 1),
+		('Different query', 'https://example.com/Path?query=One', 2)`); err != nil {
+		sourceDB.Close()
+		t.Fatal(err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp(root)
+	app.db = targetDB
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
+			t.Fatalf("backup merge attempt %d failed: %v", attempt+1, err)
+		}
+	}
+
+	bookmarks, err := targetBookmarks.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsBookmarkURL(bookmarks, "https://example.com/Path?Query=One") {
+		t.Fatalf("deleted bookmark was imported: %#v", bookmarks)
+	}
+	if countBookmarkURL(bookmarks, "https://example.com/path?Query=One") != 1 {
+		t.Fatalf("different path bookmark count = %d, want 1: %#v", countBookmarkURL(bookmarks, "https://example.com/path?Query=One"), bookmarks)
+	}
+	if countBookmarkURL(bookmarks, "https://example.com/Path?query=One") != 1 {
+		t.Fatalf("different query bookmark count = %d, want 1: %#v", countBookmarkURL(bookmarks, "https://example.com/Path?query=One"), bookmarks)
+	}
+	deletedURLs, err := targetBookmarks.DeletedURLs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deletedURLs) != 1 || deletedURLs[0] != "https://example.com/Path?Query=One" {
+		t.Fatalf("deletion markers = %#v, want the same host/path/query URL", deletedURLs)
+	}
+}
+
+func countBookmarkURL(bookmarks []config.BrowserBookmark, expectedURL string) int {
+	count := 0
+	for _, bookmark := range bookmarks {
+		if browser.NormalizeBookmarkURL(bookmark.URL) == browser.NormalizeBookmarkURL(expectedURL) {
+			count++
+		}
+	}
+	return count
 }
 
 func TestBackupMergeDatabaseSupportsLegacyProxyAndProfileTables(t *testing.T) {

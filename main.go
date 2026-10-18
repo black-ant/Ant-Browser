@@ -116,6 +116,10 @@ func (a *App) BrowserProfilePackagePrepareImportFromPath(zipPath string) (backen
 	return a.App.BrowserProfilePackagePrepareImportFromPath(zipPath)
 }
 
+func (a *App) BrowserProfilePackageExportWithOptions(profileIds []string, options backend.ProfilePackageExportOptions) (backend.ProfilePackageExportResult, error) {
+	return a.App.BrowserProfilePackageExportWithOptions(profileIds, options)
+}
+
 func (a *App) BrowserProfilePackageImportWithOptions(zipPath string, options backend.ProfilePackageImportOptions) (backend.ProfilePackageImportResult, error) {
 	return a.App.BrowserProfilePackageImportWithOptions(zipPath, options)
 }

@@ -294,6 +294,16 @@ var migrations = []migration{
 			`ALTER TABLE browser_proxies ADD COLUMN last_test_fingerprint TEXT NOT NULL DEFAULT ''`,
 		},
 	},
+	{
+		version: 27,
+		desc:    "记录已删除书签，避免备份导入复活",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_bookmark_deletions (
+				url        TEXT PRIMARY KEY NOT NULL,
+				deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

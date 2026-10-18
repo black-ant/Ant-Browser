@@ -450,6 +450,10 @@ export function BrowserProfilePackageExport(arg1) {
   return window['go']['main']['App']['BrowserProfilePackageExport'](arg1);
 }
 
+export function BrowserProfilePackageExportWithOptions(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProfilePackageExportWithOptions'](arg1, arg2);
+}
+
 export function BrowserProfilePackageImport() {
   return window['go']['main']['App']['BrowserProfilePackageImport']();
 }

@@ -24,6 +24,7 @@ import {
 import type { S3BackupFile, S3Connection } from '../channels/s3/api'
 import { normalizeBackupPackageInfo, type BackupPackageInfo } from '../packageInfo'
 import { ProfilePackageConflictModal } from './ProfilePackageConflictModal'
+import { ProfilePackagePasswordModal } from './ProfilePackagePasswordModal'
 import { importBrowserProfilePackageWithOptions } from '../../browser/api/profiles'
 import type { BrowserProfilePackageImportAction, BrowserProfilePackageImportPreview } from '../../browser/types'
 
@@ -282,6 +283,9 @@ export function BackupHistoryTable({
   const [profileImportPreview, setProfileImportPreview] = useState<BrowserProfilePackageImportPreview | null>(null)
   const [profileImportItem, setProfileImportItem] = useState<BackupHistoryItem | null>(null)
   const [profileImportBusy, setProfileImportBusy] = useState(false)
+  const [pendingProfileImport, setPendingProfileImport] = useState<{ item: BackupHistoryItem; preview: BrowserProfilePackageImportPreview; actions: BrowserProfilePackageImportAction[] } | null>(null)
+  const [portableSessionPasswordMode, setPortableSessionPasswordMode] = useState<'import' | null>(null)
+  const [portableSessionPasswordError, setPortableSessionPasswordError] = useState('')
   const [openingLocationId, setOpeningLocationId] = useState('')
   const [error, setError] = useState('')
   const [localDirectory, setLocalDirectory] = useState('')
@@ -294,8 +298,8 @@ export function BackupHistoryTable({
   const localItemsRef = useRef<BackupHistoryItem[]>([])
 
   useEffect(() => {
-    onBusyChange?.(busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy)
-  }, [busy, onBusyChange, pendingRestoreItem, profileImportBusy, profileImportPreview, restoreConfirming])
+    onBusyChange?.(busy === 'restore-merge' || busy === 'download' || pendingRestoreItem !== null || restoreConfirming || profileImportPreview !== null || profileImportBusy || portableSessionPasswordMode !== null || pendingProfileImport !== null)
+  }, [busy, onBusyChange, pendingProfileImport, pendingRestoreItem, portableSessionPasswordMode, profileImportBusy, profileImportPreview, restoreConfirming])
 
   const mergeHistoryItems = (
     openListFiles: OpenListBackupFile[],
@@ -664,6 +668,7 @@ export function BackupHistoryTable({
     item: BackupHistoryItem,
     preview: BrowserProfilePackageImportPreview,
     actions: BrowserProfilePackageImportAction[],
+    portableSessionPassword = '',
   ) => {
     setProfileImportPreview(null)
     setProfileImportItem(null)
@@ -672,12 +677,18 @@ export function BackupHistoryTable({
     setRestoringItemId(item.id)
     setError('')
     try {
-      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, 'new', true, actions)
+      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, 'new', true, actions, portableSessionPassword)
       if (!result.cancelled) {
+        setPortableSessionPasswordMode(null)
+        setPendingProfileImport(null)
+        setPortableSessionPasswordError('')
         showProfileImportResult(item, result)
       }
     } catch (importError) {
       const message = errorMessage(importError, `${sourceLabel(item.source)}实例恢复失败`)
+      if (portableSessionPassword) {
+        setPortableSessionPasswordError(message)
+      }
       setError(message)
       toast.error(message)
     } finally {
@@ -685,6 +696,23 @@ export function BackupHistoryTable({
       setBusy('none')
       setRestoringItemId('')
     }
+  }
+
+  const closePortableSessionPasswordModal = () => {
+    if (profileImportBusy) return
+    setPortableSessionPasswordMode(null)
+    setPortableSessionPasswordError('')
+    setPendingProfileImport(null)
+  }
+
+  const confirmPortableSessionPassword = (password: string) => {
+    if (!pendingProfileImport) return
+    void executeProfileImport(
+      pendingProfileImport.item,
+      pendingProfileImport.preview,
+      pendingProfileImport.actions,
+      password,
+    )
   }
 
   const handleRestore = async (item: BackupHistoryItem) => {
@@ -1049,9 +1077,25 @@ export function BackupHistoryTable({
         }}
         onConfirm={(actions) => {
           if (profileImportItem && profileImportPreview) {
+            if (profileImportPreview.portableSessionAvailable) {
+              setPendingProfileImport({ item: profileImportItem, preview: profileImportPreview, actions })
+              setPortableSessionPasswordError('')
+              setProfileImportPreview(null)
+              setProfileImportItem(null)
+              setPortableSessionPasswordMode('import')
+              return
+            }
             void executeProfileImport(profileImportItem, profileImportPreview, actions)
           }
         }}
+      />
+      <ProfilePackagePasswordModal
+        open={portableSessionPasswordMode !== null}
+        mode="import"
+        busy={profileImportBusy}
+        error={portableSessionPasswordError}
+        onClose={closePortableSessionPasswordModal}
+        onConfirm={confirmPortableSessionPassword}
       />
     </Card>
   )

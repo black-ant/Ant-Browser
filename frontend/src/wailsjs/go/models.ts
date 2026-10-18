@@ -759,6 +759,8 @@ export namespace backend {
 	    zipPath: string;
 	    profileCount: number;
 	    fileCount: number;
+	    portableSessionProfileCount: number;
+	    portableSessionWarning: string;
 	    message: string;
 
 	    static createFrom(source: any = {}) {
@@ -771,7 +773,21 @@ export namespace backend {
 	        this.zipPath = source["zipPath"];
 	        this.profileCount = source["profileCount"];
 	        this.fileCount = source["fileCount"];
+	        this.portableSessionProfileCount = source["portableSessionProfileCount"];
+	        this.portableSessionWarning = source["portableSessionWarning"];
 	        this.message = source["message"];
+	    }
+	}
+	export class ProfilePackageExportOptions {
+	    portableSessionPassword: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ProfilePackageExportOptions(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.portableSessionPassword = source["portableSessionPassword"];
 	    }
 	}
 	export class ProfilePackageImportAction {
@@ -828,6 +844,7 @@ export namespace backend {
 	    actions?: ProfilePackageImportAction[];
 	    conflictMode: string;
 	    confirmConflict: boolean;
+	    portableSessionPassword: string;
 
 	    static createFrom(source: any = {}) {
 	        return new ProfilePackageImportOptions(source);
@@ -838,6 +855,7 @@ export namespace backend {
 	        this.actions = this.convertValues(source["actions"], ProfilePackageImportAction);
 	        this.conflictMode = source["conflictMode"];
 	        this.confirmConflict = source["confirmConflict"];
+	        this.portableSessionPassword = source["portableSessionPassword"];
 	    }
 
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -906,6 +924,8 @@ export namespace backend {
 	    conflictCount: number;
 	    canOverwrite: boolean;
 	    conflicts: ProfilePackageImportConflict[];
+	    portableSessionAvailable: boolean;
+	    portableSessionProfileCount: number;
 	    message: string;
 
 	    static createFrom(source: any = {}) {
@@ -921,6 +941,8 @@ export namespace backend {
 	        this.conflictCount = source["conflictCount"];
 	        this.canOverwrite = source["canOverwrite"];
 	        this.conflicts = this.convertValues(source["conflicts"], ProfilePackageImportConflict);
+	        this.portableSessionAvailable = source["portableSessionAvailable"];
+	        this.portableSessionProfileCount = source["portableSessionProfileCount"];
 	        this.message = source["message"];
 	    }
 

@@ -19,6 +19,7 @@ import type { BackupTypeSelection } from './components/BackupTypeModal'
 import { BackupScopeModal } from './components/BackupScopeModal'
 import { BackupHistoryTable } from './components/BackupHistoryTable'
 import { ProfilePackageConflictModal } from './components/ProfilePackageConflictModal'
+import { ProfilePackagePasswordModal } from './components/ProfilePackagePasswordModal'
 import { fetchOpenListSettings } from './channels/openlist/api'
 import type { OpenListConnection } from './channels/openlist/api'
 import { fetchS3Settings } from './channels/s3/api'
@@ -74,6 +75,10 @@ export function BackupPage() {
   const [actionLoading, setActionLoading] = useState<BackupActionLoading>('none')
   const [profileImportPreview, setProfileImportPreview] = useState<BrowserProfilePackageImportPreview | null>(null)
   const [profileImportBusy, setProfileImportBusy] = useState(false)
+  const [pendingProfileBackup, setPendingProfileBackup] = useState<{ destinations: BackupTypeSelection; profileIds: string[] } | null>(null)
+  const [pendingProfileImport, setPendingProfileImport] = useState<{ preview: BrowserProfilePackageImportPreview; actions: BrowserProfilePackageImportAction[] } | null>(null)
+  const [portableSessionPasswordMode, setPortableSessionPasswordMode] = useState<'export' | 'import' | null>(null)
+  const [portableSessionPasswordError, setPortableSessionPasswordError] = useState('')
   const [exportProgress, setExportProgress] = useState<BackupExportProgress | null>(null)
   const [importProgress, setImportProgress] = useState<BackupExportProgress | null>(null)
   const [exportLogs, setExportLogs] = useState<BackupExportLogItem[]>([])
@@ -146,12 +151,12 @@ export function BackupPage() {
     navigate(location.pathname, { replace: true, state: null })
   }, [location.key, location.pathname, location.state, navigate])
 
-  const handleBackup = async (destinations: BackupTypeSelection, profileIds: string[]) => {
+  const handleBackup = async (destinations: BackupTypeSelection, profileIds: string[], portableSessionPassword = '') => {
     setActionLoading('export')
     setExportLogs([])
     setExportProgress({ phase: 'starting', progress: 0, message: '准备备份...' })
     try {
-      const res = await createBackupPackage(destinations, profileIds)
+      const res = await createBackupPackage(destinations, profileIds, portableSessionPassword)
       if (res.cancelled) {
         setExportProgress(null)
         setExportLogs([])
@@ -169,8 +174,10 @@ export function BackupPage() {
       const resultMessage = `${res.message || '备份完成'}${profileHint}${fileHint}`
       const partial = Boolean(res.partial || res.remoteError)
       const remoteWarning = typeof res.remoteWarning === 'string' ? res.remoteWarning.trim() : ''
-      const feedbackMessage = remoteWarning ? `${resultMessage}：${remoteWarning}` : resultMessage
-      const feedbackPhase = partial ? 'error' : remoteWarning ? 'warning' : 'done'
+      const portableSessionWarning = typeof res.portableSessionWarning === 'string' ? res.portableSessionWarning.trim() : ''
+      const feedbackWarning = [remoteWarning, portableSessionWarning].filter(Boolean).join('；')
+      const feedbackMessage = feedbackWarning ? `${resultMessage}：${feedbackWarning}` : resultMessage
+      const feedbackPhase = partial ? 'error' : feedbackWarning ? 'warning' : 'done'
       setExportProgress({
         phase: feedbackPhase,
         progress: 100,
@@ -184,7 +191,7 @@ export function BackupPage() {
       }
       if (partial) {
         toast.warning(feedbackMessage)
-      } else if (remoteWarning) {
+      } else if (feedbackWarning) {
         toast.warning(feedbackMessage)
       } else {
         toast.success(resultMessage)
@@ -208,6 +215,16 @@ export function BackupPage() {
     } finally {
       setActionLoading('none')
     }
+  }
+
+  const requestBackup = (destinations: BackupTypeSelection, profileIds: string[]) => {
+    if (profileIds.length === 0) {
+      void handleBackup(destinations, profileIds)
+      return
+    }
+    setPortableSessionPasswordError('')
+    setPendingProfileBackup({ destinations, profileIds })
+    setPortableSessionPasswordMode('export')
   }
 
   const handleBackupScopeConfirm = (profileIds: string[]) => {
@@ -246,7 +263,7 @@ export function BackupPage() {
     const profileIds = pendingProfileIds
     setPendingBackupTypes(null)
     setPendingProfileIds([])
-    void handleBackup(destinations, profileIds)
+    requestBackup(destinations, profileIds)
   }, [
     backupScopeModalOpen,
     channelConfigModalOpen,
@@ -291,7 +308,7 @@ export function BackupPage() {
     setPendingBackupTypes(null)
     setPendingProfileIds([])
     setBackupTypeModalOpen(false)
-    void handleBackup(destinations, profileIds)
+    requestBackup(destinations, profileIds)
   }
 
   const handleImportSystem = async () => {
@@ -367,17 +384,20 @@ export function BackupPage() {
     }
   }
 
-  const executeProfileImport = async (preview: BrowserProfilePackageImportPreview, actions: BrowserProfilePackageImportAction[]) => {
+  const executeProfileImport = async (preview: BrowserProfilePackageImportPreview, actions: BrowserProfilePackageImportAction[], portableSessionPassword = '') => {
     setProfileImportPreview(null)
     setProfileImportBusy(true)
     setActionLoading('import-merge')
     setImportProgress({ phase: 'importing', progress: 40, message: '正在导入实例备份...' })
     try {
-      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, 'new', true, actions)
+      const result = await importBrowserProfilePackageWithOptions(preview.zipPath, 'new', true, actions, portableSessionPassword)
       if (result.cancelled) {
         setImportProgress(null)
         return
       }
+      setPortableSessionPasswordMode(null)
+      setPendingProfileImport(null)
+      setPortableSessionPasswordError('')
       const overwrittenCount = result.overwrittenCount ?? 0
       const createdCount = result.createdCount ?? Math.max(0, result.importedCount - overwrittenCount)
       const renamedCount = result.renamedCount ?? 0
@@ -391,11 +411,36 @@ export function BackupPage() {
       setImportProgress(null)
       setHistoryRefreshToken(previous => previous + 1)
     } catch (error: any) {
+      if (portableSessionPassword) {
+        setPortableSessionPasswordError(error?.message || '导入登录态失败')
+      }
       toast.error(error?.message || '导入实例失败')
       setImportProgress(null)
     } finally {
       setProfileImportBusy(false)
       setActionLoading('none')
+    }
+  }
+
+  const closePortableSessionPasswordModal = () => {
+    if (profileImportBusy || actionLoading === 'export') return
+    setPortableSessionPasswordMode(null)
+    setPortableSessionPasswordError('')
+    setPendingProfileBackup(null)
+    setPendingProfileImport(null)
+    setProfileImportBusy(false)
+  }
+
+  const confirmPortableSessionPassword = (password: string) => {
+    if (portableSessionPasswordMode === 'export' && pendingProfileBackup) {
+      const request = pendingProfileBackup
+      setPendingProfileBackup(null)
+      setPortableSessionPasswordMode(null)
+      void handleBackup(request.destinations, request.profileIds, password)
+      return
+    }
+    if (portableSessionPasswordMode === 'import' && pendingProfileImport) {
+      void executeProfileImport(pendingProfileImport.preview, pendingProfileImport.actions, password)
     }
   }
 
@@ -531,9 +576,24 @@ export function BackupPage() {
         onClose={() => setProfileImportPreview(null)}
         onConfirm={(actions) => {
           if (profileImportPreview) {
+            if (profileImportPreview.portableSessionAvailable) {
+              setPendingProfileImport({ preview: profileImportPreview, actions })
+              setPortableSessionPasswordError('')
+              setProfileImportPreview(null)
+              setPortableSessionPasswordMode('import')
+              return
+            }
             void executeProfileImport(profileImportPreview, actions)
           }
         }}
+      />
+      <ProfilePackagePasswordModal
+        open={portableSessionPasswordMode !== null}
+        mode={portableSessionPasswordMode || 'export'}
+        busy={profileImportBusy}
+        error={portableSessionPasswordError}
+        onClose={closePortableSessionPasswordModal}
+        onConfirm={confirmPortableSessionPassword}
       />
 
       <BackupChannelConfigModal

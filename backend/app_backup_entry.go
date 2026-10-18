@@ -63,12 +63,13 @@ func (a *App) BackupExportPackage() (map[string]interface{}, error) {
 	a.backupEmitExportProgress("done", 100, "导出完成")
 
 	return map[string]interface{}{
-		"cancelled":       false,
-		"zipPath":         savePath,
-		"includedEntries": includedEntries,
-		"skippedEntries":  skippedEntries,
-		"fileCount":       fileCount,
-		"message":         "导出完成",
+		"cancelled":              false,
+		"zipPath":                savePath,
+		"includedEntries":        includedEntries,
+		"skippedEntries":         skippedEntries,
+		"fileCount":              fileCount,
+		"portableSessionWarning": "全量备份不会迁移跨电脑登录态；如需保留登录 Cookie，请选择实例备份并设置登录态迁移密码。",
+		"message":                "导出完成",
 	}, nil
 }
 

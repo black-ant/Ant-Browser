@@ -234,6 +234,8 @@ export function BrowserProfileListByTag(arg1:string):Promise<Array<browser.Profi
 
 export function BrowserProfilePackageExport(arg1:Array<string>):Promise<backend.ProfilePackageExportResult>;
 
+export function BrowserProfilePackageExportWithOptions(arg1:Array<string>,arg2:backend.ProfilePackageExportOptions):Promise<backend.ProfilePackageExportResult>;
+
 export function BrowserProfilePackageImport():Promise<backend.ProfilePackageImportResult>;
 
 export function BrowserProfilePackageImportWithOptions(arg1:string,arg2:backend.ProfilePackageImportOptions):Promise<backend.ProfilePackageImportResult>;

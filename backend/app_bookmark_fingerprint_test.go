@@ -48,6 +48,27 @@ func TestBookmarkSaveKeepsFingerprintCheckOpenOnStart(t *testing.T) {
 	}
 }
 
+func TestBookmarkSaveDoesNotRestoreDeletedVerificationBookmark(t *testing.T) {
+	app := NewApp(t.TempDir())
+	app.config = &config.Config{}
+	app.browserMgr = browser.NewManager(app.config, app.appRoot)
+
+	if err := app.BookmarkSave([]BrowserBookmark{
+		{Name: "Ping0", URL: "https://ping0.cc/"},
+		{Name: "Google", URL: "https://www.google.com/"},
+	}); err != nil {
+		t.Fatalf("initial BookmarkSave() error = %v", err)
+	}
+	if err := app.BookmarkSave([]BrowserBookmark{{Name: "Google", URL: "https://www.google.com/"}}); err != nil {
+		t.Fatalf("updated BookmarkSave() error = %v", err)
+	}
+
+	list := app.BookmarkList()
+	if len(list) != 2 || list[0].URL != fingerprintCheckBookmarkURL || list[1].URL != "https://www.google.com/" {
+		t.Fatalf("bookmarks after deletion = %#v, want protected bookmark and Google only", list)
+	}
+}
+
 func TestResolveFingerprintCheckStartURLs(t *testing.T) {
 	app := NewApp(t.TempDir())
 	app.browserMgr = browser.NewManager(nil, app.appRoot)

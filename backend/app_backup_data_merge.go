@@ -189,6 +189,9 @@ func (a *App) backupMergeDatabaseFromSource(srcDBPath string, incomingCfg *confi
 		return nil, fmt.Errorf("挂载备份数据库失败: %w", err)
 	}
 	sourceAttached = true
+	if err := backupMergeBookmarkState(tx, stats, a.config, incomingCfg); err != nil {
+		return nil, err
+	}
 
 	mappings, err := a.backupBuildImportReferenceMappings(tx, incomingCfg, stats)
 	if err != nil {
@@ -222,15 +225,6 @@ FROM src.browser_groups s
 		},
 		{
 			name: "browser_profiles",
-		},
-		{
-			name: "browser_bookmarks",
-			insertSafe: `INSERT INTO browser_bookmarks (name, url, sort_order)
-SELECT s.name, s.url, s.sort_order
-FROM src.browser_bookmarks s
-WHERE NOT EXISTS (
-  SELECT 1 FROM browser_bookmarks t WHERE lower(t.url) = lower(s.url)
-)`,
 		},
 		{
 			name: "browser_extensions",
@@ -322,20 +316,6 @@ WHERE EXISTS (SELECT 1 FROM temp.backup_import_profile_map m WHERE m.source_id =
 			stats.Imported += imported
 			stats.Skipped += skipped
 			continue
-		}
-		if item.name == "browser_bookmarks" {
-			hasOpenOnStart, err := backupSrcColumnExists(tx, item.name, "open_on_start")
-			if err != nil {
-				return nil, err
-			}
-			if hasOpenOnStart {
-				sqlText = `INSERT INTO browser_bookmarks (name, url, open_on_start, sort_order)
-SELECT s.name, s.url, COALESCE(s.open_on_start,0), s.sort_order
-FROM src.browser_bookmarks s
-WHERE NOT EXISTS (
-  SELECT 1 FROM browser_bookmarks t WHERE lower(t.url) = lower(s.url)
-)`
-			}
 		}
 		if item.name == "browser_profiles" {
 			hasRestoreLastSession, err := backupSrcColumnExists(tx, item.name, "restore_last_session")
@@ -453,6 +433,178 @@ WHERE NOT EXISTS (
 	sourceAttached = false
 	backupApplyImportReferenceMappings(incomingCfg, mappings)
 	return mappings, nil
+}
+
+type backupBookmarkRecord struct {
+	name        string
+	url         string
+	openOnStart int
+	sortOrder   int
+}
+
+func backupMergeBookmarkState(tx *sql.Tx, stats *backupMergeStats, current, incoming *config.Config) error {
+	targetActiveURLs, err := backupReadBookmarkURLKeys(tx, "browser_bookmarks")
+	if err != nil {
+		return fmt.Errorf("读取当前书签失败: %w", err)
+	}
+	targetDeletedURLs, err := backupReadBookmarkURLs(tx, "browser_bookmark_deletions")
+	if err != nil {
+		return fmt.Errorf("读取当前书签删除标记失败: %w", err)
+	}
+
+	sourceDeletedURLs := make([]string, 0)
+	sourceDeletionExists, err := backupSrcTableExists(tx, "browser_bookmark_deletions")
+	if err != nil {
+		return err
+	}
+	if sourceDeletionExists {
+		sourceDeletedURLs, err = backupReadBookmarkURLs(tx, "src.browser_bookmark_deletions")
+		if err != nil {
+			return fmt.Errorf("读取备份书签删除标记失败: %w", err)
+		}
+	}
+
+	if current != nil {
+		for bookmarkURL := range activeBookmarkURLSet(current.Browser.DefaultBookmarks) {
+			targetActiveURLs[bookmarkURL] = struct{}{}
+		}
+	}
+	configDeletedURLs := make([]string, 0)
+	for _, cfg := range []*config.Config{current, incoming} {
+		if cfg != nil {
+			configDeletedURLs = append(configDeletedURLs, cfg.Browser.DeletedBookmarkURLs...)
+		}
+	}
+	deletedURLs := mergeBookmarkDeletionURLs(configDeletedURLs, targetDeletedURLs, sourceDeletedURLs)
+	deletedURLs = filterBookmarkDeletionsByActiveURLs(deletedURLs, targetActiveURLs)
+	deletedURLSet := make(map[string]struct{}, len(deletedURLs))
+	for _, bookmarkURL := range deletedURLs {
+		deletedURLSet[bookmarkURL] = struct{}{}
+	}
+
+	if _, err := tx.Exec(`DELETE FROM browser_bookmark_deletions`); err != nil {
+		return fmt.Errorf("清理旧书签删除标记失败: %w", err)
+	}
+	for _, bookmarkURL := range deletedURLs {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO browser_bookmark_deletions (url) VALUES (?)`, bookmarkURL); err != nil {
+			return fmt.Errorf("写入书签删除标记失败: %w", err)
+		}
+	}
+
+	sourceBookmarks, sourceBookmarksExists, err := backupReadSourceBookmarks(tx)
+	if err != nil {
+		return err
+	}
+	if !sourceBookmarksExists {
+		return nil
+	}
+	for _, bookmark := range sourceBookmarks {
+		bookmarkURL := bookmarkURLKey(bookmark.url)
+		if bookmarkURL == "" {
+			backupRecordBookmarkSkipped(stats)
+			continue
+		}
+		if _, exists := targetActiveURLs[bookmarkURL]; exists {
+			backupRecordBookmarkSkipped(stats)
+			continue
+		}
+		if _, deleted := deletedURLSet[bookmarkURL]; deleted {
+			backupRecordBookmarkSkipped(stats)
+			continue
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO browser_bookmarks (name, url, open_on_start, sort_order) VALUES (?, ?, ?, ?)`,
+			bookmark.name, bookmark.url, bookmark.openOnStart, bookmark.sortOrder,
+		); err != nil {
+			return fmt.Errorf("导入书签失败: %w", err)
+		}
+		targetActiveURLs[bookmarkURL] = struct{}{}
+		backupRecordBookmarkImported(stats)
+	}
+	return nil
+}
+
+func backupReadBookmarkURLKeys(tx *sql.Tx, relation string) (map[string]struct{}, error) {
+	urls, err := backupReadBookmarkURLs(tx, relation)
+	if err != nil {
+		return nil, err
+	}
+	keys := make(map[string]struct{}, len(urls))
+	for _, rawURL := range urls {
+		if bookmarkURL := bookmarkURLKey(rawURL); bookmarkURL != "" {
+			keys[bookmarkURL] = struct{}{}
+		}
+	}
+	return keys, nil
+}
+
+func backupReadBookmarkURLs(tx *sql.Tx, relation string) ([]string, error) {
+	rows, err := tx.Query("SELECT url FROM " + relation)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	urls := make([]string, 0)
+	for rows.Next() {
+		var rawURL string
+		if err := rows.Scan(&rawURL); err != nil {
+			return nil, err
+		}
+		urls = append(urls, rawURL)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return urls, nil
+}
+
+func backupReadSourceBookmarks(tx *sql.Tx) ([]backupBookmarkRecord, bool, error) {
+	exists, err := backupSrcTableExists(tx, "browser_bookmarks")
+	if err != nil {
+		return nil, false, err
+	}
+	if !exists {
+		return nil, false, nil
+	}
+	hasOpenOnStart, err := backupSrcColumnExists(tx, "browser_bookmarks", "open_on_start")
+	if err != nil {
+		return nil, false, err
+	}
+	query := `SELECT name, url, 0, sort_order FROM src.browser_bookmarks ORDER BY sort_order, rowid`
+	if hasOpenOnStart {
+		query = `SELECT name, url, COALESCE(open_on_start, 0), sort_order FROM src.browser_bookmarks ORDER BY sort_order, rowid`
+	}
+	rows, err := tx.Query(query)
+	if err != nil {
+		return nil, false, fmt.Errorf("读取备份书签失败: %w", err)
+	}
+	defer rows.Close()
+
+	bookmarks := make([]backupBookmarkRecord, 0)
+	for rows.Next() {
+		var bookmark backupBookmarkRecord
+		if err := rows.Scan(&bookmark.name, &bookmark.url, &bookmark.openOnStart, &bookmark.sortOrder); err != nil {
+			return nil, false, err
+		}
+		bookmarks = append(bookmarks, bookmark)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	return bookmarks, true, nil
+}
+
+func backupRecordBookmarkImported(stats *backupMergeStats) {
+	if stats != nil {
+		stats.Imported++
+	}
+}
+
+func backupRecordBookmarkSkipped(stats *backupMergeStats) {
+	if stats != nil {
+		stats.Skipped++
+	}
 }
 
 type backupSourceColumnSpec struct {

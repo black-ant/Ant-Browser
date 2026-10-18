@@ -23,14 +23,22 @@ const (
 
 // CookieInfo 表示单条浏览器 Cookie
 type CookieInfo struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Expires  float64 `json:"expires"`
-	HttpOnly bool    `json:"httpOnly"`
-	Secure   bool    `json:"secure"`
-	SameSite string  `json:"sameSite"`
+	Name         string          `json:"name"`
+	Value        string          `json:"value"`
+	Domain       string          `json:"domain"`
+	Path         string          `json:"path"`
+	URL          string          `json:"url,omitempty"`
+	Expires      float64         `json:"expires"`
+	HttpOnly     bool            `json:"httpOnly"`
+	Secure       bool            `json:"secure"`
+	SameSite     string          `json:"sameSite"`
+	Priority     string          `json:"priority,omitempty"`
+	SameParty    bool            `json:"sameParty,omitempty"`
+	SourceScheme string          `json:"sourceScheme,omitempty"`
+	SourcePort   int             `json:"sourcePort,omitempty"`
+	HostOnly     bool            `json:"hostOnly,omitempty"`
+	Session      bool            `json:"session,omitempty"`
+	PartitionKey json.RawMessage `json:"partitionKey,omitempty"`
 }
 
 // cdpTarget 表示 /json 接口返回的调试目标
@@ -220,6 +228,61 @@ func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
 		return nil, fmt.Errorf("Cookie 解析失败: %w", err)
 	}
 	return cookies, nil
+}
+
+// BrowserSetCookies 通过 CDP 写入实例所有 Cookie。
+// 该接口只接受已由应用侧校验过的数据，用于跨设备实例迁移。
+func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
+	debugPort, err := a.getDebugPort(profileId)
+	if err != nil {
+		return err
+	}
+
+	params := map[string]any{
+		"cookies": buildCDPCookieParams(cookies),
+	}
+	_, err = cdpCall(debugPort, "Network.setCookies", params)
+	return err
+}
+
+func buildCDPCookieParams(cookies []CookieInfo) []map[string]any {
+	params := make([]map[string]any, 0, len(cookies))
+	for _, cookie := range cookies {
+		item := map[string]any{
+			"name":     cookie.Name,
+			"value":    cookie.Value,
+			"domain":   cookie.Domain,
+			"path":     cookie.Path,
+			"httpOnly": cookie.HttpOnly,
+			"secure":   cookie.Secure,
+		}
+		if cookie.URL != "" {
+			item["url"] = cookie.URL
+		}
+		if cookie.Expires > 0 {
+			item["expires"] = cookie.Expires
+		}
+		if cookie.SameSite != "" {
+			item["sameSite"] = cookie.SameSite
+		}
+		if cookie.Priority != "" {
+			item["priority"] = cookie.Priority
+		}
+		if cookie.SameParty {
+			item["sameParty"] = true
+		}
+		if cookie.SourceScheme != "" {
+			item["sourceScheme"] = cookie.SourceScheme
+		}
+		if cookie.SourcePort != 0 {
+			item["sourcePort"] = cookie.SourcePort
+		}
+		if len(cookie.PartitionKey) > 0 {
+			item["partitionKey"] = cookie.PartitionKey
+		}
+		params = append(params, item)
+	}
+	return params
 }
 
 // BrowserClearCookies 通过 CDP 清除实例所有 Cookie

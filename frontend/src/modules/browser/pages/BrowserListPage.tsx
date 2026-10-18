@@ -15,6 +15,7 @@ import { useBrowserListSettings } from './browserList/useBrowserListSettings'
 import { useBrowserListData } from './browserList/useBrowserListData'
 import { useBrowserProfileActions } from './browserList/useBrowserProfileActions'
 import { warmupProfileProxyBeforeStart } from '../utils/proxyWarmup'
+import { ProfilePackagePasswordModal } from '../../backup/components/ProfilePackagePasswordModal'
 import {
   copyBrowserProfile,
   deleteBrowserProfile,
@@ -46,6 +47,10 @@ export function BrowserListPage() {
   const [batchLoading, setBatchLoading] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
   const [profileImportPreview, setProfileImportPreview] = useState<BrowserProfilePackageImportPreview | null>(null)
+  const [pendingProfileExportIds, setPendingProfileExportIds] = useState<string[]>([])
+  const [pendingProfileImport, setPendingProfileImport] = useState<{ zipPath: string; actions: BrowserProfilePackageImportAction[] } | null>(null)
+  const [portableSessionPasswordMode, setPortableSessionPasswordMode] = useState<'export' | 'import' | null>(null)
+  const [portableSessionPasswordError, setPortableSessionPasswordError] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean
     mode: 'single' | 'batch'
@@ -300,8 +305,7 @@ export function BrowserListPage() {
     loadProfiles()
   }
 
-  const handleBatchExport = async () => {
-    const ids = Array.from(selectedIds)
+  const requestProfileExport = (ids: string[]) => {
     if (ids.length === 0 || profilePackageBusy) return
     const runningNames = profiles
       .filter(profile => ids.includes(profile.profileId) && profile.running)
@@ -310,31 +314,36 @@ export function BrowserListPage() {
       toast.error(`请先停止实例再导出：${runningNames.slice(0, 3).join('、')}${runningNames.length > 3 ? ' 等' : ''}`)
       return
     }
-    setProfilePackageBusy(true)
-    try {
-      const result = await exportBrowserProfilePackage(ids)
-      if (result.cancelled) return
-      toast.success(`已导出 ${result.profileCount} 个实例`)
-    } catch (error: any) {
-      toast.error(error?.message || '导出实例失败')
-    } finally {
-      setProfilePackageBusy(false)
-    }
+    setPortableSessionPasswordError('')
+    setPendingProfileExportIds(ids)
+    setPortableSessionPasswordMode('export')
+  }
+
+  const handleBatchExport = async () => {
+    const ids = Array.from(selectedIds)
+    requestProfileExport(ids)
   }
 
   const handleExportProfile = async (profile: BrowserProfile) => {
-    if (profilePackageBusy) return
-    if (profile.running) {
-      toast.error(`请先停止实例再导出：${profile.profileName}`)
-      return
-    }
+    requestProfileExport([profile.profileId])
+  }
+
+  const executeProfileExport = async (password: string) => {
+    if (pendingProfileExportIds.length === 0) return
     setProfilePackageBusy(true)
+    setPortableSessionPasswordError('')
     try {
-      const result = await exportBrowserProfilePackage([profile.profileId])
+      const result = await exportBrowserProfilePackage(pendingProfileExportIds, password)
       if (result.cancelled) return
-      toast.success(`已导出：${profile.profileName}`)
+      setPortableSessionPasswordMode(null)
+      setPendingProfileExportIds([])
+      if (result.portableSessionWarning) {
+        toast.warning(result.portableSessionWarning)
+      } else {
+        toast.success(`已导出 ${result.profileCount} 个实例，并迁移 ${result.portableSessionProfileCount || 0} 个实例的登录态`)
+      }
     } catch (error: any) {
-      toast.error(error?.message || '导出实例失败')
+      setPortableSessionPasswordError(error?.message || '导出实例失败')
     } finally {
       setProfilePackageBusy(false)
     }
@@ -355,16 +364,20 @@ export function BrowserListPage() {
     }
   }
 
-  const executeProfileImport = async (zipPath: string, actions: BrowserProfilePackageImportAction[], confirmConflict = false) => {
+  const executeProfileImport = async (zipPath: string, actions: BrowserProfilePackageImportAction[], confirmConflict = false, portableSessionPassword = '') => {
     if (!zipPath.trim()) {
       setProfileImportPreview(null)
       setProfilePackageBusy(false)
       return
     }
+    setProfilePackageBusy(true)
     setProfileImportPreview(null)
     try {
-      const result = await importBrowserProfilePackageWithOptions(zipPath, 'new', confirmConflict, actions)
+      const result = await importBrowserProfilePackageWithOptions(zipPath, 'new', confirmConflict, actions, portableSessionPassword)
       if (result.cancelled) return
+      setPortableSessionPasswordMode(null)
+      setPendingProfileImport(null)
+      setPortableSessionPasswordError('')
       const warnings = result.warnings || []
       const createdCount = result.createdCount ?? Math.max(0, result.importedCount - (result.overwrittenCount || 0))
       const overwrittenCount = result.overwrittenCount ?? 0
@@ -378,6 +391,9 @@ export function BrowserListPage() {
       setSelectedIds(new Set())
       await loadProfiles()
     } catch (error: any) {
+      if (portableSessionPassword) {
+        setPortableSessionPasswordError(error?.message || '导入登录态失败')
+      }
       toast.error(error?.message || '导入实例失败')
     } finally {
       setProfilePackageBusy(false)
@@ -393,11 +409,31 @@ export function BrowserListPage() {
         setProfilePackageBusy(false)
         return
       }
+      setProfilePackageBusy(false)
       setProfileImportPreview(preview)
       return
     } catch (error: any) {
       toast.error(error?.message || '导入实例失败')
       setProfilePackageBusy(false)
+    }
+  }
+
+  const closePortableSessionPasswordModal = () => {
+    if (profilePackageBusy) return
+    setPortableSessionPasswordMode(null)
+    setPortableSessionPasswordError('')
+    setPendingProfileExportIds([])
+    setPendingProfileImport(null)
+    setProfilePackageBusy(false)
+  }
+
+  const confirmPortableSessionPassword = (password: string) => {
+    if (portableSessionPasswordMode === 'export') {
+      void executeProfileExport(password)
+      return
+    }
+    if (portableSessionPasswordMode === 'import' && pendingProfileImport) {
+      void executeProfileImport(pendingProfileImport.zipPath, pendingProfileImport.actions, true, password)
     }
   }
 
@@ -720,9 +756,24 @@ export function BrowserListPage() {
         }}
         onConfirmProfileImport={(actions) => {
           if (profileImportPreview) {
+            if (profileImportPreview.portableSessionAvailable) {
+              setPendingProfileImport({ zipPath: profileImportPreview.zipPath, actions })
+              setPortableSessionPasswordError('')
+              setProfileImportPreview(null)
+              setPortableSessionPasswordMode('import')
+              return
+            }
             void executeProfileImport(profileImportPreview.zipPath, actions, true)
           }
         }}
+      />
+      <ProfilePackagePasswordModal
+        open={portableSessionPasswordMode !== null}
+        mode={portableSessionPasswordMode || 'export'}
+        busy={profilePackageBusy}
+        error={portableSessionPasswordError}
+        onClose={closePortableSessionPasswordModal}
+        onConfirm={confirmPortableSessionPassword}
       />
     </div>
   )

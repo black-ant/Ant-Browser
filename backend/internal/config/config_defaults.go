@@ -146,6 +146,9 @@ func normalizeConfig(config *Config) {
 	if config.Browser.DefaultBookmarks == nil {
 		config.Browser.DefaultBookmarks = []BrowserBookmark{}
 	}
+	if config.Browser.DeletedBookmarkURLs == nil {
+		config.Browser.DeletedBookmarkURLs = []string{}
+	}
 	if config.Browser.Cores == nil {
 		config.Browser.Cores = []BrowserCore{}
 	}

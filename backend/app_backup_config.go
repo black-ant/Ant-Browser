@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"database/sql"
 	"fmt"
@@ -41,6 +42,9 @@ func (a *App) backupApplyIncomingConfig(incoming *config.Config) error {
 	incoming = a.backupNormalizeImportedConfigPaths(incoming, current)
 
 	target := backupMergeConfig(current, incoming)
+	if err := a.backupFilterDeletedBookmarkConfig(target); err != nil {
+		return fmt.Errorf("过滤已删除书签失败: %w", err)
+	}
 	target.Database = current.Database
 	target.Backup = current.Backup
 
@@ -49,6 +53,58 @@ func (a *App) backupApplyIncomingConfig(incoming *config.Config) error {
 	}
 	a.config = target
 	a.applyRuntimeConfig(target.Runtime)
+	return nil
+}
+
+func (a *App) backupFilterDeletedBookmarkConfig(cfg *config.Config) error {
+	if cfg == nil {
+		return nil
+	}
+	deletedURLs := mergeBookmarkDeletionURLs(cfg.Browser.DeletedBookmarkURLs)
+	if a.browserMgr == nil || a.browserMgr.BookmarkDAO == nil {
+		cfg.Browser.DeletedBookmarkURLs = deletedURLs
+		cfg.Browser.DefaultBookmarks = filterBookmarksByDeletedURLs(cfg.Browser.DefaultBookmarks, deletedURLs)
+		return nil
+	}
+
+	deletionDAO, ok := a.browserMgr.BookmarkDAO.(browser.BookmarkDeletionDAO)
+	if !ok {
+		return fmt.Errorf("书签数据库不支持读取删除标记")
+	}
+	databaseDeletedURLs, err := deletionDAO.DeletedURLs()
+	if err != nil {
+		return err
+	}
+	deletedURLs = mergeBookmarkDeletionURLs(deletedURLs, databaseDeletedURLs)
+
+	targetActiveURLs := make(map[string]struct{})
+	if a.config != nil {
+		for bookmarkURL := range activeBookmarkURLSet(a.config.Browser.DefaultBookmarks) {
+			targetActiveURLs[bookmarkURL] = struct{}{}
+		}
+	}
+	currentBookmarks, err := a.browserMgr.BookmarkDAO.List()
+	if err != nil {
+		return fmt.Errorf("读取当前书签失败: %w", err)
+	}
+	for bookmarkURL := range activeBookmarkURLSet(currentBookmarks) {
+		targetActiveURLs[bookmarkURL] = struct{}{}
+	}
+	deletedURLs = filterBookmarkDeletionsByActiveURLs(deletedURLs, targetActiveURLs)
+
+	deletionWriter, ok := a.browserMgr.BookmarkDAO.(browser.BookmarkDeletionWriter)
+	if !ok {
+		return fmt.Errorf("书签数据库不支持写入删除标记")
+	}
+	if err := deletionWriter.SyncDeletedURLs(deletedURLs); err != nil {
+		return err
+	}
+	persistedDeletedURLs, err := deletionDAO.DeletedURLs()
+	if err != nil {
+		return err
+	}
+	cfg.Browser.DeletedBookmarkURLs = mergeBookmarkDeletionURLs(persistedDeletedURLs)
+	cfg.Browser.DefaultBookmarks = filterBookmarksByDeletedURLs(cfg.Browser.DefaultBookmarks, cfg.Browser.DeletedBookmarkURLs)
 	return nil
 }
 
@@ -251,36 +307,26 @@ func backupMergeConfig(current, incoming *config.Config) *config.Config {
 	if strings.TrimSpace(merged.App.Name) == "" {
 		merged.App.Name = incoming.App.Name
 	}
-	merged.Browser.DefaultBookmarks = backupMergeBookmarks(merged.Browser.DefaultBookmarks, incoming.Browser.DefaultBookmarks)
+	deletedBookmarkURLs := filterBookmarkDeletionsByActiveURLs(
+		mergeBookmarkDeletionURLs(current.Browser.DeletedBookmarkURLs, incoming.Browser.DeletedBookmarkURLs),
+		activeBookmarkURLSet(current.Browser.DefaultBookmarks),
+	)
+	merged.Browser.DeletedBookmarkURLs = deletedBookmarkURLs
+	merged.Browser.DefaultBookmarks = filterBookmarksByDeletedURLs(
+		backupMergeBookmarks(merged.Browser.DefaultBookmarks, incoming.Browser.DefaultBookmarks),
+		deletedBookmarkURLs,
+	)
 	merged.Browser.Cores = backupMergeCores(merged.Browser.Cores, incoming.Browser.Cores)
 	merged.Browser.Proxies = backupMergeProxies(merged.Browser.Proxies, incoming.Browser.Proxies)
 	merged.Browser.Profiles = backupMergeProfiles(merged.Browser.Profiles, incoming.Browser.Profiles)
 	return &merged
 }
 
-func backupUnionStrings(a, b []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(a)+len(b))
-	for _, item := range append(append([]string{}, a...), b...) {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		key := strings.ToLower(item)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, item)
-	}
-	return out
-}
-
 func backupMergeBookmarks(a, b []config.BrowserBookmark) []config.BrowserBookmark {
 	seen := map[string]struct{}{}
 	out := make([]config.BrowserBookmark, 0, len(a)+len(b))
 	appendOne := func(item config.BrowserBookmark) {
-		urlKey := strings.ToLower(strings.TrimSpace(item.URL))
+		urlKey := bookmarkURLKey(item.URL)
 		if urlKey == "" {
 			return
 		}

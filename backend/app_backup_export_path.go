@@ -38,16 +38,17 @@ func (a *App) backupExportPackageToPath(savePath string) (map[string]interface{}
 	}
 
 	return map[string]interface{}{
-		`cancelled`:       false,
-		`zipPath`:         savePath,
-		`includedEntries`: includedEntries,
-		`skippedEntries`:  skippedEntries,
-		`fileCount`:       fileCount,
-		`message`:         `backup export complete`,
+		`cancelled`:              false,
+		`zipPath`:                savePath,
+		`includedEntries`:        includedEntries,
+		`skippedEntries`:         skippedEntries,
+		`fileCount`:              fileCount,
+		`portableSessionWarning`: `全量备份不会迁移跨电脑登录态；如需保留登录 Cookie，请选择实例备份并设置登录态迁移密码。`,
+		`message`:                `backup export complete`,
 	}, nil
 }
 
-func (a *App) backupExportProfilePackageToPath(savePath string, profileIDs []string) (map[string]interface{}, error) {
+func (a *App) backupExportProfilePackageToPath(savePath string, profileIDs []string, portableSessionPasswords ...string) (map[string]interface{}, error) {
 	if strings.TrimSpace(savePath) == `` {
 		return nil, fmt.Errorf(`backup export path is empty`)
 	}
@@ -63,19 +64,28 @@ func (a *App) backupExportProfilePackageToPath(savePath string, profileIDs []str
 		return nil, err
 	}
 	a.backupEmitExportProgress(`preparing`, 10, fmt.Sprintf(`正在准备 %d 个实例...`, len(profiles)))
-	fileCount, err := a.writeProfilePackage(savePath, profiles)
+	portableSessionPassword := ""
+	if len(portableSessionPasswords) > 0 {
+		portableSessionPassword = portableSessionPasswords[0]
+	}
+	fileCount, portableSessionProfileCount, err := a.writeProfilePackageWithPortableSessions(savePath, profiles, portableSessionPassword)
 	if err != nil {
 		a.backupEmitExportProgress(`error`, 100, fmt.Sprintf(`实例备份失败: %v`, err))
 		return nil, err
 	}
 	a.backupEmitExportProgress(`done`, 100, `实例备份完成`)
-	return map[string]interface{}{
-		`cancelled`:    false,
-		`zipPath`:      savePath,
-		`profileCount`: len(profiles),
-		`profileNames`: profilePackageProfileNames(profiles),
-		`fileCount`:    fileCount,
-		`packageType`:  `profile`,
-		`message`:      `实例备份完成`,
-	}, nil
+	result := map[string]interface{}{
+		`cancelled`:                   false,
+		`zipPath`:                     savePath,
+		`profileCount`:                len(profiles),
+		`profileNames`:                profilePackageProfileNames(profiles),
+		`fileCount`:                   fileCount,
+		`packageType`:                 `profile`,
+		`portableSessionProfileCount`: portableSessionProfileCount,
+		`message`:                     `实例备份完成`,
+	}
+	if portableSessionPassword == "" {
+		result[`portableSessionWarning`] = `未迁移跨电脑登录态；如需保留登录 Cookie，请使用登录态迁移密码备份。`
+	}
+	return result, nil
 }

@@ -224,12 +224,28 @@ func (a *App) migrateToSQLite() {
 	if bookmarks, err := a.browserMgr.BookmarkDAO.List(); err == nil && len(bookmarks) == 0 {
 		src := a.config.Browser.DefaultBookmarks
 		if len(src) == 0 {
-			src = []config.BrowserBookmark{
-				{Name: "Google", URL: "https://www.google.com/"},
-				{Name: "Gmail", URL: "https://mail.google.com/"},
-				{Name: "Claude", URL: "https://claude.ai/"},
-				{Name: "ChatGPT", URL: "https://chatgpt.com/"},
-				{Name: "YouTube", URL: "https://www.youtube.com/"},
+			src = append([]config.BrowserBookmark{}, defaultBookmarkList...)
+		}
+		src = normalizeBookmarkList(src)
+		deletedURLs := mergeBookmarkDeletionURLs(a.config.Browser.DeletedBookmarkURLs)
+		if deletionDAO, ok := a.browserMgr.BookmarkDAO.(browser.BookmarkDeletionDAO); ok {
+			databaseDeletedURLs, err := deletionDAO.DeletedURLs()
+			if err != nil {
+				log.Error("读取书签删除标记失败，跳过默认书签初始化", logger.F("error", err))
+				return
+			}
+			deletedURLs = mergeBookmarkDeletionURLs(deletedURLs, databaseDeletedURLs)
+		}
+		src = filterBookmarksByDeletedURLs(src, deletedURLs)
+		if len(deletedURLs) > 0 {
+			deletionWriter, ok := a.browserMgr.BookmarkDAO.(browser.BookmarkDeletionWriter)
+			if !ok {
+				log.Error("书签数据库不支持写入删除标记，跳过默认书签初始化")
+				return
+			}
+			if err := deletionWriter.SyncDeletedURLs(deletedURLs); err != nil {
+				log.Error("写入书签删除标记失败，跳过默认书签初始化", logger.F("error", err))
+				return
 			}
 		}
 		if err := a.browserMgr.BookmarkDAO.ReplaceAll(src); err != nil {
