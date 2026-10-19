@@ -75,6 +75,7 @@ func FetchIPHealthInfo(
 		meta["error"] = err.Error()
 		return meta, fmt.Errorf("创建 IP 健康检测客户端失败（source=%s）: %w", source, err)
 	}
+	defer client.CloseIdleConnections()
 
 	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
 	if err != nil {

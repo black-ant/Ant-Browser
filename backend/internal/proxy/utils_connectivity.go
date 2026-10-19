@@ -111,6 +111,7 @@ func TestRealConnectivityWithRuntimeConfig(
 	if err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: engine, Error: err.Error()}
 	}
+	defer client.CloseIdleConnections()
 
 	var lastErr error
 	var lastLatency int64

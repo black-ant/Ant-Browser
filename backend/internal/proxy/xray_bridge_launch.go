@@ -101,7 +101,7 @@ func (m *XrayManager) ensureBridgeContext(ctx context.Context, proxyConfig strin
 			}
 		}
 	}
-	key := computeNodeKey(src + "\x00" + dnsServers)
+	key := ComputeBridgeKey(src, dnsServers, ProxyKernelXray)
 
 	if socksURL, reused := m.tryReuseBridge(key, pin); reused {
 		log.Info("复用 xray 桥接进程", logger.F("engine", "xray"), logger.F("key", key), logger.F("socks_url", socksURL))

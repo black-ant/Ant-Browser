@@ -22,16 +22,12 @@ type updateCheckResult struct {
 	LatestVersion   string
 	UpdateAvailable bool
 	ReleaseURL      string
-	ReleaseName     string
-	PublishedAt     string
 	Error           string
 }
 
 type githubLatestRelease struct {
 	TagName     string `json:"tag_name"`
-	Name        string `json:"name"`
 	HTMLURL     string `json:"html_url"`
-	PublishedAt string `json:"published_at"`
 }
 
 // CheckForUpdates 检查 GitHub Releases 中的最新稳定版本。
@@ -43,8 +39,6 @@ func (a *App) CheckForUpdates() map[string]interface{} {
 		"latestVersion":   result.LatestVersion,
 		"updateAvailable": result.UpdateAvailable,
 		"releaseUrl":      result.ReleaseURL,
-		"releaseName":     result.ReleaseName,
-		"publishedAt":     result.PublishedAt,
 		"error":           result.Error,
 	}
 }
@@ -88,8 +82,6 @@ func checkForUpdates(ctx context.Context, currentVersion string, endpoint string
 
 	result.LatestVersion = normalizeUpdateVersion(release.TagName)
 	result.ReleaseURL = strings.TrimSpace(release.HTMLURL)
-	result.ReleaseName = strings.TrimSpace(release.Name)
-	result.PublishedAt = strings.TrimSpace(release.PublishedAt)
 	if result.LatestVersion == "" {
 		result.Error = "最新 Release 缺少有效版本号"
 		return result

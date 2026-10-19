@@ -1,11 +1,14 @@
 package proxy
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/metacubex/mihomo/adapter"
 
 	"ant-chrome/backend/internal/config"
 )
@@ -68,6 +71,117 @@ func TestHTTPSStandardProxyBuildsMihomoHTTPNodeWithTLS(t *testing.T) {
 	}
 	if node["tls"] != true {
 		t.Fatalf("tls = %v, want true", node["tls"])
+	}
+}
+
+func TestMihomoNodeSupportsSingBoxURIs(t *testing.T) {
+	cases := []struct {
+		name       string
+		source     string
+		wantType   string
+		wantServer string
+		wantPort   int
+	}{
+		{
+			name:       "hysteria2",
+			source:     "hysteria2://password@example.com:443?sni=sni.example.com&insecure=1",
+			wantType:   "hysteria2",
+			wantServer: "example.com",
+			wantPort:   443,
+		},
+		{
+			name:       "tuic",
+			source:     "tuic://uuid:password@example.com:443?sni=sni.example.com&insecure=1",
+			wantType:   "tuic",
+			wantServer: "example.com",
+			wantPort:   443,
+		},
+		{
+			name:       "anytls",
+			source:     "anytls://password@example.com:443?sni=sni.example.com&insecure=1",
+			wantType:   "anytls",
+			wantServer: "example.com",
+			wantPort:   443,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			node, err := buildMihomoNode(tc.source)
+			if err != nil {
+				t.Fatalf("buildMihomoNode returned error: %v", err)
+			}
+			if _, err := adapter.ParseProxy(node); err != nil {
+				t.Fatalf("mihomo rejected converted node: %v", err)
+			}
+			if node["type"] != tc.wantType || node["server"] != tc.wantServer || node["port"] != tc.wantPort {
+				t.Fatalf("node = %#v, want type=%s server=%s port=%d", node, tc.wantType, tc.wantServer, tc.wantPort)
+			}
+			if node["sni"] != "sni.example.com" || node["skip-cert-verify"] != true {
+				t.Fatalf("TLS options = %#v, want sni and skip-cert-verify", node)
+			}
+		})
+	}
+}
+
+func TestMihomoNodeSupportsV2RayURIs(t *testing.T) {
+	vmessPayload := `{"add":"example.com","aid":"0","id":"00000000-0000-0000-0000-000000000000","net":"ws","path":"/ws","port":"443","ps":"vmess-test","tls":"tls","type":"none"}`
+	cases := []struct {
+		name       string
+		source     string
+		wantType   string
+		wantServer string
+		wantPort   int
+	}{
+		{
+			name:       "vmess",
+			source:     "vmess://" + base64.StdEncoding.EncodeToString([]byte(vmessPayload)),
+			wantType:   "vmess",
+			wantServer: "example.com",
+			wantPort:   443,
+		},
+		{
+			name:       "vless",
+			source:     "vless://00000000-0000-0000-0000-000000000000@example.com:443?security=tls&sni=sni.example.com&type=ws&path=%2Fws&host=cdn.example.com",
+			wantType:   "vless",
+			wantServer: "example.com",
+			wantPort:   443,
+		},
+		{
+			name:       "trojan",
+			source:     "trojan://password@example.com:443?sni=sni.example.com&type=ws&path=%2Fws&host=cdn.example.com",
+			wantType:   "trojan",
+			wantServer: "example.com",
+			wantPort:   443,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			node, err := buildMihomoNode(tc.source)
+			if err != nil {
+				t.Fatalf("buildMihomoNode returned error: %v", err)
+			}
+			if _, err := adapter.ParseProxy(node); err != nil {
+				t.Fatalf("mihomo rejected converted node: %v", err)
+			}
+			if node["type"] != tc.wantType || node["server"] != tc.wantServer || getMapInt(node, "port") != tc.wantPort {
+				t.Fatalf("node = %#v, want type=%s server=%s port=%d", node, tc.wantType, tc.wantServer, tc.wantPort)
+			}
+		})
+	}
+}
+
+func TestMihomoNodeSupportsHysteriaServerPortRanges(t *testing.T) {
+	node, err := buildMihomoNode("hysteria2://password@example.com:443?mport=443-445&sni=sni.example.com")
+	if err != nil {
+		t.Fatalf("buildMihomoNode returned error: %v", err)
+	}
+	if _, err := adapter.ParseProxy(node); err != nil {
+		t.Fatalf("mihomo rejected converted node: %v", err)
+	}
+	if node["ports"] != "443-445" {
+		t.Fatalf("ports = %#v, want 443-445", node["ports"])
 	}
 }
 

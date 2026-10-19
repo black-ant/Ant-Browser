@@ -72,7 +72,7 @@ func (m *SingBoxManager) ensureBridgeContext(ctx context.Context, proxyConfig st
 		return "", "", err
 	}
 
-	key := computeNodeKey(src)
+	key := ComputeBridgeKey(src, "", ProxyKernelSingBox)
 
 	if socksURL, reused := m.tryReuseBridge(key, pin); reused {
 		log.Info("复用 sing-box 桥接", logger.F("engine", "sing-box"), logger.F("key", key[:8]), logger.F("socks_url", socksURL))

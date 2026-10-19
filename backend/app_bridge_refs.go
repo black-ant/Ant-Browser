@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"ant-chrome/backend/internal/logger"
+	"ant-chrome/backend/internal/proxy"
 )
 
 const (
@@ -112,6 +113,17 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 		}
 	}
 	a.bridgeMu.Unlock()
+	if a.browserMgr != nil && a.config != nil {
+		for _, item := range a.getLatestProxies() {
+			if proxy.ComputeBridgeKey(item.ProxyConfig, item.DnsServers, engine) != key {
+				continue
+			}
+			proxyID := strings.TrimSpace(item.ProxyId)
+			if proxyID != "" {
+				proxyIDs[strings.ToLower(proxyID)] = proxyID
+			}
+		}
+	}
 	proxyIDList := make([]string, 0, len(proxyIDs))
 	for _, proxyID := range proxyIDs {
 		proxyIDList = append(proxyIDList, proxyID)

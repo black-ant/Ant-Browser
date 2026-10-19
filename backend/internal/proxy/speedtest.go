@@ -111,6 +111,7 @@ func lightHTTPDelayTestWithConnector(
 		)
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: engine, Error: err.Error()}
 	}
+	defer client.CloseIdleConnections()
 
 	var lastErr error
 	var lastLatency int64
@@ -257,7 +258,7 @@ func speedTestRuntimeError(engine string, src string, proxies []config.BrowserPr
 			}
 		}
 	}
-	key := computeNodeKey(normalizeNodeScheme(src) + "\x00" + dnsServers)
+	key := ComputeBridgeKey(src, dnsServers, ProxyKernelXray)
 	return latestXrayErrorSummary(filepath.Join(xrayMgr.resolveWorkdir(key), "xray-error.log"))
 }
 
@@ -285,14 +286,10 @@ func latestXrayErrorSummary(path string) string {
 
 func doSpeedTestRequest(client *http.Client, testURL string) (int64, int, error) {
 	latency, statusCode, err := doSpeedTestRequestWithMethod(client, http.MethodHead, testURL)
-	if err != nil || statusCode != http.StatusMethodNotAllowed {
-		if err != nil {
-			return latency, statusCode, err
-		}
-		secondLatency, secondStatusCode, secondErr := doSpeedTestRequestWithMethod(client, http.MethodHead, testURL)
-		if secondErr == nil {
-			return secondLatency, secondStatusCode, nil
-		}
+	if err != nil {
+		return latency, statusCode, err
+	}
+	if statusCode != http.StatusMethodNotAllowed && statusCode != http.StatusNotImplemented {
 		return latency, statusCode, nil
 	}
 	return doSpeedTestRequestWithMethod(client, http.MethodGet, testURL)

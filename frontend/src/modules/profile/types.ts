@@ -29,7 +29,5 @@ export interface AppUpdateCheckResult {
   latestVersion: string
   updateAvailable: boolean
   releaseUrl: string
-  releaseName: string
-  publishedAt: string
   error: string
 }

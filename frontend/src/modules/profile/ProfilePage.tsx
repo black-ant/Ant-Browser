@@ -79,8 +79,6 @@ export function ProfilePage() {
         latestVersion: '',
         updateAvailable: false,
         releaseUrl: '',
-        releaseName: '',
-        publishedAt: '',
         error: error?.message || '检查更新失败',
       })
     } finally {

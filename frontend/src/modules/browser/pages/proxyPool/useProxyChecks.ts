@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from '../../../../shared/components'
 import { EventsOn } from '../../../../wailsjs/runtime/runtime'
 import {
@@ -9,33 +9,42 @@ import {
   browserProxyTestSpeed,
   browserProxyWarmupBridge,
 } from '../../api'
-import type { ProxyIPHealthResult, ProxySpeedTestResult } from '../../types'
+import type { BrowserProxy, ProxyIPHealthResult, ProxySpeedTestResult } from '../../types'
 import type { ProxyDisplayInfo } from './helpers'
 import { toLatencyValue } from './storage'
-import { readIPHealthCache, readLatencyCache, readLatencyEngineCache, writeIPHealthCache, writeLatencyCache, writeLatencyEngineCache } from './storage'
+import {
+  readIPHealthCache,
+  readLatencyCache,
+  readLatencyEngineCache,
+  readLatencyFingerprintCache,
+  writeIPHealthCache,
+  writeLatencyCache,
+  writeLatencyEngineCache,
+  writeLatencyFingerprintCache,
+} from './storage'
 
 interface UseProxyChecksOptions {
-  proxies: Array<{ proxyId: string }>
+  proxies: Array<Pick<BrowserProxy, 'proxyId' | 'proxyConfig' | 'preferredKernel' | 'dnsServers'>>
+}
+
+function proxyRouteFingerprint(proxy: Pick<BrowserProxy, 'proxyId' | 'proxyConfig' | 'preferredKernel' | 'dnsServers'>): string {
+  return [proxy.proxyConfig || '', proxy.preferredKernel || '', proxy.dnsServers || ''].map(value => value.trim()).join('\u001f')
 }
 
 export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
-  const [latencyMap, setLatencyMap] = useState<Record<string, number>>({})
-  const [latencyEngineMap, setLatencyEngineMap] = useState<Record<string, string>>({})
+  const [latencyMap, setLatencyMap] = useState<Record<string, number>>(() => readLatencyCache())
+  const [latencyEngineMap, setLatencyEngineMap] = useState<Record<string, string>>(() => readLatencyEngineCache())
   const [latencyErrorMap, setLatencyErrorMap] = useState<Record<string, string>>({})
+  const [latencyFingerprintMap, setLatencyFingerprintMap] = useState<Record<string, string>>(() => readLatencyFingerprintCache())
   const [testingAll, setTestingAll] = useState(false)
-  const [ipHealthMap, setIPHealthMap] = useState<Record<string, ProxyIPHealthResult>>({})
+  const [ipHealthMap, setIPHealthMap] = useState<Record<string, ProxyIPHealthResult>>(() => readIPHealthCache())
   const [checkingIPHealthIds, setCheckingIPHealthIds] = useState<Set<string>>(new Set())
   const [checkingAllIPHealth, setCheckingAllIPHealth] = useState(false)
   const [warmingBridgeIds, setWarmingBridgeIds] = useState<Set<string>>(new Set())
   const [warmingAllBridges, setWarmingAllBridges] = useState(false)
   const [ipHealthDetailOpen, setIPHealthDetailOpen] = useState(false)
   const [currentIPHealthDetail, setCurrentIPHealthDetail] = useState<ProxyIPHealthResult | null>(null)
-
-  useEffect(() => {
-    setLatencyMap(readLatencyCache())
-    setLatencyEngineMap(readLatencyEngineCache())
-    setIPHealthMap(readIPHealthCache())
-  }, [])
+  const routeFingerprintsRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     const markBridgeFailure = (proxyIds: string[], message: string) => {
@@ -43,7 +52,12 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       if (uniqueIds.length === 0) return
       setLatencyMap(prev => {
         const next = { ...prev }
-        uniqueIds.forEach(proxyId => { next[proxyId] = -1 })
+        uniqueIds.forEach(proxyId => { next[proxyId] = toLatencyValue(false, 0, message) })
+        return next
+      })
+      setLatencyEngineMap(prev => {
+        const next = { ...prev }
+        uniqueIds.forEach(proxyId => { delete next[proxyId] })
         return next
       })
       setLatencyErrorMap(prev => {
@@ -73,17 +87,30 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
   }, [latencyEngineMap])
 
   useEffect(() => {
+    writeLatencyFingerprintCache(latencyFingerprintMap)
+  }, [latencyFingerprintMap])
+
+  useEffect(() => {
     writeIPHealthCache(ipHealthMap)
   }, [ipHealthMap])
 
   useEffect(() => {
     if (!proxies.length) return
     const validIds = new Set(proxies.map(p => p.proxyId))
+    const nextFingerprints: Record<string, string> = {}
+    const changedIds = new Set<string>()
+    proxies.forEach(proxy => {
+      const fingerprint = proxyRouteFingerprint(proxy)
+      nextFingerprints[proxy.proxyId] = fingerprint
+      if (latencyFingerprintMap[proxy.proxyId] !== fingerprint) changedIds.add(proxy.proxyId)
+    })
+    routeFingerprintsRef.current = nextFingerprints
+
     setLatencyMap(prev => {
       let changed = false
       const next: Record<string, number> = {}
       Object.entries(prev).forEach(([proxyId, latency]) => {
-        if (validIds.has(proxyId)) next[proxyId] = latency
+        if (validIds.has(proxyId) && !changedIds.has(proxyId)) next[proxyId] = latency
         else changed = true
       })
       return changed ? next : prev
@@ -93,7 +120,7 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       let changed = false
       const next: Record<string, string> = {}
       Object.entries(prev).forEach(([proxyId, engine]) => {
-        if (validIds.has(proxyId)) next[proxyId] = engine
+        if (validIds.has(proxyId) && !changedIds.has(proxyId)) next[proxyId] = engine
         else changed = true
       })
       return changed ? next : prev
@@ -103,7 +130,7 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       let changed = false
       const next: Record<string, string> = {}
       Object.entries(prev).forEach(([proxyId, error]) => {
-        if (validIds.has(proxyId)) next[proxyId] = error
+        if (validIds.has(proxyId) && !changedIds.has(proxyId)) next[proxyId] = error
         else changed = true
       })
       return changed ? next : prev
@@ -113,12 +140,26 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       let changed = false
       const next: Record<string, ProxyIPHealthResult> = {}
       Object.entries(prev).forEach(([proxyId, health]) => {
-        if (validIds.has(proxyId)) next[proxyId] = health
+        if (validIds.has(proxyId) && !changedIds.has(proxyId)) next[proxyId] = health
         else changed = true
       })
       return changed ? next : prev
+      })
+
+    setLatencyFingerprintMap(prev => {
+      let changed = Object.keys(prev).length !== Object.keys(nextFingerprints).length
+      if (!changed) {
+        Object.entries(nextFingerprints).some(([proxyId, fingerprint]) => {
+          if (prev[proxyId] !== fingerprint) {
+            changed = true
+            return true
+          }
+          return false
+        })
+      }
+      return changed ? nextFingerprints : prev
     })
-  }, [proxies])
+  }, [latencyFingerprintMap, proxies])
 
   const handleTestOne = async (record: ProxyDisplayInfo) => {
     if (record.proxyConfig === 'direct://') {
@@ -136,11 +177,21 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       delete next[record.proxyId]
       return next
     })
-    const result = await browserProxyTestSpeed(record.proxyId)
-    const val = toLatencyValue(result.ok, result.latencyMs, result.error)
-    setLatencyMap(prev => ({ ...prev, [record.proxyId]: val }))
-    if (result.error) setLatencyErrorMap(prev => ({ ...prev, [record.proxyId]: result.error || '' }))
-    if (result.engine) setLatencyEngineMap(prev => ({ ...prev, [record.proxyId]: result.engine || '' }))
+    const expectedFingerprint = routeFingerprintsRef.current[record.proxyId]
+    try {
+      const result = await browserProxyTestSpeed(record.proxyId)
+      if (!expectedFingerprint || routeFingerprintsRef.current[record.proxyId] !== expectedFingerprint) return
+      const val = toLatencyValue(result.ok, result.latencyMs, result.error)
+      setLatencyMap(prev => ({ ...prev, [record.proxyId]: val }))
+      if (result.error) setLatencyErrorMap(prev => ({ ...prev, [record.proxyId]: result.error || '' }))
+      if (result.engine) setLatencyEngineMap(prev => ({ ...prev, [record.proxyId]: result.engine || '' }))
+    } catch (error: any) {
+      if (!expectedFingerprint || routeFingerprintsRef.current[record.proxyId] !== expectedFingerprint) return
+      const message = error?.message || '测速失败'
+      setLatencyMap(prev => ({ ...prev, [record.proxyId]: toLatencyValue(false, 0, message) }))
+      setLatencyErrorMap(prev => ({ ...prev, [record.proxyId]: message }))
+      toast.error(message)
+    }
   }
 
   const handleTestAll = async (items: ProxyDisplayInfo[]) => {
@@ -161,7 +212,14 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       return next
     })
 
+    const testableIds = new Set(testable.map(item => item.proxyId))
+    const expectedFingerprints = new Map(testable.map(item => [item.proxyId, routeFingerprintsRef.current[item.proxyId]]))
+    const isCurrentRoute = (proxyId: string) => {
+      const expected = expectedFingerprints.get(proxyId)
+      return !!expected && routeFingerprintsRef.current[proxyId] === expected
+    }
     const off = EventsOn('proxy:speed:result', (data: ProxySpeedTestResult) => {
+      if (!data?.proxyId || !testableIds.has(data.proxyId) || !isCurrentRoute(data.proxyId)) return
       const val = toLatencyValue(data.ok, data.latencyMs, data.error)
       setLatencyMap(prev => ({ ...prev, [data.proxyId]: val }))
       if (data.error) setLatencyErrorMap(prev => ({ ...prev, [data.proxyId]: data.error || '' }))
@@ -174,24 +232,41 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       setLatencyMap(prev => {
         const next = { ...prev }
         results.forEach(result => {
-          next[result.proxyId] = toLatencyValue(result.ok, result.latencyMs, result.error)
+          if (isCurrentRoute(result.proxyId)) next[result.proxyId] = toLatencyValue(result.ok, result.latencyMs, result.error)
         })
         return next
       })
       setLatencyEngineMap(prev => {
         const next = { ...prev }
         results.forEach(result => {
-          if (result.engine) next[result.proxyId] = result.engine
+          if (result.engine && isCurrentRoute(result.proxyId)) next[result.proxyId] = result.engine
         })
         return next
       })
       setLatencyErrorMap(prev => {
         const next = { ...prev }
         results.forEach(result => {
-          if (result.error) next[result.proxyId] = result.error
+          if (result.error && isCurrentRoute(result.proxyId)) next[result.proxyId] = result.error
         })
         return next
       })
+    } catch (error: any) {
+      const message = error?.message || '批量测速失败'
+      setLatencyMap(prev => {
+        const next = { ...prev }
+        testable.forEach(item => {
+          if (isCurrentRoute(item.proxyId)) next[item.proxyId] = toLatencyValue(false, 0, message)
+        })
+        return next
+      })
+      setLatencyErrorMap(prev => {
+        const next = { ...prev }
+        testable.forEach(item => {
+          if (isCurrentRoute(item.proxyId)) next[item.proxyId] = message
+        })
+        return next
+      })
+      toast.error(message)
     } finally {
       off()
       setTestingAll(false)

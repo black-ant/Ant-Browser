@@ -88,8 +88,6 @@ export async function checkForUpdates(): Promise<AppUpdateCheckResult> {
     latestVersion: '',
     updateAvailable: false,
     releaseUrl: '',
-    releaseName: '',
-    publishedAt: '',
     error: '当前环境不支持更新检查',
   }
   const bindings: any = await getBindings()
@@ -109,8 +107,6 @@ export async function checkForUpdates(): Promise<AppUpdateCheckResult> {
     latestVersion: typeof rawResult?.latestVersion === 'string' ? rawResult.latestVersion.trim() : '',
     updateAvailable: rawResult?.updateAvailable === true,
     releaseUrl: typeof rawResult?.releaseUrl === 'string' ? rawResult.releaseUrl.trim() : '',
-    releaseName: typeof rawResult?.releaseName === 'string' ? rawResult.releaseName.trim() : '',
-    publishedAt: typeof rawResult?.publishedAt === 'string' ? rawResult.publishedAt.trim() : '',
     error: typeof rawResult?.error === 'string' ? rawResult.error.trim() : '',
   }
 }

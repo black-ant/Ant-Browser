@@ -99,3 +99,13 @@ func TestResolveProxyKernelForConnectorRejectsCrossStackPreference(t *testing.T)
 		t.Fatalf("error = %q, want current-stack guidance", err.Error())
 	}
 }
+
+func TestResolveProxyKernelForConnectorRejectsChainProxyInMihomoStack(t *testing.T) {
+	_, err := ResolveProxyKernelForConnector("chain+socks5://127.0.0.1:10001|127.0.0.1:10002", nil, "", config.BrowserConnectorMihomo)
+	if err == nil {
+		t.Fatal("expected chain proxy to be rejected by the mihomo stack")
+	}
+	if !strings.Contains(err.Error(), "当前 mihomo 连接栈") {
+		t.Fatalf("error = %q, want current-stack guidance", err.Error())
+	}
+}

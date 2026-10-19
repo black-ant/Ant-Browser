@@ -31,6 +31,10 @@ func (a *App) SaveProxyCheckSettings(settings ProxyCheckSettings) error {
 	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
 		return err
 	}
+	if a.speedScheduler != nil {
+		a.speedScheduler.Stop()
+		a.speedScheduler = nil
+	}
 	a.ensureSpeedScheduler()
 	return nil
 }

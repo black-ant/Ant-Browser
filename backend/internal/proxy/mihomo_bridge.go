@@ -97,7 +97,7 @@ func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig 
 		return "direct://", "", nil
 	}
 
-	key := computeNodeKey(src + "\x00mihomo")
+	key := ComputeBridgeKey(src, "", ProxyKernelMihomo)
 	unlock := m.lockLaunchForKey(key)
 	defer unlock()
 
@@ -276,7 +276,7 @@ func (m *ClashManager) TestNodeDelay(proxyId string, proxies []config.BrowserPro
 	if _, err := m.EnsureNodeBridge(src, proxies, proxyId); err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: "mihomo", Error: err.Error()}
 	}
-	key := computeNodeKey(src + "\x00mihomo")
+	key := ComputeBridgeKey(src, "", ProxyKernelMihomo)
 	m.mu.Lock()
 	bridge := m.NodeBridges[key]
 	m.mu.Unlock()

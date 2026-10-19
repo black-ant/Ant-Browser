@@ -20,6 +20,20 @@ func computeNodeKey(src string) string {
 	return hex.EncodeToString(h[:])
 }
 
+func ComputeBridgeKey(proxyConfig string, dnsServers string, engine string) string {
+	src := normalizeNodeScheme(proxyConfig)
+	switch strings.ToLower(strings.TrimSpace(engine)) {
+	case ProxyKernelXray:
+		return computeNodeKey(src + string(rune(0)) + strings.TrimSpace(dnsServers))
+	case ProxyKernelSingBox:
+		return computeNodeKey(src)
+	case ProxyKernelMihomo:
+		return computeNodeKey(src + string(rune(0)) + "mihomo")
+	default:
+		return ""
+	}
+}
+
 func normalizeNodeScheme(src string) string {
 	return strings.TrimSpace(src)
 }

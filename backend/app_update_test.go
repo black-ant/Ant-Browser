@@ -10,7 +10,7 @@ import (
 func TestCheckForUpdatesDetectsNewRelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"tag_name":"v1.9.0","name":"1.9.0","html_url":"https://example.com/release","published_at":"2026-09-21T00:00:00Z"}`))
+		_, _ = writer.Write([]byte(`{"tag_name":"v1.9.0","html_url":"https://example.com/release"}`))
 	}))
 	defer server.Close()
 
