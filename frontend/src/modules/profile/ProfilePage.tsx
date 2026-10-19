@@ -9,11 +9,12 @@ import {
   Coffee,
   Terminal,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card } from '../../shared/components'
-import { createDefaultProfilePageData, loadProfilePageData } from './api'
-import type { IconKey, ProfilePageData } from './types'
+import { checkForUpdates, createDefaultProfilePageData, loadCurrentAppVersion, loadProfilePageData } from './api'
+import type { AppUpdateCheckResult, IconKey, ProfilePageData } from './types'
 
 const ICON_MAP = {
   'book-open': BookOpen,
@@ -34,6 +35,9 @@ const CHANNEL_ICON_CLASS: Partial<Record<IconKey, string>> = {
 
 export function ProfilePage() {
   const [pageData, setPageData] = useState<ProfilePageData>(() => createDefaultProfilePageData())
+  const [appVersion, setAppVersion] = useState('')
+  const [updateCheck, setUpdateCheck] = useState<AppUpdateCheckResult | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -46,6 +50,14 @@ export function ProfilePage() {
 
     void syncProfile()
 
+    void loadCurrentAppVersion()
+      .then((version) => {
+        if (active) setAppVersion(version)
+      })
+      .catch(() => {
+        if (active) setAppVersion('')
+      })
+
     return () => {
       active = false
     }
@@ -53,6 +65,27 @@ export function ProfilePage() {
 
   const openExternal = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleCheckForUpdates = async () => {
+    if (checkingUpdate) return
+    setCheckingUpdate(true)
+    try {
+      setUpdateCheck(await checkForUpdates())
+    } catch (error: any) {
+      setUpdateCheck({
+        ok: false,
+        currentVersion: appVersion,
+        latestVersion: '',
+        updateAvailable: false,
+        releaseUrl: '',
+        releaseName: '',
+        publishedAt: '',
+        error: error?.message || '检查更新失败',
+      })
+    } finally {
+      setCheckingUpdate(false)
+    }
   }
 
   const authorInfo = pageData.author
@@ -192,6 +225,32 @@ export function ProfilePage() {
         padding="lg"
       >
         <div className="space-y-4 text-[15px] leading-8 text-[var(--color-text-secondary)]">
+          <div className="flex flex-col gap-3 border-b border-[var(--color-border-muted)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-semibold text-[var(--color-text-primary)]">
+                当前版本 {appVersion ? `v${appVersion}` : '未知'}
+              </p>
+              {updateCheck?.ok ? (
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  {updateCheck.updateAvailable ? `发现新版本 v${updateCheck.latestVersion}` : '已是最新版本'}
+                </p>
+              ) : updateCheck ? (
+                <p className="text-sm text-[var(--color-error)]">{updateCheck.error || '检查更新失败'}</p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Button variant="secondary" size="sm" onClick={() => { void handleCheckForUpdates() }} loading={checkingUpdate}>
+                <RefreshCw className="h-4 w-4" />
+                检查更新
+              </Button>
+              {updateCheck?.ok && updateCheck.updateAvailable && updateCheck.releaseUrl ? (
+                <Button variant="ghost" size="sm" onClick={() => openExternal(updateCheck.releaseUrl)}>
+                  打开下载页
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
           <p>
             <Badge className="mr-1 rounded-xl px-3 py-1">{projectInfo.introBadge}</Badge>
             {projectInfo.introText}

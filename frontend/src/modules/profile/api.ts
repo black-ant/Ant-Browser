@@ -1,5 +1,5 @@
 import profilePageConfig from '../../config/profile.config'
-import type { AuthorProfile, IconKey, ProfileChannel, ProfilePageData, ProfileProject } from './types'
+import type { AppUpdateCheckResult, AuthorProfile, IconKey, ProfileChannel, ProfilePageData, ProfileProject } from './types'
 
 const PROFILE_ICON_KEYS: IconKey[] = [
   'book-open',
@@ -64,6 +64,54 @@ export async function loadProfilePageData(): Promise<ProfilePageData> {
         message: error?.message || '远程作者配置不可用，已切换为默认资料。',
       },
     }
+  }
+}
+
+export async function loadCurrentAppVersion(): Promise<string> {
+  const bindings: any = await getBindings()
+  const goApp = (window as any).go?.main?.App
+  if (bindings?.GetAppConfig) {
+    const config = await bindings.GetAppConfig()
+    return typeof config?.version === 'string' ? config.version.trim() : ''
+  }
+  if (goApp?.GetAppConfig) {
+    const config = await goApp.GetAppConfig()
+    return typeof config?.version === 'string' ? config.version.trim() : ''
+  }
+  return ''
+}
+
+export async function checkForUpdates(): Promise<AppUpdateCheckResult> {
+  const fallback: AppUpdateCheckResult = {
+    ok: false,
+    currentVersion: '',
+    latestVersion: '',
+    updateAvailable: false,
+    releaseUrl: '',
+    releaseName: '',
+    publishedAt: '',
+    error: '当前环境不支持更新检查',
+  }
+  const bindings: any = await getBindings()
+  const goApp = (window as any).go?.main?.App
+  let rawResult: any
+  if (bindings?.CheckForUpdates) {
+    rawResult = await bindings.CheckForUpdates()
+  } else if (goApp?.CheckForUpdates) {
+    rawResult = await goApp.CheckForUpdates()
+  } else {
+    return fallback
+  }
+
+  return {
+    ok: rawResult?.ok === true,
+    currentVersion: typeof rawResult?.currentVersion === 'string' ? rawResult.currentVersion.trim() : '',
+    latestVersion: typeof rawResult?.latestVersion === 'string' ? rawResult.latestVersion.trim() : '',
+    updateAvailable: rawResult?.updateAvailable === true,
+    releaseUrl: typeof rawResult?.releaseUrl === 'string' ? rawResult.releaseUrl.trim() : '',
+    releaseName: typeof rawResult?.releaseName === 'string' ? rawResult.releaseName.trim() : '',
+    publishedAt: typeof rawResult?.publishedAt === 'string' ? rawResult.publishedAt.trim() : '',
+    error: typeof rawResult?.error === 'string' ? rawResult.error.trim() : '',
   }
 }
 

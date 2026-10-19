@@ -598,6 +598,10 @@ export function BrowserSnapshotRestore(arg1, arg2) {
   return window['go']['main']['App']['BrowserSnapshotRestore'](arg1, arg2);
 }
 
+export function CheckForUpdates() {
+  return window['go']['main']['App']['CheckForUpdates']();
+}
+
 export function ClearAppLogs() {
   return window['go']['main']['App']['ClearAppLogs']();
 }

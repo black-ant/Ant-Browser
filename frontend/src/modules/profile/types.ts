@@ -22,3 +22,14 @@ export interface ProfilePageData {
   project: ProfileProject
   meta: ProfileLoadMeta
 }
+
+export interface AppUpdateCheckResult {
+  ok: boolean
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseUrl: string
+  releaseName: string
+  publishedAt: string
+  error: string
+}

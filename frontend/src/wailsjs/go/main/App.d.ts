@@ -308,6 +308,8 @@ export function BrowserSnapshotList(arg1:string):Promise<Array<backend.SnapshotI
 
 export function BrowserSnapshotRestore(arg1:string,arg2:string):Promise<void>;
 
+export function CheckForUpdates():Promise<Record<string, any>>;
+
 export function ClearAppLogs():Promise<void>;
 
 export function CreateGroup(arg1:browser.GroupInput):Promise<browser.Group>;
