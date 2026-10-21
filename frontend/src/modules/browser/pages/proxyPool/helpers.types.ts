@@ -1,6 +1,12 @@
 import type { BrowserProxy } from '../../types'
 
 export const BUILTIN_PROXY_IDS = new Set(['__direct__'])
+export const VIRTUAL_PROXY_GROUP_FILTER_PREFIX = '__virtual_proxy_group__:'
+
+export function buildVirtualProxyGroupFilterValue(groupId: string, groupName: string): string {
+  const identity = groupId.trim() || groupName.trim().toLowerCase()
+  return `${VIRTUAL_PROXY_GROUP_FILTER_PREFIX}${identity}`
+}
 
 export const BUILTIN_PROXIES: BrowserProxy[] = [
   { proxyId: '__direct__', proxyName: '直连（不走代理）', proxyConfig: 'direct://' },
@@ -150,6 +156,16 @@ export interface ProxyDisplayInfo {
   server: string
   port: number
   latencyMs?: number
+  isVirtual?: boolean
+  virtualGroupId?: string
+  virtualGroupFilterValue?: string
+  virtualStrategy?: 'round_robin' | 'sticky' | string
+  virtualMemberProxyIds?: string[]
+  virtualMemberCount?: number
+}
+
+export function isSelectableProxyDisplay(record: Pick<ProxyDisplayInfo, 'proxyId' | 'isVirtual'>): boolean {
+  return !record.isVirtual && !BUILTIN_PROXY_IDS.has(record.proxyId)
 }
 
 export interface URLImportSourceMeta {

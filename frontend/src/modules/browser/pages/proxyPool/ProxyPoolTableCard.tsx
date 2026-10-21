@@ -4,7 +4,7 @@ import { Button, Card, Input, Switch, Table } from '../../../../shared/component
 import type { SortOrder, TableColumn } from '../../../../shared/components/Table'
 import type { ProxyIPHealthResult } from '../../types'
 
-import { BUILTIN_PROXY_IDS, sourceHostLabel, type ProxyDisplayInfo } from './helpers'
+import { BUILTIN_PROXY_IDS, isSelectableProxyDisplay, sourceHostLabel, type ProxyDisplayInfo } from './helpers'
 import { BrowserEditSelect } from '../../components/BrowserEditSelect'
 
 interface ProxyPoolTableCardProps {
@@ -34,6 +34,8 @@ interface ProxyPoolTableCardProps {
   onGlobalRefreshIntervalMChange: (nextValue: string) => void
   onOpenBatchDelete: () => void
   onOpenIPHealthDetail: (proxyId: string) => void
+  onOpenVirtualGroupMembers: (record: ProxyDisplayInfo) => void
+  onManageVirtualGroup: () => void
   onRefreshSingleSource: (sourceId: string) => void
   onSort: (next: { column: string; order: SortOrder }) => void
   onTestOne: (record: ProxyDisplayInfo) => void
@@ -78,6 +80,8 @@ export function ProxyPoolTableCard({
   onGlobalRefreshIntervalMChange,
   onOpenBatchDelete,
   onOpenIPHealthDetail,
+  onOpenVirtualGroupMembers,
+  onManageVirtualGroup,
   onRefreshSingleSource,
   onSort,
   onTestOne,
@@ -119,6 +123,7 @@ export function ProxyPoolTableCard({
   }
 
   const renderLatency = (record: ProxyDisplayInfo) => {
+    if (record.isVirtual) return '\u6309\u6210\u5458\u8282\u70b9'
     if (record.proxyConfig === 'direct://') {
       return <span className="text-[var(--color-text-muted)] text-xs">不适用</span>
     }
@@ -134,6 +139,7 @@ export function ProxyPoolTableCard({
   }
 
   const renderLatencyEngine = (record: ProxyDisplayInfo) => {
+    if (record.isVirtual) return '\u865a\u62df\u5206\u7ec4'
     if (record.proxyConfig === 'direct://') {
       return <span className="text-[var(--color-text-muted)] text-xs">不适用</span>
     }
@@ -146,6 +152,7 @@ export function ProxyPoolTableCard({
   }
 
   const renderIPHealth = (record: ProxyDisplayInfo) => {
+    if (record.isVirtual) return '\u6309\u6210\u5458\u8282\u70b9'
     if (record.proxyConfig === 'direct://') {
       return <span className="text-[var(--color-text-muted)] text-xs">不适用</span>
     }
@@ -187,7 +194,7 @@ export function ProxyPoolTableCard({
         <input
           type="checkbox"
           checked={selectedIds.has(record.proxyId)}
-          disabled={BUILTIN_PROXY_IDS.has(record.proxyId)}
+          disabled={!isSelectableProxyDisplay(record)}
           onChange={() => onToggleOne(record.proxyId)}
           onClick={event => event.stopPropagation()}
           className="w-4 h-4 rounded border-[var(--color-border-default)] accent-[var(--color-accent)] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
@@ -219,7 +226,13 @@ export function ProxyPoolTableCard({
         )
       },
     },
-    { key: 'type', title: '类型', width: '90px', sortable: true },
+    {
+      key: 'type',
+      title: '类型',
+      width: '90px',
+      sortable: true,
+      render: value => value === 'virtual' ? '\u865a\u62df' : value || '-',
+    },
     { key: 'server', title: '服务器', width: '180px', sortable: true },
     { key: 'port', title: '端口', width: '80px', sortable: true, render: (value) => value || '-' },
     {
@@ -253,6 +266,7 @@ export function ProxyPoolTableCard({
       title: '操作',
       width: '190px',
       render: (_, record) => {
+        if (record.isVirtual) return <Button size='sm' variant='secondary' onClick={event => { event.stopPropagation(); onManageVirtualGroup() }}>管理</Button>
         const isBuiltin = BUILTIN_PROXY_IDS.has(record.proxyId)
         const sourceId = record.sourceId || ''
         const hasSource = !!sourceId && !!record.sourceUrl
@@ -354,6 +368,8 @@ export function ProxyPoolTableCard({
     onDelete,
     onEdit,
     onOpenIPHealthDetail,
+    onOpenVirtualGroupMembers,
+    onManageVirtualGroup,
     onRefreshSingleSource,
     openMoreProxyId,
     moreMenuPlacement,
@@ -423,7 +439,7 @@ export function ProxyPoolTableCard({
           <span className="text-xs text-[var(--color-text-muted)]">分钟</span>
         </div>
         <div className="flex-1" />
-        {data.length > 0 && (
+        {data.some(isSelectableProxyDisplay) && (
           <label className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] cursor-pointer select-none">
             <input
               type="checkbox"
@@ -454,6 +470,9 @@ export function ProxyPoolTableCard({
         sortColumn={sortColumn}
         sortOrder={sortOrder}
         onSort={onSort}
+        onRowClick={record => {
+          if (record.isVirtual) onOpenVirtualGroupMembers(record)
+        }}
       />
     </Card>
   )

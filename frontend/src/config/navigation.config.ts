@@ -18,7 +18,6 @@ export const navigationConfig: NavSection[] = [
       { name: '内核管理', path: '/browser/cores', icon: 'Cpu' },
       { name: '插件包管理', path: '/browser/extensions', icon: 'Puzzle' },
       { name: '代理池配置', path: '/browser/proxy-pool', icon: 'Globe' },
-      { name: '代理虚拟分组', path: '/browser/proxy-virtual-groups', icon: 'Layers' },
       { name: '默认书签', path: '/browser/bookmarks', icon: 'Bookmark' },
       { name: '标签管理', path: '/browser/tags', icon: 'Tag' },
     ]

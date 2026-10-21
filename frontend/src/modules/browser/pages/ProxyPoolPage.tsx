@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ConfirmModal, toast } from '../../../shared/components'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import type { SortOrder } from '../../../shared/components/Table'
@@ -7,9 +8,11 @@ import { fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualG
 import {
   buildChainImportCandidate,
   buildDirectImportCandidate,
+  buildVirtualProxyGroupFilterValue,
   createInitialChainImportForm,
   INITIAL_DIRECT_IMPORT_FORM,
   ensureBuiltinProxies,
+  toVirtualDisplayList,
   toChainImportForm,
   toDirectImportForm,
   toDisplayList,
@@ -26,6 +29,7 @@ import {
 } from './proxyPool/ProxyPoolModals'
 import { ProxyPoolHeader } from './proxyPool/ProxyPoolHeader'
 import { ProxyPoolTableCard } from './proxyPool/ProxyPoolTableCard'
+import { ProxyVirtualGroupMembersModal } from './proxyPool/ProxyVirtualGroupMembersModal'
 import { ProxyPoolCheckSettingsModal } from './proxyPool/ProxyPoolCheckSettingsModal'
 import { ProxyPoolUsageGuideModal } from './proxyPool/ProxyPoolUsageGuideModal'
 import { ProxyCoreDownloadModal } from './proxyPool/ProxyCoreDownloadModal'
@@ -40,8 +44,14 @@ import { useProxyCoreDownload } from './proxyPool/useProxyCoreDownload'
 import { useProxyPoolFilter } from './proxyPool/useProxyPoolFilter'
 
 export function ProxyPoolPage() {
+  const navigate = useNavigate()
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
   const [displayList, setDisplayList] = useState<ProxyDisplayInfo[]>([])
+  const [virtualGroupMembersModal, setVirtualGroupMembersModal] = useState<{
+    groupName: string
+    strategy?: string
+    members: ProxyDisplayInfo[]
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [usageGuideOpen, setUsageGuideOpen] = useState(false)
   const {
@@ -116,9 +126,9 @@ export function ProxyPoolPage() {
     ])
     const finalList = await ensureBuiltinProxies(savedList)
     setProxies(finalList)
-    setDisplayList(toDisplayList(finalList))
     setGroups(grps)
     setVirtualGroups(nextVirtualGroups)
+    setDisplayList([...toDisplayList(finalList), ...toVirtualDisplayList(nextVirtualGroups, finalList)])
   }, [])
 
   const {
@@ -183,9 +193,9 @@ export function ProxyPoolPage() {
       ])
       const finalList = await ensureBuiltinProxies(list)
       setProxies(finalList)
-      setDisplayList(toDisplayList(finalList))
       setGroups(groupList)
       setVirtualGroups(virtualGroupList)
+      setDisplayList([...toDisplayList(finalList), ...toVirtualDisplayList(virtualGroupList, finalList)])
 
       setLatencyMap(prev => {
         const validIds = new Set(finalList.map(p => p.proxyId))
@@ -254,7 +264,7 @@ export function ProxyPoolPage() {
   })
 
   const virtualGroupOptions = virtualGroups.map(group => ({
-    value: `__virtual_proxy_group__:${group.groupId.trim() || group.groupName.trim().toLowerCase()}`,
+    value: buildVirtualProxyGroupFilterValue(group.groupId, group.groupName),
     label: `虚拟：${group.groupName}`,
   }))
 
@@ -371,22 +381,39 @@ export function ProxyPoolPage() {
     handleDeleteClick,
     handleDeleteConfirm,
   } = useProxyDeleteFlow({ proxies, saveProxies, removeSelectedId })
+
+  const openVirtualGroupMembers = (record: ProxyDisplayInfo) => {
+    if (!record.isVirtual) return
+    const displayById = new Map(
+      toDisplayList(proxies).map(proxy => [proxy.proxyId.trim().toLowerCase(), proxy] as const),
+    )
+    const members = (record.virtualMemberProxyIds || [])
+      .map(proxyId => displayById.get(proxyId.trim().toLowerCase()))
+      .filter((proxy): proxy is ProxyDisplayInfo => !!proxy)
+    setVirtualGroupMembersModal({
+      groupName: record.proxyName,
+      strategy: record.virtualStrategy,
+      members,
+    })
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       <ProxyPoolHeader
         checkingAllIPHealth={checkingAllIPHealth}
         currentConnectorStatus={currentCoreStatus?.message || '未知'}
         hasURLImportSources={hasURLImportSources}
-        onCheckAllIPHealth={() => void handleCheckAllIPHealth(filteredList)}
+        onCheckAllIPHealth={() => void handleCheckAllIPHealth(filteredList.filter(record => !record.isVirtual))}
         onOpenSettings={() => void openCheckSettings()}
         onOpenUsageGuide={() => setUsageGuideOpen(true)}
         onOpenImport={() => setImportModalOpen(true)}
+        onOpenVirtualGroups={() => navigate('/browser/proxy-virtual-groups')}
         onOpenCoreDownload={openCoreDownload}
         onRefreshAllSources={() => void handleRefreshAllSources(false)}
-        onTestAll={() => void handleTestAll(filteredList)}
+        onTestAll={() => void handleTestAll(filteredList.filter(record => !record.isVirtual))}
         refreshingAllSources={refreshingAllSources}
         testingAll={testingAll}
-        totalCount={filteredList.length}
+        testableCount={filteredList.filter(record => record.proxyConfig !== 'direct://' && !record.isVirtual).length}
       />
 
       <ProxyPoolTableCard
@@ -424,6 +451,8 @@ export function ProxyPoolPage() {
         onGlobalRefreshIntervalMChange={setGlobalRefreshIntervalM}
         onOpenBatchDelete={() => setBatchDeleteConfirmOpen(true)}
         onOpenIPHealthDetail={openIPHealthDetail}
+        onOpenVirtualGroupMembers={openVirtualGroupMembers}
+        onManageVirtualGroup={() => navigate('/browser/proxy-virtual-groups')}
         onRefreshSingleSource={(sourceId) => void refreshSingleSource(sourceId, false)}
         onSort={({ column, order }) => {
           setSortColumn(column)
@@ -439,6 +468,14 @@ export function ProxyPoolPage() {
         someFilteredSelected={someFilteredSelected}
         sortColumn={sortColumn}
         sortOrder={sortOrder}
+      />
+
+      <ProxyVirtualGroupMembersModal
+        open={virtualGroupMembersModal !== null}
+        groupName={virtualGroupMembersModal?.groupName || ''}
+        strategy={virtualGroupMembersModal?.strategy}
+        members={virtualGroupMembersModal?.members || []}
+        onClose={() => setVirtualGroupMembersModal(null)}
       />
 
       <ProxyPoolUsageGuideModal

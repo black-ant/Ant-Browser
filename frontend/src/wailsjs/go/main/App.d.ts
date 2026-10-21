@@ -294,11 +294,15 @@ export function BrowserProxyResolveLocation(arg1:string):Promise<backend.ProxyLo
 
 export function BrowserProxyTestSpeed(arg1:string):Promise<backend.ProxyTestResult>;
 
+export function BrowserProxyVirtualGroupList():Promise<Array<config.BrowserProxyVirtualGroup>>;
+
 export function BrowserProxyWarmupBridge(arg1:string):Promise<backend.ProxyBridgeWarmupResult>;
 
 export function BrowserProxyWarmupBridgeWithConfig(arg1:string,arg2:string):Promise<backend.ProxyBridgeWarmupResult>;
 
 export function BrowserRenameTag(arg1:string,arg2:string):Promise<void>;
+
+export function BrowserSetCookies(arg1:string,arg2:Array<backend.CookieInfo>):Promise<void>;
 
 export function BrowserSnapshotCreate(arg1:string,arg2:string):Promise<backend.SnapshotInfo>;
 
@@ -313,6 +317,8 @@ export function CheckForUpdates():Promise<Record<string, any>>;
 export function ClearAppLogs():Promise<void>;
 
 export function CreateGroup(arg1:browser.GroupInput):Promise<browser.Group>;
+
+export function DeleteBrowserProxyVirtualGroup(arg1:string):Promise<void>;
 
 export function DeleteGroup(arg1:string):Promise<void>;
 
@@ -375,6 +381,8 @@ export function SaveAutomationScriptPackageSettings(arg1:boolean):Promise<Record
 export function SaveAutomationSettings(arg1:boolean,arg2:boolean):Promise<Record<string, any>>;
 
 export function SaveBrowserProxies(arg1:Array<config.BrowserProxy>):Promise<void>;
+
+export function SaveBrowserProxyVirtualGroup(arg1:config.BrowserProxyVirtualGroup):Promise<void>;
 
 export function SaveBrowserSettings(arg1:browser.Settings):Promise<void>;
 

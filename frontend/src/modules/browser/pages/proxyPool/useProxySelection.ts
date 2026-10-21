@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { toast } from '../../../../shared/components'
 import type { BrowserProxy } from '../../types'
-import { BUILTIN_PROXY_IDS, type ProxyDisplayInfo } from './helpers'
+import { isSelectableProxyDisplay, type ProxyDisplayInfo } from './helpers'
 
 interface UseProxySelectionOptions {
   proxies: BrowserProxy[]
@@ -13,28 +13,29 @@ export function useProxySelection({ proxies, filteredList, saveProxies }: UsePro
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchDeleteConfirmOpen, setBatchDeleteConfirmOpen] = useState(false)
 
-  const allFilteredSelected = filteredList.length > 0 && filteredList.every(p => selectedIds.has(p.proxyId))
-  const someFilteredSelected = filteredList.some(p => selectedIds.has(p.proxyId))
+  const selectableFilteredList = filteredList.filter(isSelectableProxyDisplay)
+  const allFilteredSelected = selectableFilteredList.length > 0 && selectableFilteredList.every(p => selectedIds.has(p.proxyId))
+  const someFilteredSelected = selectableFilteredList.some(p => selectedIds.has(p.proxyId))
   const selectedCount = selectedIds.size
 
   const handleToggleAll = () => {
     if (allFilteredSelected) {
       setSelectedIds(prev => {
         const next = new Set(prev)
-        filteredList.forEach(p => next.delete(p.proxyId))
+        selectableFilteredList.forEach(p => next.delete(p.proxyId))
         return next
       })
     } else {
       setSelectedIds(prev => {
         const next = new Set(prev)
-        filteredList.filter(p => !BUILTIN_PROXY_IDS.has(p.proxyId)).forEach(p => next.add(p.proxyId))
+        selectableFilteredList.forEach(p => next.add(p.proxyId))
         return next
       })
     }
   }
 
   const handleToggleOne = (proxyId: string) => {
-    if (BUILTIN_PROXY_IDS.has(proxyId)) return
+    if (!filteredList.some(proxy => proxy.proxyId === proxyId && isSelectableProxyDisplay(proxy))) return
     setSelectedIds(prev => {
       const next = new Set(prev)
       next.has(proxyId) ? next.delete(proxyId) : next.add(proxyId)

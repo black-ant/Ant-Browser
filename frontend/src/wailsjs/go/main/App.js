@@ -570,6 +570,10 @@ export function BrowserProxyTestSpeed(arg1) {
   return window['go']['main']['App']['BrowserProxyTestSpeed'](arg1);
 }
 
+export function BrowserProxyVirtualGroupList() {
+  return window['go']['main']['App']['BrowserProxyVirtualGroupList']();
+}
+
 export function BrowserProxyWarmupBridge(arg1) {
   return window['go']['main']['App']['BrowserProxyWarmupBridge'](arg1);
 }
@@ -580,6 +584,10 @@ export function BrowserProxyWarmupBridgeWithConfig(arg1, arg2) {
 
 export function BrowserRenameTag(arg1, arg2) {
   return window['go']['main']['App']['BrowserRenameTag'](arg1, arg2);
+}
+
+export function BrowserSetCookies(arg1, arg2) {
+  return window['go']['main']['App']['BrowserSetCookies'](arg1, arg2);
 }
 
 export function BrowserSnapshotCreate(arg1, arg2) {
@@ -608,6 +616,10 @@ export function ClearAppLogs() {
 
 export function CreateGroup(arg1) {
   return window['go']['main']['App']['CreateGroup'](arg1);
+}
+
+export function DeleteBrowserProxyVirtualGroup(arg1) {
+  return window['go']['main']['App']['DeleteBrowserProxyVirtualGroup'](arg1);
 }
 
 export function DeleteGroup(arg1) {
@@ -732,6 +744,10 @@ export function SaveAutomationSettings(arg1, arg2) {
 
 export function SaveBrowserProxies(arg1) {
   return window['go']['main']['App']['SaveBrowserProxies'](arg1);
+}
+
+export function SaveBrowserProxyVirtualGroup(arg1) {
+  return window['go']['main']['App']['SaveBrowserProxyVirtualGroup'](arg1);
 }
 
 export function SaveBrowserSettings(arg1) {

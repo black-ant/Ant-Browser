@@ -1,7 +1,7 @@
 import yaml from 'js-yaml'
-import type { BrowserProxy } from '../../types'
+import type { BrowserProxy, BrowserProxyVirtualGroup } from '../../types'
 import type { ClashProxy, ImportCandidate, ProxyDisplayInfo } from './helpers.types'
-import { BUILTIN_PROXIES } from './helpers.types'
+import { buildVirtualProxyGroupFilterValue, BUILTIN_PROXIES } from './helpers.types'
 import { parseChainSocks5Config } from './helpers.chain'
 
 export function ensureBuiltinProxies(proxies: BrowserProxy[]): BrowserProxy[] {
@@ -63,6 +63,59 @@ export function toDisplayList(proxies: BrowserProxy[]): ProxyDisplayInfo[] {
       ...info,
     }
   })
+}
+
+export function toVirtualDisplayList(groups: BrowserProxyVirtualGroup[], proxies: BrowserProxy[]): ProxyDisplayInfo[] {
+  const proxyIds = new Map(
+    proxies
+      .map(proxy => [proxy.proxyId.trim().toLowerCase(), proxy.proxyId.trim()] as const)
+      .filter(([key, value]) => key && value),
+  )
+
+  return groups
+    .filter(group => group.groupName.trim())
+    .map(group => {
+      const virtualGroupId = group.groupId.trim() || group.groupName.trim()
+      const memberGroupNames = new Set(
+        (group.memberGroupNames || [])
+          .map(groupName => groupName.trim().toLowerCase())
+          .filter(Boolean),
+      )
+      const memberProxyIds = Array.from(new Set([
+        ...(group.memberProxyIds || [])
+          .map(proxyId => proxyId.trim())
+          .filter(Boolean)
+          .map(proxyId => proxyIds.get(proxyId.toLowerCase()) || proxyId),
+        ...proxies
+          .filter(proxy => memberGroupNames.has((proxy.groupName || '').trim().toLowerCase()))
+          .map(proxy => proxy.proxyId.trim())
+          .filter(Boolean),
+      ]))
+      const strategy = group.strategy === 'sticky' ? 'sticky' : 'round_robin'
+      const strategyLabel = strategy === 'sticky' ? '代理保持' : '绝对轮询'
+      return {
+        proxyId: `__virtual__:${virtualGroupId}`,
+        proxyName: group.groupName.trim(),
+        proxyConfig: `virtual://${encodeURIComponent(virtualGroupId)}`,
+        speedTestFingerprint: '',
+        preferredKernel: 'auto',
+        groupName: '虚拟节点',
+        sourceId: '',
+        sourceUrl: '',
+        sourceAutoRefresh: false,
+        sourceRefreshIntervalM: 0,
+        sourceLastRefreshAt: '',
+        type: 'virtual',
+        server: `${memberProxyIds.length} 个代理节点 · ${strategyLabel}`,
+        port: 0,
+        isVirtual: true,
+        virtualGroupId: group.groupId.trim(),
+        virtualGroupFilterValue: buildVirtualProxyGroupFilterValue(group.groupId, group.groupName),
+        virtualStrategy: strategy,
+        virtualMemberProxyIds: memberProxyIds,
+        virtualMemberCount: memberProxyIds.length,
+      }
+    })
 }
 
 export function proxyToYaml(proxy: ClashProxy): string {

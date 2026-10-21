@@ -6,6 +6,7 @@ interface ProxyPoolHeaderProps {
   hasURLImportSources: boolean
   onCheckAllIPHealth: () => void
   onOpenImport: () => void
+  onOpenVirtualGroups: () => void
   onOpenCoreDownload: () => void
   onOpenSettings: () => void
   onOpenUsageGuide: () => void
@@ -13,7 +14,7 @@ interface ProxyPoolHeaderProps {
   onTestAll: () => void
   refreshingAllSources: boolean
   testingAll: boolean
-  totalCount: number
+  testableCount: number
 }
 
 export function ProxyPoolHeader({
@@ -22,6 +23,7 @@ export function ProxyPoolHeader({
   hasURLImportSources,
   onCheckAllIPHealth,
   onOpenImport,
+  onOpenVirtualGroups,
   onOpenCoreDownload,
   onOpenSettings,
   onOpenUsageGuide,
@@ -29,7 +31,7 @@ export function ProxyPoolHeader({
   onTestAll,
   refreshingAllSources,
   testingAll,
-  totalCount,
+  testableCount,
 }: ProxyPoolHeaderProps) {
   return (
     <Card padding="none" className="shadow-[var(--shadow-sm)]">
@@ -65,7 +67,7 @@ export function ProxyPoolHeader({
             variant="secondary"
             onClick={onCheckAllIPHealth}
             loading={checkingAllIPHealth}
-            disabled={totalCount === 0}
+            disabled={testableCount === 0}
           >
             检测IP健康
           </Button>
@@ -74,13 +76,14 @@ export function ProxyPoolHeader({
             variant="secondary"
             onClick={onTestAll}
             loading={testingAll}
-            disabled={totalCount === 0}
+            disabled={testableCount === 0}
           >
             测试全部
           </Button>
           <Button size="sm" variant="secondary" onClick={onOpenUsageGuide}>
             使用说明
           </Button>
+          <Button size='sm' variant='secondary' onClick={onOpenVirtualGroups}>虚拟节点</Button>
           <Button size="sm" onClick={onOpenImport}>导入代理</Button>
         </div>
       </div>
