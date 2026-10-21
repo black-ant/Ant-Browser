@@ -8,6 +8,9 @@ import type { TableColumn } from '../../../shared/components/Table'
 
 import type { BrowserCore, BrowserProfile, BrowserProxy, ProxySpeedTestResult } from '../types'
 import { browserProxyTestSpeed, testProxyConnectivity } from '../api'
+import { EventsOn } from '../../../wailsjs/runtime/runtime'
+import { useProxySpeedFreshness } from '../proxySpeedFreshness'
+import { isProxySpeedResultFresh } from '../pages/proxyPool/storage'
 import type { BrowserViewMode } from './BrowserListLayout'
 import { KeywordInlineRow, LaunchCodeCell } from './BrowserListWidgets'
 
@@ -124,24 +127,44 @@ function ProxyInlineActions({
   isBusy,
   onOpenProxyPicker,
   maxWidthClass = 'max-w-[220px]',
+  now,
+  speedResultMaxAgeMs,
 }: {
   profile: BrowserProfile
   proxy?: BrowserProxy
   isBusy: boolean
   onOpenProxyPicker: (profile: BrowserProfile) => void
   maxWidthClass?: string
+  now: number
+  speedResultMaxAgeMs: number
 }) {
   const [testing, setTesting] = useState(false)
   const [speedResult, setSpeedResult] = useState<ProxySpeedTestResult | null>(null)
+  const [speedContextInvalidated, setSpeedContextInvalidated] = useState(false)
+  useEffect(() => {
+    const off = EventsOn('proxy:speed:context:changed', () => {
+      setSpeedResult(null)
+      setSpeedContextInvalidated(true)
+    })
+    return off
+  }, [])
   const historyResult = proxy?.lastTestedAt
+    && !speedContextInvalidated
+    && isProxySpeedResultFresh(proxy.lastTestedAt, now, speedResultMaxAgeMs)
     ? {
         proxyId: proxy.proxyId,
         ok: proxy.lastTestOk ?? false,
         latencyMs: proxy.lastLatencyMs ?? -1,
         error: '',
+        testedAt: proxy.lastTestedAt,
+        fingerprint: proxy.speedTestFingerprint,
       }
     : null
-  const displayResult = speedResult || historyResult
+  const displayResult = !speedContextInvalidated
+    && speedResult
+    && isProxySpeedResultFresh(speedResult.testedAt, now, speedResultMaxAgeMs)
+    ? speedResult
+    : historyResult
   const canTest = !!profile.proxyId || !!profile.proxyConfig.trim()
 
   const handleTest = async () => {
@@ -152,13 +175,16 @@ function ProxyInlineActions({
         ? await browserProxyTestSpeed(profile.proxyId)
         : await testProxyConnectivity(profile.profileId, profile.proxyConfig)
       setSpeedResult(result)
+      setSpeedContextInvalidated(false)
     } catch (error: any) {
       setSpeedResult({
         proxyId: profile.proxyId || profile.profileId,
         ok: false,
         latencyMs: -1,
         error: error?.message || '测速失败',
+        testedAt: new Date().toISOString(),
       })
+      setSpeedContextInvalidated(false)
     } finally {
       setTesting(false)
     }
@@ -339,6 +365,8 @@ function BrowserProfileCard({
   onOpenCopy,
   onOpenProxyPicker,
   onDelete,
+  now,
+  speedResultMaxAgeMs,
 }: {
   profile: BrowserProfile
   proxy: BrowserProxy | undefined
@@ -358,6 +386,8 @@ function BrowserProfileCard({
   onOpenCopy: (profile: BrowserProfile) => void
   onOpenProxyPicker: (profile: BrowserProfile) => void
   onDelete: (profileId: string) => void
+  now: number
+  speedResultMaxAgeMs: number
 }) {
   const markerCode = profile.running ? (profile.windowMarkerCode || '').trim().toUpperCase() : ''
 
@@ -428,6 +458,8 @@ function BrowserProfileCard({
             isBusy={isBusy}
             onOpenProxyPicker={onOpenProxyPicker}
             maxWidthClass="max-w-full"
+            now={now}
+            speedResultMaxAgeMs={speedResultMaxAgeMs}
           />
         </div>
         <div className="flex flex-col gap-0.5">
@@ -477,6 +509,7 @@ export function BrowserProfilesPanel({
   onOpenProxyPicker,
   onDelete,
 }: BrowserProfilesPanelProps) {
+  const { now, speedResultMaxAgeMs } = useProxySpeedFreshness()
   const allSelected = profiles.length > 0 && selectedIds.size === profiles.length
   const partiallySelected = selectedIds.size > 0 && selectedIds.size < profiles.length
   const [openMoreProfileId, setOpenMoreProfileId] = useState<string | null>(null)
@@ -557,7 +590,7 @@ export function BrowserProfilesPanel({
       render: (value, record) => {
         const proxy = proxies.find(item => item.proxyId === value)
         const isBusy = isProfileBusy(record.profileId)
-        return <ProxyInlineActions profile={record} proxy={proxy} isBusy={isBusy} onOpenProxyPicker={onOpenProxyPicker} />
+        return <ProxyInlineActions profile={record} proxy={proxy} isBusy={isBusy} onOpenProxyPicker={onOpenProxyPicker} now={now} speedResultMaxAgeMs={speedResultMaxAgeMs} />
       },
     },
     {
@@ -654,6 +687,8 @@ export function BrowserProfilesPanel({
                 onOpenCopy={onOpenCopy}
                 onOpenProxyPicker={onOpenProxyPicker}
                 onDelete={onDelete}
+                now={now}
+                speedResultMaxAgeMs={speedResultMaxAgeMs}
               />
             </div>
           ))}

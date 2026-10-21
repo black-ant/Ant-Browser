@@ -1,4 +1,4 @@
-﻿export type SpeedResult = { ok: boolean; latencyMs: number; engine?: string; error: string }
+export type SpeedResult = { ok: boolean; latencyMs: number; engine?: string; error: string; testedAt?: string; fingerprint?: string }
 
 export type ChainSocksHop = {
   protocol?: 'http' | 'socks5'

@@ -1,16 +1,18 @@
 import { AlertCircle, CheckCircle2, Download, ExternalLink, FolderOpen, History, Power, Puzzle, RefreshCw, RotateCw, Search, Settings, Trash2, Users } from 'lucide-react'
 import { Badge, Button, Card, Input } from '../../../shared/components'
 import type { BrowserExtension, BrowserExtensionLookupResult, BrowserProxy } from '../types'
+import { useProxySpeedFreshness } from '../proxySpeedFreshness'
 import { extensionStoreURL, formatExtensionSource, formatExtensionTime, getExtensionManifestMeta, getProxySpeedState } from './extensionManagementUtils'
 
 export function ProxyStatePill({ useProxy, proxy }: { useProxy: boolean; proxy?: BrowserProxy }) {
+  const { now, speedResultMaxAgeMs } = useProxySpeedFreshness()
   if (!useProxy) {
     return <span className="rounded-full bg-[var(--color-bg-muted)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">直连下载</span>
   }
   if (!proxy) {
     return <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">代理未选择</span>
   }
-  const state = getProxySpeedState(proxy)
+  const state = getProxySpeedState(proxy, now, speedResultMaxAgeMs)
   const status = state?.ok ? `${state.latencyMs}ms` : state ? '不可用' : '未测试'
   return (
     <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">

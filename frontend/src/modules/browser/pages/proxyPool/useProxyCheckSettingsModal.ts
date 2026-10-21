@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react'
 import { toast } from '../../../../shared/components'
 import { createDefaultProxyCheckSettings, fetchProxyCheckSettings, saveProxyCheckSettings } from '../../api'
+import { notifyProxySpeedResultSettingsChanged } from '../../proxySpeedFreshness'
 import type { ProxyCheckSettings } from '../../types'
 
 export function useProxyCheckSettingsModal() {
@@ -21,6 +22,7 @@ export function useProxyCheckSettingsModal() {
     try {
       const targets = JSON.parse(checkTargetsText || '[]')
       await saveProxyCheckSettings({ ...checkSettings, targets })
+      notifyProxySpeedResultSettingsChanged()
       toast.success('检测设置已保存')
       setCheckSettingsOpen(false)
       return true

@@ -44,3 +44,29 @@ func TestProxySpeedResultProvenancePersistsAndInvalidates(t *testing.T) {
 		t.Fatalf("invalidated speed result was not cleared: %#v", proxies[0])
 	}
 }
+
+func TestSQLiteProxyDAOReplaceAllReplacesTheWholeList(t *testing.T) {
+	db, err := database.NewDB(filepath.Join(t.TempDir(), "replace-all.db"))
+	if err != nil {
+		t.Fatalf("NewDB returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Migrate(); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	dao := NewSQLiteProxyDAO(db.GetConn())
+	if err := dao.Upsert(Proxy{ProxyId: "old", ProxyName: "Old", ProxyConfig: "http://old:8080"}); err != nil {
+		t.Fatalf("Upsert returned error: %v", err)
+	}
+	if err := dao.ReplaceAll([]Proxy{{ProxyId: "new", ProxyName: "New", ProxyConfig: "http://new:8080"}}); err != nil {
+		t.Fatalf("ReplaceAll returned error: %v", err)
+	}
+	proxies, err := dao.List()
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(proxies) != 1 || proxies[0].ProxyId != "new" {
+		t.Fatalf("proxies after ReplaceAll = %#v, want new only", proxies)
+	}
+}

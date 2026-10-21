@@ -8,6 +8,53 @@ import (
 	"testing"
 )
 
+func TestBackupMergeDatabaseAcceptsSourceWithoutVirtualProxyGroupTable(t *testing.T) {
+	root := t.TempDir()
+	targetDB, err := database.NewDB(filepath.Join(root, "target.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = targetDB.Close() })
+	if err := targetDB.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+
+	sourceDB, err := database.NewDB(filepath.Join(root, "old.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceDB.Migrate(); err != nil {
+		_ = sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`DROP TABLE browser_proxy_virtual_groups`); err != nil {
+		_ = sourceDB.Close()
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config)
+VALUES ('old-proxy', 'Old Proxy', 'http://127.0.0.1:8080')`); err != nil {
+		_ = sourceDB.Close()
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(root, "old.db")
+	if err := sourceDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp(root)
+	app.db = targetDB
+	if _, err := app.backupMergeDatabaseFromSource(sourcePath, nil, &backupMergeStats{}); err != nil {
+		t.Fatalf("old database without virtual groups failed: %v", err)
+	}
+	var count int
+	if err := targetDB.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_proxies WHERE proxy_id = 'old-proxy'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("old proxy count = %d, want 1", count)
+	}
+}
+
 func TestBackupMergeDatabasePreservesExtendedFieldsAndNormalizesPaths(t *testing.T) {
 	root := t.TempDir()
 	targetPath := filepath.Join(root, "target.db")

@@ -36,7 +36,7 @@ bash publish/mac/publish-mac.sh --arch amd64
 The version defaults to `wails.json`. Override it for a package-only build with:
 
 ```bash
-bash publish/mac/publish-mac.sh --arch arm64 --version 1.8.0
+bash publish/mac/publish-mac.sh --arch arm64 --version 1.9.0
 ```
 
 Available options:

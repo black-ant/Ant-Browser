@@ -318,6 +318,7 @@ func backupMergeConfig(current, incoming *config.Config) *config.Config {
 	)
 	merged.Browser.Cores = backupMergeCores(merged.Browser.Cores, incoming.Browser.Cores)
 	merged.Browser.Proxies = backupMergeProxies(merged.Browser.Proxies, incoming.Browser.Proxies)
+	merged.Browser.ProxyVirtualGroups = backupMergeProxyVirtualGroups(merged.Browser.ProxyVirtualGroups, incoming.Browser.ProxyVirtualGroups)
 	merged.Browser.Profiles = backupMergeProfiles(merged.Browser.Profiles, incoming.Browser.Profiles)
 	return &merged
 }
@@ -407,6 +408,44 @@ func backupMergeProxies(a, b []config.BrowserProxy) []config.BrowserProxy {
 		}
 		if cfgKey != "" {
 			seenCfg[cfgKey] = struct{}{}
+		}
+		out = append(out, item)
+	}
+	for _, item := range a {
+		appendOne(item)
+	}
+	for _, item := range b {
+		appendOne(item)
+	}
+	return out
+}
+
+func backupMergeProxyVirtualGroups(a, b []config.BrowserProxyVirtualGroup) []config.BrowserProxyVirtualGroup {
+	seenID := map[string]struct{}{}
+	seenName := map[string]struct{}{}
+	out := make([]config.BrowserProxyVirtualGroup, 0, len(a)+len(b))
+	appendOne := func(item config.BrowserProxyVirtualGroup) {
+		item = browser.NormalizeProxyVirtualGroup(browser.ProxyVirtualGroup(item))
+		idKey := strings.ToLower(strings.TrimSpace(item.GroupId))
+		nameKey := strings.ToLower(strings.TrimSpace(item.GroupName))
+		if idKey == "" && nameKey == "" {
+			return
+		}
+		if idKey != "" {
+			if _, ok := seenID[idKey]; ok {
+				return
+			}
+		}
+		if nameKey != "" {
+			if _, ok := seenName[nameKey]; ok {
+				return
+			}
+		}
+		if idKey != "" {
+			seenID[idKey] = struct{}{}
+		}
+		if nameKey != "" {
+			seenName[nameKey] = struct{}{}
 		}
 		out = append(out, item)
 	}

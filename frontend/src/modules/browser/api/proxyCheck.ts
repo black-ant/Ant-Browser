@@ -4,6 +4,7 @@ import { getBindings } from './runtime'
 export function createDefaultProxyCheckSettings(): ProxyCheckSettings {
   return {
     bridgeStartTimeoutMs: 15000,
+    speedIntervalMinutes: 30,
     failureRetryMinutes: 5,
     speedConcurrency: 5,
     speedTargetId: '',

@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/browser"
 	"errors"
+	"fmt"
 	"os/exec"
 	"sort"
 	"strings"
@@ -172,12 +173,20 @@ func (a *App) backupReloadAfterMutation() error {
 		a.singboxMgr.Config = a.config
 	}
 
-	a.migrateToSQLite()
+	if err := a.migrateToSQLite(); err != nil {
+		a.resumeBackgroundTasks()
+		a.ensureSpeedScheduler()
+		return fmt.Errorf(`备份变更后的数据库迁移失败: %w`, err)
+	}
 	if a.browserMgr != nil {
 		a.browserMgr.InitData()
 	}
 	a.autoDetectCores()
-	a.loadProxies()
+	if err := a.loadProxies(); err != nil {
+		a.resumeBackgroundTasks()
+		a.ensureSpeedScheduler()
+		return fmt.Errorf(`备份变更后的代理数据加载失败: %w`, err)
+	}
 
 	if a.launchCodeSvc != nil {
 		_ = a.launchCodeSvc.LoadAll()

@@ -259,6 +259,7 @@ export interface ProxyCheckTarget {
 
 export interface ProxyCheckSettings {
   bridgeStartTimeoutMs: number
+  speedIntervalMinutes: number
   failureRetryMinutes: number
   speedConcurrency: number
   speedTargetId: string
@@ -385,6 +386,7 @@ export interface ProxySpeedTestResult {
   latencyMs: number
   engine?: string
   error: string
+  testedAt?: string
   fingerprint?: string
 }
 

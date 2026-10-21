@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/black-ant/Ant-Browser/releases)
 [![Issues](https://img.shields.io/github/issues/black-ant/Ant-Browser)](https://github.com/black-ant/Ant-Browser/issues)
 
-当前版本：`1.8.1` · 2026-09-14
+当前版本：`1.9.0` · 2026-10-14
 
 ## 推荐内核项目
 
@@ -422,4 +422,4 @@ Windows 升级或卸载旧版本时，安装器会先将旧安装目录中的 `b
 
 ## License
 
-当前仓库暂未附带独立的 `LICENSE` 文件，后续会补充。
+本项目源代码使用 [PolyForm Noncommercial License 1.0.0](LICENSE)。该许可仅授予非商业用途，商业使用不在许可范围内。第三方依赖和运行时文件按各自许可证执行。

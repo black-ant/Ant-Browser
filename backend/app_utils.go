@@ -231,8 +231,11 @@ func (a *App) scanChromeDir(chromeRoot string) []browser.Core {
 // ============================================================================
 
 // loadProxies 启动时加载代理数据。
-// 优先从 ProxyDAO（SQLite）读取；若 DAO 未注入则降级到 proxies.yaml，最后降级到 config.yaml。
-func (a *App) loadProxies() {
+// DAO 已注入时只信任数据库；只有未注入 DAO 时才读取旧文件。
+func (a *App) loadProxies() error {
+	if a == nil || a.config == nil || a.browserMgr == nil {
+		return fmt.Errorf(`代理数据加载上下文不可用`)
+	}
 	log := logger.New("Browser")
 
 	builtins := []browser.Proxy{
@@ -259,12 +262,12 @@ func (a *App) loadProxies() {
 	if a.browserMgr.ProxyDAO != nil {
 		list, err := a.browserMgr.ProxyDAO.List()
 		if err != nil {
-			log.Error("从数据库读取代理失败", logger.F("error", err.Error()))
-		} else if len(list) > 0 {
-			a.config.Browser.Proxies = list
-			log.Debug("代理数据从数据库加载完成", logger.F("count", len(list)))
-			return
+			return fmt.Errorf(`从数据库读取代理失败: %w`, err)
 		}
+		proxies := ensureBuiltins(list)
+		a.config.Browser.Proxies = proxies
+		log.Debug("代理数据从数据库加载完成", logger.F("count", len(proxies)))
+		return nil
 	}
 
 	// 降级：从 proxies.yaml 加载
@@ -276,11 +279,12 @@ func (a *App) loadProxies() {
 		proxies := ensureBuiltins(loaded)
 		a.config.Browser.Proxies = proxies
 		log.Info("代理数据从 proxies.yaml 加载完成", logger.F("count", len(proxies)))
-		return
+		return nil
 	}
 
 	// 最终降级：使用 config.yaml 中的数据
 	proxies := ensureBuiltins(a.config.Browser.Proxies)
 	a.config.Browser.Proxies = proxies
 	log.Info("代理数据使用 config.yaml 默认值", logger.F("count", len(proxies)))
+	return nil
 }

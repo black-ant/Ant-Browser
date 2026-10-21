@@ -21,6 +21,7 @@ func (dao *proxySpeedSchedulerTestDAO) List() ([]Proxy, error)              { re
 func (dao *proxySpeedSchedulerTestDAO) ListByGroup(string) ([]Proxy, error) { return nil, nil }
 func (dao *proxySpeedSchedulerTestDAO) ListGroups() ([]string, error)       { return nil, nil }
 func (dao *proxySpeedSchedulerTestDAO) Upsert(Proxy) error                  { return nil }
+func (dao *proxySpeedSchedulerTestDAO) ReplaceAll([]Proxy) error            { return nil }
 func (dao *proxySpeedSchedulerTestDAO) Delete(string) error                 { return nil }
 func (dao *proxySpeedSchedulerTestDAO) DeleteAll() error                    { return nil }
 func (dao *proxySpeedSchedulerTestDAO) UpdateSpeedResult(proxyID string, _ bool, _ int64, _ string) error {
@@ -87,6 +88,8 @@ func (dao *blockingProxySpeedDAO) ListByGroup(string) ([]Proxy, error) { return 
 func (dao *blockingProxySpeedDAO) ListGroups() ([]string, error) { return nil, nil }
 
 func (dao *blockingProxySpeedDAO) Upsert(Proxy) error { return nil }
+
+func (dao *blockingProxySpeedDAO) ReplaceAll([]Proxy) error { return nil }
 
 func (dao *blockingProxySpeedDAO) Delete(string) error { return nil }
 

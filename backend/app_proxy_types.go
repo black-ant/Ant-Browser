@@ -19,7 +19,7 @@ type ProxyTestResult struct {
 	Engine        string `json:"engine"`
 	Error         string `json:"error"`
 	Fingerprint   string `json:"fingerprint"`
-	testedAt      string
+	TestedAt      string `json:"testedAt"`
 	fingerprint   string
 	connectorType string
 }

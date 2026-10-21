@@ -9,16 +9,28 @@ import (
 	"time"
 )
 
-const dynamicProxyMaxTestAge = browser.DefaultProxySpeedInterval
+const defaultDynamicProxyMaxTestAge = browser.DefaultProxySpeedInterval
+
+func (a *App) dynamicProxyMaxTestAge() time.Duration {
+	if a == nil {
+		return defaultDynamicProxyMaxTestAge
+	}
+	maxAge := a.proxySpeedResultMaxAge()
+	if maxAge <= 0 {
+		return defaultDynamicProxyMaxTestAge
+	}
+	return maxAge
+}
 
 func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *BrowserProfile, proxies []BrowserProxy) (string, profileProxyBridgeRef, bool, error) {
 	proxies = a.proxySpeedResultsWithCurrentContext(proxies)
+	maxTestAge := a.dynamicProxyMaxTestAge()
 	groupName := browser.NormalizeProxyGroupName(profile.ProxyGroupName)
 	virtualGroup, isVirtualGroup := a.findProxyVirtualGroup(groupName)
-	candidates := selectDynamicBrowserProxyCandidates(proxies, groupName)
+	candidates := selectDynamicBrowserProxyCandidates(proxies, groupName, maxTestAge)
 	if isVirtualGroup {
 		virtualGroup = browser.ResolveProxyVirtualGroup(virtualGroup, proxies)
-		candidates = selectVirtualDynamicBrowserProxyCandidates(proxies, virtualGroup)
+		candidates = selectVirtualDynamicBrowserProxyCandidates(proxies, virtualGroup, maxTestAge)
 	}
 	log := logger.New("Browser")
 	if len(candidates) == 0 {
@@ -26,7 +38,7 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 		if groupName != "" {
 			groupLabel = fmt.Sprintf("分组「%s」", groupName)
 		}
-		startErr := fmt.Errorf("实例启动失败：动态代理没有可用节点（%s）。请先对代理池节点测速，并确保至少一个节点在 %d 分钟内测速成功。", groupLabel, int(dynamicProxyMaxTestAge.Minutes()))
+		startErr := fmt.Errorf("实例启动失败：动态代理没有可用节点（%s）。请先对代理池节点测速，并确保至少一个节点在 %d 分钟内测速成功。", groupLabel, int(maxTestAge.Minutes()))
 		profile.LastError = startErr.Error()
 		return "", profileProxyBridgeRef{}, false, startErr
 	}
@@ -101,7 +113,7 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 	return "", profileProxyBridgeRef{}, false, startErr
 }
 
-func selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group browser.ProxyVirtualGroup) []BrowserProxy {
+func selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group browser.ProxyVirtualGroup, maxTestAge time.Duration) []BrowserProxy {
 	memberIDs := make(map[string]struct{})
 	for _, member := range browser.ExpandProxyVirtualGroup(group, proxies) {
 		proxyID := strings.ToLower(strings.TrimSpace(member.ProxyId))
@@ -113,7 +125,7 @@ func selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group br
 		return []BrowserProxy{}
 	}
 
-	available := selectDynamicBrowserProxyCandidates(proxies, "")
+	available := selectDynamicBrowserProxyCandidates(proxies, "", maxTestAge)
 	candidates := make([]BrowserProxy, 0, len(memberIDs))
 	for _, candidate := range available {
 		if _, exists := memberIDs[strings.ToLower(strings.TrimSpace(candidate.ProxyId))]; exists {
@@ -123,7 +135,10 @@ func selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group br
 	return candidates
 }
 
-func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName string) []BrowserProxy {
+func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName string, maxTestAge time.Duration) []BrowserProxy {
+	if maxTestAge <= 0 {
+		maxTestAge = defaultDynamicProxyMaxTestAge
+	}
 	groupName = browser.NormalizeProxyGroupName(groupName)
 	checkedAt := time.Now()
 	candidates := make([]BrowserProxy, 0, len(proxies))
@@ -135,7 +150,7 @@ func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName strin
 		if groupName != "" && !strings.EqualFold(strings.TrimSpace(item.GroupName), groupName) {
 			continue
 		}
-		if !item.LastTestOk || item.LastLatencyMs < 0 || !isDynamicProxyTestFresh(item.LastTestedAt, checkedAt) {
+		if !item.LastTestOk || item.LastLatencyMs < 0 || !isDynamicProxyTestFresh(item.LastTestedAt, checkedAt, maxTestAge) {
 			continue
 		}
 		candidates = append(candidates, item)
@@ -152,11 +167,14 @@ func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName strin
 	return candidates
 }
 
-func isDynamicProxyTestFresh(testedAt string, checkedAt time.Time) bool {
+func isDynamicProxyTestFresh(testedAt string, checkedAt time.Time, maxTestAge time.Duration) bool {
 	testedTime, err := time.Parse(time.RFC3339, strings.TrimSpace(testedAt))
 	if err != nil {
 		return false
 	}
 	age := checkedAt.Sub(testedTime)
-	return age >= 0 && age <= dynamicProxyMaxTestAge
+	if maxTestAge <= 0 {
+		maxTestAge = defaultDynamicProxyMaxTestAge
+	}
+	return age >= 0 && age <= maxTestAge
 }

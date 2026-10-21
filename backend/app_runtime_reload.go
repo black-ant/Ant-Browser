@@ -17,12 +17,20 @@ func (a *App) ReloadConfig() error {
 		return fmt.Errorf("重载配置文件失败: %w", err)
 	}
 
+	previousConfig := a.config
 	a.config = cfg
 	a.applyRuntimeConfig(cfg.Runtime)
 	if a.browserMgr != nil {
 		a.browserMgr.Config = cfg
 		a.browserMgr.ListCores()
-		a.loadProxies()
+		if err := a.loadProxies(); err != nil {
+			a.config = previousConfig
+			a.browserMgr.Config = previousConfig
+			if previousConfig != nil {
+				a.applyRuntimeConfig(previousConfig.Runtime)
+			}
+			return err
+		}
 		a.reconcileProfileProxyBindings()
 	}
 	if a.xrayMgr != nil {
@@ -44,6 +52,7 @@ func (a *App) ReloadConfig() error {
 	if a.automationMgr != nil {
 		a.automationMgr.SetConfig(cfg)
 	}
+	a.restartSpeedScheduler()
 
 	log.Info("前端触发配置重载成功")
 	return nil

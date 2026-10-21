@@ -20,6 +20,7 @@ func ListProxiesWithFallback(proxyDAO ProxyDAO, fallback []Proxy) []Proxy {
 		if list, err := proxyDAO.List(); err == nil {
 			return ensureBuiltinDirectProxy(list)
 		}
+		return ensureBuiltinDirectProxy(nil)
 	}
 	return ensureBuiltinDirectProxy(append([]Proxy{}, fallback...))
 }
@@ -38,6 +39,7 @@ func ListProxiesByGroupWithFallback(proxyDAO ProxyDAO, groupName string, fallbac
 		if list, err := proxyDAO.ListByGroup(groupName); err == nil {
 			return list
 		}
+		return nil
 	}
 
 	var result []Proxy
@@ -51,9 +53,10 @@ func ListProxiesByGroupWithFallback(proxyDAO ProxyDAO, groupName string, fallbac
 
 func LatestProxiesWithFallback(proxyDAO ProxyDAO, fallback []Proxy) []Proxy {
 	if proxyDAO != nil {
-		if list, err := proxyDAO.List(); err == nil && len(list) > 0 {
+		if list, err := proxyDAO.List(); err == nil {
 			return ensureBuiltinDirectProxy(list)
 		}
+		return ensureBuiltinDirectProxy(nil)
 	}
 	return ensureBuiltinDirectProxy(fallback)
 }

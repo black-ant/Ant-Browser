@@ -22,9 +22,11 @@ const (
 )
 
 const (
+	DefaultProxySpeedIntervalMinutes      = 30
 	DefaultProxyFailureRetryMinutes       = 5
 	DefaultProxySpeedConcurrency          = 5
 	DefaultProxyScheduledSpeedConcurrency = 5
+	MaxProxySpeedIntervalMinutes          = 24 * 60
 	MaxProxySpeedConcurrency              = 10
 )
 
@@ -161,6 +163,11 @@ func normalizeConfig(config *Config) {
 	}
 	if config.ProxyCheck.BridgeStartTimeoutMs <= 0 {
 		config.ProxyCheck.BridgeStartTimeoutMs = defaultConfig.ProxyCheck.BridgeStartTimeoutMs
+	}
+	if config.ProxyCheck.SpeedIntervalMinutes <= 0 {
+		config.ProxyCheck.SpeedIntervalMinutes = defaultConfig.ProxyCheck.SpeedIntervalMinutes
+	} else if config.ProxyCheck.SpeedIntervalMinutes > MaxProxySpeedIntervalMinutes {
+		config.ProxyCheck.SpeedIntervalMinutes = MaxProxySpeedIntervalMinutes
 	}
 	if config.ProxyCheck.FailureRetryMinutes <= 0 {
 		config.ProxyCheck.FailureRetryMinutes = defaultConfig.ProxyCheck.FailureRetryMinutes
@@ -324,6 +331,7 @@ func DefaultConfig() *Config {
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,
+			SpeedIntervalMinutes: DefaultProxySpeedIntervalMinutes,
 			FailureRetryMinutes:  DefaultProxyFailureRetryMinutes,
 			SpeedConcurrency:     DefaultProxySpeedConcurrency,
 			SpeedTargetID:        "",

@@ -61,6 +61,7 @@ type Config struct {
 }
 
 type ProxyCheckConfig struct {
+	SpeedIntervalMinutes int                `yaml:"speed_interval_minutes" json:"speedIntervalMinutes"`
 	BridgeStartTimeoutMs int                `yaml:"bridge_start_timeout_ms" json:"bridgeStartTimeoutMs"`
 	FailureRetryMinutes  int                `yaml:"failure_retry_minutes" json:"failureRetryMinutes"`
 	SpeedConcurrency     int                `yaml:"speed_concurrency" json:"speedConcurrency"`

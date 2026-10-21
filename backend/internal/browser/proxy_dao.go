@@ -9,6 +9,7 @@ import (
 // ProxyDAO 代理列表持久化接口
 type ProxyDAO interface {
 	List() ([]Proxy, error)
+	ReplaceAll(proxies []Proxy) error
 	ListByGroup(groupName string) ([]Proxy, error)
 	ListGroups() ([]string, error)
 	Upsert(proxy Proxy) error
@@ -88,12 +89,23 @@ func (d *SQLiteProxyDAO) ListGroups() ([]string, error) {
 
 // Upsert 新增或更新代理
 func (d *SQLiteProxyDAO) Upsert(proxy Proxy) error {
+	if err := upsertProxy(d.db, proxy); err != nil {
+		return err
+	}
+	return nil
+}
+
+type proxySQLExecutor interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func upsertProxy(exec proxySQLExecutor, proxy Proxy) error {
 	now := time.Now().Format(time.RFC3339)
 	autoRefreshInt := 0
 	if proxy.SourceAutoRefresh {
 		autoRefreshInt = 1
 	}
-	_, err := d.db.Exec(`
+	_, err := exec.Exec(`
 		INSERT INTO browser_proxies (
 		  proxy_id, proxy_name, proxy_config, preferred_kernel, dns_servers, group_name,
 		  source_id, source_url, source_name_prefix, source_auto_refresh, source_refresh_interval_m, source_last_refresh_at,
@@ -119,6 +131,27 @@ func (d *SQLiteProxyDAO) Upsert(proxy Proxy) error {
 	)
 	if err != nil {
 		return fmt.Errorf("保存代理失败: %w", err)
+	}
+	return nil
+}
+
+func (d *SQLiteProxyDAO) ReplaceAll(proxies []Proxy) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM browser_proxies`); err != nil {
+		return err
+	}
+	for _, proxy := range proxies {
+		if err := upsertProxy(tx, proxy); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }

@@ -309,6 +309,30 @@ func TestBackupMergeConfigKeepsPathsAndQueriesCaseSensitive(t *testing.T) {
 	}
 }
 
+func TestBackupMergeConfigKeepsVirtualProxyGroups(t *testing.T) {
+	current := config.DefaultConfig()
+	current.Browser.ProxyVirtualGroups = []config.BrowserProxyVirtualGroup{{
+		GroupId:        "current-id",
+		GroupName:      "Current Pool",
+		Strategy:       "sticky",
+		MemberProxyIds: []string{"current-proxy"},
+	}}
+	incoming := config.DefaultConfig()
+	incoming.Browser.ProxyVirtualGroups = []config.BrowserProxyVirtualGroup{{
+		GroupId:        "incoming-id",
+		GroupName:      "Imported Pool",
+		MemberProxyIds: []string{"incoming-proxy"},
+	}}
+
+	merged := backupMergeConfig(current, incoming)
+	if len(merged.Browser.ProxyVirtualGroups) != 2 {
+		t.Fatalf("virtual proxy groups = %#v, want current and incoming groups", merged.Browser.ProxyVirtualGroups)
+	}
+	if merged.Browser.ProxyVirtualGroups[0].GroupName != "Current Pool" || merged.Browser.ProxyVirtualGroups[1].GroupName != "Imported Pool" {
+		t.Fatalf("virtual proxy group order/content = %#v", merged.Browser.ProxyVirtualGroups)
+	}
+}
+
 func containsBookmarkURL(bookmarks []config.BrowserBookmark, expectedURL string) bool {
 	for _, bookmark := range bookmarks {
 		if bookmarkURLKey(bookmark.URL) == bookmarkURLKey(expectedURL) {

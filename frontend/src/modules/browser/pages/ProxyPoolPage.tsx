@@ -162,9 +162,13 @@ export function ProxyPoolPage() {
   })
 
   const {
+    now,
+    speedResultMaxAgeMs,
     latencyMap,
     latencyEngineMap,
     latencyErrorMap,
+    latencyFingerprintMap,
+    latencyTestedAtMap,
     testingAll,
     ipHealthMap,
     checkingIPHealthIds,
@@ -260,6 +264,10 @@ export function ProxyPoolPage() {
     sortColumn,
     sortOrder,
     latencyMap,
+    latencyFingerprintMap,
+    latencyTestedAtMap,
+    now,
+    speedResultMaxAgeMs,
     ipHealthMap,
   })
 

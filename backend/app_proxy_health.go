@@ -15,7 +15,9 @@ import (
 func (a *App) BrowserProxyTestSpeed(proxyId string) ProxyTestResult {
 	proxies := a.getLatestProxies()
 	connectorType := a.defaultProxyConnectorType()
-	return a.testSharedProxySpeedWithOptions(proxyId, true, proxies, connectorType, a.proxySpeedTestConfig())
+	result := a.testSharedProxySpeedWithOptions(proxyId, true, proxies, connectorType, a.proxySpeedTestConfig())
+	a.emitRuntimeEvent("proxy:speed:result", result)
+	return result
 }
 
 // BrowserProxyBatchTestSpeed 批量并发测速，concurrency 控制并发数（默认 5，最高 10）。

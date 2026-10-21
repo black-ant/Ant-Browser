@@ -32,7 +32,7 @@ type ProxySpeedScheduler struct {
 }
 
 const (
-	DefaultProxySpeedInterval     = 30 * time.Minute
+	DefaultProxySpeedInterval     = time.Duration(config.DefaultProxySpeedIntervalMinutes) * time.Minute
 	DefaultProxySpeedInitialDelay = 2 * time.Minute
 	DefaultProxySpeedConcurrency  = config.DefaultProxyScheduledSpeedConcurrency
 	DefaultProxySpeedFailureRetry = 5 * time.Minute

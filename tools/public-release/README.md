@@ -3,7 +3,7 @@ Public release tools.
 - `publish-public.bat`: one-click publish to public `master`
 - `publish-public.ps1`: manual entrypoint
 
-发布前请确认 `wails.json`、`frontend/package.json` 和 `frontend/package-lock.json` 使用同一个版本号。当前版本为 `1.8.0`。
+发布前请确认 `wails.json`、`frontend/package.json` 和 `frontend/package-lock.json` 使用同一个版本号。当前版本为 `1.9.0`。
 
 Release snapshot safety:
 
@@ -14,13 +14,13 @@ Usage:
 
 ```bat
 tools\public-release\publish-public.bat
-tools\public-release\publish-public.bat -Version 1.8.0
+tools\public-release\publish-public.bat -Version 1.9.0
 ```
 
 Custom commit message:
 
 ```bat
-tools\public-release\publish-public.bat -CommitMessage "release: public snapshot 1.8.0"
+tools\public-release\publish-public.bat -CommitMessage "release: public snapshot 1.9.0"
 ```
 
 Or load a multi-line message from a file:

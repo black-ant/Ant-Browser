@@ -467,10 +467,16 @@ export function ExtensionManagementPage() {
           }
         }}
         onProxyTested={(proxyId, result) => {
-          const testedAt = new Date().toISOString()
+          const testedAt = result.testedAt || new Date().toISOString()
           setProxies((current) => current.map((proxy) => (
             proxy.proxyId === proxyId
-              ? { ...proxy, lastTestOk: result.ok, lastLatencyMs: result.ok ? result.latencyMs : -1, lastTestedAt: testedAt }
+              ? {
+                  ...proxy,
+                  lastTestOk: result.ok,
+                  lastLatencyMs: result.ok ? result.latencyMs : -1,
+                  lastTestedAt: testedAt,
+                  speedTestFingerprint: result.fingerprint || proxy.speedTestFingerprint,
+                }
               : proxy
           )))
         }}

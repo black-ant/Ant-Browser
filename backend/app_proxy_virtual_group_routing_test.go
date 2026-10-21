@@ -14,7 +14,7 @@ func TestSelectVirtualDynamicBrowserProxyCandidates(t *testing.T) {
 		{ProxyId: "proxy-fast", ProxyConfig: "http://fast:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 100},
 	}
 	group := browser.ProxyVirtualGroup{MemberProxyIds: []string{"proxy-slow", "proxy-failed", "proxy-fast"}}
-	candidates := selectVirtualDynamicBrowserProxyCandidates(proxies, group)
+	candidates := selectVirtualDynamicBrowserProxyCandidates(proxies, group, defaultDynamicProxyMaxTestAge)
 	if len(candidates) != 2 || candidates[0].ProxyId != "proxy-fast" || candidates[1].ProxyId != "proxy-slow" {
 		t.Fatalf("virtual candidates = %#v, want healthy members ordered by latency", candidates)
 	}

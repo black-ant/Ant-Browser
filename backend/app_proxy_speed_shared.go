@@ -1,11 +1,11 @@
 package backend
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/proxy"
 )
@@ -51,19 +51,27 @@ func (a *App) testSharedProxySpeedWithOptions(proxyID string, forceRefresh bool,
 	result := a.withProxySpeedSlot(func() ProxyTestResult {
 		raw := a.testProxySpeedWithConnector(proxyID, proxies, connectorType, speedConfig)
 		item := buildProxyTestResult(raw)
-		item.testedAt = time.Now().Format(time.RFC3339)
+		item.TestedAt = time.Now().Format(time.RFC3339)
 		item.fingerprint = fingerprint
 		item.Fingerprint = fingerprint
 		item.connectorType = connectorType
 		return item
 	})
-	if result.testedAt == "" {
-		result.testedAt = time.Now().Format(time.RFC3339)
+	if result.TestedAt == "" {
+		result.TestedAt = time.Now().Format(time.RFC3339)
 		result.fingerprint = fingerprint
 		result.Fingerprint = fingerprint
 		result.connectorType = connectorType
 	}
-	_ = a.persistProxySpeedResult(result)
+	if err := a.persistProxySpeedResult(result); err != nil {
+		result.Ok = false
+		result.LatencyMs = -1
+		if strings.TrimSpace(result.Error) == "" {
+			result.Error = fmt.Sprintf(`测速结果保存失败: %v`, err)
+		} else {
+			result.Error = fmt.Sprintf(`%s；测速结果保存失败: %v`, result.Error, err)
+		}
+	}
 
 	a.proxySpeedMu.Lock()
 	task.result = result
@@ -89,7 +97,7 @@ func (a *App) readFreshProxySpeedResult(proxyID string, fingerprint string, conn
 		}
 		return ProxyTestResult{
 			ProxyId: proxyID, Ok: item.LastTestOk, LatencyMs: item.LastLatencyMs,
-			Engine: item.LastTestEngine, Fingerprint: fingerprint, testedAt: item.LastTestedAt,
+			Engine: item.LastTestEngine, Fingerprint: fingerprint, TestedAt: item.LastTestedAt,
 			fingerprint: item.LastTestFingerprint, connectorType: item.LastTestConnectorType,
 		}, true
 	}
@@ -107,7 +115,7 @@ func isProxySpeedResultFresh(testedAt string, checkedAt time.Time, maxAge time.D
 
 func (a *App) persistProxySpeedResult(result ProxyTestResult) error {
 	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil || strings.TrimSpace(result.ProxyId) == "" {
-		return nil
+		return fmt.Errorf(`代理测速结果持久化不可用`)
 	}
 	currentProxies := a.getLatestProxies()
 	currentConnectorType := a.defaultProxyConnectorType()
@@ -115,7 +123,7 @@ func (a *App) persistProxySpeedResult(result ProxyTestResult) error {
 	if result.fingerprint == "" || result.fingerprint != currentFingerprint || result.connectorType != currentConnectorType {
 		return nil
 	}
-	testedAt := result.testedAt
+	testedAt := result.TestedAt
 	if testedAt == "" {
 		testedAt = time.Now().Format(time.RFC3339)
 	}
@@ -199,5 +207,6 @@ func (a *App) proxySpeedConcurrencyLimit() int {
 }
 
 func (a *App) proxySpeedResultMaxAge() time.Duration {
-	return browser.DefaultProxySpeedInterval
+	interval, _, _ := a.proxySpeedSchedule()
+	return interval
 }

@@ -56,9 +56,17 @@ func (a *App) startup(ctx context.Context) {
 	a.db = db
 	if err := db.Migrate(); err != nil {
 		log.Error("数据库迁移失败", logger.F("error", err))
+		_ = db.Close()
+		runtime.LogFatal(ctx, fmt.Sprintf("数据库迁移失败: %v", err))
+		return
 	}
 
-	a.startupInitManagers(cfg, db)
+	if err := a.startupInitManagers(cfg, db); err != nil {
+		log.Error("浏览器数据初始化失败", logger.F("error", err))
+		_ = db.Close()
+		runtime.LogFatal(ctx, fmt.Sprintf("浏览器数据初始化失败: %v", err))
+		return
+	}
 	a.startupInitLaunchCode(log)
 	a.startupInitLaunchServer(log)
 	a.startupInitAutomation()
@@ -130,7 +138,7 @@ func (a *App) startupInitDatabase(cfg *config.Config) (*database.DB, error) {
 	return database.NewDB(a.resolveAppPath(cfg.Database.SQLite.Path))
 }
 
-func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
+func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) error {
 	a.browserMgr = browser.NewManager(cfg, a.appRoot)
 	a.browserMgr.EventEmitter = a.emitRuntimeEvent
 	a.browserMgr.ProfileRuntimeDetector = func(profile *browser.Profile) bool {
@@ -153,7 +161,9 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	a.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(conn)
 	a.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(conn)
 
-	a.migrateToSQLite()
+	if err := a.migrateToSQLite(); err != nil {
+		return err
+	}
 
 	a.browserMgr.InitData()
 	if err := a.browserMgr.MigrateLegacyExternalExtensionRegistry(); err != nil {
@@ -163,8 +173,11 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 		logger.New("Browser").Error("启动清理回收站失败", logger.F("error", err))
 	}
 	a.autoDetectCores()
-	a.loadProxies()
+	if err := a.loadProxies(); err != nil {
+		return err
+	}
 	a.reconcileProfileProxyBindings()
+	return nil
 }
 
 func (a *App) startupInitLaunchCode(log *logger.Logger) {
@@ -240,17 +253,13 @@ func (a *App) ensureSpeedScheduler() {
 	if a == nil || a.config == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil {
 		return
 	}
-	settings := proxy.NormalizeCheckSettings(a.config.ProxyCheck)
-	schedulerConcurrency := settings.SpeedConcurrency
-	if schedulerConcurrency <= 0 || schedulerConcurrency > config.MaxProxySpeedConcurrency {
-		schedulerConcurrency = config.DefaultProxyScheduledSpeedConcurrency
-	}
+	interval, failureRetry, schedulerConcurrency := a.proxySpeedSchedule()
 	if a.speedScheduler == nil {
 		a.speedScheduler = browser.NewProxySpeedSchedulerWithRetry(
 			a.browserMgr.ProxyDAO,
 			nil,
-			browser.DefaultProxySpeedInterval,
-			time.Duration(settings.FailureRetryMinutes)*time.Minute,
+			interval,
+			failureRetry,
 			schedulerConcurrency,
 		)
 		a.speedScheduler.SetProxySpeedTestFunc(func(item browser.Proxy) (bool, int64, string) {
@@ -264,4 +273,27 @@ func (a *App) ensureSpeedScheduler() {
 		a.speedScheduler.SetResultPersistence(false)
 	}
 	a.speedScheduler.Start()
+}
+
+func (a *App) proxySpeedSchedule() (time.Duration, time.Duration, int) {
+	settings := config.DefaultConfig().ProxyCheck
+	if a != nil && a.config != nil {
+		settings = a.config.ProxyCheck
+	}
+	settings = proxy.NormalizeCheckSettings(settings)
+	interval := time.Duration(settings.SpeedIntervalMinutes) * time.Minute
+	failureRetry := time.Duration(settings.FailureRetryMinutes) * time.Minute
+	concurrency := settings.SpeedConcurrency
+	return interval, failureRetry, concurrency
+}
+
+func (a *App) restartSpeedScheduler() {
+	if a == nil {
+		return
+	}
+	if a.speedScheduler != nil {
+		a.speedScheduler.Stop()
+		a.speedScheduler = nil
+	}
+	a.ensureSpeedScheduler()
 }

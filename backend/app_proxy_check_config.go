@@ -23,6 +23,9 @@ func (a *App) SaveProxyCheckSettings(settings ProxyCheckSettings) error {
 		return nil
 	}
 	previousSpeedConfig := proxy.BuildSpeedTestConfig(a.config.ProxyCheck)
+	if settings.SpeedIntervalMinutes <= 0 {
+		settings.SpeedIntervalMinutes = a.config.ProxyCheck.SpeedIntervalMinutes
+	}
 	if settings.FailureRetryMinutes <= 0 {
 		settings.FailureRetryMinutes = a.config.ProxyCheck.FailureRetryMinutes
 	}

@@ -43,6 +43,15 @@ export function ProxyPoolCheckSettingsModal({
             onChange={(e) => onCheckSettingsChange(prev => ({ ...prev, bridgeStartTimeoutMs: Number(e.target.value) || 15000 }))}
           />
         </FormItem>
+        <FormItem label="成功节点重测间隔" hint="分钟">
+          <Input
+            type="number"
+            min={1}
+            max={1440}
+            value={checkSettings.speedIntervalMinutes}
+            onChange={(e) => onCheckSettingsChange(prev => ({ ...prev, speedIntervalMinutes: Number(e.target.value) || 30 }))}
+          />
+        </FormItem>
         <FormItem label="失败重试间隔" hint="分钟">
           <Input
             type="number"

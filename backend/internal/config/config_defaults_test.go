@@ -40,6 +40,9 @@ func TestNormalizeConfigDoesNotOverrideCustomDefaultFingerprintArgs(t *testing.T
 func TestNormalizeConfigSetsAndBoundsProxySpeedSettings(t *testing.T) {
 	config := &Config{}
 	normalizeConfig(config)
+	if config.ProxyCheck.SpeedIntervalMinutes != DefaultProxySpeedIntervalMinutes {
+		t.Fatalf("default speed interval = %d, want %d", config.ProxyCheck.SpeedIntervalMinutes, DefaultProxySpeedIntervalMinutes)
+	}
 	if config.ProxyCheck.FailureRetryMinutes != DefaultProxyFailureRetryMinutes {
 		t.Fatalf("default failure retry = %d, want %d", config.ProxyCheck.FailureRetryMinutes, DefaultProxyFailureRetryMinutes)
 	}
@@ -48,10 +51,11 @@ func TestNormalizeConfigSetsAndBoundsProxySpeedSettings(t *testing.T) {
 	}
 
 	config.ProxyCheck.FailureRetryMinutes = 24*60 + 1
+	config.ProxyCheck.SpeedIntervalMinutes = MaxProxySpeedIntervalMinutes + 1
 	config.ProxyCheck.SpeedConcurrency = MaxProxySpeedConcurrency + 1
 	normalizeConfig(config)
-	if config.ProxyCheck.FailureRetryMinutes != 24*60 || config.ProxyCheck.SpeedConcurrency != MaxProxySpeedConcurrency {
-		t.Fatalf("bounded speed settings = retry %d, concurrency %d", config.ProxyCheck.FailureRetryMinutes, config.ProxyCheck.SpeedConcurrency)
+	if config.ProxyCheck.SpeedIntervalMinutes != MaxProxySpeedIntervalMinutes || config.ProxyCheck.FailureRetryMinutes != 24*60 || config.ProxyCheck.SpeedConcurrency != MaxProxySpeedConcurrency {
+		t.Fatalf("bounded speed settings = interval %d, retry %d, concurrency %d", config.ProxyCheck.SpeedIntervalMinutes, config.ProxyCheck.FailureRetryMinutes, config.ProxyCheck.SpeedConcurrency)
 	}
 }
 
