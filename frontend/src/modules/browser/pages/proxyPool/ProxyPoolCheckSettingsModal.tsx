@@ -43,6 +43,24 @@ export function ProxyPoolCheckSettingsModal({
             onChange={(e) => onCheckSettingsChange(prev => ({ ...prev, bridgeStartTimeoutMs: Number(e.target.value) || 15000 }))}
           />
         </FormItem>
+        <FormItem label="失败重试间隔" hint="分钟">
+          <Input
+            type="number"
+            min={1}
+            max={1440}
+            value={checkSettings.failureRetryMinutes}
+            onChange={(e) => onCheckSettingsChange(prev => ({ ...prev, failureRetryMinutes: Number(e.target.value) || 5 }))}
+          />
+        </FormItem>
+        <FormItem label="测速并发上限" hint="手动测速最多同时运行的代理数">
+          <Input
+            type="number"
+            min={1}
+            max={10}
+            value={checkSettings.speedConcurrency}
+            onChange={(e) => onCheckSettingsChange(prev => ({ ...prev, speedConcurrency: Number(e.target.value) || 5 }))}
+          />
+        </FormItem>
         <FormItem label="测速目标 ID">
           <Input
             value={checkSettings.speedTargetId}

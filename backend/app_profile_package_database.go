@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -30,6 +31,7 @@ type ProfilePackageDatabase struct {
 	Proxies                  []ProfilePackageDatabaseProxy             `json:"proxies"`
 	ProxyVirtualGroups       []browser.ProxyVirtualGroup               `json:"proxyVirtualGroups,omitempty"`
 	Extensions               []browser.Extension                       `json:"extensions"`
+	ExtensionArtifacts       []ProfilePackageDatabaseExtensionArtifact `json:"extensionArtifacts,omitempty"`
 	ProfileExtensionSettings []ProfilePackageDatabaseExtensionSettings `json:"profileExtensionSettings"`
 	ProfileExtensions        []ProfilePackageDatabaseExtensionBinding  `json:"profileExtensions"`
 	ProfileExtensionRuntime  []browser.ProfileExtensionRuntime         `json:"profileExtensionRuntime"`
@@ -71,6 +73,12 @@ type ProfilePackageDatabaseExtensionBinding struct {
 	Enabled     bool   `json:"enabled"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
+}
+
+type ProfilePackageDatabaseExtensionArtifact struct {
+	ExtensionID           string `json:"extensionId"`
+	InstallDirArchivePath string `json:"installDirArchivePath,omitempty"`
+	PackageArchivePath    string `json:"packageArchivePath,omitempty"`
 }
 
 func (a *App) collectProfilePackageDatabase(profiles []browser.Profile) (ProfilePackageDatabase, error) {
@@ -251,6 +259,7 @@ func (a *App) collectProfilePackageDatabase(profiles []browser.Profile) (Profile
 		}
 		return ProfilePackageDatabase{}, fmt.Errorf("读取插件定义失败(%s): %w", key, err)
 	}
+	snapshot.ExtensionArtifacts = collectProfilePackageExtensionArtifacts(a, snapshot.Extensions, &snapshot.Warnings)
 
 	sort.Slice(snapshot.Groups, func(i, j int) bool {
 		return backupImportIDKey(snapshot.Groups[i].GroupId) < backupImportIDKey(snapshot.Groups[j].GroupId)
@@ -263,6 +272,9 @@ func (a *App) collectProfilePackageDatabase(profiles []browser.Profile) (Profile
 	})
 	sort.Slice(snapshot.Extensions, func(i, j int) bool {
 		return backupImportIDKey(snapshot.Extensions[i].ExtensionID) < backupImportIDKey(snapshot.Extensions[j].ExtensionID)
+	})
+	sort.Slice(snapshot.ExtensionArtifacts, func(i, j int) bool {
+		return backupImportIDKey(snapshot.ExtensionArtifacts[i].ExtensionID) < backupImportIDKey(snapshot.ExtensionArtifacts[j].ExtensionID)
 	})
 	sort.Slice(snapshot.ProfileExtensionSettings, func(i, j int) bool {
 		return backupImportIDKey(snapshot.ProfileExtensionSettings[i].ProfileID) < backupImportIDKey(snapshot.ProfileExtensionSettings[j].ProfileID)
@@ -278,6 +290,67 @@ func (a *App) collectProfilePackageDatabase(profiles []browser.Profile) (Profile
 		return left < right
 	})
 	return snapshot, nil
+}
+
+func collectProfilePackageExtensionArtifacts(a *App, extensions []browser.Extension, warnings *[]string) []ProfilePackageDatabaseExtensionArtifact {
+	artifacts := make([]ProfilePackageDatabaseExtensionArtifact, 0, len(extensions))
+	appendWarning := func(message string) {
+		if warnings != nil && strings.TrimSpace(message) != "" {
+			*warnings = append(*warnings, message)
+		}
+	}
+
+	for index, extension := range extensions {
+		extensionID := strings.TrimSpace(extension.ExtensionID)
+		if extensionID == "" {
+			continue
+		}
+		artifact := ProfilePackageDatabaseExtensionArtifact{ExtensionID: extensionID}
+		installDir := resolveProfilePackagePath(a, extension.InstallDir)
+		if installDir != "" {
+			info, err := os.Stat(installDir)
+			if err == nil && info.IsDir() {
+				artifact.InstallDirArchivePath = filepath.ToSlash(filepath.Join("extensions", fmt.Sprintf("%d", index), "install"))
+			} else if err != nil && !os.IsNotExist(err) {
+				appendWarning(fmt.Sprintf("插件「%s」安装目录无法读取，未随实例包导出：%v", extension.Name, err))
+			}
+		}
+
+		packagePath := resolveProfilePackagePath(a, extension.PackagePath)
+		if packagePath != "" {
+			info, err := os.Stat(packagePath)
+			if err == nil && !info.IsDir() {
+				artifact.PackageArchivePath = filepath.ToSlash(filepath.Join("extensions", fmt.Sprintf("%d", index), "package.crx"))
+			} else if err != nil && !os.IsNotExist(err) {
+				appendWarning(fmt.Sprintf("插件「%s」安装包无法读取，未随实例包导出：%v", extension.Name, err))
+			}
+		}
+
+		if artifact.InstallDirArchivePath == "" && artifact.PackageArchivePath == "" {
+			if extension.InstallMode == browser.ExtensionInstallModePersistent {
+				appendWarning(fmt.Sprintf("插件「%s」的安装目录和安装包均不可用，未随实例包复制", extension.Name))
+			}
+			continue
+		}
+		if artifact.InstallDirArchivePath != "" || artifact.PackageArchivePath != "" {
+			artifacts = append(artifacts, artifact)
+		}
+	}
+	return artifacts
+}
+
+func resolveProfilePackagePath(a *App, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || filepath.IsAbs(value) {
+		return filepath.Clean(value)
+	}
+	if a != nil && a.browserMgr != nil {
+		return filepath.Clean(a.browserMgr.ResolveRelativePath(value))
+	}
+	if a != nil {
+		return filepath.Clean(a.resolveAppPath(value))
+	}
+	return filepath.Clean(value)
 }
 
 func queryProfilePackageGroups(conn *sql.DB, groupIDs []string) ([]ProfilePackageDatabaseGroup, []string, error) {
@@ -443,10 +516,7 @@ func queryProfilePackageProxyVirtualGroups(conn *sql.DB, groupNames map[string]s
 		if err := json.Unmarshal([]byte(memberGroupNamesJSON), &group.MemberGroupNames); err != nil {
 			return nil, fmt.Errorf("解析虚拟代理分组成员失败: %w", err)
 		}
-		group = browser.NormalizeProxyVirtualGroup(group)
-		if len(group.MemberProxyIds) == 0 && len(group.MemberGroupNames) > 0 {
-			group = browser.ResolveProxyVirtualGroup(group, legacyProxies)
-		}
+		group = browser.MaterializeProxyVirtualGroup(group, legacyProxies)
 		if _, selected := groupNames[backupImportTextKey(group.GroupName)]; selected {
 			result = append(result, group)
 		}
@@ -1163,7 +1233,7 @@ func restoreProfilePackageProxyVirtualGroups(tx *sql.Tx, source []browser.ProxyV
 	}
 
 	for _, item := range source {
-		group := browser.ResolveProxyVirtualGroup(browser.NormalizeProxyVirtualGroup(item), legacyProxies)
+		group := browser.MaterializeProxyVirtualGroup(item, legacyProxies)
 		if group.GroupName == "" {
 			appendProfilePackageWarning(warnings, "实例包中的虚拟代理分组缺少名称，已跳过")
 			continue

@@ -53,12 +53,14 @@ func (a *App) testSharedProxySpeedWithOptions(proxyID string, forceRefresh bool,
 		item := buildProxyTestResult(raw)
 		item.testedAt = time.Now().Format(time.RFC3339)
 		item.fingerprint = fingerprint
+		item.Fingerprint = fingerprint
 		item.connectorType = connectorType
 		return item
 	})
 	if result.testedAt == "" {
 		result.testedAt = time.Now().Format(time.RFC3339)
 		result.fingerprint = fingerprint
+		result.Fingerprint = fingerprint
 		result.connectorType = connectorType
 	}
 	_ = a.persistProxySpeedResult(result)
@@ -87,7 +89,7 @@ func (a *App) readFreshProxySpeedResult(proxyID string, fingerprint string, conn
 		}
 		return ProxyTestResult{
 			ProxyId: proxyID, Ok: item.LastTestOk, LatencyMs: item.LastLatencyMs,
-			Engine: item.LastTestEngine, testedAt: item.LastTestedAt,
+			Engine: item.LastTestEngine, Fingerprint: fingerprint, testedAt: item.LastTestedAt,
 			fingerprint: item.LastTestFingerprint, connectorType: item.LastTestConnectorType,
 		}, true
 	}
@@ -107,6 +109,12 @@ func (a *App) persistProxySpeedResult(result ProxyTestResult) error {
 	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil || strings.TrimSpace(result.ProxyId) == "" {
 		return nil
 	}
+	currentProxies := a.getLatestProxies()
+	currentConnectorType := a.defaultProxyConnectorType()
+	currentFingerprint := proxySpeedTestFingerprint(result.ProxyId, currentProxies, currentConnectorType, a.proxySpeedTestConfig())
+	if result.fingerprint == "" || result.fingerprint != currentFingerprint || result.connectorType != currentConnectorType {
+		return nil
+	}
 	testedAt := result.testedAt
 	if testedAt == "" {
 		testedAt = time.Now().Format(time.RFC3339)
@@ -121,14 +129,23 @@ func (a *App) persistProxySpeedResult(result ProxyTestResult) error {
 }
 
 func (a *App) proxySpeedResultsWithCurrentContext(proxies []BrowserProxy) []BrowserProxy {
+	return a.proxySpeedResultsWithContext(proxies, proxies)
+}
+
+func (a *App) proxySpeedResultsWithContext(proxies []BrowserProxy, contextProxies []BrowserProxy) []BrowserProxy {
 	connectorType := a.defaultProxyConnectorType()
 	speedConfig := a.proxySpeedTestConfig()
 	result := append([]BrowserProxy{}, proxies...)
 	for index, item := range result {
-		fingerprint := proxySpeedTestFingerprint(item.ProxyId, proxies, connectorType, speedConfig)
-		if item.LastTestFingerprint != fingerprint || item.LastTestConnectorType != connectorType || item.LastTestEngine != expectedProxySpeedEngine(item.ProxyId, proxies, connectorType) {
+		fingerprint := proxySpeedTestFingerprint(item.ProxyId, contextProxies, connectorType, speedConfig)
+		result[index].SpeedTestFingerprint = fingerprint
+		if item.LastTestFingerprint != fingerprint || item.LastTestConnectorType != connectorType || item.LastTestEngine != expectedProxySpeedEngine(item.ProxyId, contextProxies, connectorType) || !isProxySpeedResultFresh(item.LastTestedAt, time.Now(), a.proxySpeedResultMaxAge()) {
 			result[index].LastTestOk = false
 			result[index].LastLatencyMs = -1
+			result[index].LastTestedAt = ""
+			result[index].LastTestEngine = ""
+			result[index].LastTestConnectorType = ""
+			result[index].LastTestFingerprint = ""
 		}
 	}
 	return result

@@ -18,28 +18,16 @@ func (a *App) BrowserProxyTestSpeed(proxyId string) ProxyTestResult {
 	return a.testSharedProxySpeedWithOptions(proxyId, true, proxies, connectorType, a.proxySpeedTestConfig())
 }
 
-const (
-	defaultProxySpeedConcurrency = 5
-	maxProxySpeedConcurrency     = 10
-)
-
 // BrowserProxyBatchTestSpeed 批量并发测速，concurrency 控制并发数（默认 5，最高 10）。
 func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []ProxyTestResult {
 	if len(proxyIds) == 0 {
 		return []ProxyTestResult{}
 	}
-	if concurrency <= 0 {
-		concurrency = defaultProxySpeedConcurrency
-	}
-	if concurrency > maxProxySpeedConcurrency {
-		concurrency = maxProxySpeedConcurrency
-	}
-	if concurrency > len(proxyIds) {
-		concurrency = len(proxyIds)
-	}
+	concurrency = a.proxySpeedBatchConcurrency(concurrency, len(proxyIds))
 
 	proxies := a.getLatestProxies()
 	connectorType := a.defaultProxyConnectorType()
+	speedConfig := a.proxySpeedTestConfig()
 	results := make([]ProxyTestResult, len(proxyIds))
 	type speedJob struct {
 		Idx     int
@@ -53,7 +41,7 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
-				item := a.testSharedProxySpeedWithOptions(job.ProxyId, true, proxies, connectorType, a.proxySpeedTestConfig())
+				item := a.testSharedProxySpeedWithOptions(job.ProxyId, true, proxies, connectorType, speedConfig)
 				results[job.Idx] = item
 
 				a.emitRuntimeEvent("proxy:speed:result", item)
@@ -68,6 +56,23 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 
 	wg.Wait()
 	return results
+}
+
+func (a *App) proxySpeedBatchConcurrency(requested int, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	limit := a.proxySpeedConcurrencyLimit()
+	if requested <= 0 || requested > limit {
+		requested = limit
+	}
+	if requested > config.MaxProxySpeedConcurrency {
+		requested = config.MaxProxySpeedConcurrency
+	}
+	if requested > total {
+		requested = total
+	}
+	return requested
 }
 
 func (a *App) testProxySpeedWithConnector(proxyId string, proxies []BrowserProxy, connectorType string, speedConfig *proxy.SpeedTestConfig) proxy.TestResult {

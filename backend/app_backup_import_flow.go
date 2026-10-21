@@ -2,6 +2,7 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/config"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,18 @@ func (a *App) backupImportFromPathLocked(zipPath string) (map[string]interface{}
 	if err := a.backupStopRuntimeForMaintenance(); err != nil {
 		return nil, fmt.Errorf("停止运行时失败，已中止备份导入: %w", err)
 	}
+	runtimeStopped := true
+	defer func() {
+		if runtimeStopped {
+			a.resumeBackgroundTasks()
+			a.ensureSpeedScheduler()
+		}
+	}()
+	rollback, err := a.beginBackupImportRollback()
+	if err != nil {
+		return nil, err
+	}
+	defer rollback.cleanup()
 	a.backupEmitImportProgress("preparing", 20, "备份包校验通过，开始导入数据...")
 
 	componentEntries := backupDetectPresentManifestEntries(extractRoot, manifest)
@@ -70,7 +83,7 @@ func (a *App) backupImportFromPathLocked(zipPath string) (map[string]interface{}
 	}
 
 	a.backupEmitImportProgress("importing", 86, "正在同步文件数据...")
-	a.backupImportFileTrees(payloadRoot, incomingCfg, manifest, stats, issueTracker.RecordIssue, importMappings)
+	a.backupImportFileTreesWithRollback(payloadRoot, incomingCfg, manifest, stats, issueTracker.RecordIssue, rollback, importMappings)
 
 	a.backupEmitImportProgress("importing", 92, "正在修复插件迁移路径...")
 	repairIssues, err := a.backupRepairExtensionPathsAfterImport()
@@ -81,12 +94,53 @@ func (a *App) backupImportFromPathLocked(zipPath string) (map[string]interface{}
 		issueTracker.RecordIssue("browser_extension_paths", "插件路径迁移", issue)
 	}
 
-	a.backupEmitImportProgress("importing", 94, "正在刷新运行时配置...")
-	if err := a.backupReloadAfterMutation(); err != nil {
-		return nil, err
+	totalComponents, successCount, failedCount, partial := issueTracker.Summary()
+	if partial {
+		rollbackErr := rollback.rollback(a)
+		reloadErr := a.backupReloadAfterImportRollback(rollback)
+		runtimeStopped = false
+		if rollbackErr != nil {
+			if reloadErr != nil {
+				return nil, backupImportError("备份导入失败且回滚、运行态恢复均失败", errors.Join(rollbackErr, reloadErr))
+			}
+			return nil, backupImportError("备份导入失败且回滚失败", rollbackErr)
+		}
+		if reloadErr != nil {
+			return nil, backupImportError("备份导入已回滚，但运行态恢复失败", reloadErr)
+		}
+		message := fmt.Sprintf("导入未应用，已回滚：异常 %d 个模块", failedCount)
+		a.backupEmitImportProgress("error", 100, message)
+		return map[string]interface{}{
+			"cancelled":        false,
+			"zipPath":          zipPath,
+			"imported":         0,
+			"skipped":          stats.Skipped,
+			"conflicts":        stats.Conflicts,
+			"partial":          false,
+			"rolledBack":       true,
+			"componentTotal":   totalComponents,
+			"componentSuccess": 0,
+			"componentFailed":  failedCount,
+			"failedComponents": issueTracker.FailedComponents(),
+			"message":          message,
+		}, nil
 	}
 
-	totalComponents, successCount, failedCount, partial := issueTracker.Summary()
+	a.backupEmitImportProgress("importing", 94, "正在刷新运行时配置...")
+	if err := a.backupReloadAfterMutation(); err != nil {
+		rollbackErr := rollback.rollback(a)
+		reloadErr := a.backupReloadAfterImportRollback(rollback)
+		runtimeStopped = false
+		if rollbackErr != nil {
+			return nil, backupImportError("备份导入失败且回滚失败", rollbackErr)
+		}
+		if reloadErr != nil {
+			return nil, backupImportError("备份导入已回滚，但运行态恢复失败", reloadErr)
+		}
+		return nil, backupImportError("备份导入失败，已回滚", err)
+	}
+	runtimeStopped = false
+
 	message := "导入完成"
 	if partial {
 		message = fmt.Sprintf("导入完成（部分成功）：成功 %d 个模块，异常 %d 个模块", successCount, failedCount)

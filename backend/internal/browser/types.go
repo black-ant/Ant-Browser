@@ -150,6 +150,8 @@ type CodeProvider interface {
 
 type RuntimeEventEmitter func(eventName string, optionalData ...interface{})
 
+type ProfileRuntimeDetector func(profile *Profile) bool
+
 type CoreDownloadHTTPClientFactory func(proxyConfig string, timeout time.Duration) (*http.Client, error)
 
 // Manager 浏览器管理器
@@ -164,6 +166,7 @@ type Manager struct {
 	XrayBridges                            map[string]*XrayBridge
 	CodeProvider                           CodeProvider
 	EventEmitter                           RuntimeEventEmitter
+	ProfileRuntimeDetector                 ProfileRuntimeDetector
 	CoreDownloadHTTPClientFactory          CoreDownloadHTTPClientFactory
 
 	// DAO 层（注入后使用 SQLite 存储，未注入时降级到 config.yaml）

@@ -16,15 +16,17 @@ export function useProxyCheckSettingsModal() {
     setCheckSettingsOpen(true)
   }
 
-  const saveCheckSettings = async () => {
+  const saveCheckSettings = async (): Promise<boolean> => {
     setSavingCheckSettings(true)
     try {
       const targets = JSON.parse(checkTargetsText || '[]')
       await saveProxyCheckSettings({ ...checkSettings, targets })
       toast.success('检测设置已保存')
       setCheckSettingsOpen(false)
+      return true
     } catch (error: any) {
       toast.error(error?.message || '检测设置保存失败')
+      return false
     } finally {
       setSavingCheckSettings(false)
     }

@@ -10,6 +10,33 @@ import (
 	"time"
 )
 
+func TestBackupDetectsRuntimeWhenProfileStateIsStale(t *testing.T) {
+	oldFind := findBrowserUserDataProcesses
+	t.Cleanup(func() { findBrowserUserDataProcesses = oldFind })
+
+	root := t.TempDir()
+	userDataDir := filepath.Join(root, "user-data")
+	manager := browser.NewManager(config.DefaultConfig(), root)
+	profile := &browser.Profile{ProfileId: "profile-1", ProfileName: "实例 1", UserDataDir: userDataDir}
+	manager.Profiles[profile.ProfileId] = profile
+	app := NewApp(root)
+	app.browserMgr = manager
+	findBrowserUserDataProcesses = func(detectedDir string) ([]browserUserDataProcess, error) {
+		if detectedDir != userDataDir {
+			return nil, nil
+		}
+		return []browserUserDataProcess{{PID: 1234, CommandLine: `"C:\\chrome.exe" --user-data-dir="` + detectedDir + `"`}}, nil
+	}
+
+	names := app.backupRunningProfileNames()
+	if len(names) != 1 || names[0] != "实例 1" {
+		t.Fatalf("stale runtime names = %#v, want [实例 1]", names)
+	}
+	if !profilePackageProfileIsRunning(app, *profile) {
+		t.Fatal("profile package overwrite should reject the detected runtime")
+	}
+}
+
 func TestBackupStopRuntimeForMaintenanceClearsProfileRuntimeState(t *testing.T) {
 	oldTryClose := backupTryCloseBrowserViaCDP
 	oldTerminate := backupTerminateBrowserProcessesByUserDataDir
@@ -50,6 +77,7 @@ func TestBackupStopRuntimeForMaintenanceClearsProfileRuntimeState(t *testing.T) 
 }
 
 func TestBackupStopRuntimeForMaintenanceStopsSpeedScheduler(t *testing.T) {
+
 	oldTryClose := backupTryCloseBrowserViaCDP
 	oldTerminate := backupTerminateBrowserProcessesByUserDataDir
 	backupTryCloseBrowserViaCDP = func(int, time.Duration) bool { return false }

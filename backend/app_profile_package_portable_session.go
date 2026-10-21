@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -175,7 +176,7 @@ func (a *App) collectPortableProfileSessions(profiles []browser.Profile) (map[st
 			return nil, fmt.Errorf("实例缺少 profileId，无法迁移登录态")
 		}
 
-		startedProfile, startErr := a.browserInstanceStartInternal(
+		startedProfile, startErr := a.browserInstanceStartFreshInternal(
 			profileID,
 			nil,
 			[]string{"about:blank"},
@@ -187,7 +188,7 @@ func (a *App) collectPortableProfileSessions(profiles []browser.Profile) (map[st
 		)
 		started := startedProfile != nil && (startedProfile.Running || startedProfile.DebugPort > 0)
 		if startErr != nil {
-			if started {
+			if started && !errors.Is(startErr, errBrowserStartRejectedExistingRuntime) {
 				_, _ = a.BrowserInstanceStop(profileID)
 			}
 			return nil, fmt.Errorf("实例「%s」启动失败，无法读取登录态: %w", profile.ProfileName, startErr)
@@ -244,7 +245,7 @@ func (a *App) restorePortableProfileSessions(prepared []preparedProfilePackageIm
 			continue
 		}
 		profileID := strings.TrimSpace(item.Profile.ProfileId)
-		startedProfile, startErr := a.browserInstanceStartInternal(
+		startedProfile, startErr := a.browserInstanceStartFreshInternal(
 			profileID,
 			nil,
 			[]string{"about:blank"},
@@ -256,7 +257,7 @@ func (a *App) restorePortableProfileSessions(prepared []preparedProfilePackageIm
 		)
 		started := startedProfile != nil && (startedProfile.Running || startedProfile.DebugPort > 0)
 		if startErr != nil || !started {
-			if started {
+			if started && !errors.Is(startErr, errBrowserStartRejectedExistingRuntime) {
 				_, _ = a.BrowserInstanceStop(profileID)
 			}
 			appendPortableSessionWarning(warnings, item.Profile.ProfileName, fmt.Sprintf("目标实例未能启动，登录态未恢复：%v", startErr))

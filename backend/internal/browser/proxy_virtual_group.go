@@ -135,3 +135,17 @@ func ResolveProxyVirtualGroup(group ProxyVirtualGroup, proxies []Proxy) ProxyVir
 	}
 	return group
 }
+
+func MaterializeProxyVirtualGroup(group ProxyVirtualGroup, proxies []Proxy) ProxyVirtualGroup {
+	group = NormalizeProxyVirtualGroup(group)
+	materializedIDs := make([]string, 0)
+	for _, item := range ExpandProxyVirtualGroup(group, proxies) {
+		proxyID := strings.TrimSpace(item.ProxyId)
+		if proxyID != "" {
+			materializedIDs = append(materializedIDs, proxyID)
+		}
+	}
+	group.MemberProxyIds = normalizeProxyVirtualGroupProxyIDs(materializedIDs)
+	group.MemberGroupNames = nil
+	return group
+}

@@ -339,7 +339,13 @@ export function BackupPage() {
       const failedComponents = Array.isArray(res.failedComponents) ? res.failedComponents : []
       const warnings = Array.isArray(res.warnings) ? res.warnings.filter(Boolean) : []
 
-      if (res.packageType === 'profile') {
+      if (res.rolledBack) {
+        const moduleNames = failedComponents
+          .map(item => (item?.componentName || item?.componentId || '').trim())
+          .filter(Boolean)
+        const moduleHint = moduleNames.length > 0 ? `：${moduleNames.slice(0, 3).join('、')}` : ''
+        toast.error(`导入失败，未应用任何更改，已回滚${moduleHint}`)
+      } else if (res.packageType === 'profile') {
         const importedProfiles = res.importedCount ?? res.profileCount ?? imported
         const overwrittenCount = res.overwrittenCount ?? 0
         const createdCount = res.createdCount ?? Math.max(0, importedProfiles - overwrittenCount)

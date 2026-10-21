@@ -268,6 +268,23 @@ func isBrowserProfileLive(profile *BrowserProfile, trackedCmd *exec.Cmd) bool {
 	return false
 }
 
+func browserProfileHasRuntime(a *App, profile *BrowserProfile, trackedCmd *exec.Cmd) bool {
+	if profile == nil {
+		return false
+	}
+	if isBrowserProfileLive(profile, trackedCmd) {
+		return true
+	}
+	if trackedCmd != nil && trackedCmd.Process != nil && trackedCmd.Process.Pid > 0 && isProcessAlive(trackedCmd.Process.Pid) {
+		return true
+	}
+	if a == nil || a.browserMgr == nil {
+		return false
+	}
+	_, detected := detectBrowserRuntimeByUserDataDir(a.browserMgr.ResolveUserDataDir(profile))
+	return detected
+}
+
 func isProcessAlive(pid int) bool {
 	if pid <= 0 {
 		return false

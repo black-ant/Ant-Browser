@@ -104,10 +104,23 @@ func ValidateProxyConfig(proxyConfig string, proxies []config.BrowserProxy, prox
 	return true, ""
 }
 
+func ValidateProxyConfigWithConnector(proxyConfig string, proxies []config.BrowserProxy, proxyId string, connectorType string) (bool, string) {
+	supported, errorMsg := ValidateProxyConfig(proxyConfig, proxies, proxyId)
+	if !supported {
+		return false, errorMsg
+	}
+	src := resolveProxyConfig(proxyConfig, proxies, proxyId)
+	if _, err := ResolveProxyKernelForConnector(src, proxies, proxyId, connectorType); err != nil {
+		return false, err.Error()
+	}
+	return true, ""
+}
+
 // RequiresBridge 判断是否需要 Xray 桥接
 // 注意: Xray 仅支持 vless/vmess/trojan/shadowsocks 等协议
 // hysteria2 不支持，需要使用 Hysteria 客户端或 sing-box
 func RequiresBridge(proxyConfig string, proxies []config.BrowserProxy, proxyId string) bool {
+
 	src := resolveProxyConfig(proxyConfig, proxies, proxyId)
 	if src == "" {
 		return false

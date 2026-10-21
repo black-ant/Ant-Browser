@@ -10,13 +10,14 @@ import (
 	"ant-chrome/backend/internal/proxy"
 )
 
-const proxySpeedContractVersion = 1
+const proxySpeedContractVersion = 2
 
 type proxySpeedFingerprintInput struct {
 	ContractVersion  int                        `json:"contractVersion"`
 	ProxyId          string                     `json:"proxyId"`
 	ConnectorType    string                     `json:"connectorType"`
 	Engine           string                     `json:"engine"`
+	TargetID         string                     `json:"targetId"`
 	TimeoutMs        int64                      `json:"timeoutMs"`
 	PrepareTimeoutMs int64                      `json:"prepareTimeoutMs"`
 	URLs             []string                   `json:"urls"`
@@ -48,6 +49,7 @@ func proxySpeedTestFingerprint(proxyID string, proxies []BrowserProxy, connector
 		ProxyId:          strings.ToLower(strings.TrimSpace(proxyID)),
 		ConnectorType:    connectorType,
 		Engine:           expectedProxySpeedEngine(proxyID, proxies, connectorType),
+		TargetID:         strings.TrimSpace(speedConfig.TargetID),
 		TimeoutMs:        speedConfig.Timeout.Milliseconds(),
 		PrepareTimeoutMs: speedConfig.TCPTimeout.Milliseconds(),
 		URLs:             append([]string{}, speedConfig.URLs...),

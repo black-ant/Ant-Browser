@@ -37,10 +37,14 @@ func NormalizeCheckSettings(settings config.ProxyCheckConfig) config.ProxyCheckC
 
 func BuildSpeedTestConfig(settings config.ProxyCheckConfig) *SpeedTestConfig {
 	cfg := DefaultSpeedTestConfig
+	cfg.TargetID = strings.TrimSpace(settings.SpeedTargetID)
 	if settings.BridgeStartTimeoutMs > 0 {
 		cfg.TCPTimeout = time.Duration(settings.BridgeStartTimeoutMs) * time.Millisecond
 	}
 	target := FindCheckTarget(settings.Targets, settings.SpeedTargetID, "speed")
+	if strings.TrimSpace(target.ID) != "" {
+		cfg.TargetID = strings.TrimSpace(target.ID)
+	}
 	if strings.TrimSpace(target.URL) != "" {
 		cfg.URLs = []string{strings.TrimSpace(target.URL)}
 	}

@@ -295,7 +295,7 @@ func (a *App) collectProfilesForPackage(profileIds []string) ([]browser.Profile,
 			missing = append(missing, id)
 			continue
 		}
-		if profile.Running {
+		if browserProfileHasRuntime(a, profile, a.browserMgr.BrowserProcesses[id]) {
 			running = append(running, profile.ProfileName)
 			continue
 		}
@@ -372,6 +372,31 @@ func (a *App) writeProfilePackageWithPortableSessions(zipPath string, profiles [
 			return err
 		}
 		fileCount++
+		extensionsByID := make(map[string]browser.Extension, len(databaseSnapshot.Extensions))
+		for _, extension := range databaseSnapshot.Extensions {
+			extensionsByID[backupImportIDKey(extension.ExtensionID)] = extension
+		}
+		for _, artifact := range databaseSnapshot.ExtensionArtifacts {
+			extension, exists := extensionsByID[backupImportIDKey(artifact.ExtensionID)]
+			if !exists {
+				continue
+			}
+			if archivePath := strings.TrimSpace(artifact.InstallDirArchivePath); archivePath != "" {
+				installDir := resolveProfilePackagePath(a, extension.InstallDir)
+				added, err := writeProfilePackageDir(zipWriter, installDir, archivePath)
+				if err != nil {
+					return fmt.Errorf("打包插件目录失败 [%s]: %w", extension.Name, err)
+				}
+				fileCount += added
+			}
+			if archivePath := strings.TrimSpace(artifact.PackageArchivePath); archivePath != "" {
+				packagePath := resolveProfilePackagePath(a, extension.PackagePath)
+				if err := writeProfilePackageFile(zipWriter, packagePath, archivePath); err != nil {
+					return fmt.Errorf("打包插件安装包失败 [%s]: %w", extension.Name, err)
+				}
+				fileCount++
+			}
+		}
 		if err := writeProfilePackageJSON(zipWriter, "profiles.json", profiles); err != nil {
 			return err
 		}
@@ -772,11 +797,15 @@ func (a *App) importProfilePackageFromPathWithModeAndPortableSession(zipPath str
 	stagingRoot := a.profilePackageImportStagingRoot(batchID)
 	swaps := make([]profilePackageDirectorySwap, 0, len(contents.Profiles))
 	originalProfiles := make(map[string]*browser.Profile, len(contents.Profiles))
+	createdExtensionPaths := make([]string, 0)
 	committed := false
 	defer func() {
 		_ = os.RemoveAll(stagingRoot)
 		if committed {
 			return
+		}
+		for index := len(createdExtensionPaths) - 1; index >= 0; index-- {
+			_ = os.RemoveAll(createdExtensionPaths[index])
 		}
 		rollbackProfilePackageDirectorySwaps(swaps)
 		if len(originalProfiles) == 0 {
@@ -945,6 +974,13 @@ func (a *App) importProfilePackageFromPathWithModeAndPortableSession(zipPath str
 			}
 		}
 		a.browserMgr.Mutex.Unlock()
+	}
+	if contents.DatabaseSnapshot != nil {
+		created, err := a.materializeProfilePackageExtensionArtifacts(contents.Reader.File, contents.DatabaseSnapshot, stagingRoot, &warnings)
+		createdExtensionPaths = append(createdExtensionPaths, created...)
+		if err != nil {
+			return ProfilePackageImportResult{}, err
+		}
 	}
 	for _, item := range prepared {
 		if !item.HasUserData {
@@ -1125,15 +1161,16 @@ func findProfilePackageConflict(existing profilePackageExistingProfiles, source 
 }
 
 func profilePackageProfileIsRunning(a *App, profile browser.Profile) bool {
-	if profile.Running || profile.Pid > 0 || profile.DebugPort > 0 || profile.WindowMarkerCode != "" {
+	if profile.Running {
 		return true
 	}
 	if a == nil || a.browserMgr == nil {
-		return false
+		return profile.Running || profile.Pid > 0 || profile.DebugPort > 0 || profile.WindowMarkerCode != ""
 	}
 	a.browserMgr.Mutex.Lock()
-	defer a.browserMgr.Mutex.Unlock()
-	return a.browserMgr.BrowserProcesses[profile.ProfileId] != nil
+	trackedProcess := a.browserMgr.BrowserProcesses[profile.ProfileId]
+	a.browserMgr.Mutex.Unlock()
+	return browserProfileHasRuntime(a, &profile, trackedProcess)
 }
 
 func uniqueImportedProfileName(name string, reserved map[string]struct{}) string {
@@ -1198,6 +1235,204 @@ func (a *App) extractProfileUserDataToDir(files []*zip.File, oldProfileID string
 	return hasUserData, nil
 }
 
+func (a *App) materializeProfilePackageExtensionArtifacts(files []*zip.File, snapshot *ProfilePackageDatabase, stagingRoot string, warnings *[]string) ([]string, error) {
+	if snapshot == nil || len(snapshot.ExtensionArtifacts) == 0 {
+		return nil, nil
+	}
+
+	extensionIndexes := make(map[string]int, len(snapshot.Extensions))
+	for index, extension := range snapshot.Extensions {
+		extensionIndexes[backupImportIDKey(extension.ExtensionID)] = index
+	}
+	createdPaths := make([]string, 0, len(snapshot.ExtensionArtifacts)*2)
+	managedRoot := a.resolveAppPath("data/extensions")
+
+	for _, artifact := range snapshot.ExtensionArtifacts {
+		extensionIndex, exists := extensionIndexes[backupImportIDKey(artifact.ExtensionID)]
+		if !exists {
+			appendProfilePackageWarning(warnings, fmt.Sprintf("插件「%s」的文件索引没有对应插件记录，已跳过", artifact.ExtensionID))
+			continue
+		}
+		extension := &snapshot.Extensions[extensionIndex]
+		runtimeID := browser.NormalizeExtensionID(extension.ExtensionID)
+		if runtimeID == "" {
+			appendProfilePackageWarning(warnings, fmt.Sprintf("插件「%s」ID 无效，无法恢复插件文件", extension.ExtensionID))
+			continue
+		}
+
+		artifactRoot := filepath.Join(stagingRoot, "extensions", runtimeID)
+		stagedInstallDir := filepath.Join(artifactRoot, "install")
+		stagedPackagePath := filepath.Join(artifactRoot, "package.crx")
+		hasInstallDir, err := extractProfilePackageDirectory(files, artifact.InstallDirArchivePath, stagedInstallDir)
+		if err != nil {
+			return createdPaths, fmt.Errorf("解压插件目录失败(%s): %w", extension.ExtensionID, err)
+		}
+		hasPackage, err := extractProfilePackageArtifactFile(files, artifact.PackageArchivePath, stagedPackagePath)
+		if err != nil {
+			return createdPaths, fmt.Errorf("解压插件安装包失败(%s): %w", extension.ExtensionID, err)
+		}
+
+		targetInstallDir := filepath.Join(managedRoot, runtimeID)
+		targetPackagePath := filepath.Join(managedRoot, "packages", runtimeID+".crx")
+		if hasInstallDir {
+			created, err := materializeProfilePackageDirectory(stagedInstallDir, targetInstallDir)
+			if err != nil {
+				return createdPaths, fmt.Errorf("恢复插件目录失败(%s): %w", extension.ExtensionID, err)
+			}
+			if created {
+				createdPaths = append(createdPaths, targetInstallDir)
+			}
+			if _, err := os.Stat(targetInstallDir); err == nil {
+				extension.InstallDir = targetInstallDir
+			}
+		}
+		if hasPackage {
+			created, err := materializeProfilePackageFile(stagedPackagePath, targetPackagePath)
+			if err != nil {
+				return createdPaths, fmt.Errorf("恢复插件安装包失败(%s): %w", extension.ExtensionID, err)
+			}
+			if created {
+				createdPaths = append(createdPaths, targetPackagePath)
+			}
+			if _, err := os.Stat(targetPackagePath); err == nil {
+				extension.PackagePath = targetPackagePath
+			}
+		}
+		if !hasInstallDir && !hasPackage {
+			appendProfilePackageWarning(warnings, fmt.Sprintf("插件「%s」在实例包中没有可恢复的文件", extension.Name))
+		}
+	}
+	return createdPaths, nil
+}
+
+func extractProfilePackageDirectory(files []*zip.File, archivePath string, destDir string) (bool, error) {
+	archivePath = filepath.ToSlash(strings.TrimSuffix(strings.TrimSpace(archivePath), "/"))
+	if archivePath == "" {
+		return false, nil
+	}
+	if !isSafeProfilePackageRelativePath(archivePath) {
+		return false, fmt.Errorf("插件目录归档路径非法: %s", archivePath)
+	}
+	prefix := archivePath + "/"
+	hasFiles := false
+	for _, file := range files {
+		name := filepath.ToSlash(file.Name)
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		rel := strings.TrimPrefix(name, prefix)
+		if rel == "" {
+			continue
+		}
+		if !hasFiles {
+			if err := os.RemoveAll(destDir); err != nil {
+				return false, err
+			}
+			if err := os.MkdirAll(destDir, 0o755); err != nil {
+				return false, err
+			}
+			hasFiles = true
+		}
+		if err := extractProfilePackageFile(file, destDir, rel); err != nil {
+			return false, err
+		}
+	}
+	return hasFiles, nil
+}
+
+func extractProfilePackageArtifactFile(files []*zip.File, archivePath string, destPath string) (bool, error) {
+	archivePath = filepath.ToSlash(strings.TrimSpace(archivePath))
+	if archivePath == "" {
+		return false, nil
+	}
+	if !isSafeProfilePackageRelativePath(archivePath) {
+		return false, fmt.Errorf("插件安装包归档路径非法: %s", archivePath)
+	}
+	for _, file := range files {
+		if filepath.ToSlash(file.Name) != archivePath || file.FileInfo().IsDir() {
+			continue
+		}
+		if err := extractProfilePackageFile(file, filepath.Dir(destPath), filepath.Base(destPath)); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func isSafeProfilePackageRelativePath(value string) bool {
+	clean := filepath.Clean(filepath.FromSlash(strings.TrimSpace(value)))
+	return clean != "." && !filepath.IsAbs(clean) && clean != ".." && !strings.HasPrefix(clean, ".."+string(filepath.Separator))
+}
+
+func materializeProfilePackageDirectory(stagingDir string, targetDir string) (bool, error) {
+	if _, err := os.Stat(targetDir); err == nil {
+		_ = os.RemoveAll(stagingDir)
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(targetDir), 0o755); err != nil {
+		return false, err
+	}
+	if err := os.Rename(stagingDir, targetDir); err == nil {
+		return true, nil
+	}
+	if err := copyProfilePackageDirectory(stagingDir, targetDir); err != nil {
+		_ = os.RemoveAll(targetDir)
+		return false, err
+	}
+	_ = os.RemoveAll(stagingDir)
+	return true, nil
+}
+
+func copyProfilePackageDirectory(srcDir string, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	return filepath.WalkDir(srcDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		target := filepath.Join(destDir, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("插件目录包含不支持的符号链接: %s", rel)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return backupCopyFile(path, target)
+	})
+}
+
+func materializeProfilePackageFile(stagingPath string, targetPath string) (bool, error) {
+	if _, err := os.Stat(targetPath); err == nil {
+		_ = os.Remove(stagingPath)
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return false, err
+	}
+	if err := backupCopyFile(stagingPath, targetPath); err != nil {
+		_ = os.Remove(targetPath)
+		return false, err
+	}
+	_ = os.Remove(stagingPath)
+	return true, nil
+}
+
 func writeProfilePackageJSON(zipWriter *zip.Writer, name string, value any) error {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
@@ -1250,6 +1485,20 @@ func writeProfilePackageDir(zipWriter *zip.Writer, srcDir string, destPrefix str
 		return nil
 	})
 	return count, err
+}
+
+func writeProfilePackageFile(zipWriter *zip.Writer, srcPath string, destPath string) error {
+	file, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	writer, err := zipWriter.Create(filepath.ToSlash(destPath))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(writer, file)
+	return err
 }
 
 func readProfilePackageJSON(files []*zip.File, name string, target any) error {

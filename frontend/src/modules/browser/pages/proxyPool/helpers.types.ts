@@ -138,6 +138,7 @@ export interface ProxyDisplayInfo {
   proxyId: string
   proxyName: string
   proxyConfig: string
+  speedTestFingerprint?: string
   preferredKernel: string
   groupName: string
   sourceId: string

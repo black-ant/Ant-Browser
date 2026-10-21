@@ -29,6 +29,7 @@ func (a *App) GetBrowserSettings() BrowserSettings {
 
 func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	log := logger.New("Browser")
+	previousConnectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
 	a.config.Browser.UserDataRoot = strings.TrimSpace(settings.UserDataRoot)
 	a.config.Browser.DefaultFingerprintArgs = append([]string{}, settings.DefaultFingerprintArgs...)
 	a.config.Browser.DefaultLaunchArgs = append([]string{}, settings.DefaultLaunchArgs...)
@@ -54,6 +55,9 @@ func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
 		log.Error("浏览器配置保存失败", logger.F("error", err))
 		return err
+	}
+	if previousConnectorType != a.config.Browser.DefaultConnectorType {
+		a.emitRuntimeEvent("proxy:speed:context:changed")
 	}
 	return nil
 }

@@ -84,3 +84,29 @@ func TestExpandProxyVirtualGroupMergesExplicitAndPhysicalGroupMembers(t *testing
 		}
 	}
 }
+
+func TestMaterializeProxyVirtualGroupFreezesGroupMembers(t *testing.T) {
+	proxies := []Proxy{
+		{ProxyId: "mobile-1", GroupName: "mobile"},
+		{ProxyId: "mobile-2", GroupName: "mobile"},
+		{ProxyId: "desktop-1", GroupName: "desktop"},
+	}
+	group := MaterializeProxyVirtualGroup(ProxyVirtualGroup{
+		GroupName:        "pool",
+		MemberProxyIds:   []string{"mobile-1"},
+		MemberGroupNames: []string{"mobile"},
+	}, proxies)
+
+	if len(group.MemberGroupNames) != 0 {
+		t.Fatalf("materialized group names = %#v, want empty", group.MemberGroupNames)
+	}
+	want := []string{"mobile-1", "mobile-2"}
+	if len(group.MemberProxyIds) != len(want) {
+		t.Fatalf("materialized member IDs = %#v, want %#v", group.MemberProxyIds, want)
+	}
+	for index, proxyID := range want {
+		if group.MemberProxyIds[index] != proxyID {
+			t.Fatalf("materialized member ID[%d] = %q, want %q", index, group.MemberProxyIds[index], proxyID)
+		}
+	}
+}

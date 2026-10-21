@@ -5,6 +5,7 @@ import (
 	"ant-chrome/backend/internal/launchcode"
 	"errors"
 	"fmt"
+	"time"
 )
 
 func (a *App) ResetManagedSettings() error {
@@ -112,6 +113,7 @@ func (s *backupScheduler) applyResetSettings(settings config.BackupConfig) {
 	s.configurationError = ""
 	s.state = backupScheduleState{Status: backupScheduleStatusNever}
 	s.lastDate = ""
+	s.nextAttemptAt = time.Time{}
 	s.mu.Unlock()
 }
 

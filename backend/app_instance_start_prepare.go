@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/logger"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,14 +12,15 @@ import (
 )
 
 type browserStartInput struct {
-	ProfileID            string
-	ExtraLaunchArgs      []string
-	StartURLs            []string
-	SkipDefaultStartURLs bool
-	PreferVisibleWindow  bool
-	ForceDirectProxy     bool
-	TemporaryProxyID     string
-	TemporaryProxyConfig string
+	ProfileID             string
+	ExtraLaunchArgs       []string
+	StartURLs             []string
+	SkipDefaultStartURLs  bool
+	PreferVisibleWindow   bool
+	ForceDirectProxy      bool
+	TemporaryProxyID      string
+	TemporaryProxyConfig  string
+	RejectExistingRuntime bool
 }
 
 type browserStartPlan struct {
@@ -39,6 +41,8 @@ type browserStartPlan struct {
 	maxStartAttempts     int
 	totalReadyTimeout    time.Duration
 }
+
+var errBrowserStartRejectedExistingRuntime = errors.New("browser start rejected because the profile already has a runtime")
 
 var clearBrowserSessionRestoreData = browser.ClearSessionRestoreData
 
@@ -80,6 +84,9 @@ func (a *App) resolveBrowserStartProfile(input browserStartInput) (*BrowserProfi
 		return nil, false, err
 	}
 	a.ensureProfileLaunchCode(profile)
+	if input.RejectExistingRuntime && browserProfileHasRuntime(a, profile, a.browserMgr.BrowserProcesses[input.ProfileID]) {
+		return profile, false, fmt.Errorf("%w: 实例「%s」正在运行，请先停止实例后再迁移登录态", errBrowserStartRejectedExistingRuntime, profile.ProfileName)
+	}
 
 	if !profile.Running {
 		return profile, false, nil
@@ -252,6 +259,11 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 		profile.LastError = startErr.Error()
 		return nil, nil, nil, "", "", startErr
 	}
+	if input.RejectExistingRuntime {
+		if _, ok := detectBrowserRuntimeByUserDataDir(userDataDir); ok {
+			return nil, nil, nil, "", "", fmt.Errorf("%w: 实例「%s」已有浏览器运行，请先停止实例后再迁移登录态", errBrowserStartRejectedExistingRuntime, profile.ProfileName)
+		}
+	}
 
 	fingerprintLaunchArgs := a.buildBrowserFingerprintCapabilityReport(input.ProfileID, profile.CoreId, profile.FingerprintArgs).LaunchArgs
 	fingerprintExpectedArgs := combineFingerprintExpectedArgs(fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs)
@@ -273,6 +285,9 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 	}
 
 	if detection, ok := detectBrowserRuntimeByActivePort(userDataDir); ok && detection.DebugReady {
+		if input.RejectExistingRuntime {
+			return nil, nil, nil, "", "", fmt.Errorf("%w: 实例「%s」已有浏览器运行，请先停止实例后再迁移登录态", errBrowserStartRejectedExistingRuntime, profile.ProfileName)
+		}
 		a.markProfileLastLaunchArgsLocked(profile, nil)
 		a.markProfileRunningLocked(input.ProfileID, profile, nil, detection.PID, detection.DebugPort, true, "")
 		log.Warn("检测到同一用户数据目录已有浏览器运行，已接管为当前实例状态",
@@ -292,6 +307,11 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 			return nil, nil, nil, "", "", startErr
 		}
 		return nil, nil, nil, "", "", errBrowserStartHandledByRecoveredRuntime
+	}
+	if input.RejectExistingRuntime {
+		if _, ok := detectBrowserRuntimeByUserDataDir(userDataDir); ok {
+			return nil, nil, nil, "", "", fmt.Errorf("%w: 实例「%s」已有浏览器运行，请先停止实例后再迁移登录态", errBrowserStartRejectedExistingRuntime, profile.ProfileName)
+		}
 	}
 
 	// 同一用户数据目录存在无法通过调试端口接管的残留浏览器进程时

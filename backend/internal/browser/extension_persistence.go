@@ -145,9 +145,23 @@ func (m *Manager) MigrateLegacyExternalExtensionRegistry() error {
 	return m.cleanupManagedExternalExtensionRegistryOnce()
 }
 
+func (m *Manager) profileHasRuntime(profile *Profile) bool {
+	if profile == nil {
+		return false
+	}
+	if profile.Running {
+		return true
+	}
+	return m != nil && m.ProfileRuntimeDetector != nil && m.ProfileRuntimeDetector(profile)
+}
+
 func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath string, userDataDir string, installArgs []string) ([]string, []error) {
 	warnings := make([]error, 0, 1)
 	if m == nil || m.ExtensionDAO == nil || profile == nil {
+		return nil, warnings
+	}
+	if m.profileHasRuntime(profile) {
+		warnings = append(warnings, fmt.Errorf(`实例仍在运行，已跳过插件文件变更：%s。请先停止实例后重试`, profile.ProfileName))
 		return nil, warnings
 	}
 	if strings.TrimSpace(chromeBinaryPath) == "" {
@@ -242,18 +256,21 @@ func (m *Manager) RemoveExtensionFromStoppedProfiles(extensionID string) error {
 	if extensionErr != nil && extensionErr != sql.ErrNoRows {
 		return extensionErr
 	}
+	liveProfiles := make(map[string]bool, len(m.Profiles))
 	for _, profile := range m.Profiles {
 		if profile == nil {
 			continue
 		}
-		if profile.Running {
+		live := m.profileHasRuntime(profile)
+		liveProfiles[profile.ProfileId] = live
+		if live {
 			if err := m.validateExtensionRemovalFromRunningProfile(profile, extensionID, extension, extensionErr); err != nil {
 				return err
 			}
 		}
 	}
 	for _, profile := range m.Profiles {
-		if profile == nil || profile.Running {
+		if profile == nil || liveProfiles[profile.ProfileId] {
 			continue
 		}
 		if err := m.removeExtensionFromStoppedProfile(profile, extensionID, extension, extensionErr); err != nil {
@@ -283,7 +300,7 @@ func (m *Manager) RemoveExtensionFromProfile(profileID string, extensionID strin
 	if extensionErr != nil && extensionErr != sql.ErrNoRows {
 		return extensionErr
 	}
-	if profile.Running {
+	if m.profileHasRuntime(profile) {
 		return m.validateExtensionRemovalFromRunningProfile(profile, extensionID, extension, extensionErr)
 	}
 	return m.removeExtensionFromStoppedProfile(profile, extensionID, extension, extensionErr)
@@ -300,6 +317,10 @@ func (m *Manager) SaveProfileExtensionSettings(profileID string, extensionIDs []
 	m.InitData()
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
+	profile := m.Profiles[profileID]
+	if profile != nil && m.profileHasRuntime(profile) {
+		return ProfileExtensionSettings{}, fmt.Errorf(`实例仍在运行，不能修改插件配置：%s。请先停止实例后重试`, profile.ProfileName)
+	}
 
 	previousSettings, err := m.ExtensionDAO.GetProfileSettings(profileID)
 	if err != nil {
@@ -328,8 +349,7 @@ func (m *Manager) SaveProfileExtensionSettings(profileID string, extensionIDs []
 			removedIDs[extensionID] = struct{}{}
 		}
 	}
-	profile := m.Profiles[profileID]
-	if profile == nil || profile.Running {
+	if profile == nil {
 		return nextSettings, nil
 	}
 	for extensionID := range removedIDs {
@@ -400,6 +420,9 @@ func (m *Manager) validateExtensionRemovalFromRunningProfile(profile *Profile, e
 }
 
 func (m *Manager) removeExtensionFromStoppedProfile(profile *Profile, extensionID string, extension Extension, extensionErr error) error {
+	if m.profileHasRuntime(profile) {
+		return fmt.Errorf(`实例仍在运行，不能清理插件文件：%s。请先停止实例后重试`, profile.ProfileName)
+	}
 	runtimeState, runtimeErr := m.ExtensionDAO.GetProfileExtensionRuntime(profile.ProfileId, extensionID)
 	if runtimeErr != nil && runtimeErr != sql.ErrNoRows {
 		return runtimeErr
@@ -500,6 +523,9 @@ func (m *Manager) ExtensionPackagePaths(extension Extension) ([]string, error) {
 }
 
 func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataDir string, chromeBinaryPath string, extension Extension, installArgs []string) (string, error) {
+	if m.profileHasRuntime(profile) {
+		return ``, fmt.Errorf(`实例仍在运行，不能安装插件文件：%s。请先停止实例后重试`, profile.ProfileName)
+	}
 	installContext := extensionInstallContext{
 		ProfileID:     profile.ProfileId,
 		ExtensionID:   extension.ExtensionID,

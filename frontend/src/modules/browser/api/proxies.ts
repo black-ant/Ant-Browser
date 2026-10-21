@@ -208,7 +208,7 @@ export async function browserProxyTestSpeed(proxyId: string): Promise<ProxySpeed
   return { proxyId, ok: true, latencyMs: Math.floor(100 + Math.random() * 400), engine: 'mock', error: '' }
 }
 
-export async function browserProxyBatchTestSpeed(proxyIds: string[], concurrency: number = 20): Promise<ProxySpeedTestResult[]> {
+export async function browserProxyBatchTestSpeed(proxyIds: string[], concurrency: number = 0): Promise<ProxySpeedTestResult[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProxyBatchTestSpeed) {
     return (await bindings.BrowserProxyBatchTestSpeed(proxyIds, concurrency)) || []

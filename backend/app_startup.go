@@ -133,6 +133,9 @@ func (a *App) startupInitDatabase(cfg *config.Config) (*database.DB, error) {
 func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) {
 	a.browserMgr = browser.NewManager(cfg, a.appRoot)
 	a.browserMgr.EventEmitter = a.emitRuntimeEvent
+	a.browserMgr.ProfileRuntimeDetector = func(profile *browser.Profile) bool {
+		return browserProfileHasRuntime(a, profile, nil)
+	}
 	a.xrayMgr = proxy.NewXrayManager(cfg, a.appRoot)
 	a.clashMgr = proxy.NewClashManager(cfg, a.appRoot)
 	a.singboxMgr = proxy.NewSingBoxManager(cfg, a.appRoot)
@@ -238,13 +241,17 @@ func (a *App) ensureSpeedScheduler() {
 		return
 	}
 	settings := proxy.NormalizeCheckSettings(a.config.ProxyCheck)
+	schedulerConcurrency := settings.SpeedConcurrency
+	if schedulerConcurrency <= 0 || schedulerConcurrency > config.MaxProxySpeedConcurrency {
+		schedulerConcurrency = config.DefaultProxyScheduledSpeedConcurrency
+	}
 	if a.speedScheduler == nil {
 		a.speedScheduler = browser.NewProxySpeedSchedulerWithRetry(
 			a.browserMgr.ProxyDAO,
 			nil,
 			browser.DefaultProxySpeedInterval,
 			time.Duration(settings.FailureRetryMinutes)*time.Minute,
-			settings.SpeedConcurrency,
+			schedulerConcurrency,
 		)
 		a.speedScheduler.SetProxySpeedTestFunc(func(item browser.Proxy) (bool, int64, string) {
 			result := a.testSharedProxySpeed(item.ProxyId, true)

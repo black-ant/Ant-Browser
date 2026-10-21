@@ -11,6 +11,10 @@ import (
 )
 
 func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Config, manifest backup.Manifest, stats *backupMergeStats, onIssue func(componentID, componentName string, err error), referenceMappings ...*backupImportReferenceMappings) {
+	a.backupImportFileTreesWithRollback(payloadRoot, incomingCfg, manifest, stats, onIssue, nil, referenceMappings...)
+}
+
+func (a *App) backupImportFileTreesWithRollback(payloadRoot string, incomingCfg *config.Config, manifest backup.Manifest, stats *backupMergeStats, onIssue func(componentID, componentName string, err error), rollback *backupImportRollback, referenceMappings ...*backupImportReferenceMappings) {
 	report := func(componentID, componentName string, err error) {
 		if onIssue != nil && err != nil {
 			onIssue(componentID, componentName, err)
@@ -20,7 +24,7 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 	appDataSrc := filepath.Join(payloadRoot, "app", "data")
 	appDataDst := a.resolveAppPath("data")
 	if backupPathExists(appDataSrc) {
-		if err := backupSyncDir(appDataSrc, appDataDst, stats, backupShouldSkipAppDBFile); err != nil {
+		if err := backupSyncDir(appDataSrc, appDataDst, stats, backupShouldSkipAppDBFile, rollback); err != nil {
 			report("app_data_root", "应用数据目录（含数据库、快照及默认浏览器数据）", err)
 		}
 	}
@@ -28,7 +32,7 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 	userDataSrc := filepath.Join(payloadRoot, "browser", "user-data")
 	userDataDst := a.backupResolveUserDataRoot(a.config)
 	if backupPathExists(userDataSrc) {
-		if err := backupSyncDir(userDataSrc, userDataDst, stats, nil); err != nil {
+		if err := backupSyncDir(userDataSrc, userDataDst, stats, nil, rollback); err != nil {
 			report("browser_user_data_root", "浏览器用户数据根目录", err)
 		}
 	}
@@ -36,7 +40,7 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 	chromeSrc := filepath.Join(payloadRoot, "browser", "cores", "chrome")
 	chromeDst := a.resolveAppPath("chrome")
 	if backupPathExists(chromeSrc) {
-		if err := backupSyncDir(chromeSrc, chromeDst, stats, nil); err != nil {
+		if err := backupSyncDir(chromeSrc, chromeDst, stats, nil, rollback); err != nil {
 			report("browser_core_root", "默认内核目录", err)
 		}
 	}
@@ -88,7 +92,7 @@ func (a *App) backupImportFileTrees(payloadRoot string, incomingCfg *config.Conf
 				report(componentID, "额外内核目录（来自配置 cores）", fmt.Errorf("目标配置缺失，无法导入该外部内核目录"))
 				continue
 			}
-			if err := backupSyncDir(src, dst, stats, nil); err != nil {
+			if err := backupSyncDir(src, dst, stats, nil, rollback); err != nil {
 				report(componentID, "额外内核目录（来自配置 cores）", err)
 				continue
 			}

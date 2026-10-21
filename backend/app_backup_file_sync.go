@@ -10,12 +10,16 @@ import (
 	"strings"
 )
 
-func backupSyncDir(src, dst string, stats *backupMergeStats, shouldSkip func(rel string) bool) error {
+func backupSyncDir(src, dst string, stats *backupMergeStats, shouldSkip func(rel string) bool, rollback ...*backupImportRollback) error {
 	if !backupPathExists(src) {
 		return nil
 	}
+	dstExisted := backupPathExists(dst)
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
+	}
+	if !dstExisted && len(rollback) > 0 && rollback[0] != nil {
+		rollback[0].recordCreatedPath(dst)
 	}
 
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
@@ -47,7 +51,14 @@ func backupSyncDir(src, dst string, stats *backupMergeStats, shouldSkip func(rel
 
 		target := filepath.Join(dst, filepath.FromSlash(rel))
 		if d.IsDir() {
-			return os.MkdirAll(target, 0755)
+			targetExisted := backupPathExists(target)
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+			if !targetExisted && len(rollback) > 0 && rollback[0] != nil {
+				rollback[0].recordCreatedPath(target)
+			}
+			return nil
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
@@ -56,6 +67,9 @@ func backupSyncDir(src, dst string, stats *backupMergeStats, shouldSkip func(rel
 		if _, err := os.Stat(target); os.IsNotExist(err) {
 			if err := backupCopyFile(path, target); err != nil {
 				return err
+			}
+			if len(rollback) > 0 && rollback[0] != nil {
+				rollback[0].recordCreatedPath(target)
 			}
 			stats.Imported++
 			return nil

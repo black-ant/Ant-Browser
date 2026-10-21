@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfirmModal, toast } from '../../../shared/components'
+import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import type { SortOrder } from '../../../shared/components/Table'
 import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyIPHealthResult } from '../types'
 import { fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies } from '../api'
@@ -108,12 +109,14 @@ export function ProxyPoolPage() {
   const [saving, setSaving] = useState(false)
   const saveProxies = useCallback(async (list: BrowserProxy[]) => {
     await saveBrowserProxies(list)
-    setProxies(list)
-    setDisplayList(toDisplayList(list))
-    const [grps, nextVirtualGroups] = await Promise.all([
+    const [savedList, grps, nextVirtualGroups] = await Promise.all([
+      fetchBrowserProxies(),
       fetchBrowserProxyGroups(),
       fetchBrowserProxyVirtualGroups(),
     ])
+    const finalList = await ensureBuiltinProxies(savedList)
+    setProxies(finalList)
+    setDisplayList(toDisplayList(finalList))
     setGroups(grps)
     setVirtualGroups(nextVirtualGroups)
   }, [])
@@ -162,6 +165,7 @@ export function ProxyPoolPage() {
     setLatencyMap,
     setLatencyEngineMap,
     setIPHealthMap,
+    clearSpeedResults,
     handleTestOne,
     handleTestAll,
     handleCheckOneIPHealth,
@@ -216,10 +220,25 @@ export function ProxyPoolPage() {
     }
   }, [setIPHealthMap, setLatencyEngineMap, setLatencyMap])
 
+  const handleSaveCheckSettings = async () => {
+    const saved = await saveCheckSettings()
+    if (!saved) return
+    clearSpeedResults()
+    await loadProxies()
+  }
+
   useEffect(() => {
     void loadProxies()
     void loadBrowserSettings()
   }, [loadProxies, loadBrowserSettings])
+
+  useEffect(() => {
+    const off = EventsOn('proxy:speed:context:changed', () => {
+      clearSpeedResults()
+      void loadProxies()
+    })
+    return off
+  }, [clearSpeedResults, loadProxies])
 
   const { protocolOptions, filteredList } = useProxyPoolFilter({
     displayList,
@@ -513,7 +532,7 @@ export function ProxyPoolPage() {
         checkTargetsText={checkTargetsText}
         saving={savingCheckSettings}
         onClose={() => setCheckSettingsOpen(false)}
-        onSave={saveCheckSettings}
+        onSave={handleSaveCheckSettings}
         onCheckSettingsChange={setCheckSettings}
         onCheckTargetsTextChange={setCheckTargetsText}
       />

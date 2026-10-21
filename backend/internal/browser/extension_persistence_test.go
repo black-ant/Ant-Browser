@@ -745,6 +745,82 @@ func TestRemoveExtensionFromStoppedProfilesRemovesPersistentCodeWithoutRuntimeSt
 	}
 }
 
+func TestPrepareProfileExtensionsSkipsDetectedRuntime(t *testing.T) {
+	appRoot := t.TempDir()
+	manager := NewManager(config.DefaultConfig(), appRoot)
+	manager.ExtensionDAO = newTestExtensionDAO(t, appRoot)
+	manager.ProfileRuntimeDetector = func(*Profile) bool { return true }
+	profile := &Profile{ProfileId: `profile`, ProfileName: `Profile`}
+
+	args, warnings := manager.PrepareProfileExtensions(profile, `chrome`, filepath.Join(appRoot, `profile`), nil)
+	if len(args) != 0 {
+		t.Fatalf(`PrepareProfileExtensions args = %#v, want no install args`, args)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf(`PrepareProfileExtensions warnings = %#v, want one runtime warning`, warnings)
+	}
+}
+
+func TestRemoveExtensionFromStoppedProfilesRejectsDetectedRuntime(t *testing.T) {
+	appRoot := t.TempDir()
+	userDataDir := filepath.Join(appRoot, `profile`)
+	runtimeID := `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`
+	codeDir := filepath.Join(userDataDir, `Default`, `Extensions`, runtimeID)
+	if err := os.MkdirAll(codeDir, 0o755); err != nil {
+		t.Fatalf(`MkdirAll returned error: %v`, err)
+	}
+	manager := NewManager(config.DefaultConfig(), appRoot)
+	manager.Profiles[`profile`] = &Profile{ProfileId: `profile`, ProfileName: `Profile`, UserDataDir: userDataDir}
+	manager.ProfileRuntimeDetector = func(*Profile) bool { return true }
+	manager.ExtensionDAO = newTestExtensionDAO(t, appRoot)
+	if err := manager.ExtensionDAO.Upsert(Extension{
+		ExtensionID: runtimeID,
+		Name:        `Persistent test`,
+		Version:     `1.0.0`,
+		InstallMode: ExtensionInstallModePersistent,
+	}); err != nil {
+		t.Fatalf(`Upsert returned error: %v`, err)
+	}
+
+	if err := manager.RemoveExtensionFromStoppedProfiles(runtimeID); err == nil {
+		t.Fatal(`RemoveExtensionFromStoppedProfiles unexpectedly allowed a detected runtime`)
+	}
+	if _, err := os.Stat(codeDir); err != nil {
+		t.Fatalf(`persistent code directory was modified: %v`, err)
+	}
+}
+
+func TestSaveProfileExtensionSettingsRejectsDetectedRuntime(t *testing.T) {
+	appRoot := t.TempDir()
+	runtimeID := `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`
+	manager := NewManager(config.DefaultConfig(), appRoot)
+	manager.Profiles[`profile`] = &Profile{ProfileId: `profile`, ProfileName: `Profile`}
+	manager.ProfileRuntimeDetector = func(*Profile) bool { return true }
+	manager.ExtensionDAO = newTestExtensionDAO(t, appRoot)
+	if err := manager.ExtensionDAO.Upsert(Extension{
+		ExtensionID: runtimeID,
+		Name:        `Persistent test`,
+		Version:     `1.0.0`,
+		InstallMode: ExtensionInstallModePersistent,
+	}); err != nil {
+		t.Fatalf(`Upsert returned error: %v`, err)
+	}
+	if _, err := manager.ExtensionDAO.SetProfileSettings(`profile`, []string{runtimeID}, true); err != nil {
+		t.Fatalf(`SetProfileSettings returned error: %v`, err)
+	}
+
+	if _, err := manager.SaveProfileExtensionSettings(`profile`, nil, true); err == nil {
+		t.Fatal(`SaveProfileExtensionSettings unexpectedly allowed a detected runtime`)
+	}
+	settings, err := manager.ExtensionDAO.GetProfileSettings(`profile`)
+	if err != nil {
+		t.Fatalf(`GetProfileSettings returned error: %v`, err)
+	}
+	if len(settings.ExtensionIDs) != 1 || settings.ExtensionIDs[0] != runtimeID || !settings.Configured {
+		t.Fatalf(`profile settings changed after rejected save: %#v`, settings)
+	}
+}
+
 func TestSaveProfileExtensionSettingsOnlyTouchesTargetProfile(t *testing.T) {
 	appRoot := t.TempDir()
 	runtimeID := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

@@ -17,6 +17,7 @@ const (
 	backupScheduleStatusSkipped = "skipped"
 	backupScheduleStatusFailed  = "failed"
 	backupScheduleHistoryLimit  = 3
+	backupScheduleRetryInterval = 5 * time.Minute
 )
 
 type backupScheduleState struct {
@@ -34,6 +35,7 @@ type backupScheduler struct {
 	configurationError string
 	state              backupScheduleState
 	lastDate           string
+	nextAttemptAt      time.Time
 	running            bool
 	resetting          bool
 	stopCh             chan struct{}
@@ -87,6 +89,7 @@ func (s *backupScheduler) loadLocalConfig() error {
 	if recent := s.settings.Schedule.RecentBackupTimes; len(recent) > 0 {
 		s.state.Status = backupScheduleStatusSuccess
 		s.state.LastSuccessAt = recent[0]
+		s.lastDate = backupScheduleDateForTimestamp(recent[0])
 	}
 	return nil
 }
@@ -135,27 +138,27 @@ func (s *backupScheduler) check(now time.Time) {
 	schedule := s.settings.Schedule
 	openList := s.settings.Channels.OpenList
 	lastDate := s.lastDate
+	nextAttemptAt := s.nextAttemptAt
 	running := s.running
 	s.mu.RUnlock()
 
 	if !schedule.Enabled || running {
 		return
 	}
-	if !backupScheduleMatchesTime(schedule.DailyTime, now) {
+	if !backupScheduleDue(schedule.DailyTime, now) {
 		return
 	}
 	today := now.Format("2006-01-02")
-	if lastDate == today {
+	if lastDate == today || (!nextAttemptAt.IsZero() && now.Before(nextAttemptAt)) {
 		return
 	}
 
 	s.mu.Lock()
-	if s.running || s.lastDate == today || s.resetting {
+	if s.running || s.lastDate == today || s.resetting || (!s.nextAttemptAt.IsZero() && now.Before(s.nextAttemptAt)) {
 		s.mu.Unlock()
 		return
 	}
 	s.running = true
-	s.lastDate = today
 	s.state.Status = backupScheduleStatusRunning
 	s.state.LastRunAt = now.UTC().Format(time.RFC3339)
 	s.state.LastError = ""
@@ -175,6 +178,23 @@ func backupScheduleMatchesTime(value string, now time.Time) bool {
 		return false
 	}
 	return parsed.Hour() == now.Hour() && parsed.Minute() == now.Minute()
+}
+
+func backupScheduleDue(value string, now time.Time) bool {
+	parsed, err := backupScheduleParseTime(value, now.Location())
+	if err != nil {
+		return false
+	}
+	scheduled := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
+	return !now.Before(scheduled)
+}
+
+func backupScheduleDateForTimestamp(value string) string {
+	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
+	if err != nil {
+		return ""
+	}
+	return parsed.In(time.Local).Format("2006-01-02")
 }
 
 func backupScheduleParseTime(value string, location *time.Location) (time.Time, error) {
@@ -243,6 +263,11 @@ func (s *backupScheduler) recordSuccessAt(successAt, remoteName string) {
 	s.state.LastRemoteName = remoteName
 	recent := normalizeBackupScheduleTimes(append([]string{successAt}, s.settings.Schedule.RecentBackupTimes...))
 	s.settings.Schedule.RecentBackupTimes = recent
+	s.lastDate = backupScheduleDateForTimestamp(successAt)
+	if s.lastDate == "" {
+		s.lastDate = time.Now().Format("2006-01-02")
+	}
+	s.nextAttemptAt = time.Time{}
 
 	if s.app == nil || s.app.config == nil {
 		return
@@ -257,6 +282,7 @@ func (s *backupScheduler) recordSkipped(message string) {
 	s.mu.Lock()
 	s.state.Status = backupScheduleStatusSkipped
 	s.state.LastError = message
+	s.nextAttemptAt = time.Now().Add(backupScheduleRetryInterval)
 	s.mu.Unlock()
 }
 
@@ -264,6 +290,7 @@ func (s *backupScheduler) recordFailure(message string) {
 	s.mu.Lock()
 	s.state.Status = backupScheduleStatusFailed
 	s.state.LastError = strings.TrimSpace(message)
+	s.nextAttemptAt = time.Now().Add(backupScheduleRetryInterval)
 	s.mu.Unlock()
 }
 

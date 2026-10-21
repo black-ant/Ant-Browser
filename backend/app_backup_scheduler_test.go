@@ -22,6 +22,43 @@ func TestBackupScheduleMatchesTime(t *testing.T) {
 	}
 }
 
+func TestBackupScheduleDueRunsAfterConfiguredMinute(t *testing.T) {
+	now := time.Date(2026, time.August, 26, 2, 3, 30, 0, time.Local)
+	if !backupScheduleDue("02:03", now) {
+		t.Fatal("schedule should be due after the configured minute")
+	}
+	if backupScheduleDue("02:04", now) {
+		t.Fatal("schedule should not be due before the configured minute")
+	}
+}
+
+func TestBackupScheduleDateForTimestampUsesLocalDate(t *testing.T) {
+	if got := backupScheduleDateForTimestamp("2026-08-26T16:03:00Z"); got == "" {
+		t.Fatal("valid timestamp should produce a schedule date")
+	}
+	if got := backupScheduleDateForTimestamp("invalid"); got != "" {
+		t.Fatalf("invalid timestamp date = %q, want empty", got)
+	}
+}
+
+func TestBackupSchedulerFailureSchedulesRetryWithoutMarkingDayComplete(t *testing.T) {
+	scheduler := newBackupScheduler(NewApp(t.TempDir()))
+	scheduler.recordFailure("OpenList unavailable")
+	if scheduler.lastDate != "" {
+		t.Fatalf("failed backup lastDate = %q, want empty", scheduler.lastDate)
+	}
+	if scheduler.nextAttemptAt.IsZero() {
+		t.Fatal("failed backup did not schedule a retry")
+	}
+	scheduler.recordSuccessAt("2026-08-26T02:03:00Z", "backup.zip")
+	if scheduler.lastDate == "" {
+		t.Fatal("successful backup did not mark the completed date")
+	}
+	if !scheduler.nextAttemptAt.IsZero() {
+		t.Fatalf("successful backup nextAttemptAt = %v, want zero", scheduler.nextAttemptAt)
+	}
+}
+
 func TestBackupScheduledSaveSettingsStoresTokenLocally(t *testing.T) {
 	appRoot := t.TempDir()
 	app := NewApp(appRoot)

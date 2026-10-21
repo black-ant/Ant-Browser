@@ -13,6 +13,7 @@ export interface BackupActionResult {
   skippedEntries?: number
   fileCount?: number
   partial?: boolean
+  rolledBack?: boolean
   componentTotal?: number
   componentSuccess?: number
   componentFailed?: number

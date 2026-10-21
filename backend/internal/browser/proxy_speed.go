@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"ant-chrome/backend/internal/config"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +34,7 @@ type ProxySpeedScheduler struct {
 const (
 	DefaultProxySpeedInterval     = 30 * time.Minute
 	DefaultProxySpeedInitialDelay = 2 * time.Minute
-	DefaultProxySpeedConcurrency  = 2
+	DefaultProxySpeedConcurrency  = config.DefaultProxyScheduledSpeedConcurrency
 	DefaultProxySpeedFailureRetry = 5 * time.Minute
 )
 

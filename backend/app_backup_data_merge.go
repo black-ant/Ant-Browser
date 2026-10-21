@@ -866,7 +866,7 @@ func backupMergeDatabaseProxyVirtualGroups(tx *sql.Tx, mappings *backupImportRef
 				return 0, 0, fmt.Errorf("解析备份虚拟代理分组成员失败(%s): %w", group.GroupName, err)
 			}
 		}
-		group = browser.NormalizeProxyVirtualGroup(browser.ResolveProxyVirtualGroup(group, sourceProxies))
+		group = browser.MaterializeProxyVirtualGroup(group, sourceProxies)
 		if group.GroupName == "" {
 			continue
 		}

@@ -75,8 +75,8 @@ func TestResetManagedSettingsResetsManagedConfigAndSecrets(t *testing.T) {
 	if !backupConfigsEqual(scheduler.settings, defaults.Backup) {
 		t.Fatalf("scheduler settings = %+v, want %+v", scheduler.settings, defaults.Backup)
 	}
-	if scheduler.configurationError != "" || scheduler.state.Status != backupScheduleStatusNever || scheduler.lastDate != "" || scheduler.running || scheduler.resetting {
-		t.Fatalf("scheduler state was not reset: error=%q state=%+v lastDate=%q running=%v resetting=%v", scheduler.configurationError, scheduler.state, scheduler.lastDate, scheduler.running, scheduler.resetting)
+	if scheduler.configurationError != "" || scheduler.state.Status != backupScheduleStatusNever || scheduler.lastDate != "" || !scheduler.nextAttemptAt.IsZero() || scheduler.running || scheduler.resetting {
+		t.Fatalf("scheduler state was not reset: error=%q state=%+v lastDate=%q nextAttemptAt=%v running=%v resetting=%v", scheduler.configurationError, scheduler.state, scheduler.lastDate, scheduler.nextAttemptAt, scheduler.running, scheduler.resetting)
 	}
 
 	persisted, err := config.Load(filepath.Join(root, "config.yaml"))

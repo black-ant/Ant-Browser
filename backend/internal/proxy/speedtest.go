@@ -26,6 +26,7 @@ const DefaultSpeedTestURL = "http://www.gstatic.com/generate_204"
 
 // SpeedTestConfig 测速参数
 type SpeedTestConfig struct {
+	TargetID       string
 	Timeout        time.Duration
 	TCPTimeout     time.Duration
 	URLs           []string

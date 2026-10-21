@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -58,6 +59,25 @@ func TestPortableProfileSessionPasswordValidation(t *testing.T) {
 	}
 	if err := validatePortableSessionPassword("12345678"); err != nil {
 		t.Fatalf("valid migration password returned error: %v", err)
+	}
+}
+
+func TestPortableSessionStartRejectsExistingRuntime(t *testing.T) {
+	root := t.TempDir()
+	app := NewApp(root)
+	app.config = config.DefaultConfig()
+	app.browserMgr = browser.NewManager(app.config, root)
+	profile := &browser.Profile{ProfileId: "profile-1", ProfileName: "运行中实例", Running: true, Pid: os.Getpid()}
+	app.browserMgr.Profiles[profile.ProfileId] = profile
+
+	input := newBrowserStartInput(profile.ProfileId, nil, []string{"about:blank"}, true, false, true, "", "")
+	input.RejectExistingRuntime = true
+	_, handled, err := app.resolveBrowserStartProfile(input)
+	if handled {
+		t.Fatal("portable session start treated an existing runtime as handled")
+	}
+	if !errors.Is(err, errBrowserStartRejectedExistingRuntime) {
+		t.Fatalf("portable session start error = %v, want existing-runtime rejection", err)
 	}
 }
 

@@ -17,10 +17,17 @@ func (a *App) backupRunningProfileNames() []string {
 		return nil
 	}
 
+	a.browserMgr.InitData()
 	profiles := a.browserMgr.List()
+	a.browserMgr.Mutex.Lock()
+	trackedProcesses := make(map[string]*exec.Cmd, len(a.browserMgr.BrowserProcesses))
+	for profileID, command := range a.browserMgr.BrowserProcesses {
+		trackedProcesses[profileID] = command
+	}
+	a.browserMgr.Mutex.Unlock()
 	names := make([]string, 0)
 	for _, profile := range profiles {
-		if !profile.Running {
+		if !browserProfileHasRuntime(a, &profile, trackedProcesses[profile.ProfileId]) {
 			continue
 		}
 		name := strings.TrimSpace(profile.ProfileName)
@@ -62,7 +69,10 @@ func (a *App) backupStopRuntimeForMaintenance() error {
 			if profile == nil && cmd == nil {
 				continue
 			}
-			if cmd == nil && (profile == nil || (!profile.Running && profile.Pid <= 0 && profile.DebugPort <= 0)) {
+			if cmd == nil && profile == nil {
+				continue
+			}
+			if profile != nil && !browserProfileHasRuntime(a, profile, cmd) && cmd == nil && !profile.Running && profile.Pid <= 0 && profile.DebugPort <= 0 && profile.WindowMarkerCode == "" {
 				continue
 			}
 			item := runtimeProfile{}

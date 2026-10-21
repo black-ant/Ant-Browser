@@ -1257,6 +1257,7 @@ export namespace backend {
 	    latencyMs: number;
 	    engine: string;
 	    error: string;
+	    fingerprint: string;
 
 	    static createFrom(source: any = {}) {
 	        return new ProxyTestResult(source);
@@ -1269,6 +1270,7 @@ export namespace backend {
 	        this.latencyMs = source["latencyMs"];
 	        this.engine = source["engine"];
 	        this.error = source["error"];
+	        this.fingerprint = source["fingerprint"];
 	    }
 	}
 	export class ProxyValidationResult {
@@ -1879,6 +1881,7 @@ export namespace config {
 	    lastLatencyMs: number;
 	    lastTestOk: boolean;
 	    lastTestedAt: string;
+	    speedTestFingerprint: string;
 	    lastIPHealthJson?: string;
 
 	    static createFrom(source: any = {}) {
@@ -1903,6 +1906,7 @@ export namespace config {
 	        this.lastLatencyMs = source["lastLatencyMs"];
 	        this.lastTestOk = source["lastTestOk"];
 	        this.lastTestedAt = source["lastTestedAt"];
+	        this.speedTestFingerprint = source["speedTestFingerprint"];
 	        this.lastIPHealthJson = source["lastIPHealthJson"];
 	    }
 	}
@@ -1932,6 +1936,8 @@ export namespace config {
 	}
 	export class ProxyCheckConfig {
 	    bridgeStartTimeoutMs: number;
+	    failureRetryMinutes: number;
+	    speedConcurrency: number;
 	    speedTargetId: string;
 	    ipHealthTargetId: string;
 	    targets: ProxyCheckTarget[];
@@ -1943,6 +1949,8 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.bridgeStartTimeoutMs = source["bridgeStartTimeoutMs"];
+	        this.failureRetryMinutes = source["failureRetryMinutes"];
+	        this.speedConcurrency = source["speedConcurrency"];
 	        this.speedTargetId = source["speedTargetId"];
 	        this.ipHealthTargetId = source["ipHealthTargetId"];
 	        this.targets = this.convertValues(source["targets"], ProxyCheckTarget);

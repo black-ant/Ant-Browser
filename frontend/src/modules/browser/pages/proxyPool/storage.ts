@@ -13,6 +13,13 @@ const PROXY_GLOBAL_REFRESH_INTERVAL_KEY = 'browser:proxyPool:globalRefreshInterv
 const PROXY_LATENCY_CACHE_TTL_MS = 30 * 60 * 1000
 const PROXY_IP_HEALTH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 
+export function isFreshProxySpeedTestAt(value: string, now = Date.now()): boolean {
+  const testedAt = Date.parse((value || '').trim())
+  if (!Number.isFinite(testedAt)) return false
+  const age = now - testedAt
+  return age >= 0 && age <= PROXY_LATENCY_CACHE_TTL_MS
+}
+
 export function readSourceIgnoredProxyNames(): Record<string, string[]> {
   try {
     const raw = localStorage.getItem(PROXY_SOURCE_IGNORED_NAMES_KEY)

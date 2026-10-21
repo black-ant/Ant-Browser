@@ -13,7 +13,8 @@ func (a *App) BrowserProxyList() []BrowserProxy {
 	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil || a.config == nil {
 		return []BrowserProxy{}
 	}
-	return browser.ListProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
+	proxies := browser.ListProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
+	return a.proxySpeedResultsWithCurrentContext(proxies)
 }
 
 // BrowserProxyListGroups 获取所有代理分组名称
@@ -29,13 +30,15 @@ func (a *App) BrowserProxyListByGroup(groupName string) []BrowserProxy {
 	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil || a.config == nil {
 		return []BrowserProxy{}
 	}
-	return browser.ListProxiesByGroupWithFallback(a.browserMgr.ProxyDAO, groupName, a.config.Browser.Proxies)
+	proxies := browser.ListProxiesByGroupWithFallback(a.browserMgr.ProxyDAO, groupName, a.config.Browser.Proxies)
+	allProxies := browser.LatestProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
+	return a.proxySpeedResultsWithContext(proxies, allProxies)
 }
 
 // ValidateProxyConfig 验证代理配置是否支持
 func (a *App) ValidateProxyConfig(proxyConfig string, proxyId string) ProxyValidationResult {
 	proxies := a.getLatestProxies()
-	supported, errorMsg := proxy.ValidateProxyConfig(proxyConfig, proxies, proxyId)
+	supported, errorMsg := proxy.ValidateProxyConfigWithConnector(proxyConfig, proxies, proxyId, a.defaultProxyConnectorType())
 	return ProxyValidationResult{
 		Supported: supported,
 		ErrorMsg:  errorMsg,

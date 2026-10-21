@@ -199,6 +199,81 @@ VALUES ('source-dynamic-proxy', '动态代理节点', 'socks5://source:1080', 0,
 	}
 }
 
+func TestProfilePackageDatabaseMaterializesDynamicVirtualGroupMembers(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceProfile := &browser.Profile{
+		ProfileId:      "source-dynamic-members-profile",
+		ProfileName:    "动态代理实例",
+		ProxyMode:      browser.ProxyModeDynamic,
+		ProxyGroupName: "mobile-pool",
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, group_name, sort_order, created_at)
+VALUES ('mobile-1', '移动节点 1', 'socks5://source-1:1080', 'mobile', 0, '2026-08-30T00:00:00Z'),
+       ('mobile-2', '移动节点 2', 'socks5://source-2:1080', 'mobile', 1, '2026-08-30T00:00:00Z'),
+       ('desktop-1', '桌面节点', 'socks5://source-3:1080', 'desktop', 2, '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source proxies failed: %v", err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxy_virtual_groups (
+	group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+) VALUES ('source-dynamic-members-group', 'mobile-pool', 'round_robin', '', '["mobile-1"]', '["mobile"]', 0, '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source virtual group failed: %v", err)
+	}
+	sourceDAO := browser.NewSQLiteProfileDAO(sourceDB.GetConn())
+	if err := sourceDAO.Upsert(sourceProfile); err != nil {
+		t.Fatalf("save source profile failed: %v", err)
+	}
+	storedSource, err := sourceDAO.GetById(sourceProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read source profile failed: %v", err)
+	}
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.db = sourceDB
+	snapshot, err := sourceApp.collectProfilePackageDatabase([]browser.Profile{*storedSource})
+	if err != nil {
+		t.Fatalf("collect profile package database failed: %v", err)
+	}
+	if len(snapshot.ProxyVirtualGroups) != 1 {
+		t.Fatalf("snapshot virtual groups = %#v, want one group", snapshot.ProxyVirtualGroups)
+	}
+	group := snapshot.ProxyVirtualGroups[0]
+	if len(group.MemberGroupNames) != 0 {
+		t.Fatalf("snapshot dynamic member group names = %#v, want materialized members", group.MemberGroupNames)
+	}
+	if len(group.MemberProxyIds) != 2 || group.MemberProxyIds[0] != "mobile-1" || group.MemberProxyIds[1] != "mobile-2" {
+		t.Fatalf("snapshot virtual group members = %#v, want [mobile-1 mobile-2]", group.MemberProxyIds)
+	}
+	if len(snapshot.Proxies) != 2 {
+		t.Fatalf("snapshot proxies = %d, want two materialized members", len(snapshot.Proxies))
+	}
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	targetApp := NewApp(targetRoot)
+	targetApp.db = targetDB
+	preparedProfile := snapshot.Profiles[0]
+	preparedProfile.ProfileId = "target-dynamic-members-profile"
+	prepared := []preparedProfilePackageImport{{
+		Profile:      preparedProfile,
+		OldProfileID: sourceProfile.ProfileId,
+	}}
+	if err := targetApp.restoreProfilePackageDatabase(snapshot, prepared, nil); err != nil {
+		t.Fatalf("restore profile package database failed: %v", err)
+	}
+
+	var memberProxyIDsJSON, memberGroupNamesJSON string
+	if err := targetDB.GetConn().QueryRow(`SELECT member_proxy_ids, member_group_names FROM browser_proxy_virtual_groups WHERE group_name = 'mobile-pool'`).Scan(&memberProxyIDsJSON, &memberGroupNamesJSON); err != nil {
+		t.Fatalf("read imported virtual group failed: %v", err)
+	}
+	var memberProxyIDs []string
+	if err := json.Unmarshal([]byte(memberProxyIDsJSON), &memberProxyIDs); err != nil {
+		t.Fatalf("decode imported virtual group members failed: %v", err)
+	}
+	if len(memberProxyIDs) != 2 || memberProxyIDs[0] == "" || memberProxyIDs[1] == "" || memberGroupNamesJSON != "[]" {
+		t.Fatalf("imported virtual group members = %v, dynamic names = %s", memberProxyIDs, memberGroupNamesJSON)
+	}
+}
+
 func TestProfilePackageImportPreservesLocalVirtualGroupOnNameConflict(t *testing.T) {
 	sourceRoot := t.TempDir()
 	sourceDB := newProfilePackageDatabase(t, sourceRoot)

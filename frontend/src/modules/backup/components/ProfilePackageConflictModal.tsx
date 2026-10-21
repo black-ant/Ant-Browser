@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Modal } from '../../../shared/components'
+import { BrowserEditSelect } from '../../browser/components/BrowserEditSelect'
 import type {
   BrowserProfilePackageImportAction,
   BrowserProfilePackageImportActionMode,
@@ -163,16 +164,18 @@ export function ProfilePackageConflictModal({
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <select
+                        <BrowserEditSelect
+                          label={`操作：${row.sourceProfileName || row.sourceProfileId || `第 ${row.sourceIndex + 1} 个实例`}`}
                           value={action.mode}
-                          onChange={(event) => updateAction(row, event.target.value as BrowserProfilePackageImportActionMode)}
+                          onChange={(value) => updateAction(row, value as BrowserProfilePackageImportActionMode)}
                           disabled={busy}
-                          className="w-full rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
-                        >
-                          <option value="new">新建</option>
-                          <option value="overwrite" disabled={overwriteDisabled}>覆盖原有{overwriteDisabled ? '（不可用）' : ''}</option>
-                          <option value="rename">重命名</option>
-                        </select>
+                          className="w-full"
+                          options={[
+                            { value: 'new', label: '新建' },
+                            { value: 'overwrite', label: `覆盖原有${overwriteDisabled ? '（不可用）' : ''}`, disabled: overwriteDisabled },
+                            { value: 'rename', label: '重命名' },
+                          ]}
+                        />
                       </td>
                       <td className="px-3 py-3">
                         {action.mode === 'rename' ? (

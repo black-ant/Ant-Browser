@@ -18,6 +18,7 @@ type ProxyTestResult struct {
 	LatencyMs     int64  `json:"latencyMs"`
 	Engine        string `json:"engine"`
 	Error         string `json:"error"`
+	Fingerprint   string `json:"fingerprint"`
 	testedAt      string
 	fingerprint   string
 	connectorType string

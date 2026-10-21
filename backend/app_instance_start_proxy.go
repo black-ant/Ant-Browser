@@ -63,7 +63,11 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 		logger.F("temporary_proxy_config", input.TemporaryProxyConfig),
 		logger.F("resolved_proxy_config", resolvedProxyConfig),
 	)
-	if supported, errorMsg := proxy.ValidateProxyConfig(resolvedProxyConfig, proxies, resolvedProxyID); !supported {
+	connectorType := config.BrowserConnectorXray
+	if a.config != nil {
+		connectorType = config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
+	}
+	if supported, errorMsg := proxy.ValidateProxyConfigWithConnector(resolvedProxyConfig, proxies, resolvedProxyID, connectorType); !supported {
 		startErr := fmt.Errorf("实例启动失败：%s", errorMsg)
 		profile.LastError = startErr.Error()
 		log.Error("代理配置无效",
@@ -75,10 +79,6 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 		return "", profileProxyBridgeRef{}, false, startErr
 	}
 
-	connectorType := config.BrowserConnectorXray
-	if a.config != nil {
-		connectorType = config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
-	}
 	resolution, err := proxy.ResolveProxyKernelForConnector(resolvedProxyConfig, proxies, resolvedProxyID, connectorType)
 	if err != nil {
 		startErr := fmt.Errorf("实例启动失败：%s", err.Error())

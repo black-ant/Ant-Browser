@@ -259,6 +259,8 @@ export interface ProxyCheckTarget {
 
 export interface ProxyCheckSettings {
   bridgeStartTimeoutMs: number
+  failureRetryMinutes: number
+  speedConcurrency: number
   speedTargetId: string
   ipHealthTargetId: string
   targets: ProxyCheckTarget[]
@@ -299,19 +301,8 @@ export interface BrowserProxy {
   lastLatencyMs?: number
   lastTestOk?: boolean
   lastTestedAt?: string
+  speedTestFingerprint?: string
   lastIPHealthJson?: string
-}
-
-export interface BrowserProxyVirtualGroup {
-  groupId: string
-  groupName: string
-  strategy: 'round_robin' | 'sticky' | string
-  selectedProxyId?: string
-  memberProxyIds: string[]
-  memberGroupNames?: string[]
-  sortOrder?: number
-  createdAt?: string
-  updatedAt?: string
 }
 
 export interface BrowserProxyVirtualGroup {
@@ -394,6 +385,7 @@ export interface ProxySpeedTestResult {
   latencyMs: number
   engine?: string
   error: string
+  fingerprint?: string
 }
 
 

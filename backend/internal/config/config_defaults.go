@@ -22,9 +22,10 @@ const (
 )
 
 const (
-	DefaultProxyFailureRetryMinutes = 5
-	DefaultProxySpeedConcurrency    = 2
-	MaxProxySpeedConcurrency        = 10
+	DefaultProxyFailureRetryMinutes       = 5
+	DefaultProxySpeedConcurrency          = 5
+	DefaultProxyScheduledSpeedConcurrency = 5
+	MaxProxySpeedConcurrency              = 10
 )
 
 // NormalizeBrowserConnectorType 规范化连接栈配置。

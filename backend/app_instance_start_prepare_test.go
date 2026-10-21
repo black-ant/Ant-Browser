@@ -2,7 +2,10 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/config"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -47,5 +50,40 @@ func TestJoinBrowserStartExtensionWarnings(t *testing.T) {
 	joined = joinBrowserStartExtensionWarnings([]error{longWarning})
 	if len(joined) != 503 || !strings.HasSuffix(joined, "…") {
 		t.Fatalf("long warning not truncated: len=%d suffix=%q", len(joined), joined[len(joined)-3:])
+	}
+}
+
+func TestPrepareBrowserLaunchContextRejectsRecoveredRuntimeForPortableSession(t *testing.T) {
+	root := t.TempDir()
+	coreDir := filepath.Join(root, "core")
+	if err := os.MkdirAll(coreDir, 0o755); err != nil {
+		t.Fatalf("create core directory failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(coreDir, "chrome.exe"), []byte("stub"), 0o755); err != nil {
+		t.Fatalf("create fake browser executable failed: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Browser.UserDataRoot = filepath.Join(root, "user-data")
+	cfg.Browser.Cores = []config.BrowserCore{{CoreId: "core-1", CorePath: coreDir, IsDefault: true}}
+	app := NewApp(root)
+	app.config = cfg
+	app.browserMgr = browser.NewManager(cfg, root)
+	profile := &browser.Profile{ProfileId: "profile-1", ProfileName: "已有运行态", CoreId: "core-1"}
+	input := newBrowserStartInput(profile.ProfileId, nil, []string{"about:blank"}, true, false, true, "", "")
+	input.RejectExistingRuntime = true
+
+	oldFind := findBrowserUserDataProcesses
+	findBrowserUserDataProcesses = func(userDataDir string) ([]browserUserDataProcess, error) {
+		if userDataDir != app.browserMgr.ResolveUserDataDir(profile) {
+			return nil, nil
+		}
+		return []browserUserDataProcess{{PID: 1001, CommandLine: `"C:\\chrome.exe" --user-data-dir="` + userDataDir + `"`}}, nil
+	}
+	t.Cleanup(func() { findBrowserUserDataProcesses = oldFind })
+
+	_, _, _, _, _, err := app.prepareBrowserLaunchContext(input, profile, nil)
+	if !errors.Is(err, errBrowserStartRejectedExistingRuntime) {
+		t.Fatalf("portable session launch error = %v, want existing-runtime rejection", err)
 	}
 }
