@@ -9,12 +9,24 @@ const directProxyID = "__direct__"
 
 // ApplyDefaults 应用默认配置
 func (m *Manager) ApplyDefaults(profile *Profile) bool {
+	defaultsChanged := false
 	log := logger.New("Browser")
 	if profile.FingerprintArgs == nil || len(profile.FingerprintArgs) == 0 {
-		profile.FingerprintArgs = append([]string{}, m.Config.Browser.DefaultFingerprintArgs...)
+		if m.Config != nil {
+			profile.FingerprintArgs = append([]string{}, m.Config.Browser.DefaultFingerprintArgs...)
+			defaultsChanged = len(profile.FingerprintArgs) > 0
+		}
+	}
+	upgradedFingerprintArgs := upgradeLegacyMinimalFingerprintArgs(profile.FingerprintArgs)
+	if !stringSlicesEqual(profile.FingerprintArgs, upgradedFingerprintArgs) {
+		profile.FingerprintArgs = upgradedFingerprintArgs
+		defaultsChanged = true
 	}
 	if profile.LaunchArgs == nil || len(profile.LaunchArgs) == 0 {
-		profile.LaunchArgs = append([]string{}, m.Config.Browser.DefaultLaunchArgs...)
+		if m.Config != nil {
+			profile.LaunchArgs = append([]string{}, m.Config.Browser.DefaultLaunchArgs...)
+			defaultsChanged = defaultsChanged || len(profile.LaunchArgs) > 0
+		}
 	}
 	if strings.TrimSpace(profile.UserDataDir) == "" {
 		profile.UserDataDir = profile.ProfileId
@@ -28,25 +40,25 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 
 	proxyMode := NormalizeProxyMode(profile.ProxyMode)
 	if proxyMode == ProxyModeDynamic || proxyMode == ProxyModeLocal {
-		changed := false
+		proxyChanged := false
 		if strings.TrimSpace(profile.ProxyId) != "" {
 			profile.ProxyId = ""
-			changed = true
+			proxyChanged = true
 		}
 		if proxyMode == ProxyModeDynamic && strings.TrimSpace(profile.ProxyConfig) != "" {
 			profile.ProxyConfig = ""
-			changed = true
+			proxyChanged = true
 		}
 		if ClearProfileProxyBinding(profile) {
-			changed = true
+			proxyChanged = true
 		}
 		if proxyMode == ProxyModeDynamic {
 			profile.ProxyGroupName = NormalizeProxyGroupName(profile.ProxyGroupName)
 		} else if profile.ProxyGroupName != "" {
 			profile.ProxyGroupName = ""
-			changed = true
+			proxyChanged = true
 		}
-		return changed
+		return defaultsChanged || proxyChanged
 	}
 
 	proxyChanged := false
@@ -95,7 +107,19 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 		}
 	}
 
-	return proxyChanged
+	return defaultsChanged || proxyChanged
+}
+
+func stringSlicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) bindProfileToDirectProxy(profile *Profile) bool {

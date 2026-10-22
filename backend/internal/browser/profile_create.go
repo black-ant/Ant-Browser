@@ -36,6 +36,7 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 	if len(fingerprintArgs) == 0 && m.Config != nil {
 		fingerprintArgs = append([]string{}, m.Config.Browser.DefaultFingerprintArgs...)
 	}
+	fingerprintArgs = upgradeLegacyMinimalFingerprintArgs(fingerprintArgs)
 	profile := &Profile{
 		ProfileId:          profileId,
 		ProfileName:        input.ProfileName,

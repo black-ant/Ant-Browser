@@ -43,6 +43,25 @@ func TestCreateKeepsExplicitFingerprintArgs(t *testing.T) {
 	assertStringSliceContains(t, profile.FingerprintArgs, "--fingerprint=123")
 }
 
+func TestCreateUpgradesLegacyMinimalFingerprintArgs(t *testing.T) {
+	manager := NewManager(&config.Config{}, t.TempDir())
+
+	profile, err := manager.Create(ProfileInput{
+		ProfileName: `legacy`,
+		FingerprintArgs: []string{
+			`--fingerprint-brand=Chrome`,
+			`--fingerprint-platform=windows`,
+		},
+	})
+	if err != nil {
+		t.Fatalf(`Create returned error: %v`, err)
+	}
+
+	assertStringSliceContains(t, profile.FingerprintArgs, `--disable-non-proxied-udp`)
+	assertStringSliceContains(t, profile.FingerprintArgs, `--fingerprinting-canvas-image-data-noise`)
+	assertStringSliceContains(t, profile.FingerprintArgs, `--fingerprinting-client-rects-noise`)
+}
+
 func TestCreateNormalizesRestoreLastSessionMode(t *testing.T) {
 	manager := NewManager(&config.Config{}, t.TempDir())
 	profile, err := manager.Create(ProfileInput{ProfileName: "test", RestoreLastSession: "true"})

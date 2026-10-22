@@ -57,6 +57,24 @@ func TestApplyDefaultsKeepsDynamicProfileUnbound(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultsUpgradesLegacyFingerprintArgsAndReportsChange(t *testing.T) {
+	manager := NewManager(&config.Config{}, t.TempDir())
+	profile := &Profile{
+		ProfileId: `legacy`,
+		FingerprintArgs: []string{
+			`--fingerprint-brand=Chrome`,
+			`--fingerprint-platform=windows`,
+		},
+	}
+
+	if !manager.ApplyDefaults(profile) {
+		t.Fatal(`ApplyDefaults reported no change`)
+	}
+	assertStringSliceContains(t, profile.FingerprintArgs, `--disable-non-proxied-udp`)
+	assertStringSliceContains(t, profile.FingerprintArgs, `--fingerprinting-canvas-image-data-noise`)
+	assertStringSliceContains(t, profile.FingerprintArgs, `--fingerprinting-client-rects-noise`)
+}
+
 func TestApplyDefaultsKeepsLocalProxyOutOfPool(t *testing.T) {
 	manager := NewManager(config.DefaultConfig(), "")
 	manager.Config.Browser.Proxies = []config.BrowserProxy{{

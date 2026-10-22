@@ -657,6 +657,7 @@ var UI_ZH = {
   'Proxy/VPN': '代理/VPN',
   'IPXO/Rented Segment': 'IPXO/租赁段',
   'Detection Failed': '检测失败',
+  'Checking': '检测中',
   'Not Checked': '未检测',
   'No proxy configured': '未配置代理',
   'No endpoint': '无地址',
@@ -1196,7 +1197,7 @@ function resolveIPAttribution(ip, results) {
     latencyMs: latency
   };
 }
-async function collect() {
+async function collectLocalFingerprint() {
   var uaData = navigator.userAgentData ? {
     brands: navigator.userAgentData.brands || [],
     mobile: navigator.userAgentData.mobile,
@@ -1204,9 +1205,6 @@ async function collect() {
   } : null;
   var fonts = fontProbe();
   var gl = webglInfo();
-  var networkResults = await Promise.all([webrtcCandidates(), collectPublicIPInfo()]);
-  var candidates = networkResults[0];
-  var proxyInfo = networkResults[1];
   return {
     generatedAt: new Date().toISOString(),
     urlProfileId: new URLSearchParams(location.search).get('profileId') || '',
@@ -1255,10 +1253,26 @@ async function collect() {
       mimeTypes: Array.prototype.map.call(navigator.mimeTypes || [], function (m) { return m.type || ''; })
     },
     network: {
-      webrtcCandidates: candidates,
-      localCandidateCount: candidates.filter(function (item) { return / typ host /.test(item); }).length,
-      proxyInfo: proxyInfo
+      webrtcCandidates: [],
+      localCandidateCount: 0,
+      proxyInfo: null,
+      proxyCheckPending: true
     }
+  };
+}
+async function collectNetworkInfo() {
+  var networkResults = await Promise.all([
+    webrtcCandidates().catch(function () { return []; }),
+    collectPublicIPInfo().catch(function (error) {
+      return buildPublicIPFailure([{ source: 'proxy-check', kind: 'geo', ok: false, error: error && error.message ? error.message : String(error || 'failed') }]);
+    })
+  ]);
+  var candidates = networkResults[0] || [];
+  return {
+    webrtcCandidates: candidates,
+    localCandidateCount: candidates.filter(function (item) { return / typ host /.test(item); }).length,
+    proxyInfo: networkResults[1],
+    proxyCheckPending: false
   };
 }
 function csvItems(value) { return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(Boolean); }
@@ -1673,9 +1687,10 @@ function renderProxyCheck(report) {
   var proxy = latestContext && latestContext.proxy ? latestContext.proxy : {};
   var network = report && report.network ? report.network : {};
   var info = network.proxyInfo || {};
+  var proxyCheckPending = network.proxyCheckPending === true;
   var configStatus = proxy.direct ? 'warn' : (proxy.configured ? 'ok' : 'warn');
   var configText = proxy.direct ? 'Direct' : (proxy.configured ? 'Configured' : 'No proxy configured');
-  var exit = proxyExitStatus(info);
+  var exit = proxyCheckPending ? { text: 'Checking', status: 'warn' } : proxyExitStatus(info);
   var configLines = [
     proxyStatusLine('Status', configText, configStatus),
     proxyLine('Name', proxy.proxyName || proxy.proxyId || '-'),
@@ -1686,12 +1701,12 @@ function renderProxyCheck(report) {
   ].join('');
   var exitLines = [
     proxyStatusLine('Status', exit.text, exit.status),
-    proxyLine('Current IP', info.ip || '-'),
-    proxyLine('Location', proxyLocationText(info)),
-    proxyLine('Confidence', info.ok ? uiText(info.confidence || 'Single Source') : '-'),
-    proxyLine('ASN/Network', proxyNetworkText(info)),
-    proxyLine('Latency', info.ok ? String(info.latencyMs || 0) + ' ms' : '-'),
-    proxyHTMLLine('Source Details', proxySourceDetails(info))
+    proxyLine('Current IP', proxyCheckPending ? uiText('Checking') : (info.ip || '-')),
+    proxyLine('Location', proxyCheckPending ? uiText('Checking') : proxyLocationText(info)),
+    proxyLine('Confidence', proxyCheckPending ? uiText('Checking') : (info.ok ? uiText(info.confidence || 'Single Source') : '-')),
+    proxyLine('ASN/Network', proxyCheckPending ? uiText('Checking') : proxyNetworkText(info)),
+    proxyLine('Latency', proxyCheckPending ? uiText('Checking') : (info.ok ? String(info.latencyMs || 0) + ' ms' : '-')),
+    proxyHTMLLine('Source Details', proxyCheckPending ? escapeHtml(uiText('Checking')) : proxySourceDetails(info))
   ].join('');
   return '<section class="proxy-panel"><h2>' + uiText('Proxy Check') + '</h2><div class="proxy-grid"><div class="proxy-card"><div class="proxy-title">' + uiText('Configured Proxy') + '</div><div class="proxy-lines">' + configLines + '</div></div><div class="proxy-card"><div class="proxy-title">' + uiText('Browser Exit') + '</div><div class="proxy-lines">' + exitLines + '</div></div></div></section>';
 }
@@ -1787,8 +1802,17 @@ async function run() {
   if (fingerprintCheckRunning) return;
   fingerprintCheckRunning = true;
   try {
-    latestReport = await collect();
+    latestReport = await collectLocalFingerprint();
     render(latestReport);
+    latestReport.network = await collectNetworkInfo();
+    render(latestReport);
+  } catch (error) {
+    latestReport = null;
+    var message = error && error.message ? error.message : String(error || 'unknown error');
+    document.getElementById('meta').textContent = uiText('Detection Failed') + ': ' + message;
+    document.getElementById('changeApp').innerHTML = '';
+    document.getElementById('proxyApp').innerHTML = '';
+    document.getElementById('app').innerHTML = '<section><h2>' + uiText('Fingerprint Check') + '</h2><pre>' + escapeHtml(message) + '</pre></section>';
   } finally {
     fingerprintCheckRunning = false;
   }

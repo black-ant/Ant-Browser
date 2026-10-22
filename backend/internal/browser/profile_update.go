@@ -29,7 +29,7 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 	profile.UserDataDir = input.UserDataDir
 	profile.CoreId = normalizeProfileCoreID(input.CoreId)
 	profile.RestoreLastSession = NormalizeRestoreLastSessionMode(input.RestoreLastSession)
-	profile.FingerprintArgs = input.FingerprintArgs
+	profile.FingerprintArgs = upgradeLegacyMinimalFingerprintArgs(input.FingerprintArgs)
 	profile.ProxyMode = resolvedProxy.ProxyMode
 	profile.ProxyGroupName = resolvedProxy.ProxyGroupName
 	if resolvedProxy.HasSelectedProxy {

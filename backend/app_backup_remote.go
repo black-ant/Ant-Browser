@@ -384,7 +384,11 @@ func normalizeDownloadedBackupMetadata(metadataPath, backupFileName string) erro
 	if strings.TrimSpace(metadata.Format) != `ant-chrome-backup-metadata` {
 		return fmt.Errorf(`unsupported backup metadata format`)
 	}
-	metadata.BackupFile = filepath.Base(backupFileName)
+	expectedBackupFile := filepath.Base(backupFileName)
+	if declaredBackupFile := strings.TrimSpace(metadata.BackupFile); declaredBackupFile != `` && !strings.EqualFold(filepath.Base(filepath.FromSlash(declaredBackupFile)), expectedBackupFile) {
+		return fmt.Errorf(`备份元数据与 ZIP 文件不匹配`)
+	}
+	metadata.BackupFile = expectedBackupFile
 	updated, err := json.MarshalIndent(metadata, ``, `  `)
 	if err != nil {
 		return err
@@ -442,9 +446,25 @@ func (a *App) backupUploadRemoteArtifacts(target backupRemoteUploadTarget, local
 	return outcome, nil
 }
 
+func normalizeRemoteBackupRestoreName(fileName string) (string, error) {
+	normalized := strings.ReplaceAll(fileName, `\`, `/`)
+	if strings.IndexFunc(normalized, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return ``, fmt.Errorf(`remote backup file name contains a control character`)
+	}
+	normalized = strings.TrimSpace(normalized)
+	if normalized == `` || normalized == `.` || normalized == `..` || strings.Contains(normalized, `/`) {
+		return ``, fmt.Errorf(`invalid remote backup file name`)
+	}
+	if !strings.EqualFold(filepath.Ext(normalized), `.zip`) {
+		return ``, fmt.Errorf(`remote backup file must use .zip suffix`)
+	}
+	return normalized, nil
+}
+
 func (a *App) backupRestoreRemoteLocked(client channels.Client, label string, timeout time.Duration, fileName, temporaryPrefix string) (map[string]interface{}, error) {
-	if strings.TrimSpace(fileName) == `` {
-		return nil, fmt.Errorf(`remote backup file name is empty`)
+	normalizedName, err := normalizeRemoteBackupRestoreName(fileName)
+	if err != nil {
+		return nil, err
 	}
 	temporaryRoot, err := os.MkdirTemp(``, temporaryPrefix)
 	if err != nil {
@@ -452,10 +472,27 @@ func (a *App) backupRestoreRemoteLocked(client channels.Client, label string, ti
 	}
 	defer os.RemoveAll(temporaryRoot)
 	localPath := filepath.Join(temporaryRoot, `remote-backup.zip`)
+	metadataPath := filepath.Join(temporaryRoot, `remote-backup.json`)
+	metadataName := filepath.Base(backupMetadataPath(normalizedName))
+	metadataContext, metadataCancel := a.backupRemoteContext(backupRemoteControlTimeout(timeout))
+	metadataErr := client.DownloadMetadata(metadataContext, metadataName, metadataPath)
+	metadataCancel()
+	if metadataErr == nil {
+		if err := normalizeDownloadedBackupMetadata(metadataPath, normalizedName); err != nil {
+			return nil, fmt.Errorf(`远程备份元数据校验失败: %w`, err)
+		}
+	} else {
+		_ = os.Remove(metadataPath)
+	}
 	a.backupEmitImportProgress(`preparing`, 5, fmt.Sprintf(`正在从%s下载备份`, label))
 	ctx, cancel := a.backupRemoteContext(timeout)
 	defer cancel()
-	if err := client.Download(ctx, fileName, localPath); err != nil {
+	if err := client.Download(ctx, normalizedName, localPath); err != nil {
+		a.backupEmitImportProgress(`error`, 100, err.Error())
+		return nil, err
+	}
+	if _, err := inspectBackupPackageInfo(localPath); err != nil {
+		err = fmt.Errorf(`远程备份包校验失败: %w`, err)
 		a.backupEmitImportProgress(`error`, 100, err.Error())
 		return nil, err
 	}
@@ -464,7 +501,7 @@ func (a *App) backupRestoreRemoteLocked(client channels.Client, label string, ti
 		a.backupEmitImportProgress(`error`, 100, fmt.Sprintf(`restore remote backup failed: %v`, err))
 		return nil, err
 	}
-	result[`remoteName`] = fileName
+	result[`remoteName`] = normalizedName
 	return result, nil
 }
 
