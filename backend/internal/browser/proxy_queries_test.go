@@ -45,6 +45,27 @@ func TestProxyQueriesDoNotUseFallbackWhenDAOIsAvailable(t *testing.T) {
 	}
 }
 
+func TestLoadProxyQueriesReturnDAOErrorsWithoutConfigFallback(t *testing.T) {
+	fallback := []Proxy{{ProxyId: "stale", ProxyName: "stale", ProxyConfig: "http://stale:8080", GroupName: "stale-group"}}
+	readErr := errors.New("database unavailable")
+	dao := &proxyQueryTestDAO{err: readErr}
+
+	list, err := LoadLatestProxiesWithFallback(dao, fallback)
+	if !errors.Is(err, readErr) || len(list) != 1 || list[0].ProxyId != directProxyID {
+		t.Fatalf("latest proxy query = %#v, err = %v", list, err)
+	}
+
+	groups, err := LoadProxyGroupsWithFallback(dao, fallback)
+	if !errors.Is(err, readErr) || len(groups) != 0 {
+		t.Fatalf("proxy groups query = %#v, err = %v", groups, err)
+	}
+
+	byGroup, err := LoadProxiesByGroupWithFallback(dao, "stale-group", fallback)
+	if !errors.Is(err, readErr) || len(byGroup) != 0 {
+		t.Fatalf("proxy group query = %#v, err = %v", byGroup, err)
+	}
+}
+
 func TestProxyQueriesDoNotUseFallbackWhenDatabaseIsEmpty(t *testing.T) {
 	fallback := []Proxy{{ProxyId: "stale", ProxyName: "stale", ProxyConfig: "http://stale:8080"}}
 	dao := &proxyQueryTestDAO{}

@@ -293,6 +293,7 @@ export interface BrowserProxy {
   preferredKernel?: 'auto' | 'xray' | 'sing-box' | 'mihomo' | string
   dnsServers?: string
   groupName?: string
+  sortOrder?: number
   sourceId?: string
   sourceUrl?: string
   sourceNamePrefix?: string

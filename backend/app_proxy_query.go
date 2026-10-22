@@ -4,35 +4,45 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/proxy"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 )
 
-func (a *App) BrowserProxyList() []BrowserProxy {
-	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil || a.config == nil {
-		return []BrowserProxy{}
+func (a *App) BrowserProxyList() ([]BrowserProxy, error) {
+	if a == nil || a.browserMgr == nil || a.config == nil {
+		return nil, fmt.Errorf("代理数据加载上下文不可用")
 	}
-	proxies := browser.ListProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
-	return a.proxySpeedResultsWithCurrentContext(proxies)
+	proxies, err := browser.LoadLatestProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
+	if err != nil {
+		return nil, err
+	}
+	return a.proxySpeedResultsWithCurrentContext(proxies), nil
 }
 
 // BrowserProxyListGroups 获取所有代理分组名称
-func (a *App) BrowserProxyListGroups() []string {
-	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil {
-		return []string{}
+func (a *App) BrowserProxyListGroups() ([]string, error) {
+	if a == nil || a.browserMgr == nil || a.config == nil {
+		return nil, fmt.Errorf("代理数据加载上下文不可用")
 	}
-	return browser.ListProxyGroups(a.browserMgr.ProxyDAO)
+	return browser.LoadProxyGroupsWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
 }
 
 // BrowserProxyListByGroup 按分组名称查询代理
-func (a *App) BrowserProxyListByGroup(groupName string) []BrowserProxy {
-	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyDAO == nil || a.config == nil {
-		return []BrowserProxy{}
+func (a *App) BrowserProxyListByGroup(groupName string) ([]BrowserProxy, error) {
+	if a == nil || a.browserMgr == nil || a.config == nil {
+		return nil, fmt.Errorf("代理数据加载上下文不可用")
 	}
-	proxies := browser.ListProxiesByGroupWithFallback(a.browserMgr.ProxyDAO, groupName, a.config.Browser.Proxies)
-	allProxies := browser.LatestProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
-	return a.proxySpeedResultsWithContext(proxies, allProxies)
+	proxies, err := browser.LoadProxiesByGroupWithFallback(a.browserMgr.ProxyDAO, groupName, a.config.Browser.Proxies)
+	if err != nil {
+		return nil, err
+	}
+	allProxies, err := browser.LoadLatestProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
+	if err != nil {
+		return nil, err
+	}
+	return a.proxySpeedResultsWithContext(proxies, allProxies), nil
 }
 
 // ValidateProxyConfig 验证代理配置是否支持

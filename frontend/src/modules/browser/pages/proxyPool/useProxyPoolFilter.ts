@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { SortOrder } from '../../../../shared/components/Table'
 import type { BrowserProxyVirtualGroup, ProxyIPHealthResult } from '../../types'
 import type { ProxyDisplayInfo } from './helpers'
-import { isProxySpeedResultFresh } from './storage'
+import { isProxyIPHealthResultFresh, isProxySpeedResultFresh } from './storage'
 
 interface UseProxyPoolFilterOptions {
   displayList: ProxyDisplayInfo[]
@@ -48,24 +48,31 @@ function getLatencySortTuple(
 }
 
 function isProxyAvailable(
-  proxyId: string,
+  proxy: ProxyDisplayInfo,
+  displayByProxyId: Map<string, ProxyDisplayInfo>,
   latencyMap: Record<string, number>,
   latencyFingerprintMap: Record<string, string>,
   latencyTestedAtMap: Record<string, string>,
-  proxy: ProxyDisplayInfo,
   now: number,
   speedResultMaxAgeMs: number,
   ipHealthMap: Record<string, ProxyIPHealthResult>,
 ) {
-  const latency = hasCurrentSpeedResult(
-    latencyMap,
-    latencyFingerprintMap,
-    latencyTestedAtMap,
-    proxy,
-    now,
-    speedResultMaxAgeMs,
-  ) ? latencyMap[proxyId] : undefined
-  return (typeof latency === 'number' && latency >= 0) || Boolean(ipHealthMap[proxyId]?.ok)
+  const memberProxyIds = proxy.isVirtual ? (proxy.virtualMemberProxyIds || []) : [proxy.proxyId]
+  return memberProxyIds.some(rawProxyId => {
+    const memberProxy = displayByProxyId.get(rawProxyId.trim().toLowerCase())
+    if (!memberProxy) return false
+    const speedAvailable = hasCurrentSpeedResult(
+      latencyMap,
+      latencyFingerprintMap,
+      latencyTestedAtMap,
+      memberProxy,
+      now,
+      speedResultMaxAgeMs,
+    ) && latencyMap[memberProxy.proxyId] >= 0
+    const ipHealth = ipHealthMap[memberProxy.proxyId] || ipHealthMap[rawProxyId]
+    const ipHealthAvailable = Boolean(ipHealth?.ok) && isProxyIPHealthResultFresh(ipHealth?.updatedAt, now)
+    return speedAvailable || ipHealthAvailable
+  })
 }
 
 function hasCurrentSpeedResult(
@@ -142,6 +149,11 @@ export function useProxyPoolFilter(options: UseProxyPoolFilterOptions) {
 
   const filteredList = useMemo(() => {
     const keyword = filterKeyword.toLowerCase()
+    const displayByProxyId = new Map(
+      displayList
+        .filter(record => !record.isVirtual)
+        .map(record => [record.proxyId.trim().toLowerCase(), record] as const),
+    )
     const selectedVirtualGroup = virtualGroups.find(group => {
       const key = group.groupId.trim() || group.groupName.trim().toLowerCase()
       return filterGroup === `__virtual_proxy_group__:${key}`
@@ -156,11 +168,11 @@ export function useProxyPoolFilter(options: UseProxyPoolFilterOptions) {
           && (virtualMemberIDs.has(p.proxyId.trim().toLowerCase()) || virtualMemberGroupNames.has(p.groupName.trim().toLowerCase()))
         : filterGroup === 'all' || p.groupName === filterGroup
       const matchAvailable = !filterAvailableOnly || isProxyAvailable(
-        p.proxyId,
+        p,
+        displayByProxyId,
         latencyMap,
         latencyFingerprintMap,
         latencyTestedAtMap,
-        p,
         now,
         speedResultMaxAgeMs,
         ipHealthMap,

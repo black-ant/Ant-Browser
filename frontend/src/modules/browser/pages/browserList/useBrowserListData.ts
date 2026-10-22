@@ -1,6 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react'
-import type { BrowserGroupWithCount, BrowserProfile, BrowserProxy } from '../../types'
-import { fetchBrowserProfiles, fetchBrowserProxies, fetchGroups } from '../../api'
+import { toast } from '../../../../shared/components'
+import type { BrowserGroupWithCount, BrowserProfile, BrowserProxy, BrowserProxyVirtualGroup } from '../../types'
+import { fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserProxyVirtualGroups, fetchGroups } from '../../api'
 import { EventsOn } from '../../../../wailsjs/runtime/runtime'
 
 const PROFILE_LIST_FALLBACK_REFRESH_MS = 15_000
@@ -14,6 +15,7 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
   const [profiles, setProfiles] = useState<BrowserProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
+  const [proxyVirtualGroups, setProxyVirtualGroups] = useState<BrowserProxyVirtualGroup[]>([])
   const [groups, setGroups] = useState<BrowserGroupWithCount[]>([])
   const [startingIds, setStartingIds] = useState<Set<string>>(new Set())
   const [stoppingIds, setStoppingIds] = useState<Set<string>>(new Set())
@@ -104,6 +106,24 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
     setProxies(items)
   }
 
+  const loadProxyCatalog = async () => {
+    const [proxyResult, virtualGroupResult] = await Promise.allSettled([
+      fetchBrowserProxies(),
+      fetchBrowserProxyVirtualGroups(),
+    ])
+    if (proxyResult.status === 'fulfilled') {
+      setProxies(proxyResult.value)
+    } else {
+      setProxies([])
+      toast.error(proxyResult.reason instanceof Error ? proxyResult.reason.message : '加载代理目录失败')
+    }
+    if (virtualGroupResult.status === 'fulfilled') {
+      setProxyVirtualGroups(virtualGroupResult.value)
+    } else {
+      setProxyVirtualGroups([])
+    }
+  }
+
   useEffect(() => {
     let disposed = false
     let runtimeRetryTimer: number | null = null
@@ -122,7 +142,7 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
       void Promise.allSettled([
         loadProfiles(),
         loadGroups(),
-        fetchBrowserProxies().then(setProxies),
+        loadProxyCatalog(),
         loadCores(),
       ]).finally(() => {
         initialLoadInFlightRef.current = false
@@ -213,6 +233,7 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
     profiles,
     loading,
     proxies,
+    proxyVirtualGroups,
     groups,
     startingIds,
     stoppingIds,

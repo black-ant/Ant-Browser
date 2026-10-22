@@ -30,6 +30,12 @@ interface UseProxyChecksOptions {
   proxies: Array<Pick<BrowserProxy, 'proxyId' | 'proxyConfig' | 'speedTestFingerprint' | 'lastTestedAt' | 'lastTestOk' | 'lastLatencyMs'>>
 }
 
+function resolveErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (typeof error === 'string' && error.trim()) return error
+  return fallback
+}
+
 export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
 	const { now, speedResultMaxAgeMs } = useProxySpeedFreshness()
 	const [latencyMap, setLatencyMap] = useState<Record<string, number>>(() => readLatencyCache())
@@ -429,6 +435,8 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       const result = await browserProxyWarmupBridge(record.proxyId)
       if (result.ok) toast.success(`${record.proxyName} 已预热`)
       else toast.error(result.error || `${record.proxyName} 预热失败`)
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, `${record.proxyName} 预热失败`))
     } finally {
       setWarmingBridgeIds(prev => {
         const next = new Set(prev)
@@ -449,6 +457,8 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       const failed = results.filter(r => !r.ok).length
       if (failed > 0) toast.info(`预热完成：成功 ${results.length - failed}，失败 ${failed}`)
       else toast.success(`预热完成：共 ${results.length} 条`)
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, '批量预热失败'))
     } finally {
       setWarmingBridgeIds(prev => {
         const next = new Set(prev)
@@ -471,6 +481,8 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       const result = await browserProxyCheckIPHealth(record.proxyId)
       setIPHealthMap(prev => ({ ...prev, [record.proxyId]: result }))
       if (!result.ok) toast.error(result.error || `${record.proxyName} 检测失败`)
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, `${record.proxyName} IP 健康检测失败`))
     } finally {
       setCheckingIPHealthIds(prev => {
         const next = new Set(prev)
@@ -511,6 +523,8 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
       const failed = results.filter(r => !r.ok).length
       if (failed > 0) toast.info(`IP 健康检测完成：成功 ${results.length - failed}，失败 ${failed}`)
       else toast.success(`IP 健康检测完成：共 ${results.length} 条`)
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, '批量 IP 健康检测失败'))
     } finally {
       off()
       setCheckingIPHealthIds(prev => {

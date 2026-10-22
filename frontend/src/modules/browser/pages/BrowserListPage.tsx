@@ -135,6 +135,7 @@ export function BrowserListPage() {
     profiles,
     loading,
     proxies,
+    proxyVirtualGroups,
     groups,
     startingIds,
     stoppingIds,
@@ -622,6 +623,7 @@ export function BrowserListPage() {
         viewMode={viewMode}
         profiles={filteredProfiles}
         proxies={proxies}
+        virtualGroups={proxyVirtualGroups}
         selectedIds={selectedIds}
         resolveProfileCore={resolveProfileCore}
         getProfileCoreLabel={getProfileCoreLabel}

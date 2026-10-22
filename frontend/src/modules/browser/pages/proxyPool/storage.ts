@@ -12,9 +12,9 @@ const PROXY_SOURCE_IGNORED_NAMES_KEY = 'browser:proxyPool:sourceIgnoredProxyName
 const PROXY_GLOBAL_AUTO_REFRESH_KEY = 'browser:proxyPool:globalAutoRefreshEnabled:v1'
 const PROXY_GLOBAL_REFRESH_INTERVAL_KEY = 'browser:proxyPool:globalRefreshIntervalM:v1'
 export const PROXY_SPEED_RESULT_MAX_AGE_MS = 30 * 60 * 1000
+export const PROXY_IP_HEALTH_RESULT_MAX_AGE_MS = 12 * 60 * 60 * 1000
 const PROXY_SPEED_RESULT_MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000
 const PROXY_LATENCY_CACHE_TTL_MS = PROXY_SPEED_RESULT_MAX_CACHE_AGE_MS
-const PROXY_IP_HEALTH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 
 export function isFreshProxySpeedTestAt(value: string, now = Date.now()): boolean {
   return isProxySpeedResultFresh(value, now)
@@ -32,6 +32,15 @@ export function isProxySpeedResultFresh(testedAt?: string, now = Date.now(), max
   if (!Number.isFinite(timestamp)) return false
   const age = now - timestamp
   const effectiveMaxAgeMs = maxAgeMs > 0 ? maxAgeMs : PROXY_SPEED_RESULT_MAX_AGE_MS
+  return age >= 0 && age <= effectiveMaxAgeMs
+}
+
+export function isProxyIPHealthResultFresh(updatedAt?: string, now = Date.now(), maxAgeMs = PROXY_IP_HEALTH_RESULT_MAX_AGE_MS): boolean {
+  if (!updatedAt) return false
+  const timestamp = Date.parse(updatedAt)
+  if (!Number.isFinite(timestamp)) return false
+  const age = now - timestamp
+  const effectiveMaxAgeMs = maxAgeMs > 0 ? maxAgeMs : PROXY_IP_HEALTH_RESULT_MAX_AGE_MS
   return age >= 0 && age <= effectiveMaxAgeMs
 }
 
@@ -297,7 +306,7 @@ export function readIPHealthCache(): Record<string, ProxyIPHealthResult> {
     if (!raw) return {}
     const parsed = JSON.parse(raw) as { timestamp?: number; data?: Record<string, ProxyIPHealthResult> }
     if (!parsed?.timestamp || !parsed?.data) return {}
-    if (Date.now() - parsed.timestamp > PROXY_IP_HEALTH_CACHE_TTL_MS) return {}
+    if (Date.now() - parsed.timestamp > PROXY_IP_HEALTH_RESULT_MAX_AGE_MS) return {}
 
     const cleaned: Record<string, ProxyIPHealthResult> = {}
     Object.entries(parsed.data).forEach(([proxyId, item]) => {
