@@ -1,6 +1,5 @@
-﻿import { Check, Loader2, Pencil, Trash2, Wifi } from 'lucide-react'
+﻿import { Check } from 'lucide-react'
 import type { BrowserProxy } from '../types'
-import { DIRECT_PROXY_ID, type SpeedResult } from './ProxyPickerModal.helpers'
 
 export function GroupItem({ label, active, count, onClick }: { label: string; active: boolean; count: number; onClick: () => void }) {
   return (
@@ -23,28 +22,11 @@ export function GroupItem({ label, active, count, onClick }: { label: string; ac
 interface ProxyRowProps {
   proxy: BrowserProxy
   selected: boolean
-  testing: boolean
-  speedResult?: SpeedResult
   displayConfig: string
   onSelect: () => void
-  onTest: (e: React.MouseEvent) => void
-  onEdit: (e: React.MouseEvent) => void
-  onDelete: (e: React.MouseEvent) => void
 }
 
-function SpeedBadge({ testing, result }: { testing: boolean; result?: SpeedResult }) {
-  if (testing) return <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-text-muted)] shrink-0" />
-  if (!result) return null
-  const suffix = result.engine ? ` (${result.engine})` : ''
-  if (!result.ok) return <span className="text-xs text-red-500 shrink-0 whitespace-nowrap">失败{suffix}</span>
-  const color = result.latencyMs < 200 ? 'text-green-500' : result.latencyMs < 500 ? 'text-yellow-500' : 'text-red-500'
-  return <span className={`text-xs font-medium shrink-0 whitespace-nowrap ${color}`}>{result.latencyMs}ms{suffix}</span>
-}
-
-export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig, onSelect, onTest, onEdit, onDelete }: ProxyRowProps) {
-  const isDirect = proxy.proxyId === DIRECT_PROXY_ID
-  const disableDelete = isDirect
-
+export function ProxyRow({ proxy, selected, displayConfig, onSelect }: ProxyRowProps) {
   return (
     <div
       onClick={onSelect}
@@ -61,31 +43,6 @@ export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig,
           {displayConfig}
         </div>
       </div>
-      <SpeedBadge testing={testing} result={speedResult} />
-      <button
-        onClick={onTest}
-        disabled={testing}
-        title="测速"
-        className="shrink-0 p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 disabled:opacity-40 transition-colors"
-      >
-        <Wifi className="w-3.5 h-3.5" />
-      </button>
-      <button
-        onClick={onEdit}
-        disabled={isDirect}
-        title={isDirect ? '直连不可编辑' : '编辑代理'}
-        className="shrink-0 p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-      >
-        <Pencil className="w-3.5 h-3.5" />
-      </button>
-      <button
-        onClick={onDelete}
-        disabled={disableDelete}
-        title={isDirect ? '直连不可删除' : '删除代理'}
-        className="shrink-0 p-1 rounded text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
       {selected && <Check className="w-4 h-4 text-[var(--color-primary)] shrink-0" />}
     </div>
   )
