@@ -457,6 +457,29 @@ export function ExtensionManagementPage() {
         onProxyListUpdated={(nextProxies) => {
           setProxies(nextProxies)
         }}
+        onProxyDeleted={(deletedProxyId, nextProxies) => {
+          setProxies(nextProxies)
+          if (deletedProxyId === selectedProxyId) {
+            const directProxyId = nextProxies.find((item) => item.proxyConfig === 'direct://')?.proxyId || ''
+            setUseProxy(false)
+            setSelectedProxyId(directProxyId)
+            saveExtensionDownloadProxyPreference({ useProxy: false, proxyId: directProxyId })
+          }
+        }}
+        onProxyTested={(proxyId, result) => {
+          const testedAt = result.testedAt || new Date().toISOString()
+          setProxies((current) => current.map((proxy) => (
+            proxy.proxyId === proxyId
+              ? {
+                  ...proxy,
+                  lastTestOk: result.ok,
+                  lastLatencyMs: result.ok ? result.latencyMs : -1,
+                  lastTestedAt: testedAt,
+                  speedTestFingerprint: result.fingerprint || proxy.speedTestFingerprint,
+                }
+              : proxy
+          )))
+        }}
       />
 
       <ExtensionHistoryModal

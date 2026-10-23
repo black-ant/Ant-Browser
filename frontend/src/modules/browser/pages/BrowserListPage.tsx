@@ -571,6 +571,16 @@ export function BrowserListPage() {
     }
   }
 
+  const handleProxyDeletedFromPicker = (deletedProxyId: string, nextProxies: BrowserProxy[]) => {
+    updateProxiesState(nextProxies)
+    if (!proxyPickerProfile || proxyPickerProfile.proxyId !== deletedProxyId) return
+    const fallbackProxy = nextProxies.find(proxy => proxy.proxyId === directProxyID || proxy.proxyConfig === 'direct://')
+    if (fallbackProxy) {
+      void saveProfileProxy(proxyPickerProfile, fallbackProxy)
+    }
+  }
+
+
   return (
     <div className="min-h-full space-y-3 animate-fade-in">
       <BrowserListHeader
@@ -647,6 +657,7 @@ export function BrowserListPage() {
           }
         }}
         onProxyListUpdated={updateProxiesState}
+        onProxyDeleted={handleProxyDeletedFromPicker}
         onClose={() => setProxyPickerProfile(null)}
       />
 

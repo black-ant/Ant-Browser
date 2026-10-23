@@ -562,6 +562,21 @@ export function BrowserEditPage() {
     setProxies(nextProxies)
   }
 
+  const handleProxyDeleted = (deletedProxyId: string, nextProxies: BrowserProxy[]) => {
+    setProxies(nextProxies)
+    if (formData.proxyId !== deletedProxyId) {
+      return
+    }
+
+    const fallbackProxy = nextProxies.find((proxy) => proxy.proxyId === directProxyID)
+    if (fallbackProxy) {
+      handleChange('proxyId', fallbackProxy.proxyId)
+      return
+    }
+
+    handleChange('proxyId', '')
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       <Card padding="none" className="shadow-[var(--shadow-sm)]">
@@ -741,6 +756,7 @@ export function BrowserEditPage() {
         showVirtualGroups
         onSelect={proxy => { handleChange('proxyId', proxy.proxyId); setLocationResult(null) }}
         onProxyListUpdated={handleProxyListUpdated}
+        onProxyDeleted={handleProxyDeleted}
         onClose={() => setProxyPickerOpen(false)}
       />
 
