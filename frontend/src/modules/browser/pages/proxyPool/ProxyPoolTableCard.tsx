@@ -380,35 +380,37 @@ export function ProxyPoolTableCard({
   ])
 
   return (
-    <Card>
-      <div className="flex items-center gap-3 mb-4">
+    <Card className="w-full min-w-0 max-w-full">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 min-w-0">
         <Input
           value={filterKeyword}
           onChange={event => onFilterKeywordChange(event.target.value)}
           placeholder="搜索名称或服务器..."
           style={{ width: '220px' }}
         />
-        <BrowserEditSelect
-          label="代理协议筛选"
-          value={filterProtocol}
-          onChange={onFilterProtocolChange}
-          options={protocolOptions.map(protocol => ({
-            value: protocol,
-            label: protocol === 'all' ? '全部协议' : protocol.toUpperCase(),
-          }))}
-          className="w-40 shrink-0"
-        />
-        <BrowserEditSelect
-          label="代理分组筛选"
-          value={filterGroup}
-          onChange={onFilterGroupChange}
-          options={[
-            { value: 'all', label: '全部分组' },
-            ...groups.map(group => ({ value: group, label: group })),
-            ...virtualGroupOptions,
-          ]}
-          className="w-48 shrink-0"
-        />
+        <div className="w-40 shrink-0">
+          <BrowserEditSelect
+            label="代理协议筛选"
+            value={filterProtocol}
+            onChange={onFilterProtocolChange}
+            options={protocolOptions.map(protocol => ({
+              value: protocol,
+              label: protocol === 'all' ? '全部协议' : protocol.toUpperCase(),
+            }))}
+          />
+        </div>
+        <div className="w-48 shrink-0">
+          <BrowserEditSelect
+            label="代理分组筛选"
+            value={filterGroup}
+            onChange={onFilterGroupChange}
+            options={[
+              { value: 'all', label: '全部分组' },
+              ...groups.map(group => ({ value: group, label: group })),
+              ...virtualGroupOptions,
+            ]}
+          />
+        </div>
         {hasActiveFilters && (
           <Button size="sm" variant="ghost" onClick={onClearFilters}>清除筛选</Button>
         )}
