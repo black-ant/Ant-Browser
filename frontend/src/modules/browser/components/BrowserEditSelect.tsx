@@ -34,10 +34,17 @@ export function BrowserEditSelect({ label, value, options, onChange, className =
   const [active, setActive] = useState(initialActive)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) setActive(findEnabledIndex(options, selected, 1))
   }, [open, options, selected])
+
+  useEffect(() => {
+    if (!open || active < 0) return
+    const item = listRef.current?.children[active]
+    if (item instanceof HTMLElement) item.scrollIntoView({ block: 'nearest' })
+  }, [open, active])
 
   useEffect(() => {
     if (!open) return
@@ -116,6 +123,7 @@ export function BrowserEditSelect({ label, value, options, onChange, className =
       </button>
       <div
         id={id}
+        ref={listRef}
         role="listbox"
         aria-label={label}
         hidden={!open}

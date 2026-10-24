@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
-import { Button, Card, ConfirmModal, FormItem, Input, Modal, Textarea, toast } from '../../../shared/components'
+import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Textarea, toast } from '../../../shared/components'
 import type { BrowserCore, BrowserFingerprintCapabilityReport, BrowserFingerprintCapabilityRow, BrowserFingerprintCheckResult, BrowserProfileInput, BrowserProxy, BrowserProxyVirtualGroup, BrowserGroup, ProxyLocationResolveResult } from '../types'
 import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrowserProfile, fetchAllTags, fetchBrowserCores, fetchBrowserProfileFingerprintMatrix, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserProxyVirtualGroups, fetchBrowserSettings, fetchGroups, openBrowserFingerprintCheck, openUserDataDir, updateBrowserProfile, validateProxyConfig } from '../api'
 import { FingerprintPanel } from '../components/FingerprintPanel'
@@ -608,10 +608,9 @@ export function BrowserEditPage() {
             </div>
           </FormItem>
           <FormItem label="内核">
-            <BrowserEditSelect
-              label="内核"
+            <Select
               value={formData.coreId}
-              onChange={value => handleChange('coreId', value)}
+              onChange={e => handleChange('coreId', e.target.value)}
               options={
                 cores.length > 0 ? [
                   { value: '', label: defaultCore ? `使用默认 (${defaultCore.coreName})` : '使用默认内核' },
@@ -623,10 +622,9 @@ export function BrowserEditPage() {
             />
           </FormItem>
           <FormItem label="历史标签">
-            <BrowserEditSelect
-              label="历史标签"
+            <Select
               value={formData.restoreLastSession || ''}
-              onChange={value => handleChange('restoreLastSession', value)}
+              onChange={e => handleChange('restoreLastSession', e.target.value)}
               options={RESTORE_LAST_SESSION_OPTIONS}
             />
           </FormItem>
