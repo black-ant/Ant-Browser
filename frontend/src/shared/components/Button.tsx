@@ -21,7 +21,7 @@ export function Button({
   
   const variants = {
     primary: 'bg-[var(--color-accent)] text-[var(--color-text-inverse)] hover:opacity-90 focus-visible:ring-[var(--color-accent)]',
-    secondary: 'bg-[var(--color-bg-surface)] text-[var(--color-text-secondary)] border border-[var(--color-border-default)] hover:bg-[var(--color-bg-muted)] hover:border-[var(--color-border-strong)] focus-visible:ring-[var(--color-border-strong)]',
+    secondary: 'bg-[var(--color-bg-muted)] text-[var(--color-text-secondary)] border border-[var(--color-border-default)] hover:border-[var(--color-border-strong)] hover:text-[var(--color-text-primary)] focus-visible:ring-[var(--color-border-strong)]',
     danger: 'bg-[var(--color-error)] text-white hover:opacity-90 focus-visible:ring-[var(--color-error)]',
     ghost: 'text-[var(--color-text-secondary)] hover:bg-[var(--color-accent-muted)] hover:text-[var(--color-text-primary)]',
   }
