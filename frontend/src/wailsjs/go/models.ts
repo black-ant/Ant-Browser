@@ -1273,8 +1273,8 @@ export namespace backend {
 	    latencyMs: number;
 	    engine: string;
 	    error: string;
-	    testedAt: string;
 	    fingerprint: string;
+	    testedAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProxyTestResult(source);
@@ -1287,8 +1287,8 @@ export namespace backend {
 	        this.latencyMs = source["latencyMs"];
 	        this.engine = source["engine"];
 	        this.error = source["error"];
-	        this.testedAt = source["testedAt"];
 	        this.fingerprint = source["fingerprint"];
+	        this.testedAt = source["testedAt"];
 	    }
 	}
 	export class ProxyValidationResult {
@@ -1989,8 +1989,8 @@ export namespace config {
 	    }
 	}
 	export class ProxyCheckConfig {
-	    bridgeStartTimeoutMs: number;
 	    speedIntervalMinutes: number;
+	    bridgeStartTimeoutMs: number;
 	    failureRetryMinutes: number;
 	    speedConcurrency: number;
 	    speedTargetId: string;
@@ -2003,8 +2003,8 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.bridgeStartTimeoutMs = source["bridgeStartTimeoutMs"];
 	        this.speedIntervalMinutes = source["speedIntervalMinutes"];
+	        this.bridgeStartTimeoutMs = source["bridgeStartTimeoutMs"];
 	        this.failureRetryMinutes = source["failureRetryMinutes"];
 	        this.speedConcurrency = source["speedConcurrency"];
 	        this.speedTargetId = source["speedTargetId"];
@@ -2211,3 +2211,4 @@ export namespace proxy {
 	}
 
 }
+
