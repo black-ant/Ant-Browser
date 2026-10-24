@@ -196,7 +196,6 @@ function ProxyInlineActions({
 }) {
   const [testing, setTesting] = useState(false)
   const [speedResult, setSpeedResult] = useState<ProxySpeedTestResult | null>(null)
-  const [speedContextInvalidated, setSpeedContextInvalidated] = useState(false)
   const isDynamic = isDynamicProfile(profile)
   const dynamicProxy = useMemo(
     () => isDynamic ? selectDynamicProxyCandidate(profile, proxies, virtualGroups, now, speedResultMaxAgeMs) : undefined,
@@ -206,27 +205,17 @@ function ProxyInlineActions({
   const speedTargetProxyId = speedTargetProxy?.proxyId?.trim() || profile.proxyId.trim()
   useEffect(() => {
     setSpeedResult(null)
-    setSpeedContextInvalidated(false)
   }, [profile.proxyConfig, speedTargetProxyId])
-  useEffect(() => {
-    const off = EventsOn('proxy:speed:context:changed', () => {
-      setSpeedResult(null)
-      setSpeedContextInvalidated(true)
-    })
-    return off
-  }, [])
   useEffect(() => {
     const proxyId = speedTargetProxyId.toLowerCase()
     if (!proxyId) return
     const off = EventsOn('proxy:speed:result', (data: ProxySpeedTestResult) => {
       if (!data?.proxyId || data.proxyId.trim().toLowerCase() !== proxyId) return
       setSpeedResult({ ...data, testedAt: data.testedAt || new Date().toISOString() })
-      setSpeedContextInvalidated(false)
     })
     return off
   }, [speedTargetProxyId])
   const historyResult = speedTargetProxy?.lastTestedAt
-    && !speedContextInvalidated
     && isProxySpeedResultFresh(speedTargetProxy.lastTestedAt, now, speedResultMaxAgeMs)
     ? {
         proxyId: speedTargetProxy.proxyId,
@@ -237,8 +226,7 @@ function ProxyInlineActions({
         fingerprint: speedTargetProxy.speedTestFingerprint,
       }
     : null
-  const displayResult = !speedContextInvalidated
-    && speedResult
+  const displayResult = speedResult
     && (!speedTargetProxyId || normalizeProxyKey(speedResult.proxyId) === normalizeProxyKey(speedTargetProxyId))
     && isProxySpeedResultFresh(speedResult.testedAt, now, speedResultMaxAgeMs)
     ? speedResult
@@ -257,7 +245,6 @@ function ProxyInlineActions({
           ? await browserProxyTestSpeed(profile.proxyId)
           : await testProxyConnectivity(profile.profileId, profile.proxyConfig)
       setSpeedResult(result)
-      setSpeedContextInvalidated(false)
     } catch (error: any) {
       setSpeedResult({
         proxyId: speedTargetProxyId || profile.profileId,
@@ -266,7 +253,6 @@ function ProxyInlineActions({
         error: error?.message || '测速失败',
         testedAt: new Date().toISOString(),
       })
-      setSpeedContextInvalidated(false)
     } finally {
       setTesting(false)
     }

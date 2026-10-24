@@ -5,26 +5,15 @@ import { normalizeRefreshIntervalM, resolveImportedProxyName } from './helpers'
 
 const PROXY_LATENCY_CACHE_KEY = 'browser:proxyPool:latencyMap:v2'
 const PROXY_LATENCY_ENGINE_CACHE_KEY = 'browser:proxyPool:latencyEngineMap:v2'
-const PROXY_LATENCY_FINGERPRINT_CACHE_KEY = 'browser:proxyPool:latencyFingerprintMap:v1'
-const PROXY_LATENCY_TESTED_AT_CACHE_KEY = 'browser:proxyPool:latencyTestedAtMap:v1'
 const PROXY_IP_HEALTH_CACHE_KEY = 'browser:proxyPool:ipHealthMap:v1'
 const PROXY_SOURCE_IGNORED_NAMES_KEY = 'browser:proxyPool:sourceIgnoredProxyNames:v1'
 const PROXY_GLOBAL_AUTO_REFRESH_KEY = 'browser:proxyPool:globalAutoRefreshEnabled:v1'
 const PROXY_GLOBAL_REFRESH_INTERVAL_KEY = 'browser:proxyPool:globalRefreshIntervalM:v1'
-export const PROXY_SPEED_RESULT_MAX_AGE_MS = 30 * 60 * 1000
+// 选择弹窗、实例列表、插件管理页的历史测速结果显示窗口
+export const PROXY_SPEED_RESULT_MAX_AGE_MS = 36 * 60 * 60 * 1000
 export const PROXY_IP_HEALTH_RESULT_MAX_AGE_MS = 12 * 60 * 60 * 1000
-const PROXY_SPEED_RESULT_MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000
-const PROXY_LATENCY_CACHE_TTL_MS = PROXY_SPEED_RESULT_MAX_CACHE_AGE_MS
-
-export function isFreshProxySpeedTestAt(value: string, now = Date.now()): boolean {
-  return isProxySpeedResultFresh(value, now)
-}
-
-export function resolveProxySpeedResultMaxAgeMs(speedIntervalMinutes?: number): number {
-  const minutes = Number(speedIntervalMinutes)
-  if (!Number.isFinite(minutes) || minutes <= 0) return PROXY_SPEED_RESULT_MAX_AGE_MS
-  return Math.min(minutes, 24 * 60) * 60 * 1000
-}
+// 代理池页面的本地缓存寿命（与线上一致：12 小时）
+const PROXY_LATENCY_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 
 export function isProxySpeedResultFresh(testedAt?: string, now = Date.now(), maxAgeMs = PROXY_SPEED_RESULT_MAX_AGE_MS): boolean {
   if (!testedAt) return false
@@ -32,15 +21,6 @@ export function isProxySpeedResultFresh(testedAt?: string, now = Date.now(), max
   if (!Number.isFinite(timestamp)) return false
   const age = now - timestamp
   const effectiveMaxAgeMs = maxAgeMs > 0 ? maxAgeMs : PROXY_SPEED_RESULT_MAX_AGE_MS
-  return age >= 0 && age <= effectiveMaxAgeMs
-}
-
-export function isProxyIPHealthResultFresh(updatedAt?: string, now = Date.now(), maxAgeMs = PROXY_IP_HEALTH_RESULT_MAX_AGE_MS): boolean {
-  if (!updatedAt) return false
-  const timestamp = Date.parse(updatedAt)
-  if (!Number.isFinite(timestamp)) return false
-  const age = now - timestamp
-  const effectiveMaxAgeMs = maxAgeMs > 0 ? maxAgeMs : PROXY_IP_HEALTH_RESULT_MAX_AGE_MS
   return age >= 0 && age <= effectiveMaxAgeMs
 }
 
@@ -219,79 +199,6 @@ export function writeLatencyEngineCache(data: Record<string, string>) {
       if (value) cleaned[proxyId] = value
     })
     localStorage.setItem(PROXY_LATENCY_ENGINE_CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data: cleaned,
-    }))
-  } catch {
-    // ignore write failures
-  }
-}
-
-export function readLatencyTestedAtCache(maxAgeMs = PROXY_SPEED_RESULT_MAX_CACHE_AGE_MS): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(PROXY_LATENCY_TESTED_AT_CACHE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as { timestamp?: number; data?: Record<string, string> }
-    if (!parsed?.timestamp || !parsed?.data) return {}
-    const effectiveMaxAgeMs = maxAgeMs > 0 ? maxAgeMs : PROXY_LATENCY_CACHE_TTL_MS
-    if (Date.now() - parsed.timestamp > effectiveMaxAgeMs) return {}
-
-    const cleaned: Record<string, string> = {}
-    Object.entries(parsed.data).forEach(([proxyId, testedAt]) => {
-      if (typeof testedAt === 'string' && isProxySpeedResultFresh(testedAt, Date.now(), maxAgeMs)) {
-        cleaned[proxyId] = testedAt
-      }
-    })
-    return cleaned
-  } catch {
-    return {}
-  }
-}
-
-export function writeLatencyTestedAtCache(data: Record<string, string>, maxAgeMs = PROXY_SPEED_RESULT_MAX_CACHE_AGE_MS) {
-  try {
-    const cleaned: Record<string, string> = {}
-    Object.entries(data).forEach(([proxyId, testedAt]) => {
-      if (typeof testedAt === 'string' && isProxySpeedResultFresh(testedAt, Date.now(), maxAgeMs)) {
-        cleaned[proxyId] = testedAt
-      }
-    })
-    localStorage.setItem(PROXY_LATENCY_TESTED_AT_CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data: cleaned,
-    }))
-  } catch {
-    // ignore write failures
-  }
-}
-
-export function readLatencyFingerprintCache(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(PROXY_LATENCY_FINGERPRINT_CACHE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as { timestamp?: number; data?: Record<string, string> }
-    if (!parsed?.timestamp || !parsed?.data) return {}
-    if (Date.now() - parsed.timestamp > PROXY_LATENCY_CACHE_TTL_MS) return {}
-
-    const cleaned: Record<string, string> = {}
-    Object.entries(parsed.data).forEach(([proxyId, fingerprint]) => {
-      const value = typeof fingerprint === 'string' ? fingerprint : ''
-      if (value) cleaned[proxyId] = value
-    })
-    return cleaned
-  } catch {
-    return {}
-  }
-}
-
-export function writeLatencyFingerprintCache(data: Record<string, string>) {
-  try {
-    const cleaned: Record<string, string> = {}
-    Object.entries(data).forEach(([proxyId, fingerprint]) => {
-      const value = typeof fingerprint === 'string' ? fingerprint : ''
-      if (value) cleaned[proxyId] = value
-    })
-    localStorage.setItem(PROXY_LATENCY_FINGERPRINT_CACHE_KEY, JSON.stringify({
       timestamp: Date.now(),
       data: cleaned,
     }))

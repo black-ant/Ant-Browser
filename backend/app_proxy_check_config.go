@@ -3,7 +3,6 @@ package backend
 import (
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/proxy"
-	"reflect"
 )
 
 type ProxyCheckSettings = config.ProxyCheckConfig
@@ -22,7 +21,6 @@ func (a *App) SaveProxyCheckSettings(settings ProxyCheckSettings) error {
 	if a.config == nil {
 		return nil
 	}
-	previousSpeedConfig := proxy.BuildSpeedTestConfig(a.config.ProxyCheck)
 	if settings.SpeedIntervalMinutes <= 0 {
 		settings.SpeedIntervalMinutes = a.config.ProxyCheck.SpeedIntervalMinutes
 	}
@@ -33,7 +31,6 @@ func (a *App) SaveProxyCheckSettings(settings ProxyCheckSettings) error {
 		settings.SpeedConcurrency = a.config.ProxyCheck.SpeedConcurrency
 	}
 	a.config.ProxyCheck = proxy.NormalizeCheckSettings(settings)
-	nextSpeedConfig := proxy.BuildSpeedTestConfig(a.config.ProxyCheck)
 	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
 		return err
 	}
@@ -42,9 +39,6 @@ func (a *App) SaveProxyCheckSettings(settings ProxyCheckSettings) error {
 		a.speedScheduler = nil
 	}
 	a.ensureSpeedScheduler()
-	if !reflect.DeepEqual(*previousSpeedConfig, *nextSpeedConfig) {
-		a.emitRuntimeEvent("proxy:speed:context:changed")
-	}
 	return nil
 }
 

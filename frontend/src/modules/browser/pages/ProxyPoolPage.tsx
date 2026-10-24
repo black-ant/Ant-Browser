@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ConfirmModal, toast } from '../../../shared/components'
-import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import type { SortOrder } from '../../../shared/components/Table'
 import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyIPHealthResult } from '../types'
 import { fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies } from '../api'
@@ -162,13 +161,9 @@ export function ProxyPoolPage() {
   })
 
   const {
-    now,
-    speedResultMaxAgeMs,
     latencyMap,
     latencyEngineMap,
     latencyErrorMap,
-    latencyFingerprintMap,
-    latencyTestedAtMap,
     testingAll,
     ipHealthMap,
     checkingIPHealthIds,
@@ -179,7 +174,6 @@ export function ProxyPoolPage() {
     setLatencyMap,
     setLatencyEngineMap,
     setIPHealthMap,
-    clearSpeedResults,
     handleTestOne,
     handleTestAll,
     handleCheckOneIPHealth,
@@ -237,7 +231,6 @@ export function ProxyPoolPage() {
   const handleSaveCheckSettings = async () => {
     const saved = await saveCheckSettings()
     if (!saved) return
-    clearSpeedResults()
     await loadProxies()
   }
 
@@ -245,14 +238,6 @@ export function ProxyPoolPage() {
     void loadProxies()
     void loadBrowserSettings()
   }, [loadProxies, loadBrowserSettings])
-
-  useEffect(() => {
-    const off = EventsOn('proxy:speed:context:changed', () => {
-      clearSpeedResults()
-      void loadProxies()
-    })
-    return off
-  }, [clearSpeedResults, loadProxies])
 
   const { protocolOptions, filteredList } = useProxyPoolFilter({
     displayList,
@@ -264,10 +249,6 @@ export function ProxyPoolPage() {
     sortColumn,
     sortOrder,
     latencyMap,
-    latencyFingerprintMap,
-    latencyTestedAtMap,
-    now,
-    speedResultMaxAgeMs,
     ipHealthMap,
   })
 

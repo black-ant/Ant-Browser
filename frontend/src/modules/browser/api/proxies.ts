@@ -42,10 +42,45 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+const BACKEND_STARTUP_RETRY_DELAYS_MS = [100, 250, 500, 1000, 2000]
+
+function errorMessage(value: unknown): string {
+  if (value instanceof Error) return value.message
+  if (typeof value === 'string') return value
+  if (!value || typeof value !== 'object') return String(value)
+
+  const source = value as Record<string, unknown>
+  for (const key of ['message', 'error', 'detail']) {
+    if (typeof source[key] === 'string') return source[key] as string
+  }
+  return String(value)
+}
+
+function isBackendStartupError(value: unknown): boolean {
+  const message = errorMessage(value)
+  return message.includes('代理数据加载上下文不可用')
+    || message.includes('应用未初始化')
+    || message.includes('应用上下文未初始化')
+}
+
+async function withBackendStartupRetry<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      const delay = BACKEND_STARTUP_RETRY_DELAYS_MS[attempt]
+      if (!isBackendStartupError(error) || delay === undefined) {
+        throw error
+      }
+      await sleep(delay)
+    }
+  }
+}
+
 export async function fetchBrowserProxies(): Promise<BrowserProxy[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProxyList) {
-    return (await bindings.BrowserProxyList()) || []
+    return (await withBackendStartupRetry(() => bindings.BrowserProxyList())) || []
   }
   return getMockProxies()
 }
@@ -53,7 +88,7 @@ export async function fetchBrowserProxies(): Promise<BrowserProxy[]> {
 export async function fetchBrowserProxyGroups(): Promise<string[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProxyListGroups) {
-    return (await bindings.BrowserProxyListGroups()) || []
+    return (await withBackendStartupRetry(() => bindings.BrowserProxyListGroups())) || []
   }
   return []
 }
@@ -61,11 +96,15 @@ export async function fetchBrowserProxyGroups(): Promise<string[]> {
 export async function fetchBrowserProxyVirtualGroups(): Promise<BrowserProxyVirtualGroup[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProxyVirtualGroupList) {
-    return normalizeBrowserProxyVirtualGroups(await bindings.BrowserProxyVirtualGroupList())
+    return normalizeBrowserProxyVirtualGroups(
+      await withBackendStartupRetry(() => bindings.BrowserProxyVirtualGroupList()),
+    )
   }
   const goApp = getGoApp()
   if (goApp?.BrowserProxyVirtualGroupList) {
-    return normalizeBrowserProxyVirtualGroups(await goApp.BrowserProxyVirtualGroupList())
+    return normalizeBrowserProxyVirtualGroups(
+      await withBackendStartupRetry(() => goApp.BrowserProxyVirtualGroupList()),
+    )
   }
   return normalizeBrowserProxyVirtualGroups(mockProxyVirtualGroups)
 }
@@ -208,7 +247,7 @@ export async function browserProxyTestSpeed(proxyId: string): Promise<ProxySpeed
   return { proxyId, ok: true, latencyMs: Math.floor(100 + Math.random() * 400), engine: 'mock', error: '' }
 }
 
-export async function browserProxyBatchTestSpeed(proxyIds: string[], concurrency: number = 0): Promise<ProxySpeedTestResult[]> {
+export async function browserProxyBatchTestSpeed(proxyIds: string[], concurrency: number = 20): Promise<ProxySpeedTestResult[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserProxyBatchTestSpeed) {
     return (await bindings.BrowserProxyBatchTestSpeed(proxyIds, concurrency)) || []

@@ -23,7 +23,6 @@ func (a *App) dynamicProxyMaxTestAge() time.Duration {
 }
 
 func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *BrowserProfile, proxies []BrowserProxy) (string, profileProxyBridgeRef, bool, error) {
-	proxies = a.proxySpeedResultsWithCurrentContext(proxies)
 	maxTestAge := a.dynamicProxyMaxTestAge()
 	groupName := browser.NormalizeProxyGroupName(profile.ProxyGroupName)
 	virtualGroup, isVirtualGroup := a.findProxyVirtualGroup(groupName)

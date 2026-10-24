@@ -1,48 +1,24 @@
 import { useEffect, useState } from 'react'
 
-import { fetchProxyCheckSettings } from './api/proxyCheck'
-import { isProxySpeedResultFresh, PROXY_SPEED_RESULT_MAX_AGE_MS, resolveProxySpeedResultMaxAgeMs } from './pages/proxyPool/storage'
+import { isProxySpeedResultFresh, PROXY_SPEED_RESULT_MAX_AGE_MS } from './pages/proxyPool/storage'
 
 export const PROXY_SPEED_SETTINGS_CHANGED_EVENT = 'proxy:speed:settings-changed'
-const PROXY_SPEED_FRESHNESS_REFRESH_INTERVAL_MS = 30_000
 
 export function notifyProxySpeedResultSettingsChanged() {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(PROXY_SPEED_SETTINGS_CHANGED_EVENT))
 }
 
+// 选择弹窗、实例列表、插件管理页共用的测速结果显示窗口（36 小时）。
 export function useProxySpeedFreshness() {
-  const [speedResultMaxAgeMs, setSpeedResultMaxAgeMs] = useState(PROXY_SPEED_RESULT_MAX_AGE_MS)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
-    let active = true
-
-    const refreshSettings = async () => {
-      try {
-        const settings = await fetchProxyCheckSettings()
-        if (active) setSpeedResultMaxAgeMs(resolveProxySpeedResultMaxAgeMs(settings.speedIntervalMinutes))
-      } catch {
-        return
-      }
-    }
-
-    const handleSettingsChanged = () => {
-      setNow(Date.now())
-      void refreshSettings()
-    }
-
-    void refreshSettings()
-    window.addEventListener(PROXY_SPEED_SETTINGS_CHANGED_EVENT, handleSettingsChanged)
-    const timer = window.setInterval(() => setNow(Date.now()), PROXY_SPEED_FRESHNESS_REFRESH_INTERVAL_MS)
-    return () => {
-      active = false
-      window.removeEventListener(PROXY_SPEED_SETTINGS_CHANGED_EVENT, handleSettingsChanged)
-      window.clearInterval(timer)
-    }
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
   }, [])
 
-  return { now, speedResultMaxAgeMs }
+  return { now, speedResultMaxAgeMs: PROXY_SPEED_RESULT_MAX_AGE_MS }
 }
 
 export { isProxySpeedResultFresh }

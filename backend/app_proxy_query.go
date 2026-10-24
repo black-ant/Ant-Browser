@@ -18,7 +18,7 @@ func (a *App) BrowserProxyList() ([]BrowserProxy, error) {
 	if err != nil {
 		return nil, err
 	}
-	return a.proxySpeedResultsWithCurrentContext(proxies), nil
+	return proxies, nil
 }
 
 // BrowserProxyListGroups 获取所有代理分组名称
@@ -38,11 +38,7 @@ func (a *App) BrowserProxyListByGroup(groupName string) ([]BrowserProxy, error) 
 	if err != nil {
 		return nil, err
 	}
-	allProxies, err := browser.LoadLatestProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
-	if err != nil {
-		return nil, err
-	}
-	return a.proxySpeedResultsWithContext(proxies, allProxies), nil
+	return proxies, nil
 }
 
 // ValidateProxyConfig 验证代理配置是否支持

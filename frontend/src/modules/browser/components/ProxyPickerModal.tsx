@@ -107,23 +107,14 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     setDeleteCandidate(null)
     abortRef.current = false
     void loadData()
-    const offContext = EventsOn('proxy:speed:context:changed', () => {
-      if (abortRef.current) return
-      setSpeedMap({})
-      void loadData()
-    })
     return () => {
       abortRef.current = true
-      offContext()
     }
   }, [open])
 
   const getFreshSpeedResult = (proxy: BrowserProxy): SpeedResult | undefined => {
     const result = speedMap[proxy.proxyId]
     if (!result || !isProxySpeedResultFresh(result.testedAt, now, speedResultMaxAgeMs)) return undefined
-    const currentFingerprint = (proxy.speedTestFingerprint || '').trim()
-    const resultFingerprint = (result.fingerprint || '').trim()
-    if (!currentFingerprint || !resultFingerprint || currentFingerprint !== resultFingerprint) return undefined
     return result
   }
 

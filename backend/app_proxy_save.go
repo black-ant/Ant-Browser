@@ -30,7 +30,6 @@ func (a *App) SaveBrowserProxies(proxies []BrowserProxy) error {
 	if err := a.pruneProxyVirtualGroupMembers(normalized); err != nil {
 		return err
 	}
-	a.emitRuntimeEvent("proxy:speed:context:changed")
 	return nil
 }
 

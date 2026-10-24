@@ -55,9 +55,7 @@ func TestResolveDynamicBrowserStartProxyFallsBackToNextCandidate(t *testing.T) {
 	}
 	for index := range app.config.Browser.Proxies {
 		item := &app.config.Browser.Proxies[index]
-		item.LastTestFingerprint = proxySpeedTestFingerprint(item.ProxyId, app.config.Browser.Proxies, app.defaultProxyConnectorType(), app.proxySpeedTestConfig())
 		item.LastTestConnectorType = app.defaultProxyConnectorType()
-		item.LastTestEngine = expectedProxySpeedEngine(item.ProxyId, app.config.Browser.Proxies, app.defaultProxyConnectorType())
 	}
 	app.browserMgr = browser.NewManager(app.config, "")
 	profile := &BrowserProfile{ProfileId: "dynamic-profile", ProxyMode: browser.ProxyModeDynamic}
