@@ -3,6 +3,7 @@ package browser
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -99,6 +100,59 @@ type proxySQLExecutor interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }
 
+type proxySQLQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+type proxySpeedResultSnapshot struct {
+	latencyMs   int64
+	ok          bool
+	testedAt    string
+	engine      string
+	connector   string
+	fingerprint string
+	ipHealth    string
+}
+
+// readProxySpeedResultSnapshot 读取现有代理行的测速与 IP 健康结果，用于整表替换后回填，
+// 保证保存代理列表不会丢失已有测速结果。
+func readProxySpeedResultSnapshot(q proxySQLQuerier) (map[string]proxySpeedResultSnapshot, error) {
+	rows, err := q.Query(`SELECT proxy_id, COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
+		COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
+		COALESCE(last_ip_health_json, '') FROM browser_proxies`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make(map[string]proxySpeedResultSnapshot)
+	for rows.Next() {
+		var proxyID string
+		var snapshot proxySpeedResultSnapshot
+		var okInt int
+		if err := rows.Scan(&proxyID, &snapshot.latencyMs, &okInt, &snapshot.testedAt, &snapshot.engine, &snapshot.connector, &snapshot.fingerprint, &snapshot.ipHealth); err != nil {
+			return nil, err
+		}
+		snapshot.ok = okInt == 1
+		results[strings.ToLower(strings.TrimSpace(proxyID))] = snapshot
+	}
+	return results, rows.Err()
+}
+
+func restoreProxySpeedResult(exec proxySQLExecutor, proxyID string, snapshot proxySpeedResultSnapshot) error {
+	okInt := 0
+	if snapshot.ok {
+		okInt = 1
+	}
+	_, err := exec.Exec(`UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?,
+		last_test_engine=?, last_test_connector_type=?, last_test_fingerprint=?, last_ip_health_json=?
+		WHERE proxy_id=?`,
+		snapshot.latencyMs, okInt, snapshot.testedAt, snapshot.engine, snapshot.connector, snapshot.fingerprint, snapshot.ipHealth, proxyID)
+	if err != nil {
+		return fmt.Errorf("回填代理测速结果失败: %w", err)
+	}
+	return nil
+}
+
 func upsertProxy(exec proxySQLExecutor, proxy Proxy) error {
 	now := time.Now().Format(time.RFC3339)
 	autoRefreshInt := 0
@@ -142,12 +196,21 @@ func (d *SQLiteProxyDAO) ReplaceAll(proxies []Proxy) error {
 	}
 	defer tx.Rollback()
 
+	previousResults, err := readProxySpeedResultSnapshot(tx)
+	if err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM browser_proxies`); err != nil {
 		return err
 	}
 	for _, proxy := range proxies {
 		if err := upsertProxy(tx, proxy); err != nil {
 			return err
+		}
+		if previous, ok := previousResults[strings.ToLower(strings.TrimSpace(proxy.ProxyId))]; ok {
+			if err := restoreProxySpeedResult(tx, proxy.ProxyId, previous); err != nil {
+				return err
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {

@@ -70,3 +70,50 @@ func TestSQLiteProxyDAOReplaceAllReplacesTheWholeList(t *testing.T) {
 		t.Fatalf("proxies after ReplaceAll = %#v, want new only", proxies)
 	}
 }
+
+func TestSQLiteProxyDAOReplaceAllKeepsSpeedResults(t *testing.T) {
+	db, err := database.NewDB(filepath.Join(t.TempDir(), "replace-all-speed.db"))
+	if err != nil {
+		t.Fatalf("NewDB returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Migrate(); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	dao := NewSQLiteProxyDAO(db.GetConn())
+	if err := dao.Upsert(Proxy{ProxyId: "keep", ProxyName: "Keep", ProxyConfig: "http://keep:8080"}); err != nil {
+		t.Fatalf("Upsert returned error: %v", err)
+	}
+	if err := dao.UpdateSpeedResultWithProvenance("keep", true, 88, "2026-10-24T10:00:00Z", "xray", "", ""); err != nil {
+		t.Fatalf("UpdateSpeedResultWithProvenance returned error: %v", err)
+	}
+	if err := dao.UpdateIPHealthResult("keep", `{"ok":true}`); err != nil {
+		t.Fatalf("UpdateIPHealthResult returned error: %v", err)
+	}
+
+	if err := dao.ReplaceAll([]Proxy{
+		{ProxyId: "keep", ProxyName: "Keep Edited", ProxyConfig: "http://keep:8081"},
+		{ProxyId: "fresh", ProxyName: "Fresh", ProxyConfig: "http://fresh:8080"},
+	}); err != nil {
+		t.Fatalf("ReplaceAll returned error: %v", err)
+	}
+	proxies, err := dao.List()
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(proxies) != 2 {
+		t.Fatalf("proxies after ReplaceAll = %#v, want 2 rows", proxies)
+	}
+	for _, item := range proxies {
+		if item.ProxyId != "keep" {
+			continue
+		}
+		if !item.LastTestOk || item.LastLatencyMs != 88 || item.LastTestedAt != "2026-10-24T10:00:00Z" || item.LastTestEngine != "xray" {
+			t.Fatalf("speed result was lost across ReplaceAll: %#v", item)
+		}
+		if item.LastIPHealthJSON != `{"ok":true}` {
+			t.Fatalf("ip health result was lost across ReplaceAll: %#v", item)
+		}
+	}
+}
