@@ -534,7 +534,6 @@ export function BackupPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]"
               onClick={() => {
                 setImportProgress(null)
                 setImportModalOpen(true)
@@ -548,7 +547,6 @@ export function BackupPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]"
               onClick={() => {
                 openListConfigurationCompletedRef.current = false
                 setPendingBackupTypes(null)
@@ -563,7 +561,6 @@ export function BackupPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="!border-[var(--color-border-default)] !bg-[var(--color-bg-muted)] !text-[var(--color-text-primary)] hover:!border-[var(--color-border-strong)] hover:!bg-[var(--color-border-default)]"
               onClick={() => setScheduledBackupModalOpen(true)}
               disabled={remoteBackupBusy || actionLoading !== 'none'}
               title="设置 OpenList 定时备份"

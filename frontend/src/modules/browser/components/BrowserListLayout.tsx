@@ -66,14 +66,14 @@ export function BrowserListHeader({
             {statItems.map((item) => (
               <div
                 key={item.label}
-                className="inline-flex h-8 items-center gap-2 rounded-lg bg-[var(--color-bg-muted)] px-3 text-sm"
+                className="inline-flex h-7 items-center gap-2 rounded-[4px] bg-[var(--color-bg-muted)] px-2.5 text-sm"
               >
                 <span className="text-[var(--color-text-muted)]">{item.label}</span>
                 <span className="font-semibold text-[var(--color-text-primary)]">{item.value}</span>
               </div>
             ))}
             {filteredProfileCount !== profileCount && (
-              <div className="inline-flex h-8 items-center gap-2 rounded-lg bg-[var(--color-accent)]/10 px-3 text-sm">
+              <div className="inline-flex h-7 items-center gap-2 rounded-[4px] bg-[var(--color-accent)]/10 px-2.5 text-sm">
                 <span className="text-[var(--color-text-muted)]">筛选</span>
                 <span className="font-semibold text-[var(--color-accent)]">{filteredProfileCount}</span>
               </div>
@@ -104,12 +104,12 @@ export function BrowserListHeader({
             </Button>
           </Link>
 
-          <div className="flex items-center rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-secondary)] p-0.5" role="group" aria-label="视图切换">
+          <div className="flex items-center rounded-[4px] border border-[var(--color-border-default)] bg-[var(--color-bg-secondary)] p-0.5" role="group" aria-label="视图切换">
             <button
               type="button"
               aria-label="卡片视图"
               aria-pressed={viewMode === 'card'}
-              className={`rounded-md p-1.5 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${viewMode === 'card' ? 'bg-[var(--color-bg-surface)] text-[var(--color-accent)] shadow-sm' : ''}`}
+              className={`rounded-[2px] p-1.5 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${viewMode === 'card' ? 'bg-[var(--color-bg-surface)] text-[var(--color-accent)] shadow-sm' : ''}`}
               onClick={() => onViewModeChange('card')}
               title="卡片视图"
             >
@@ -119,7 +119,7 @@ export function BrowserListHeader({
               type="button"
               aria-label="表格视图"
               aria-pressed={viewMode === 'table'}
-              className={`rounded-md p-1.5 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${viewMode === 'table' ? 'bg-[var(--color-bg-surface)] text-[var(--color-accent)] shadow-sm' : ''}`}
+              className={`rounded-[2px] p-1.5 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${viewMode === 'table' ? 'bg-[var(--color-bg-surface)] text-[var(--color-accent)] shadow-sm' : ''}`}
               onClick={() => onViewModeChange('table')}
               title="表格视图"
             >
