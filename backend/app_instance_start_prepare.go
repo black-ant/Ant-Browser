@@ -174,11 +174,7 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	}
 
 	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, launchTargets, restoreLastSession)
-	// 插件持久安装助手进程复用实例的调试端口与代理/指纹参数：
-	// 若此时实例浏览器尚未运行，安装助手进程就是实例浏览器本身，
-	// 缺少调试端口会导致后续正式启动被 Chrome 单实例交接、误报“就绪前退出”。
-	extensionInstallArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, nil, restoreLastSession)
-	_, extensionWarnings := a.browserMgr.PrepareProfileExtensions(profile, chromeBinaryPath, userDataDir, extensionInstallArgs)
+	extensionWarnings := a.browserMgr.PrepareProfileExtensions(profile, chromeBinaryPath, userDataDir)
 	extensionWarning := joinBrowserStartExtensionWarnings(extensionWarnings)
 
 	return &browserStartPlan{

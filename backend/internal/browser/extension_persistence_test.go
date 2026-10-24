@@ -148,7 +148,7 @@ func TestEnsurePersistentExtensionInstalledUsesProfileScopedPackageInstall(t *te
 	}
 
 	profile := &Profile{ProfileId: "profile-a", UserDataDir: userDataDir}
-	if _, err := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension, nil); err != nil {
+	if _, err := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension); err != nil {
 		t.Fatalf("ensurePersistentExtensionInstalled returned error: %v", err)
 	}
 	if !persistentExtensionArtifactMatches(userDataDir, extensionID, version) {
@@ -223,7 +223,7 @@ func TestEnsurePersistentExtensionInstalledDiscoversExistingProfileExtensionWith
 	}
 
 	profile := &Profile{ProfileId: "profile-a", UserDataDir: userDataDir}
-	if _, err := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension, nil); err != nil {
+	if _, err := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension); err != nil {
 		t.Fatalf("ensurePersistentExtensionInstalled returned error: %v", err)
 	}
 	storedData, err := os.ReadFile(storagePath)
@@ -292,7 +292,7 @@ func TestEnsurePersistentExtensionInstalledDoesNotAdoptDifferentSameVersionExten
 	}
 
 	profile := &Profile{ProfileId: "profile-a", UserDataDir: userDataDir}
-	if _, err := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension, nil); err != nil {
+	if _, err := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension); err != nil {
 		t.Fatalf("ensurePersistentExtensionInstalled returned error: %v", err)
 	}
 	storedOtherData, err := os.ReadFile(otherStoragePath)
@@ -363,7 +363,7 @@ func TestEnsurePersistentExtensionInstalledRestoresOlderVersionAfterRegistration
 	}
 
 	profile := &Profile{ProfileId: "profile-a", UserDataDir: userDataDir}
-	_, installErr := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension, nil)
+	_, installErr := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension)
 	if installErr == nil {
 		t.Fatal("ensurePersistentExtensionInstalled returned nil, want registration failure")
 	}
@@ -447,7 +447,7 @@ func TestEnsurePersistentExtensionInstalledReportsPhaseAndRestoresStateOnRegistr
 	}
 
 	profile := &Profile{ProfileId: "profile-a", UserDataDir: userDataDir}
-	_, installErr := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension, nil)
+	_, installErr := manager.ensurePersistentExtensionInstalled(profile, userDataDir, filepath.Join(appRoot, "missing-chrome"), extension)
 	if installErr == nil {
 		t.Fatal("ensurePersistentExtensionInstalled returned nil, want registration failure")
 	}
@@ -752,10 +752,7 @@ func TestPrepareProfileExtensionsSkipsDetectedRuntime(t *testing.T) {
 	manager.ProfileRuntimeDetector = func(*Profile) bool { return true }
 	profile := &Profile{ProfileId: `profile`, ProfileName: `Profile`}
 
-	args, warnings := manager.PrepareProfileExtensions(profile, `chrome`, filepath.Join(appRoot, `profile`), nil)
-	if len(args) != 0 {
-		t.Fatalf(`PrepareProfileExtensions args = %#v, want no install args`, args)
-	}
+	warnings := manager.PrepareProfileExtensions(profile, `chrome`, filepath.Join(appRoot, `profile`))
 	if len(warnings) != 1 {
 		t.Fatalf(`PrepareProfileExtensions warnings = %#v, want one runtime warning`, warnings)
 	}
