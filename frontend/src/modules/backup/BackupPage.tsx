@@ -450,6 +450,16 @@ export function BackupPage() {
     }
   }
 
+  const skipPortableSessionPassword = () => {
+    if (portableSessionPasswordMode !== 'export' || profileImportBusy || actionLoading === 'export') return
+    const request = pendingProfileBackup
+    if (!request) return
+    setPendingProfileBackup(null)
+    setPortableSessionPasswordMode(null)
+    setPortableSessionPasswordError('')
+    void handleBackup(request.destinations, request.profileIds, '')
+  }
+
   return (
     <div className="w-full space-y-4 animate-fade-in">
       {exportProgress && (
@@ -600,6 +610,7 @@ export function BackupPage() {
         error={portableSessionPasswordError}
         onClose={closePortableSessionPasswordModal}
         onConfirm={confirmPortableSessionPassword}
+        onSkip={portableSessionPasswordMode === 'export' ? skipPortableSessionPassword : undefined}
       />
 
       <BackupChannelConfigModal

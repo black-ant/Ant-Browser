@@ -11,6 +11,7 @@ interface ProfilePackagePasswordModalProps {
   error?: string
   onClose: () => void
   onConfirm: (password: string) => void
+  onSkip?: () => void
 }
 
 const minimumPasswordLength = 8
@@ -22,6 +23,7 @@ export function ProfilePackagePasswordModal({
   error = '',
   onClose,
   onConfirm,
+  onSkip,
 }: ProfilePackagePasswordModalProps) {
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -60,6 +62,9 @@ export function ProfilePackagePasswordModal({
       width="440px"
       footer={(
         <>
+          {isExport && onSkip && (
+            <Button variant="ghost" onClick={onSkip} disabled={busy}>跳过，不迁移登录态</Button>
+          )}
           <Button variant="secondary" onClick={onClose} disabled={busy}>取消</Button>
           <Button onClick={handleConfirm} loading={busy}>{isExport ? '开始导出' : '继续导入'}</Button>
         </>
@@ -101,7 +106,9 @@ export function ProfilePackagePasswordModal({
           </FormItem>
         )}
         <p className="text-xs leading-5 text-[var(--color-text-muted)]">
-          Cookie 可跨电脑迁移；Local Storage、IndexedDB、WebAuthn/Passkey 等数据仍可能需要重新登录。
+          {isExport
+            ? 'Cookie 可跨电脑迁移；Local Storage、IndexedDB、WebAuthn/Passkey 等数据仍可能需要重新登录。不需要迁移登录态时可选择跳过。'
+            : 'Cookie 可跨电脑迁移；Local Storage、IndexedDB、WebAuthn/Passkey 等数据仍可能需要重新登录。'}
         </p>
         {activeError && <p className="text-sm text-[var(--color-error)]" role="alert">{activeError}</p>}
       </div>

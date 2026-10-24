@@ -344,10 +344,23 @@ export function BrowserListPage() {
         toast.success(`已导出 ${result.profileCount} 个实例，并迁移 ${result.portableSessionProfileCount || 0} 个实例的登录态`)
       }
     } catch (error: any) {
-      setPortableSessionPasswordError(error?.message || '导出实例失败')
+      if (password) {
+        setPortableSessionPasswordError(error?.message || '导出实例失败')
+      } else {
+        setPortableSessionPasswordMode(null)
+        setPendingProfileExportIds([])
+        toast.error(error?.message || '导出实例失败')
+      }
     } finally {
       setProfilePackageBusy(false)
     }
+  }
+
+  const skipPortableSessionPassword = () => {
+    if (portableSessionPasswordMode !== 'export' || profilePackageBusy) return
+    setPortableSessionPasswordMode(null)
+    setPortableSessionPasswordError('')
+    void executeProfileExport('')
   }
 
   const handleOpenUserDataDir = async (profile: BrowserProfile) => {
@@ -556,6 +569,9 @@ export function BrowserListPage() {
         userDataDir: profile.userDataDir,
         coreId: profile.coreId,
         fingerprintArgs: profile.fingerprintArgs,
+        // 仅动态实例需要保留模式,避免快速切换被解析为固定代理;固定/本地实例沿用原有推断(选择池代理即转为固定)。
+        proxyMode: profile.proxyMode === 'dynamic' ? profile.proxyMode : undefined,
+        proxyGroupName: profile.proxyMode === 'dynamic' ? profile.proxyGroupName : undefined,
         proxyId: proxy.proxyId,
         proxyConfig: '',
         memoryLimitMb: profile.memoryLimitMb || 0,
@@ -776,6 +792,7 @@ export function BrowserListPage() {
         error={portableSessionPasswordError}
         onClose={closePortableSessionPasswordModal}
         onConfirm={confirmPortableSessionPassword}
+        onSkip={portableSessionPasswordMode === 'export' ? skipPortableSessionPassword : undefined}
       />
     </div>
   )
