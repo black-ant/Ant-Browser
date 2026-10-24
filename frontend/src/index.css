@@ -62,12 +62,11 @@ a {
   text-decoration: none;
 }
 
-/* 按钮重置 */
+/* 按钮重置（边框交由 Tailwind preflight 与 border 工具类控制，此处声明 border:none 会压掉 .border 类） */
 button {
   font: inherit;
   color: inherit;
   background: none;
-  border: none;
   cursor: pointer;
 }
 
