@@ -41,6 +41,111 @@ func buildProxyHTTPClient(
 	return buildProxyHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
 }
 
+// buildProbeHTTPClientContext 构建短时探测（测速/IP 健康/连通性）专用的 HTTP 客户端。
+// 与普通客户端不同，它对桥接进程持有引用计数；返回的 release 必须在探测结束后调用：
+// 关闭空闲连接、释放引用，并在无人占用时立即回收桥接进程，避免批量探测后内核进程滞留。
+func buildProbeHTTPClientContext(
+	ctx context.Context,
+	src string,
+	proxyId string,
+	proxies []config.BrowserProxy,
+	xrayMgr *XrayManager,
+	singboxMgr *SingBoxManager,
+	clashMgr *ClashManager,
+	connectorType string,
+	timeout time.Duration,
+) (*http.Client, func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	src = strings.TrimSpace(resolveProxyConfig(src, proxies, proxyId))
+	log := logger.New("ProxyHTTPClient")
+	resolution, err := ResolveProxyKernelForConnector(src, proxies, proxyId, connectorType)
+	if err != nil {
+		log.Warn("代理内核解析失败",
+			logger.F("proxy_id", proxyId),
+			logger.F("error", err.Error()),
+		)
+		return nil, nil, err
+	}
+	closeOnly := func(client *http.Client) func() {
+		return func() { client.CloseIdleConnections() }
+	}
+	l := strings.ToLower(strings.TrimSpace(src))
+	if resolution.Kernel == ProxyKernelNative || l == "" || l == "direct://" {
+		client, err := buildProxyHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+		if err != nil {
+			return nil, nil, err
+		}
+		return client, closeOnly(client), nil
+	}
+
+	switch resolution.Kernel {
+	case ProxyKernelMihomo:
+		if clashMgr == nil {
+			return nil, nil, fmt.Errorf("Mihomo 管理器未初始化")
+		}
+		proxyAddr, key, err := clashMgr.ensureNodeBridgeContext(ctx, src, proxies, proxyId, true)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Mihomo 桥接启动失败: %w", err)
+		}
+		client, err := buildHTTPProxyClient(proxyAddr, timeout)
+		if err != nil {
+			clashMgr.ReleaseNodeBridge(key)
+			clashMgr.ReclaimBridgeIfIdle(key)
+			return nil, nil, err
+		}
+		return client, func() {
+			client.CloseIdleConnections()
+			clashMgr.ReleaseNodeBridge(key)
+			clashMgr.ReclaimBridgeIfIdle(key)
+		}, nil
+	case ProxyKernelSingBox:
+		if singboxMgr == nil {
+			return nil, nil, fmt.Errorf("sing-box 管理器未初始化")
+		}
+		socks5Addr, key, err := singboxMgr.ensureBridgeContext(ctx, src, proxies, proxyId, true)
+		if err != nil {
+			return nil, nil, fmt.Errorf("sing-box 桥接启动失败: %w", err)
+		}
+		client, err := buildSocks5HTTPClient(strings.TrimPrefix(socks5Addr, "socks5://"), timeout)
+		if err != nil {
+			singboxMgr.ReleaseBridge(key)
+			singboxMgr.ReclaimBridgeIfIdle(key)
+			return nil, nil, err
+		}
+		return client, func() {
+			client.CloseIdleConnections()
+			singboxMgr.ReleaseBridge(key)
+			singboxMgr.ReclaimBridgeIfIdle(key)
+		}, nil
+	case ProxyKernelXray:
+		if xrayMgr == nil {
+			return nil, nil, fmt.Errorf("xray 管理器未初始化")
+		}
+		socks5Addr, key, err := xrayMgr.ensureBridgeContext(ctx, src, proxies, proxyId, true)
+		if err != nil {
+			return nil, nil, fmt.Errorf("xray 桥接启动失败: %w", err)
+		}
+		client, err := buildSocks5HTTPClient(strings.TrimPrefix(socks5Addr, "socks5://"), timeout)
+		if err != nil {
+			xrayMgr.ReleaseBridge(key)
+			xrayMgr.ReclaimBridgeIfIdle(key)
+			return nil, nil, err
+		}
+		return client, func() {
+			client.CloseIdleConnections()
+			xrayMgr.ReleaseBridge(key)
+			xrayMgr.ReclaimBridgeIfIdle(key)
+		}, nil
+	default:
+		return nil, nil, fmt.Errorf("无法为协议 %s 选择代理内核", resolution.Protocol)
+	}
+}
+
 func buildProxyHTTPClientContext(
 	ctx context.Context,
 	src string,

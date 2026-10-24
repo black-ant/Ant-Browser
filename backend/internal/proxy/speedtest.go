@@ -104,7 +104,7 @@ func lightHTTPDelayTestWithConnector(
 		logger.F("targets", strings.Join(testURLs, ",")),
 	)
 
-	client, err := buildSpeedTestHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, cfg)
+	client, releaseClient, err := buildSpeedTestHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, cfg)
 	if err != nil {
 		log.Warn("代理测速 HTTP 客户端创建失败",
 			logger.F("proxy_id", proxyId),
@@ -112,7 +112,7 @@ func lightHTTPDelayTestWithConnector(
 		)
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: engine, Error: err.Error()}
 	}
-	defer client.CloseIdleConnections()
+	defer releaseClient()
 
 	var lastErr error
 	var lastLatency int64
@@ -176,7 +176,7 @@ func buildSpeedTestHTTPClient(
 	clashMgr *ClashManager,
 	connectorType string,
 	cfg *SpeedTestConfig,
-) (*http.Client, error) {
+) (*http.Client, func(), error) {
 	timeout := DefaultSpeedTestConfig.Timeout
 	prepareTimeout := DefaultSpeedTestConfig.TCPTimeout
 	if cfg != nil {
@@ -192,25 +192,32 @@ func buildSpeedTestHTTPClient(
 	}
 
 	type clientResult struct {
-		client *http.Client
-		err    error
+		client  *http.Client
+		release func()
+		err     error
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), prepareTimeout)
 	defer cancel()
 	resultCh := make(chan clientResult, 1)
 	go func() {
-		client, err := buildProxyHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
-		resultCh <- clientResult{client: client, err: err}
+		client, release, err := buildProbeHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+		resultCh <- clientResult{client: client, release: release, err: err}
 	}()
 
 	select {
 	case result := <-resultCh:
 		if result.err != nil && errors.Is(result.err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("代理准备超时（%dms）", prepareTimeout.Milliseconds())
+			return nil, nil, fmt.Errorf("代理准备超时（%dms）", prepareTimeout.Milliseconds())
 		}
-		return result.client, result.err
+		return result.client, result.release, result.err
 	case <-ctx.Done():
-		return nil, fmt.Errorf("代理准备超时（%dms）", prepareTimeout.Milliseconds())
+		// 超时后桥接仍可能启动成功：必须有人释放它的引用，否则进程永远无法回收。
+		go func() {
+			if result := <-resultCh; result.release != nil {
+				result.release()
+			}
+		}()
+		return nil, nil, fmt.Errorf("代理准备超时（%dms）", prepareTimeout.Milliseconds())
 	}
 }
 

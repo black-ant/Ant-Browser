@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -107,11 +108,11 @@ func TestRealConnectivityWithRuntimeConfig(
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: engine, Error: "真实连通性测试目标 URL 为空"}
 	}
 
-	client, err := buildProxyHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+	client, releaseClient, err := buildProbeHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
 	if err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: engine, Error: err.Error()}
 	}
-	defer client.CloseIdleConnections()
+	defer releaseClient()
 
 	var lastErr error
 	var lastLatency int64

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -70,12 +71,12 @@ func FetchIPHealthInfo(
 		return meta, fmt.Errorf("未找到代理配置")
 	}
 
-	client, err := buildIPHealthHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+	client, releaseClient, err := buildIPHealthHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
 	if err != nil {
 		meta["error"] = err.Error()
 		return meta, fmt.Errorf("创建 IP 健康检测客户端失败（source=%s）: %w", source, err)
 	}
-	defer client.CloseIdleConnections()
+	defer releaseClient()
 
 	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
 	if err != nil {
@@ -163,8 +164,8 @@ func buildIPHealthHTTPClient(
 	clashMgr *ClashManager,
 	connectorType string,
 	timeout time.Duration,
-) (*http.Client, error) {
-	return buildProxyHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+) (*http.Client, func(), error) {
+	return buildProbeHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
 }
 
 func resolveIPHealthSource(cfg *IPHealthConfig, targetURL string) string {
