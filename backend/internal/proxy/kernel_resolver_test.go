@@ -100,12 +100,12 @@ func TestResolveProxyKernelForConnectorRejectsCrossStackPreference(t *testing.T)
 	}
 }
 
-func TestResolveProxyKernelForConnectorRejectsChainProxyInMihomoStack(t *testing.T) {
-	_, err := ResolveProxyKernelForConnector("chain+socks5://127.0.0.1:10001|127.0.0.1:10002", nil, "", config.BrowserConnectorMihomo)
-	if err == nil {
-		t.Fatal("expected chain proxy to be rejected by the mihomo stack")
+func TestResolveProxyKernelForConnectorSelectsChainProxyInMihomoStack(t *testing.T) {
+	resolution, err := ResolveProxyKernelForConnector("chain+socks5://127.0.0.1:10001|127.0.0.1:10002", nil, "", config.BrowserConnectorMihomo)
+	if err != nil {
+		t.Fatalf("chain proxy rejected by the mihomo stack: %v", err)
 	}
-	if !strings.Contains(err.Error(), "当前 mihomo 连接栈") {
-		t.Fatalf("error = %q, want current-stack guidance", err.Error())
+	if resolution.Kernel != ProxyKernelMihomo {
+		t.Fatalf("kernel = %q, want mihomo", resolution.Kernel)
 	}
 }

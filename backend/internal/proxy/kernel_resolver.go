@@ -151,10 +151,8 @@ func SupportedKernelsForProtocol(protocol string, proxyConfig string, proxies []
 			return []string{ProxyKernelXray, ProxyKernelMihomo}
 		}
 		return []string{ProxyKernelNative}
-	case "vmess", "vless", "trojan":
+	case "vmess", "vless", "trojan", "chain+socks5":
 		return []string{ProxyKernelXray, ProxyKernelMihomo}
-	case "chain+socks5":
-		return []string{ProxyKernelXray}
 	case "ss", "shadowsocks":
 		if IsMihomoOnlyProtocol(proxyConfig) {
 			return []string{ProxyKernelMihomo}
