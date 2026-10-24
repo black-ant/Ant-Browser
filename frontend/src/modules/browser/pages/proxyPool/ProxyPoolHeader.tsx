@@ -84,7 +84,7 @@ export function ProxyPoolHeader({
             使用说明
           </Button>
           <Button size='sm' variant='secondary' onClick={onOpenVirtualGroups}>虚拟节点</Button>
-          <Button size="sm" onClick={onOpenImport}>导入代理</Button>
+          <Button size="sm" variant="secondary" onClick={onOpenImport}>导入代理</Button>
         </div>
       </div>
     </Card>
