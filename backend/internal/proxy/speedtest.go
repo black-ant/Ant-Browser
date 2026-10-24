@@ -290,10 +290,15 @@ func doSpeedTestRequest(client *http.Client, testURL string) (int64, int, error)
 	if err != nil {
 		return latency, statusCode, err
 	}
-	if statusCode != http.StatusMethodNotAllowed && statusCode != http.StatusNotImplemented {
-		return latency, statusCode, nil
+	if statusCode == http.StatusMethodNotAllowed || statusCode == http.StatusNotImplemented {
+		return doSpeedTestRequestWithMethod(client, http.MethodGet, testURL)
 	}
-	return doSpeedTestRequestWithMethod(client, http.MethodGet, testURL)
+	// 第一次请求负责建立连接（TCP/代理握手，数值偏大），报告第二次（热连接）请求的纯往返延迟。
+	secondLatency, secondStatusCode, secondErr := doSpeedTestRequestWithMethod(client, http.MethodHead, testURL)
+	if secondErr == nil {
+		return secondLatency, secondStatusCode, nil
+	}
+	return latency, statusCode, nil
 }
 
 func doSpeedTestRequestWithMethod(client *http.Client, method string, testURL string) (int64, int, error) {

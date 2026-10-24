@@ -20,7 +20,7 @@ func (a *App) BrowserProxyTestSpeed(proxyId string) ProxyTestResult {
 	return result
 }
 
-// BrowserProxyBatchTestSpeed 批量并发测速，concurrency 控制并发数（默认 5，最高 10）。
+// BrowserProxyBatchTestSpeed 批量并发测速，concurrency 控制并发数（默认 5，最高 20）。
 func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []ProxyTestResult {
 	if len(proxyIds) == 0 {
 		return []ProxyTestResult{}
@@ -60,16 +60,21 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 	return results
 }
 
+// 手动批量测速的并发钳制独立于“测速并发上限”设置（该设置只约束定时测速调度）。
+const (
+	manualProxySpeedBatchDefault = 5
+	manualProxySpeedBatchMax     = 20
+)
+
 func (a *App) proxySpeedBatchConcurrency(requested int, total int) int {
 	if total <= 0 {
 		return 0
 	}
-	limit := a.proxySpeedConcurrencyLimit()
-	if requested <= 0 || requested > limit {
-		requested = limit
+	if requested <= 0 {
+		requested = manualProxySpeedBatchDefault
 	}
-	if requested > config.MaxProxySpeedConcurrency {
-		requested = config.MaxProxySpeedConcurrency
+	if requested > manualProxySpeedBatchMax {
+		requested = manualProxySpeedBatchMax
 	}
 	if requested > total {
 		requested = total
