@@ -60,8 +60,8 @@ export function NotificationsPage() {
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             {unreadCount > 0 && (
-              <Button type="button" variant="secondary" size="sm" onClick={markAllAsRead} className="h-8 cursor-pointer px-2.5">
-                <Check className="h-3.5 w-3.5" />
+              <Button type="button" size="sm" onClick={markAllAsRead} className="cursor-pointer">
+                <Check className="w-4 h-4" />
                 全部标为已读
               </Button>
             )}
@@ -71,9 +71,9 @@ export function NotificationsPage() {
                 variant="secondary"
                 size="sm"
                 onClick={clearNotifications}
-                className="h-8 cursor-pointer px-2.5 text-[var(--color-error)] hover:border-[var(--color-error)]/40 hover:text-[var(--color-error)]"
+                className="cursor-pointer text-[var(--color-error)] hover:border-[var(--color-error)]/40 hover:text-[var(--color-error)]"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="w-4 h-4" />
                 清空通知
               </Button>
             )}

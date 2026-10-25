@@ -70,7 +70,6 @@ export function ProxyPoolHeader({
           </Button>
           <Button
             size="sm"
-            variant="secondary"
             onClick={onTestAll}
             loading={testingAll}
             disabled={testableCount === 0}
