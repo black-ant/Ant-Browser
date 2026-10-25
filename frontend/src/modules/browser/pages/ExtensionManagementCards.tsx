@@ -129,15 +129,15 @@ export function ExtensionInstallCard({
           placeholder="Chrome Web Store 链接或 32 位插件 ID"
           className="flex-1"
         />
-        <Button type="button" variant="secondary" onClick={onLookup} loading={querying}>
+        <Button type="button" size="sm" onClick={onLookup} loading={querying}>
           <Search className="h-4 w-4" />
           查询
         </Button>
-        <Button type="button" variant="secondary" onClick={onOpenWebStoreQuery}>
+        <Button type="button" size="sm" variant="secondary" onClick={onOpenWebStoreQuery}>
           <ExternalLink className="h-4 w-4" />
           网页查询
         </Button>
-        <Button type="button" variant="secondary" onClick={onOpenManualInstall}>
+        <Button type="button" size="sm" variant="secondary" onClick={onOpenManualInstall}>
           <Download className="h-4 w-4" />
           手动安装
         </Button>
