@@ -618,6 +618,26 @@ export function ProxyVirtualGroupsPage() {
                 <span>仅显示已选</span>
               </label>
             </div>
+            {proxyRegionOptions.length > 1 && (
+              <div className='flex flex-wrap items-center gap-1.5' role='group' aria-label='按地区快速筛选'>
+                {proxyRegionOptions.map(option => {
+                  const active = proxyRegionFilter === option.value
+                  return (
+                    <button
+                      key={option.value || 'all'}
+                      type='button'
+                      aria-pressed={active}
+                      onClick={() => setProxyRegionFilter(option.value)}
+                      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${active
+                        ? 'border-[var(--color-accent)] bg-[var(--color-accent-muted)] font-medium text-[var(--color-accent)]'
+                        : 'border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]'}`}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {availableProxies.length === 0 ? (
               <div className='rounded-lg border border-dashed border-[var(--color-border)] px-3 py-8 text-center text-sm text-[var(--color-text-muted)]'>
                 请先在代理池中创建代理节点
@@ -641,13 +661,6 @@ export function ProxyVirtualGroupsPage() {
                     onChange={event => setProxyGroupFilter(event.target.value)}
                     options={proxyGroupOptions}
                     className='w-full shrink-0 sm:w-44'
-                  />
-                  <Select
-                    aria-label='按地区筛选'
-                    value={proxyRegionFilter}
-                    onChange={event => setProxyRegionFilter(event.target.value)}
-                    options={proxyRegionOptions}
-                    className='w-full shrink-0 sm:w-36'
                   />
                   <div className='flex items-center justify-between gap-2 sm:shrink-0'>
                     <span className='text-xs text-[var(--color-text-muted)]'>
