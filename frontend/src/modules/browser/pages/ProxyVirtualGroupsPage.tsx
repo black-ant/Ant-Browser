@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, FolderOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, ConfirmModal, Input, Modal, Switch, Table, toast } from '../../../shared/components'
+import { Button, Card, ConfirmModal, Input, Modal, Select, Switch, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserProxy, BrowserProxyVirtualGroup } from '../types'
 import {
@@ -13,7 +13,6 @@ import {
 import { useProxyChecks } from './proxyPool/useProxyChecks'
 import { ProxyVirtualGroupMembersModal } from './proxyPool/ProxyVirtualGroupMembersModal'
 import { toDisplayList, type ProxyDisplayInfo } from './proxyPool/helpers'
-import { BrowserEditSelect } from '../components/BrowserEditSelect'
 
 interface VirtualGroupForm {
   groupId: string
@@ -541,10 +540,10 @@ export function ProxyVirtualGroupsPage() {
             </label>
             <label className='block'>
               <span className='text-sm font-medium text-[var(--color-text-primary)]'>选择策略</span>
-              <BrowserEditSelect
-                label='选择策略'
+              <Select
+                aria-label='选择策略'
                 value={form.strategy}
-                onChange={value => setForm(previous => ({ ...previous, strategy: value as VirtualGroupForm['strategy'], selectedProxyId: value === 'sticky' ? previous.selectedProxyId : '' }))}
+                onChange={event => setForm(previous => ({ ...previous, strategy: event.target.value as VirtualGroupForm['strategy'], selectedProxyId: event.target.value === 'sticky' ? previous.selectedProxyId : '' }))}
                 options={virtualGroupStrategyOptions}
               />
             </label>
@@ -584,10 +583,10 @@ export function ProxyVirtualGroupsPage() {
                       className='w-full pl-9'
                     />
                   </div>
-                  <BrowserEditSelect
-                    label='按实体分组筛选'
+                  <Select
+                    aria-label='按实体分组筛选'
                     value={proxyGroupFilter}
-                    onChange={setProxyGroupFilter}
+                    onChange={event => setProxyGroupFilter(event.target.value)}
                     options={proxyGroupOptions}
                     className='w-full shrink-0 sm:w-48'
                   />
