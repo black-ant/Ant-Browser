@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, Search } from 'lucide-react'
-import { Button, Input, Modal, toast } from '../../../shared/components'
+import { Button, Input, Modal, Select, toast } from '../../../shared/components'
 import type { BrowserExtension, BrowserGroupWithCount, BrowserProfile, BrowserProfileExtensionSettings } from '../types'
 import { fetchBrowserProfileExtensionSettings, saveBrowserProfileExtensionSettings, type BrowserExtensionManualDownloadFile, type BrowserExtensionManualInstallGuide } from '../api/extensions'
 import { fetchGroups } from '../api/groups'
@@ -8,6 +8,15 @@ import { fetchBrowserProfiles } from '../api/profiles'
 import { extensionHistoryActionLabel, formatExtensionTime, sameStringSet, type ExtensionHistoryRecord } from './extensionManagementUtils'
 
 const UNGROUPED_PROFILE_GROUP_ID = '__ungrouped__'
+
+type ProfileSort = 'createdAtDesc' | 'createdAtAsc' | 'profileNameAsc' | 'profileNameDesc'
+
+const PROFILE_SORT_OPTIONS = [
+  { value: 'createdAtDesc', label: '创建时间 从晚到早' },
+  { value: 'createdAtAsc', label: '创建时间 从早到晚' },
+  { value: 'profileNameAsc', label: '名称 A 到 Z' },
+  { value: 'profileNameDesc', label: '名称 Z 到 A' },
+]
 
 export interface ExtensionProfileLimitModalProps {
   open: boolean
@@ -23,6 +32,8 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [profileQuery, setProfileQuery] = useState('')
+  const [profileSort, setProfileSort] = useState<ProfileSort>('createdAtDesc')
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const defaultExtensionIds = useMemo(
@@ -74,9 +85,42 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
     return sections
   }, [profiles, groups, groupNameMap])
 
+  const searchQuery = profileQuery.trim().toLocaleLowerCase()
+  const matchesProfile = (profile: BrowserProfile) => (
+    !searchQuery
+    || profile.profileName.toLocaleLowerCase().includes(searchQuery)
+    || profile.profileId.toLocaleLowerCase().includes(searchQuery)
+  )
+  const sortProfiles = (items: BrowserProfile[]) => {
+    const sorted = [...items]
+    sorted.sort((left, right) => {
+      if (profileSort === 'createdAtDesc' || profileSort === 'createdAtAsc') {
+        const leftTime = Date.parse(left.createdAt)
+        const rightTime = Date.parse(right.createdAt)
+        if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+          return profileSort === 'createdAtDesc' ? rightTime - leftTime : leftTime - rightTime
+        }
+      }
+      const nameComparison = (left.profileName || left.profileId).localeCompare(
+        right.profileName || right.profileId, 'zh-CN', { numeric: true, sensitivity: 'base' },
+      )
+      if (nameComparison !== 0) {
+        return profileSort === 'profileNameDesc' ? -nameComparison : nameComparison
+      }
+      return left.profileId.localeCompare(right.profileId)
+    })
+    return sorted
+  }
+  const visibleProfileGroups = useMemo(() => {
+    return profileGroups
+      .map((group) => ({ ...group, profiles: sortProfiles(group.profiles.filter(matchesProfile)) }))
+      .filter((group) => group.profiles.length > 0)
+  }, [profileGroups, searchQuery, profileSort])
+
   useEffect(() => {
     if (!open || !extension) return
     setLoading(true)
+    setProfileQuery('')
     Promise.all([fetchBrowserProfiles(), fetchGroups()]).then(async ([profileItems, groupItems]) => {
       const profileSettings = await Promise.all(profileItems.map(async (profile) => ({
         profile,
@@ -165,8 +209,32 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
           <div className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
             勾选的实例会写入此插件；未勾选的实例会按默认安装状态或本实例的其他设置处理。
           </div>
+          {profiles.length > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                <Input
+                  aria-label="搜索实例"
+                  value={profileQuery}
+                  onChange={event => setProfileQuery(event.target.value)}
+                  placeholder="搜索实例名称或 ID"
+                  className="w-full pl-9"
+                />
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="text-xs text-[var(--color-text-muted)]">排序</span>
+                <Select
+                  aria-label="实例排序"
+                  value={profileSort}
+                  onChange={event => setProfileSort(event.target.value as ProfileSort)}
+                  options={PROFILE_SORT_OPTIONS}
+                  className="w-[176px]"
+                />
+              </div>
+            </div>
+          )}
           <div className="max-h-[420px] space-y-3 overflow-auto pr-1">
-            {profileGroups.map((group) => {
+            {visibleProfileGroups.map((group) => {
               const groupProfileIds = group.profiles.map((profile) => profile.profileId)
               const selectedCount = groupProfileIds.filter((profileId) => selectedSet.has(profileId)).length
               const allSelected = groupProfileIds.length > 0 && selectedCount === groupProfileIds.length
@@ -206,9 +274,9 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
               )
             })}
 
-            {profiles.length === 0 ? (
+            {profiles.length === 0 || visibleProfileGroups.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
-                暂无实例
+                {profiles.length === 0 ? '暂无实例' : '没有匹配的实例'}
               </div>
             ) : null}
           </div>
