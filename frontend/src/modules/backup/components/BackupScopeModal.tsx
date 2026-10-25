@@ -16,10 +16,10 @@ type BackupScope = 'full' | 'profiles'
 type ProfileSort = 'createdAtAsc' | 'createdAtDesc' | 'profileNameAsc' | 'profileNameDesc'
 
 const PROFILE_SORT_OPTIONS = [
-  { value: 'createdAtAsc', label: '创建时间 ↑' },
-  { value: 'createdAtDesc', label: '创建时间 ↓' },
-  { value: 'profileNameAsc', label: '名称 A-Z' },
-  { value: 'profileNameDesc', label: '名称 Z-A' },
+  { value: 'createdAtDesc', label: '创建时间 从晚到早' },
+  { value: 'createdAtAsc', label: '创建时间 从早到晚' },
+  { value: 'profileNameAsc', label: '名称 A 到 Z' },
+  { value: 'profileNameDesc', label: '名称 Z 到 A' },
 ]
 
 function getProfileDisplayName(profile: BrowserProfile) {
@@ -56,7 +56,7 @@ export function BackupScopeModal({
   const [profiles, setProfiles] = useState<BrowserProfile[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [profileQuery, setProfileQuery] = useState('')
-  const [profileSort, setProfileSort] = useState<ProfileSort>('createdAtAsc')
+  const [profileSort, setProfileSort] = useState<ProfileSort>('createdAtDesc')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -66,7 +66,7 @@ export function BackupScopeModal({
     setScope(selected.size > 0 ? 'profiles' : 'full')
     setSelectedIds(selected)
     setProfileQuery('')
-    setProfileSort('createdAtAsc')
+    setProfileSort('createdAtDesc')
     setError('')
     setLoading(true)
 
@@ -224,13 +224,16 @@ export function BackupScopeModal({
                   />
                 </div>
                 <span className='shrink-0 text-xs text-[var(--color-text-muted)]'>已选 {selectedIds.size}</span>
-                <Select
-                  aria-label="实例排序"
-                  value={profileSort}
-                  onChange={event => setProfileSort(event.target.value as ProfileSort)}
-                  options={PROFILE_SORT_OPTIONS}
-                  className="w-[150px] shrink-0"
-                />
+                <div className='flex shrink-0 items-center gap-1.5'>
+                  <span className='text-xs text-[var(--color-text-muted)]'>排序</span>
+                  <Select
+                    aria-label="实例排序"
+                    value={profileSort}
+                    onChange={event => setProfileSort(event.target.value as ProfileSort)}
+                    options={PROFILE_SORT_OPTIONS}
+                    className="w-[176px]"
+                  />
+                </div>
               </div>
             )}
             <div className="max-h-80 overflow-y-auto p-2">
