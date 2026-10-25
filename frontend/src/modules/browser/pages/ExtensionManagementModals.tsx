@@ -34,6 +34,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
   const [saving, setSaving] = useState(false)
   const [profileQuery, setProfileQuery] = useState('')
   const [profileSort, setProfileSort] = useState<ProfileSort>('createdAtDesc')
+  const [onlyInstalled, setOnlyInstalled] = useState(false)
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const defaultExtensionIds = useMemo(
@@ -113,14 +114,20 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
   }
   const visibleProfileGroups = useMemo(() => {
     return profileGroups
-      .map((group) => ({ ...group, profiles: sortProfiles(group.profiles.filter(matchesProfile)) }))
+      .map((group) => ({
+        ...group,
+        profiles: sortProfiles(group.profiles.filter(
+          (profile) => matchesProfile(profile) && (!onlyInstalled || selectedSet.has(profile.profileId)),
+        )),
+      }))
       .filter((group) => group.profiles.length > 0)
-  }, [profileGroups, searchQuery, profileSort])
+  }, [profileGroups, searchQuery, profileSort, onlyInstalled, selectedSet])
 
   useEffect(() => {
     if (!open || !extension) return
     setLoading(true)
     setProfileQuery('')
+    setOnlyInstalled(false)
     Promise.all([fetchBrowserProfiles(), fetchGroups()]).then(async ([profileItems, groupItems]) => {
       const profileSettings = await Promise.all(profileItems.map(async (profile) => ({
         profile,
@@ -221,6 +228,15 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
                   className="w-full pl-9"
                 />
               </div>
+              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={onlyInstalled}
+                  onChange={event => setOnlyInstalled(event.target.checked)}
+                  className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+                />
+                只看已安装
+              </label>
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="text-xs text-[var(--color-text-muted)]">排序</span>
                 <Select
@@ -276,7 +292,13 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
 
             {profiles.length === 0 || visibleProfileGroups.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
-                {profiles.length === 0 ? '暂无实例' : '没有匹配的实例'}
+                {profiles.length === 0
+                  ? '暂无实例'
+                  : searchQuery
+                    ? '没有匹配的实例'
+                    : onlyInstalled
+                      ? '没有已安装此插件的实例'
+                      : '没有匹配的实例'}
               </div>
             ) : null}
           </div>
