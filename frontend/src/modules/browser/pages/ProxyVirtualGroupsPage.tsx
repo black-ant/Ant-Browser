@@ -44,6 +44,33 @@ function isDirectProxy(proxy: BrowserProxy) {
 }
 
 const ungroupedProxyGroupValue = '__ungrouped__'
+const otherRegionValue = '__other_region__'
+
+const REGION_KEYWORD_CODES: Array<[string, string]> = [
+  ['美国', 'US'], ['日本', 'JP'], ['香港', 'HK'], ['台湾', 'TW'], ['新加坡', 'SG'],
+  ['韩国', 'KR'], ['英国', 'UK'], ['德国', 'DE'], ['法国', 'FR'], ['加拿大', 'CA'],
+  ['澳大利亚', 'AU'], ['土耳其', 'TR'], ['印度', 'IN'], ['俄罗斯', 'RU'], ['荷兰', 'NL'],
+  ['泰国', 'TH'], ['越南', 'VN'], ['马来西亚', 'MY'], ['菲律宾', 'PH'], ['巴西', 'BR'],
+  ['阿根廷', 'AR'], ['意大利', 'IT'], ['西班牙', 'ES'], ['阿联酋', 'AE'], ['澳门', 'MO'],
+]
+
+const REGION_CODE_ALIASES: Record<string, string> = {
+  USA: 'US', SGP: 'SG', KOR: 'KR', GB: 'UK',
+}
+
+function deriveProxyRegion(name: string) {
+  const text = (name || '').trim()
+  for (const [keyword, code] of REGION_KEYWORD_CODES) {
+    if (text.includes(keyword)) return code
+  }
+  const tokenMatch = text.match(/(?:^|[\s\-_#*·])([A-Za-z]{2,3})(?=[\s\-_\d#*·]|$)/)
+  if (tokenMatch) {
+    const code = tokenMatch[1].toUpperCase()
+    if (REGION_CODE_ALIASES[code]) return REGION_CODE_ALIASES[code]
+    if (/^(US|JP|HK|TW|SG|KR|UK|DE|FR|CA|AU|TR|IN|RU|NL|TH|VN|MY|PH|BR|AR|IT|ES|AE|MO)$/.test(code)) return code
+  }
+  return ''
+}
 
 const virtualGroupStrategyOptions = [
   { value: 'round_robin', label: '绝对轮询' },
@@ -70,6 +97,7 @@ export function ProxyVirtualGroupsPage() {
   } | null>(null)
   const [proxyFilter, setProxyFilter] = useState('')
   const [proxyGroupFilter, setProxyGroupFilter] = useState('')
+  const [proxyRegionFilter, setProxyRegionFilter] = useState('')
   const [showSelectedOnly, setShowSelectedOnly] = useState(false)
   const [editorStep, setEditorStep] = useState<'details' | 'nodes'>('details')
 
@@ -138,6 +166,24 @@ export function ProxyVirtualGroupsPage() {
     return options
   }, [availableProxies])
 
+  const proxyRegionOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    let other = 0
+    availableProxies.forEach(proxy => {
+      const code = deriveProxyRegion(proxy.proxyName)
+      if (code) counts.set(code, (counts.get(code) || 0) + 1)
+      else other += 1
+    })
+    const options = [
+      { value: '', label: '全部地区' },
+      ...Array.from(counts.entries())
+        .sort((left, right) => left[0].localeCompare(right[0]) || right[1] - left[1])
+        .map(([code, count]) => ({ value: code.toLowerCase(), label: `${code}（${count}）` })),
+    ]
+    if (other > 0) options.push({ value: otherRegionValue, label: `其他（${other}）` })
+    return options
+  }, [availableProxies])
+
   const {
     latencyMap,
     latencyEngineMap,
@@ -182,14 +228,17 @@ export function ProxyVirtualGroupsPage() {
       const groupName = (proxy.groupName || '').trim()
       const matchesGroup = !proxyGroupFilter
         || (proxyGroupFilter === ungroupedProxyGroupValue ? !groupName : groupName.toLowerCase() === proxyGroupFilter)
+      const region = deriveProxyRegion(proxy.proxyName)
+      const matchesRegion = !proxyRegionFilter
+        || (proxyRegionFilter === otherRegionValue ? !region : region.toLowerCase() === proxyRegionFilter)
       const matchesKeyword = !keyword || [proxy.proxyName, proxy.proxyId, groupName]
         .some(value => value.toLowerCase().includes(keyword))
       const matchesSelection = !showSelectedOnly || form.memberProxyIds.some(proxyId => (
         proxyId.toLowerCase() === proxy.proxyId.toLowerCase()
       ))
-      return matchesGroup && matchesKeyword && matchesSelection
+      return matchesGroup && matchesRegion && matchesKeyword && matchesSelection
     })
-  }, [availableProxies, form.memberProxyIds, proxyFilter, proxyGroupFilter, showSelectedOnly])
+  }, [availableProxies, form.memberProxyIds, proxyFilter, proxyGroupFilter, proxyRegionFilter, showSelectedOnly])
   const filteredAvailableDisplayProxies = useMemo(
     () => filteredAvailableProxies
       .map(proxy => displayProxyById.get(proxy.proxyId.trim().toLowerCase()))
@@ -201,6 +250,7 @@ export function ProxyVirtualGroupsPage() {
     setEditorOpen(false)
     setSaving(false)
     setProxyGroupFilter('')
+    setProxyRegionFilter('')
     setShowSelectedOnly(false)
     setEditorStep('details')
   }
@@ -209,6 +259,7 @@ export function ProxyVirtualGroupsPage() {
     setForm(createEmptyForm())
     setProxyFilter('')
     setProxyGroupFilter('')
+    setProxyRegionFilter('')
     setShowSelectedOnly(false)
     setEditorStep('details')
     setEditorOpen(true)
@@ -228,6 +279,7 @@ export function ProxyVirtualGroupsPage() {
     })
     setProxyFilter('')
     setProxyGroupFilter('')
+    setProxyRegionFilter('')
     setShowSelectedOnly(false)
     setEditorStep('details')
     setEditorOpen(true)
@@ -588,7 +640,14 @@ export function ProxyVirtualGroupsPage() {
                     value={proxyGroupFilter}
                     onChange={event => setProxyGroupFilter(event.target.value)}
                     options={proxyGroupOptions}
-                    className='w-full shrink-0 sm:w-48'
+                    className='w-full shrink-0 sm:w-44'
+                  />
+                  <Select
+                    aria-label='按地区筛选'
+                    value={proxyRegionFilter}
+                    onChange={event => setProxyRegionFilter(event.target.value)}
+                    options={proxyRegionOptions}
+                    className='w-full shrink-0 sm:w-36'
                   />
                   <div className='flex items-center justify-between gap-2 sm:shrink-0'>
                     <span className='text-xs text-[var(--color-text-muted)]'>
