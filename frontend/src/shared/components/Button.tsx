@@ -17,7 +17,7 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-[4px] transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2'
+  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-[6px] transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2'
   
   const variants = {
     primary: 'bg-[var(--color-accent)] text-[var(--color-text-inverse)] hover:opacity-90 focus-visible:ring-[var(--color-accent)]',

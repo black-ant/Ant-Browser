@@ -35,7 +35,7 @@ export function ProxyPoolHeader({
     <Card padding="none" className="shadow-[var(--shadow-sm)]">
       <div className="flex flex-row flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">代理池配置</h1>
-        <div className="flex items-center gap-2 rounded-[4px] bg-[var(--color-bg-muted)] px-2 py-0.5">
+        <div className="flex items-center gap-2 rounded-[6px] bg-[var(--color-bg-muted)] px-2 py-0.5">
           <span className="inline-flex items-center gap-1 whitespace-nowrap px-2 text-xs text-[var(--color-text-muted)]">
             内核状态：{currentConnectorStatus || '未知'}
           </span>
