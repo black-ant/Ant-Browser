@@ -235,7 +235,14 @@ func parseClashSingBoxNode(src string) (map[string]interface{}, error) {
 	// 复用已有的 YAML 解析基础设施
 	var payload interface{}
 	if err := yaml.Unmarshal([]byte(src), &payload); err != nil {
-		return nil, fmt.Errorf("YAML 解析失败: %v", err)
+		// 历史数据可能存在缩进错位（同 parseClashNode），做一次规范化修复重试。
+		if repaired, ok := repairClashNodeYAML(src); ok {
+			if retryErr := yaml.Unmarshal([]byte(repaired), &payload); retryErr != nil {
+				return nil, fmt.Errorf("YAML 解析失败: %v", retryErr)
+			}
+		} else {
+			return nil, fmt.Errorf("YAML 解析失败: %v", err)
+		}
 	}
 
 	nodeMap := pickClashNode(payload)

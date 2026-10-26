@@ -160,3 +160,44 @@ func TestEndToEndMalformedNodeStartsRealBridge(t *testing.T) {
 		})
 	}
 }
+
+// 用户真实库样本形态：顶层字段缩进被剥离、嵌套字段保留 4/8 空格（历史数据损坏形态）。
+func TestRepairHandlesStrippedTopLevelIndentWithNested(t *testing.T) {
+	samples := map[string]string{
+		"reality嵌套保留4空格": "- client-fingerprint: chrome\nflow: xtls-rprx-vision\nname: test\nport: 443\nreality-opts:\n    public-key: Q0VeH\n    short-id: 82f\nserver: 1.2.3.4\ntype: vless\nuuid: d342d11e-d424-4583-b36e-524ab1f0afa4",
+		"深层嵌套保留4/8空格":  "- alterId: 0\nname: test\nnetwork: ws\nport: 2086\nserver: 1.2.3.4\ntype: vmess\nuuid: 1111\nws-opts:\n    headers:\n        Host: www.bing.com\n    path: /p",
+		"嵌套序列项alpn":     "- alpn:\n    - h3\nfast-open: true\nname: test\npassword: pwd\nport: 21874\nserver: 1.2.3.4\ntype: hysteria2",
+	}
+	for name, src := range samples {
+		t.Run(name, func(t *testing.T) {
+			outbound, _, err := parseClashNode(src)
+			if err != nil {
+				// hysteria2 等协议设计上走 sing-box 内核，xray 侧"不支持"属预期路由
+				if strings.Contains(err.Error(), "不支持") && strings.Contains(src, "type: hysteria2") {
+					return
+				}
+				t.Fatalf("历史损坏形态未被修复: %v\n%s", err, src)
+			}
+			if outbound == nil {
+				t.Fatal("应生成出站配置")
+			}
+			// 嵌套结构必须真实存在
+			stream, _ := outbound["streamSettings"].(map[string]interface{})
+			if stream == nil {
+				t.Fatalf("应生成 streamSettings: %#v", outbound)
+			}
+		})
+	}
+}
+
+// hysteria2 损坏形态走 sing-box 解析入口也必须被修复。
+func TestSingBoxParserRepairsStrippedIndent(t *testing.T) {
+	src := "- alpn:\n    - h3\nfast-open: true\nname: test\npassword: pwd\nport: 21874\nserver: 1.2.3.4\nsni: www.bing.com\ntype: hysteria2"
+	outbound, err := parseClashSingBoxNode(src)
+	if err != nil {
+		t.Fatalf("sing-box 入口未修复损坏形态: %v", err)
+	}
+	if outbound == nil {
+		t.Fatal("应生成 sing-box 出站配置")
+	}
+}
