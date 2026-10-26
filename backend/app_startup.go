@@ -9,10 +9,12 @@ import (
 	"ant-chrome/backend/internal/launchcode"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
+
 	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -54,11 +56,34 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.db = db
+
+	// 数据库升级安全序列：备份 → 版本迁移 → 自愈对齐。
+	// 备份失败不阻断（迁移语句幂等且各版本事务化），仅记录告警。
+	dbBackupDir := a.resolveAppPath("data/db-backups")
+	if db.HasPendingMigrations() {
+		if backupPath, backupErr := db.BackupTo(dbBackupDir, "app-pre-migrate"); backupErr != nil {
+			log.Warn("数据库升级前备份失败（继续执行版本迁移）", logger.F("error", backupErr.Error()))
+		} else {
+			log.Info("数据库升级前已创建备份", logger.F("path", backupPath))
+		}
+	}
 	if err := db.Migrate(); err != nil {
 		log.Error("数据库迁移失败", logger.F("error", err))
 		_ = db.Close()
 		runtime.LogFatal(ctx, fmt.Sprintf("数据库迁移失败: %v", err))
 		return
+	}
+
+	// 自愈对齐：修复版本号冲突等导致的"版本达标但列缺失"异构库。
+	// 失败仅记录并放行启动（运行时已有降级容错），下次启动自动重试。
+	if report, reconcileErr := db.Reconcile(dbBackupDir); reconcileErr != nil {
+		log.Warn("数据库结构自愈对齐失败（已跳过，下次启动重试）", logger.F("error", reconcileErr.Error()))
+	} else if len(report.AddedTables) > 0 || len(report.AddedColumns) > 0 {
+		log.Info("数据库结构自愈对齐完成",
+			logger.F("added_tables", strings.Join(report.AddedTables, ",")),
+			logger.F("added_columns", strings.Join(report.AddedColumns, ",")),
+			logger.F("backup", report.BackupPath),
+		)
 	}
 
 	if err := a.startupInitManagers(cfg, db); err != nil {
