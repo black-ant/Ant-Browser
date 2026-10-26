@@ -480,10 +480,12 @@ export function CoreManagementPage() {
       <Card padding="none" className="shadow-[var(--shadow-sm)]">
         <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">内核管理</h1>
-          <div className="flex flex-wrap gap-2 sm:justify-end">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button size="sm" variant="secondary" onClick={handleOpenDownload}>下载内核</Button>
+            <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
             <Button size="sm" variant="secondary" onClick={handleImportLocal} loading={importing}>导入本地</Button>
             <Button size="sm" variant="secondary" onClick={handleScan} loading={scanning}>扫描内核</Button>
+            <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
             <Button size="sm" onClick={handleAdd}>新增内核</Button>
           </div>
         </div>
