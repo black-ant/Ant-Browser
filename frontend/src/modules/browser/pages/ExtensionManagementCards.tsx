@@ -51,15 +51,16 @@ export function ExtensionManagementHeader({
     <Card padding="none" className="shadow-[var(--shadow-sm)]">
       <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">插件包管理</h1>
-        <div className="flex flex-wrap gap-2 md:justify-end">
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
           <Button size="sm" variant="secondary" onClick={onOpenProxy}>
             <Settings className="h-4 w-4" />
             {proxyButtonText}
           </Button>
-          <Button size="sm" variant="secondary" onClick={onOpenHistory}>
-            <History className="h-4 w-4" />
-            历史
+          <Button size="sm" variant="secondary" onClick={onOpenDownloadDirectory} loading={downloadDirectoryLoading}>
+            <FolderOpen className="h-4 w-4" />
+            下载目录安装
           </Button>
+          <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
           <Button size="sm" variant="secondary" onClick={onImportFile} loading={importing === 'file'}>
             <Download className="h-4 w-4" />
             导入包
@@ -68,9 +69,10 @@ export function ExtensionManagementHeader({
             <Download className="h-4 w-4" />
             导入目录
           </Button>
-          <Button size="sm" variant="secondary" onClick={onOpenDownloadDirectory} loading={downloadDirectoryLoading}>
-            <FolderOpen className="h-4 w-4" />
-            下载目录安装
+          <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
+          <Button size="sm" variant="secondary" onClick={onOpenHistory}>
+            <History className="h-4 w-4" />
+            历史
           </Button>
           <Button size="sm" variant="secondary" onClick={onRefresh} loading={loading}>
             <RefreshCw className="h-4 w-4" />
