@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"ant-chrome/backend/internal/config"
+	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
 )
 
@@ -30,13 +31,11 @@ func (a *App) testSharedProxySpeedWithOptions(proxyID string, forceRefresh bool,
 	item.TestedAt = time.Now().Format(time.RFC3339)
 	item.connectorType = connectorType
 	if err := a.persistProxySpeedResult(item); err != nil {
-		item.Ok = false
-		item.LatencyMs = -1
-		if strings.TrimSpace(item.Error) == "" {
-			item.Error = fmt.Sprintf(`测速结果保存失败: %v`, err)
-		} else {
-			item.Error = fmt.Sprintf(`%s；测速结果保存失败: %v`, item.Error, err)
-		}
+		// 网络测速结果是真实的，持久化失败不应翻转 Ok，避免把存储故障伪装成“测速全部失败”。
+		logger.New("SpeedTest").Warn("测速结果保存失败",
+			logger.F("proxy_id", proxyID),
+			logger.F("error", err.Error()),
+		)
 	}
 	return item
 }
@@ -82,7 +81,14 @@ func (a *App) persistProxySpeedResult(result ProxyTestResult) error {
 		UpdateSpeedResultWithProvenance(string, bool, int64, string, string, string, string) error
 	})
 	if ok {
-		return updater.UpdateSpeedResultWithProvenance(result.ProxyId, result.Ok, result.LatencyMs, testedAt, result.Engine, "", "")
+		if err := updater.UpdateSpeedResultWithProvenance(result.ProxyId, result.Ok, result.LatencyMs, testedAt, result.Engine, "", ""); err != nil {
+			// 兼容跨分支旧 schema（缺 last_test_engine 等列）：降级为基础列写入，保留可用的测速结果。
+			if fallbackErr := a.browserMgr.ProxyDAO.UpdateSpeedResult(result.ProxyId, result.Ok, result.LatencyMs, testedAt); fallbackErr == nil {
+				return nil
+			}
+			return err
+		}
+		return nil
 	}
 	return a.browserMgr.ProxyDAO.UpdateSpeedResult(result.ProxyId, result.Ok, result.LatencyMs, testedAt)
 }

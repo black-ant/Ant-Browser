@@ -1,21 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from '../../../../shared/components'
 import { EventsOn } from '../../../../wailsjs/runtime/runtime'
 import {
   browserProxyBatchCheckIPHealth,
-  browserProxyBatchTestSpeed,
   browserProxyBatchWarmupBridge,
   browserProxyCheckIPHealth,
-  browserProxyTestSpeed,
   browserProxyWarmupBridge,
 } from '../../api'
-import type { ProxyIPHealthResult, ProxySpeedTestResult } from '../../types'
+import type { ProxyIPHealthResult } from '../../types'
+import { useProxySpeedStore, type ProxySpeedSource } from '../../proxySpeedStore'
+import { ensureProxySpeedListener, recordProxySpeedResult, testProxySpeeds, testProxySpeedOnce } from '../../proxySpeedService'
 import type { ProxyDisplayInfo } from './helpers'
-import { toLatencyValue } from './storage'
-import { readIPHealthCache, readLatencyCache, readLatencyEngineCache, writeIPHealthCache, writeLatencyCache, writeLatencyEngineCache } from './storage'
+import { readIPHealthCache, writeIPHealthCache, isProxySpeedResultFresh, toLatencyValue } from './storage'
 
 interface UseProxyChecksOptions {
-  proxies: Array<{ proxyId: string }>
+  proxies: ProxySpeedSource[]
 }
 
 function resolveErrorMessage(error: unknown, fallback: string): string {
@@ -24,10 +23,8 @@ function resolveErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
+// 测速结果统一存放在 useProxySpeedStore（全局唯一），本 hook 只负责展示派生与批量操作编排。
 export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
-  const [latencyMap, setLatencyMap] = useState<Record<string, number>>({})
-  const [latencyEngineMap, setLatencyEngineMap] = useState<Record<string, string>>({})
-  const [latencyErrorMap, setLatencyErrorMap] = useState<Record<string, string>>({})
   const [testingAll, setTestingAll] = useState(false)
   const [ipHealthMap, setIPHealthMap] = useState<Record<string, ProxyIPHealthResult>>({})
   const [checkingIPHealthIds, setCheckingIPHealthIds] = useState<Set<string>>(new Set())
@@ -37,19 +34,37 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
   const [ipHealthDetailOpen, setIPHealthDetailOpen] = useState(false)
   const [currentIPHealthDetail, setCurrentIPHealthDetail] = useState<ProxyIPHealthResult | null>(null)
 
+  const speedResults = useProxySpeedStore((state) => state.results)
+  const testingIds = useProxySpeedStore((state) => state.testingIds)
+
+  const { latencyMap, latencyEngineMap, latencyErrorMap } = useMemo(() => {
+    const latency: Record<string, number> = {}
+    const engine: Record<string, string> = {}
+    const error: Record<string, string> = {}
+    Object.entries(speedResults).forEach(([proxyId, result]) => {
+      latency[proxyId] = toLatencyValue(result.ok, result.latencyMs, result.error)
+      if (result.engine) engine[proxyId] = result.engine
+      if (result.error) error[proxyId] = result.error
+    })
+    Object.keys(testingIds).forEach((proxyId) => { latency[proxyId] = -1 })
+    return { latencyMap: latency, latencyEngineMap: engine, latencyErrorMap: error }
+  }, [speedResults, testingIds])
+
   useEffect(() => {
-    setLatencyMap(readLatencyCache())
-    setLatencyEngineMap(readLatencyEngineCache())
-    setIPHealthMap(readIPHealthCache())
+    const store = useProxySpeedStore.getState()
+    store.applyBackendResults(proxies, (testedAt) => isProxySpeedResultFresh(testedAt))
+    if (proxies.length > 0) {
+      store.prune(new Set(proxies.map((proxy) => proxy.proxyId)))
+    }
+  }, [proxies])
+
+  useEffect(() => {
+    ensureProxySpeedListener()
   }, [])
 
   useEffect(() => {
-    writeLatencyCache(latencyMap)
-  }, [latencyMap])
-
-  useEffect(() => {
-    writeLatencyEngineCache(latencyEngineMap)
-  }, [latencyEngineMap])
+    setIPHealthMap(readIPHealthCache())
+  }, [])
 
   useEffect(() => {
     writeIPHealthCache(ipHealthMap)
@@ -57,22 +72,8 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
 
   useEffect(() => {
     const markBridgeFailure = (proxyIds: string[], message: string) => {
-      const uniqueIds = Array.from(new Set(proxyIds.filter(Boolean)))
-      if (uniqueIds.length === 0) return
-      setLatencyMap(prev => {
-        const next = { ...prev }
-        uniqueIds.forEach(proxyId => { next[proxyId] = toLatencyValue(false, 0, message) })
-        return next
-      })
-      setLatencyEngineMap(prev => {
-        const next = { ...prev }
-        uniqueIds.forEach(proxyId => { delete next[proxyId] })
-        return next
-      })
-      setLatencyErrorMap(prev => {
-        const next = { ...prev }
-        uniqueIds.forEach(proxyId => { next[proxyId] = message })
-        return next
+      Array.from(new Set(proxyIds.filter(Boolean))).forEach((proxyId) => {
+        recordProxySpeedResult({ proxyId, ok: false, latencyMs: -1, error: message })
       })
     }
     const offFailed = EventsOn('proxy:bridge:failed', (data: { proxyId?: string; error?: string }) => {
@@ -87,138 +88,33 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
     }
   }, [])
 
-  useEffect(() => {
-    if (!proxies.length) return
-    const validIds = new Set(proxies.map(p => p.proxyId))
-    setLatencyMap(prev => {
-      let changed = false
-      const next: Record<string, number> = {}
-      Object.entries(prev).forEach(([proxyId, latency]) => {
-        if (validIds.has(proxyId)) next[proxyId] = latency
-        else changed = true
-      })
-      return changed ? next : prev
-    })
-
-    setLatencyEngineMap(prev => {
-      let changed = false
-      const next: Record<string, string> = {}
-      Object.entries(prev).forEach(([proxyId, engine]) => {
-        if (validIds.has(proxyId)) next[proxyId] = engine
-        else changed = true
-      })
-      return changed ? next : prev
-    })
-
-    setLatencyErrorMap(prev => {
-      let changed = false
-      const next: Record<string, string> = {}
-      Object.entries(prev).forEach(([proxyId, error]) => {
-        if (validIds.has(proxyId)) next[proxyId] = error
-        else changed = true
-      })
-      return changed ? next : prev
-    })
-
-    setIPHealthMap(prev => {
-      let changed = false
-      const next: Record<string, ProxyIPHealthResult> = {}
-      Object.entries(prev).forEach(([proxyId, health]) => {
-        if (validIds.has(proxyId)) next[proxyId] = health
-        else changed = true
-      })
-      return changed ? next : prev
-    })
-  }, [proxies])
-
   const handleTestOne = async (record: ProxyDisplayInfo) => {
     if (record.proxyConfig === 'direct://') {
       toast.info('直连模式无需测速')
       return
     }
-    setLatencyMap(prev => ({ ...prev, [record.proxyId]: -1 }))
-    setLatencyEngineMap(prev => {
-      const next = { ...prev }
-      delete next[record.proxyId]
-      return next
-    })
-    setLatencyErrorMap(prev => {
-      const next = { ...prev }
-      delete next[record.proxyId]
-      return next
-    })
-    try {
-      const result = await browserProxyTestSpeed(record.proxyId)
-      const val = toLatencyValue(result.ok, result.latencyMs, result.error)
-      setLatencyMap(prev => ({ ...prev, [record.proxyId]: val }))
-      if (result.error) setLatencyErrorMap(prev => ({ ...prev, [record.proxyId]: result.error || '' }))
-      if (result.engine) setLatencyEngineMap(prev => ({ ...prev, [record.proxyId]: result.engine || '' }))
-      if (!result.ok && result.error) toast.error(result.error)
-    } catch (error: any) {
-      const message = error?.message || '测速失败'
-      setLatencyMap(prev => ({ ...prev, [record.proxyId]: toLatencyValue(false, 0, message) }))
-      setLatencyErrorMap(prev => ({ ...prev, [record.proxyId]: message }))
-      toast.error(message)
-    }
+    const result = await testProxySpeedOnce(record.proxyId)
+    if (!result.ok && result.error) toast.error(result.error)
   }
 
   const handleTestAll = async (items: ProxyDisplayInfo[]) => {
-    const testable = items.filter(p => p.proxyConfig !== 'direct://')
+    const testable = items.filter((proxy) => proxy.proxyConfig !== 'direct://')
     if (testable.length === 0) return
     setTestingAll(true)
-    const init: Record<string, number> = {}
-    testable.forEach(p => { init[p.proxyId] = -1 })
-    setLatencyMap(prev => ({ ...prev, ...init }))
-    setLatencyEngineMap(prev => {
-      const next = { ...prev }
-      testable.forEach(p => { delete next[p.proxyId] })
-      return next
-    })
-    setLatencyErrorMap(prev => {
-      const next = { ...prev }
-      testable.forEach(p => { delete next[p.proxyId] })
-      return next
-    })
-
-    const off = EventsOn('proxy:speed:result', (data: ProxySpeedTestResult) => {
-      const val = toLatencyValue(data.ok, data.latencyMs, data.error)
-      setLatencyMap(prev => ({ ...prev, [data.proxyId]: val }))
-      if (data.error) setLatencyErrorMap(prev => ({ ...prev, [data.proxyId]: data.error || '' }))
-      if (data.engine) setLatencyEngineMap(prev => ({ ...prev, [data.proxyId]: data.engine || '' }))
-    })
-
     try {
-      const proxyIds = testable.map(p => p.proxyId)
-      const results = await browserProxyBatchTestSpeed(proxyIds, 0)
-      setLatencyMap(prev => {
-        const next = { ...prev }
-        results.forEach(result => {
-          next[result.proxyId] = toLatencyValue(result.ok, result.latencyMs, result.error)
-        })
-        return next
-      })
-      setLatencyEngineMap(prev => {
-        const next = { ...prev }
-        results.forEach(result => {
-          if (result.engine) next[result.proxyId] = result.engine
-        })
-        return next
-      })
-      setLatencyErrorMap(prev => {
-        const next = { ...prev }
-        results.forEach(result => {
-          if (result.error) next[result.proxyId] = result.error
-        })
-        return next
-      })
-      const failed = results.filter(result => !result.ok).length
+      const results = await testProxySpeeds(testable.map((proxy) => proxy.proxyId))
+      const failed = results.filter((result) => !result.ok).length
       if (failed > 0) {
-        toast.error(`批量测速完成：${failed} 条失败，共 ${results.length} 条`)
+        const reasonCounts = new Map<string, number>()
+        results.forEach((result) => {
+          if (result.ok || !result.error) return
+          reasonCounts.set(result.error, (reasonCounts.get(result.error) || 0) + 1)
+        })
+        const topReason = Array.from(reasonCounts.entries()).sort((a, b) => b[1] - a[1])[0]
+        const suffix = topReason ? `；主要错误：${topReason[0]}（${topReason[1]} 条）` : ''
+        toast.error(`批量测速完成：${failed} 条失败，共 ${results.length} 条${suffix}`)
       }
-    } catch (error: any) {
-      toast.error(resolveErrorMessage(error, '批量测速失败'))
     } finally {
-      off()
       setTestingAll(false)
     }
   }
@@ -230,7 +126,7 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
     }
     if (warmingBridgeIds.has(record.proxyId)) return
 
-    setWarmingBridgeIds(prev => new Set(prev).add(record.proxyId))
+    setWarmingBridgeIds((prev) => new Set(prev).add(record.proxyId))
     try {
       const result = await browserProxyWarmupBridge(record.proxyId)
       if (result.ok) toast.success(`${record.proxyName} 已预热`)
@@ -238,7 +134,7 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
     } catch (error) {
       toast.error(resolveErrorMessage(error, `${record.proxyName} 预热失败`))
     } finally {
-      setWarmingBridgeIds(prev => {
+      setWarmingBridgeIds((prev) => {
         const next = new Set(prev)
         next.delete(record.proxyId)
         return next
@@ -247,22 +143,22 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
   }
 
   const handleWarmupAll = async (items: ProxyDisplayInfo[]) => {
-    const testable = items.filter(p => p.proxyConfig !== 'direct://')
+    const testable = items.filter((p) => p.proxyConfig !== 'direct://')
     if (testable.length === 0) return
     setWarmingAllBridges(true)
-    const ids = testable.map(p => p.proxyId)
-    setWarmingBridgeIds(prev => new Set([...Array.from(prev), ...ids]))
+    const ids = testable.map((p) => p.proxyId)
+    setWarmingBridgeIds((prev) => new Set([...Array.from(prev), ...ids]))
     try {
       const results = await browserProxyBatchWarmupBridge(ids, 5)
-      const failed = results.filter(r => !r.ok).length
+      const failed = results.filter((r) => !r.ok).length
       if (failed > 0) toast.info(`预热完成：成功 ${results.length - failed}，失败 ${failed}`)
       else toast.success(`预热完成：共 ${results.length} 条`)
     } catch (error) {
       toast.error(resolveErrorMessage(error, '批量预热失败'))
     } finally {
-      setWarmingBridgeIds(prev => {
+      setWarmingBridgeIds((prev) => {
         const next = new Set(prev)
-        ids.forEach(id => next.delete(id))
+        ids.forEach((id) => next.delete(id))
         return next
       })
       setWarmingAllBridges(false)
@@ -276,15 +172,15 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
     }
     if (checkingIPHealthIds.has(record.proxyId)) return
 
-    setCheckingIPHealthIds(prev => new Set(prev).add(record.proxyId))
+    setCheckingIPHealthIds((prev) => new Set(prev).add(record.proxyId))
     try {
       const result = await browserProxyCheckIPHealth(record.proxyId)
-      setIPHealthMap(prev => ({ ...prev, [record.proxyId]: result }))
+      setIPHealthMap((prev) => ({ ...prev, [record.proxyId]: result }))
       if (!result.ok) toast.error(result.error || `${record.proxyName} 检测失败`)
     } catch (error) {
       toast.error(resolveErrorMessage(error, `${record.proxyName} IP 健康检测失败`))
     } finally {
-      setCheckingIPHealthIds(prev => {
+      setCheckingIPHealthIds((prev) => {
         const next = new Set(prev)
         next.delete(record.proxyId)
         return next
@@ -293,18 +189,18 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
   }
 
   const handleCheckAllIPHealth = async (items: ProxyDisplayInfo[]) => {
-    const testable = items.filter(p => p.proxyConfig !== 'direct://')
+    const testable = items.filter((p) => p.proxyConfig !== 'direct://')
     if (testable.length === 0) return
     setCheckingAllIPHealth(true)
 
-    const ids = testable.map(p => p.proxyId)
+    const ids = testable.map((p) => p.proxyId)
     const idSet = new Set(ids)
-    setCheckingIPHealthIds(prev => new Set([...Array.from(prev), ...ids]))
+    setCheckingIPHealthIds((prev) => new Set([...Array.from(prev), ...ids]))
 
     const off = EventsOn('proxy:iphealth:result', (data: ProxyIPHealthResult) => {
       if (!data?.proxyId || !idSet.has(data.proxyId)) return
-      setIPHealthMap(prev => ({ ...prev, [data.proxyId]: data }))
-      setCheckingIPHealthIds(prev => {
+      setIPHealthMap((prev) => ({ ...prev, [data.proxyId]: data }))
+      setCheckingIPHealthIds((prev) => {
         const next = new Set(prev)
         next.delete(data.proxyId)
         return next
@@ -313,23 +209,23 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
 
     try {
       const results = await browserProxyBatchCheckIPHealth(ids, 10)
-      setIPHealthMap(prev => {
+      setIPHealthMap((prev) => {
         const next = { ...prev }
-        results.forEach(result => {
+        results.forEach((result) => {
           if (result?.proxyId && idSet.has(result.proxyId)) next[result.proxyId] = result
         })
         return next
       })
-      const failed = results.filter(r => !r.ok).length
+      const failed = results.filter((r) => !r.ok).length
       if (failed > 0) toast.info(`IP 健康检测完成：成功 ${results.length - failed}，失败 ${failed}`)
       else toast.success(`IP 健康检测完成：共 ${results.length} 条`)
     } catch (error) {
       toast.error(resolveErrorMessage(error, '批量 IP 健康检测失败'))
     } finally {
       off()
-      setCheckingIPHealthIds(prev => {
+      setCheckingIPHealthIds((prev) => {
         const next = new Set(prev)
-        ids.forEach(id => next.delete(id))
+        ids.forEach((id) => next.delete(id))
         return next
       })
       setCheckingAllIPHealth(false)
@@ -356,8 +252,6 @@ export function useProxyChecks({ proxies }: UseProxyChecksOptions) {
     ipHealthDetailOpen,
     setIPHealthDetailOpen,
     currentIPHealthDetail,
-    setLatencyMap,
-    setLatencyEngineMap,
     setIPHealthMap,
     handleTestOne,
     handleTestAll,

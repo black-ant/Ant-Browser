@@ -2,6 +2,8 @@ package backend
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/database"
+	"ant-chrome/backend/internal/proxy"
 )
 
 type proxySpeedPersistenceFailureDAO struct {
@@ -35,7 +38,7 @@ func (d *proxySpeedPersistenceFailureDAO) Delete(string) error { return nil }
 func (d *proxySpeedPersistenceFailureDAO) DeleteAll() error { return nil }
 
 func (d *proxySpeedPersistenceFailureDAO) UpdateSpeedResult(string, bool, int64, string) error {
-	return nil
+	return d.err
 }
 
 func (d *proxySpeedPersistenceFailureDAO) UpdateSpeedResultWithProvenance(string, bool, int64, string, string, string, string) error {
@@ -145,5 +148,82 @@ func TestPersistProxySpeedResultReportsStorageFailure(t *testing.T) {
 	}
 	if err := app.persistProxySpeedResult(result); err == nil {
 		t.Fatal("persistProxySpeedResult succeeded despite storage failure")
+	}
+}
+
+// 持久化失败不应把真实测速成功结果伪装成失败。
+func TestTestSharedProxySpeedKeepsResultWhenPersistenceFails(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+	upstream := &http.Client{Timeout: 5 * time.Second}
+	forward := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		outReq := r.Clone(r.Context())
+		outReq.RequestURI = ""
+		resp, err := upstream.Do(outReq)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+	}))
+	defer forward.Close()
+
+	app := NewApp(t.TempDir())
+	app.config = config.DefaultConfig()
+	initial := BrowserProxy{ProxyId: "proxy-1", ProxyName: "Proxy 1", ProxyConfig: forward.URL}
+	app.browserMgr = browser.NewManager(app.config, app.appRoot)
+	app.browserMgr.ProxyDAO = &proxySpeedPersistenceFailureDAO{
+		proxies: []browser.Proxy{initial},
+		err:     errors.New("database write failed"),
+	}
+	speedConfig := &proxy.SpeedTestConfig{
+		Timeout:        3 * time.Second,
+		TCPTimeout:     3 * time.Second,
+		URLs:           []string{target.URL},
+		ExpectedStatus: []int{http.StatusNoContent},
+	}
+	result := app.testSharedProxySpeedWithOptions("proxy-1", true, []BrowserProxy{initial}, config.BrowserConnectorXray, speedConfig)
+	if !result.Ok {
+		t.Fatalf("persist failure flipped Ok to false: %#v", result)
+	}
+	if result.LatencyMs < 0 {
+		t.Fatalf("latency = %d, want non-negative", result.LatencyMs)
+	}
+}
+
+// provenance 写入失败但基础列可用时应降级成功。
+type proxySpeedProvenanceFallbackDAO struct {
+	proxySpeedPersistenceFailureDAO
+	fallbackErr error
+}
+
+func (d *proxySpeedProvenanceFallbackDAO) UpdateSpeedResult(string, bool, int64, string) error {
+	return d.fallbackErr
+}
+
+func TestPersistProxySpeedResultFallsBackToBasicColumns(t *testing.T) {
+	app := NewApp(t.TempDir())
+	app.config = config.DefaultConfig()
+	initial := BrowserProxy{ProxyId: "proxy-1", ProxyName: "Proxy 1", ProxyConfig: "http://127.0.0.1:8080"}
+	app.browserMgr = browser.NewManager(app.config, app.appRoot)
+	app.browserMgr.ProxyDAO = &proxySpeedProvenanceFallbackDAO{
+		proxySpeedPersistenceFailureDAO: proxySpeedPersistenceFailureDAO{
+			proxies: []browser.Proxy{initial},
+			err:     errors.New("no such column: last_test_engine"),
+		},
+		fallbackErr: nil,
+	}
+	result := ProxyTestResult{
+		ProxyId:   initial.ProxyId,
+		Ok:        true,
+		LatencyMs: 30,
+		Engine:    "xray",
+		TestedAt:  time.Now().Format(time.RFC3339),
+	}
+	if err := app.persistProxySpeedResult(result); err != nil {
+		t.Fatalf("persistProxySpeedResult should fall back to basic columns: %v", err)
 	}
 }

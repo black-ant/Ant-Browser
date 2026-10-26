@@ -240,8 +240,8 @@ type BrowserProxy struct {
 	LastLatencyMs          int64  `yaml:"-" json:"lastLatencyMs"`
 	LastTestOk             bool   `yaml:"-" json:"lastTestOk"`
 	LastTestedAt           string `yaml:"-" json:"lastTestedAt"`
-	LastTestEngine         string `yaml:"-" json:"-"`
-	LastTestConnectorType  string `yaml:"-" json:"-"`
+	LastTestEngine         string `yaml:"-" json:"lastTestEngine,omitempty"`
+	LastTestConnectorType  string `yaml:"-" json:"lastTestConnectorType,omitempty"`
 	LastTestFingerprint    string `yaml:"-" json:"-"`
 	SpeedTestFingerprint   string `yaml:"-" json:"speedTestFingerprint"`
 	LastIPHealthJSON       string `yaml:"-" json:"lastIPHealthJson,omitempty"`

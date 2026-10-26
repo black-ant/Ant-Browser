@@ -136,12 +136,7 @@ export function ProxyVirtualGroupsPage() {
     () => proxies.filter(proxy => proxy.proxyId.trim() && !isDirectProxy(proxy)),
     [proxies],
   )
-  const availableDisplayProxies = useMemo(
-    () => availableProxies
-      .map(proxy => displayProxyById.get(proxy.proxyId.trim().toLowerCase()))
-      .filter((proxy): proxy is ProxyDisplayInfo => !!proxy),
-    [availableProxies, displayProxyById],
-  )
+
 
   const proxyGroupOptions = useMemo(() => {
     const names = new Map<string, string>()
@@ -191,7 +186,7 @@ export function ProxyVirtualGroupsPage() {
     testingAll,
     handleTestOne,
     handleTestAll,
-  } = useProxyChecks({ proxies: availableDisplayProxies })
+  } = useProxyChecks({ proxies: availableProxies })
 
   const resolveMemberProxyIds = (group: BrowserProxyVirtualGroup) => {
     const memberProxyIds = [

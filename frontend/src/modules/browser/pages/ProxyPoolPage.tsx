@@ -171,8 +171,7 @@ export function ProxyPoolPage() {
     ipHealthDetailOpen,
     setIPHealthDetailOpen,
     currentIPHealthDetail,
-    setLatencyMap,
-    setLatencyEngineMap,
+
     setIPHealthMap,
     handleTestOne,
     handleTestAll,
@@ -195,24 +194,6 @@ export function ProxyPoolPage() {
       setVirtualGroups(virtualGroupList)
       setDisplayList([...toDisplayList(finalList), ...toVirtualDisplayList(virtualGroupList, finalList)])
 
-      setLatencyMap(prev => {
-        const validIds = new Set(finalList.map(p => p.proxyId))
-        const next: Record<string, number> = {}
-        Object.entries(prev).forEach(([proxyId, latency]) => {
-          if (validIds.has(proxyId)) next[proxyId] = latency
-        })
-        return next
-      })
-
-      setLatencyEngineMap(prev => {
-        const validIds = new Set(finalList.map(p => p.proxyId))
-        const next: Record<string, string> = {}
-        Object.entries(prev).forEach(([proxyId, engine]) => {
-          if (validIds.has(proxyId)) next[proxyId] = engine
-        })
-        return next
-      })
-
       setIPHealthMap(prev => {
         const validIds = new Set(finalList.map(p => p.proxyId))
         const next: Record<string, ProxyIPHealthResult> = {}
@@ -226,7 +207,7 @@ export function ProxyPoolPage() {
     } finally {
       setLoading(false)
     }
-  }, [setIPHealthMap, setLatencyEngineMap, setLatencyMap])
+  }, [setIPHealthMap])
 
   const handleSaveCheckSettings = async () => {
     const saved = await saveCheckSettings()

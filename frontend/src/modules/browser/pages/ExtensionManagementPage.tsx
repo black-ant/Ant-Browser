@@ -18,6 +18,8 @@ import {
   type BrowserExtensionManualInstallGuide,
 } from '../api/extensions'
 import { fetchBrowserProxies } from '../api/proxies'
+import { useProxySpeedStore } from '../proxySpeedStore'
+import { isProxySpeedResultFresh } from './proxyPool/storage'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
 import { ExtensionInstallCard, ExtensionManagementHeader, InstalledExtensionsList } from './ExtensionManagementCards'
 import { DownloadDirectoryInstallModal, ExtensionHistoryModal, ExtensionProfileLimitModal, ManualInstallModal } from './ExtensionManagementModals'
@@ -90,6 +92,10 @@ export function ExtensionManagementPage() {
       setProxies([])
     })
   }, [])
+
+  useEffect(() => {
+    useProxySpeedStore.getState().applyBackendResults(proxies, (testedAt) => isProxySpeedResultFresh(testedAt))
+  }, [proxies])
 
   const appendHistory = (input: Omit<ExtensionHistoryRecord, 'id' | 'createdAt'>) => {
     const record = createExtensionHistoryRecord(input)

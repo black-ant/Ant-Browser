@@ -302,8 +302,10 @@ export interface BrowserProxy {
   sourceLastRefreshAt?: string
   lastLatencyMs?: number
   lastTestOk?: boolean
-  lastTestedAt?: string
+lastTestedAt?: string
   speedTestFingerprint?: string
+  lastTestEngine?: string
+  lastTestConnectorType?: string
   lastIPHealthJson?: string
 }
 

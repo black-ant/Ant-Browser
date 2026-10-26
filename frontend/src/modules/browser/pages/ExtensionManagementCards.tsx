@@ -2,18 +2,22 @@ import { AlertCircle, CheckCircle2, Download, ExternalLink, FolderOpen, History,
 import { Badge, Button, Card, Input } from '../../../shared/components'
 import type { BrowserExtension, BrowserExtensionLookupResult, BrowserProxy } from '../types'
 import { useProxySpeedFreshness } from '../proxySpeedFreshness'
-import { extensionStoreURL, formatExtensionSource, formatExtensionTime, getExtensionManifestMeta, getProxySpeedState } from './extensionManagementUtils'
+import { useProxySpeedStore } from '../proxySpeedStore'
+import { isProxySpeedResultFresh } from './proxyPool/storage'
+import { extensionStoreURL, formatExtensionSource, formatExtensionTime, getExtensionManifestMeta } from './extensionManagementUtils'
 
 export function ProxyStatePill({ useProxy, proxy }: { useProxy: boolean; proxy?: BrowserProxy }) {
   const { now, speedResultMaxAgeMs } = useProxySpeedFreshness()
+  const speedResults = useProxySpeedStore((state) => state.results)
   if (!useProxy) {
     return <span className="rounded-full bg-[var(--color-bg-muted)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">直连下载</span>
   }
   if (!proxy) {
     return <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">代理未选择</span>
   }
-  const state = getProxySpeedState(proxy, now, speedResultMaxAgeMs)
-  const status = state?.ok ? `${state.latencyMs}ms` : state ? '不可用' : '未测试'
+  const result = speedResults[proxy.proxyId]
+  const fresh = result && isProxySpeedResultFresh(result.testedAt, now, speedResultMaxAgeMs)
+  const status = fresh ? (result.ok ? `${result.latencyMs}ms` : '不可用') : '未测试'
   return (
     <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">
       使用代理：{proxy.proxyName || proxy.proxyId} · {status}
@@ -52,7 +56,7 @@ export function ExtensionManagementHeader({
       <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">插件包管理</h1>
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
-          <Button size="sm" variant="secondary" onClick={onOpenProxy}>
+          <Button size="sm" onClick={onOpenProxy}>
             <Settings className="h-4 w-4" />
             {proxyButtonText}
           </Button>

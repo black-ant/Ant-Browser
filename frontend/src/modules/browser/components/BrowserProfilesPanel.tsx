@@ -7,10 +7,11 @@ import { Badge, Button, Card, Table } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 
 import type { BrowserCore, BrowserProfile, BrowserProxy, BrowserProxyVirtualGroup, ProxySpeedTestResult } from '../types'
-import { browserProxyTestSpeed, testProxyConnectivity } from '../api'
-import { EventsOn } from '../../../wailsjs/runtime/runtime'
+import { testProxyConnectivity } from '../api'
 import { useProxySpeedFreshness } from '../proxySpeedFreshness'
 import { isProxySpeedResultFresh } from '../pages/proxyPool/storage'
+import { useProxySpeedStore } from '../proxySpeedStore'
+import { ensureProxySpeedListener, recordProxySpeedResult, testProxySpeedOnce } from '../proxySpeedService'
 import type { BrowserViewMode } from './BrowserListLayout'
 import { KeywordInlineRow, LaunchCodeCell } from './BrowserListWidgets'
 
@@ -195,7 +196,7 @@ function ProxyInlineActions({
   speedResultMaxAgeMs: number
 }) {
   const [testing, setTesting] = useState(false)
-  const [speedResult, setSpeedResult] = useState<ProxySpeedTestResult | null>(null)
+  const speedResults = useProxySpeedStore((state) => state.results)
   const isDynamic = isDynamicProfile(profile)
   const dynamicProxy = useMemo(
     () => isDynamic ? selectDynamicProxyCandidate(profile, proxies, virtualGroups, now, speedResultMaxAgeMs) : undefined,
@@ -204,33 +205,20 @@ function ProxyInlineActions({
   const speedTargetProxy = isDynamic ? dynamicProxy : proxy
   const speedTargetProxyId = speedTargetProxy?.proxyId?.trim() || profile.proxyId.trim()
   useEffect(() => {
-    setSpeedResult(null)
-  }, [profile.proxyConfig, speedTargetProxyId])
+    useProxySpeedStore.getState().applyBackendResults(proxies, (testedAt) => isProxySpeedResultFresh(testedAt, now, speedResultMaxAgeMs))
+  }, [proxies, now, speedResultMaxAgeMs])
   useEffect(() => {
-    const proxyId = speedTargetProxyId.toLowerCase()
-    if (!proxyId) return
-    const off = EventsOn('proxy:speed:result', (data: ProxySpeedTestResult) => {
-      if (!data?.proxyId || data.proxyId.trim().toLowerCase() !== proxyId) return
-      setSpeedResult({ ...data, testedAt: data.testedAt || new Date().toISOString() })
-    })
-    return off
-  }, [speedTargetProxyId])
-  const historyResult = speedTargetProxy?.lastTestedAt
-    && isProxySpeedResultFresh(speedTargetProxy.lastTestedAt, now, speedResultMaxAgeMs)
-    ? {
-        proxyId: speedTargetProxy.proxyId,
-        ok: speedTargetProxy.lastTestOk ?? false,
-        latencyMs: speedTargetProxy.lastLatencyMs ?? -1,
-        error: '',
-        testedAt: speedTargetProxy.lastTestedAt,
-        fingerprint: speedTargetProxy.speedTestFingerprint,
-      }
-    : null
-  const displayResult = speedResult
-    && (!speedTargetProxyId || normalizeProxyKey(speedResult.proxyId) === normalizeProxyKey(speedTargetProxyId))
-    && isProxySpeedResultFresh(speedResult.testedAt, now, speedResultMaxAgeMs)
-    ? speedResult
-    : historyResult
+    ensureProxySpeedListener()
+  }, [])
+  const speedTargetKey = normalizeProxyKey(speedTargetProxyId)
+  const displayResult = useMemo(() => {
+    if (!speedTargetKey) return null
+    const exact = speedResults[speedTargetProxyId]
+    const match = exact || Object.values(speedResults).find((result) => normalizeProxyKey(result.proxyId) === speedTargetKey)
+    if (!match) return null
+    if (!isProxySpeedResultFresh(match.testedAt, now, speedResultMaxAgeMs)) return null
+    return match
+  }, [speedResults, speedTargetProxyId, speedTargetKey, now, speedResultMaxAgeMs])
   const canTest = isDynamic
     ? !!dynamicProxy
     : !!profile.proxyId || !!profile.proxyConfig.trim()
@@ -239,20 +227,14 @@ function ProxyInlineActions({
     if (testing || !canTest) return
     setTesting(true)
     try {
-      const result = isDynamic
-        ? await browserProxyTestSpeed(dynamicProxy!.proxyId)
-        : profile.proxyId
-          ? await browserProxyTestSpeed(profile.proxyId)
-          : await testProxyConnectivity(profile.profileId, profile.proxyConfig)
-      setSpeedResult(result)
-    } catch (error: any) {
-      setSpeedResult({
-        proxyId: speedTargetProxyId || profile.profileId,
-        ok: false,
-        latencyMs: -1,
-        error: error?.message || '测速失败',
-        testedAt: new Date().toISOString(),
-      })
+      if (isDynamic) {
+        await testProxySpeedOnce(dynamicProxy!.proxyId)
+      } else if (profile.proxyId) {
+        await testProxySpeedOnce(profile.proxyId)
+      } else {
+        const result = await testProxyConnectivity(profile.profileId, profile.proxyConfig)
+        recordProxySpeedResult({ ...result, proxyId: result.proxyId || speedTargetProxyId || profile.profileId })
+      }
     } finally {
       setTesting(false)
     }
