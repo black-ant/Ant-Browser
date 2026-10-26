@@ -78,7 +78,7 @@ export function ProxyPoolHeader({
           </Button>
           <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
           <Button size='sm' variant='secondary' onClick={onOpenVirtualGroups}>虚拟节点</Button>
-          <Button size="sm" variant="secondary" onClick={onOpenImport}>导入代理</Button>
+          <Button size="sm" onClick={onOpenImport}>导入代理</Button>
           <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
           <Button size="sm" variant="secondary" onClick={onOpenUsageGuide}>
             使用说明

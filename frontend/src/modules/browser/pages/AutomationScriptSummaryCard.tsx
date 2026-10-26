@@ -42,9 +42,9 @@ export function AutomationScriptSummaryCard({
   const selectable = typeof onSelectedChange === "function";
   const isInterfaceModeCard = card.scriptType === "launch-api";
   const actionButtonClassName =
-    "!h-7 !w-full min-w-0 justify-center whitespace-nowrap !rounded-md !border !border-black !bg-black !px-2 !text-xs !font-medium !leading-none !text-white !shadow-none hover:!border-[#1f1f1f] hover:!bg-[#1f1f1f] focus-visible:!ring-black disabled:!border-[#6b7280] disabled:!bg-[#6b7280] disabled:!text-white";
+    "!h-7 !w-auto min-w-0 justify-center whitespace-nowrap !rounded-md !border !border-black !bg-black !px-2 !text-xs !font-medium !leading-none !text-white !shadow-none hover:!border-[#1f1f1f] hover:!bg-[#1f1f1f] focus-visible:!ring-black disabled:!border-[#6b7280] disabled:!bg-[#6b7280] disabled:!text-white";
   const headerCopyButtonClassName =
-    "!h-7 !w-full min-w-0 justify-center whitespace-nowrap !rounded-md !border !border-black !bg-white !px-2 !text-xs !font-medium !leading-none !text-black !shadow-none hover:!border-black hover:!bg-[#f3f4f6] hover:!text-black focus-visible:!ring-black disabled:!border-[#6b7280] disabled:!bg-white disabled:!text-[#6b7280]";
+    "!h-7 !w-auto min-w-0 justify-center whitespace-nowrap !rounded-md !border !border-black !bg-white !px-2 !text-xs !font-medium !leading-none !text-black !shadow-none hover:!border-black hover:!bg-[#f3f4f6] hover:!text-black focus-visible:!ring-black disabled:!border-[#6b7280] disabled:!bg-white disabled:!text-[#6b7280]";
   const scriptButtonClassName = actionButtonClassName;
   const apiSetupButtonClassName = actionButtonClassName;
   const interfaceExecuteButtonClassName = actionButtonClassName;
@@ -88,143 +88,139 @@ export function AutomationScriptSummaryCard({
         className={`absolute bottom-3 left-3 top-3 w-1 rounded-full ${card.railClassName}`}
       />
 
-      <div className="relative min-w-0 pr-16">
-        {selectable ? (
-          <input
-            type="checkbox"
-            checked={selected}
-            onClick={(event) => event.stopPropagation()}
-            onChange={(event) => onSelectedChange?.(event.currentTarget.checked)}
-            className="absolute left-0 top-0.5 h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
-            aria-label={`选择 ${card.title}`}
-          />
-        ) : null}
-        <div className={`min-w-0 text-[16px] font-semibold leading-5 text-[var(--color-text-primary)] ${selectable ? "pl-6" : ""}`}>
-          {card.title}
+      <div className="relative flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          {selectable ? (
+            <input
+              type="checkbox"
+              checked={selected}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => onSelectedChange?.(event.currentTarget.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+              aria-label={`选择 ${card.title}`}
+            />
+          ) : null}
+          <div className="min-w-0 text-[16px] font-semibold leading-5 text-[var(--color-text-primary)]">
+            {card.title}
+          </div>
         </div>
-        <div className="absolute right-0 top-0 rounded-full border border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-2 py-0.5 text-[10px] font-medium leading-4 text-[var(--color-text-secondary)]">
-          {card.versionLabel}
-        </div>
-      </div>
-
-      <div
-        className="mt-2 grid w-full max-w-[450px] grid-cols-2 justify-start gap-1.5 overflow-hidden sm:grid-cols-5"
-      >
-        <Button
-          type="button"
-          size="sm"
-          className={headerCopyButtonClassName}
-          style={{ border: "1px solid #000000", backgroundColor: "#ffffff", color: "#000000" }}
-          onClick={(event) => {
-            event.stopPropagation();
-            void copyToClipboard(
-              card.primaryActionText,
-              card.primaryActionSuccessMessage,
-            );
-          }}
-        >
-          {card.primaryActionLabel}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          className={headerCopyButtonClassName}
-          style={{ border: "1px solid #000000", backgroundColor: "#ffffff", color: "#000000" }}
-          onClick={(event) => {
-            event.stopPropagation();
-            void copyToClipboard(
-              card.secondaryActionText,
-              card.secondaryActionSuccessMessage,
-            );
-          }}
-        >
-          {card.secondaryActionLabel}
-        </Button>
-        {isInterfaceModeCard ? (
-          typeof onRunAPI === "function" || typeof onRunScript === "function" ? (
-            <Button
-              type="button"
-              size="sm"
-              className={interfaceExecuteButtonClassName}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (typeof onRunAPI === "function") {
-                  onRunAPI();
-                  return;
-                }
-                onRunScript?.();
-              }}
-              aria-label={`执行 ${card.title}`}
-              title="执行"
-            >
-              <Play className="h-3.5 w-3.5" />
-              执行
-            </Button>
-          ) : null
-        ) : (
-          <>
-            {typeof onRunScript === "function" ? (
-              <Button
-                type="button"
-                size="sm"
-                className={scriptButtonClassName}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRunScript();
-                }}
-                aria-label={`执行脚本 ${card.title}`}
-                title="执行脚本"
-              >
-                <Play className="h-3.5 w-3.5" />
-                脚本
-              </Button>
-            ) : null}
-            {typeof onRunAPI === "function" ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className={
-                  card.publicAPIEnabled
-                    ? scriptButtonClassName
-                    : apiSetupButtonClassName
-                }
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRunAPI();
-                }}
-                aria-label={`${card.publicAPIEnabled ? "执行接口" : "配置接口"} ${card.title}`}
-                title={card.publicAPIEnabled ? "执行接口" : "配置接口"}
-              >
-                {card.publicAPIEnabled ? (
-                  <Play className="h-3.5 w-3.5" />
-                ) : (
-                  <Link className="h-3.5 w-3.5" />
-                )}
-                {card.publicAPIEnabled ? "接口" : "配置"}
-              </Button>
-            ) : null}
-          </>
-        )}
-        {interactive ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <Button
             type="button"
             size="sm"
-            className={editButtonClassName}
+            className={headerCopyButtonClassName}
+            style={{ border: "1px solid #000000", backgroundColor: "#ffffff", color: "#000000" }}
             onClick={(event) => {
               event.stopPropagation();
-              onOpen?.();
+              void copyToClipboard(
+                card.primaryActionText,
+                card.primaryActionSuccessMessage,
+              );
             }}
-            aria-label={`编辑 ${card.title}`}
-            title="编辑"
           >
-            <Pencil className="h-3.5 w-3.5" />
-            编辑
+            {card.primaryActionLabel}
           </Button>
-        ) : null}
+          <Button
+            type="button"
+            size="sm"
+            className={headerCopyButtonClassName}
+            style={{ border: "1px solid #000000", backgroundColor: "#ffffff", color: "#000000" }}
+            onClick={(event) => {
+              event.stopPropagation();
+              void copyToClipboard(
+                card.secondaryActionText,
+                card.secondaryActionSuccessMessage,
+              );
+            }}
+          >
+            {card.secondaryActionLabel}
+          </Button>
+          {isInterfaceModeCard ? (
+            typeof onRunAPI === "function" || typeof onRunScript === "function" ? (
+              <Button
+                type="button"
+                size="sm"
+                className={interfaceExecuteButtonClassName}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (typeof onRunAPI === "function") {
+                    onRunAPI();
+                    return;
+                  }
+                  onRunScript?.();
+                }}
+                aria-label={`执行 ${card.title}`}
+                title="执行"
+              >
+                <Play className="h-3.5 w-3.5" />
+                执行
+              </Button>
+            ) : null
+          ) : (
+            <>
+              {typeof onRunScript === "function" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className={scriptButtonClassName}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRunScript();
+                  }}
+                  aria-label={`执行脚本 ${card.title}`}
+                  title="执行脚本"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  脚本
+                </Button>
+              ) : null}
+              {typeof onRunAPI === "function" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className={
+                    card.publicAPIEnabled
+                      ? scriptButtonClassName
+                      : apiSetupButtonClassName
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRunAPI();
+                  }}
+                  aria-label={`${card.publicAPIEnabled ? "执行接口" : "配置接口"} ${card.title}`}
+                  title={card.publicAPIEnabled ? "执行接口" : "配置接口"}
+                >
+                  {card.publicAPIEnabled ? (
+                    <Play className="h-3.5 w-3.5" />
+                  ) : (
+                    <Link className="h-3.5 w-3.5" />
+                  )}
+                  {card.publicAPIEnabled ? "接口" : "配置"}
+                </Button>
+              ) : null}
+            </>
+          )}
+          {interactive ? (
+            <Button
+              type="button"
+              size="sm"
+              className={editButtonClassName}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpen?.();
+              }}
+              aria-label={`编辑 ${card.title}`}
+              title="编辑"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              编辑
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[136px_minmax(0,1fr)]">
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[136px_minmax(0,1fr)_auto]">
         <ScriptCardField label="类型">
           <span className="inline-flex items-center gap-1.5">
             <span className={`h-1.5 w-1.5 rounded-full ${card.modeToneClass}`} />
@@ -236,7 +232,12 @@ export function AutomationScriptSummaryCard({
             {card.codeDisplay}
           </code>
         </ScriptCardField>
+        <ScriptCardField label="版本">
+          {card.versionLabel}
+        </ScriptCardField>
       </div>
+
+      <div className="mt-3 min-h-[2.5rem] flex-1" aria-hidden="true" />
     </div>
   );
 }

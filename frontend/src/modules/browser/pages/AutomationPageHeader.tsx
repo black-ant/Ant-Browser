@@ -38,10 +38,6 @@ export function AutomationPageHeader({
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
-          <Button size="sm" onClick={onCreate}>
-            <PlusSquare className="h-4 w-4" />
-            新建脚本
-          </Button>
           <Button
             size="sm"
             variant="secondary"
@@ -67,6 +63,10 @@ export function AutomationPageHeader({
           >
             <History className="h-4 w-4" />
             调用记录
+          </Button>
+          <Button size="sm" onClick={onCreate}>
+            <PlusSquare className="h-4 w-4" />
+            新建脚本
           </Button>
         </div>
       </div>
