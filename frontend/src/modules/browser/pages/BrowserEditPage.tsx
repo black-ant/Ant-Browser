@@ -9,7 +9,7 @@ import { applyLocaleToFingerprintArgs, validateFingerprintArgs, withAdaptiveDefa
 import { TagInput } from '../components/TagInput'
 import { GroupSelector } from '../components/GroupSelector'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
-import { BrowserEditSelect } from '../components/BrowserEditSelect'
+import { BrowserEditSelect, type BrowserEditSelectOption } from '../components/BrowserEditSelect'
 
 const fallbackLowLaunchArgs = ['--disable-sync', '--no-first-run']
 const directProxyID = '__direct__'
@@ -32,6 +32,37 @@ function resolveDefaultLaunchArgs(args: string[]): string[] {
 
 function joinValues(values?: string[]): string {
   return values?.length ? values.join(', ') : '-'
+}
+
+// 虚拟分组的成员列表：展开后只读展示，不可被选中（实例只能绑定分组本身或实体代理）。
+function expandVirtualGroupMembers(
+  group: BrowserProxyVirtualGroup,
+  proxies: BrowserProxy[],
+): BrowserEditSelectOption[] {
+  const byId = new Map(proxies.map(proxy => [proxy.proxyId.trim().toLowerCase(), proxy] as const))
+  const memberIds = new Set<string>()
+  ;(group.memberProxyIds || []).forEach(proxyId => {
+    const key = proxyId.trim().toLowerCase()
+    if (key) memberIds.add(key)
+  })
+  const groupNames = new Set(
+    (group.memberGroupNames || []).map(name => name.trim().toLowerCase()).filter(Boolean),
+  )
+  if (groupNames.size > 0) {
+    proxies.forEach(proxy => {
+      if (groupNames.has((proxy.groupName || '').trim().toLowerCase())) {
+        memberIds.add(proxy.proxyId.trim().toLowerCase())
+      }
+    })
+  }
+  return Array.from(memberIds).map(key => {
+    const proxy = byId.get(key)
+    return {
+      value: proxy?.proxyId || key,
+      label: proxy?.proxyName || key,
+      disabled: true,
+    }
+  })
 }
 
 function displayValue(value: unknown): string {
@@ -708,13 +739,16 @@ export function BrowserEditPage() {
                   value={formData.proxyId}
                   onChange={value => { handleChange('proxyId', value); setLocationResult(null) }}
                   options={[
-                    ...(proxies.length > 0
-                      ? proxies.map(p => ({ value: p.proxyId, label: p.proxyName || p.proxyId }))
-                      : [{ value: '', label: '暂无代理，请先到代理池创建' }]),
                     ...proxyVirtualGroups.map(group => ({
                       value: group.groupId,
                       label: `虚拟分组：${group.groupName}（${group.strategy === 'sticky' ? '代理保持' : '绝对轮询'}）`,
+                      children: expandVirtualGroupMembers(group, proxies),
                     })),
+                    ...(proxies.length > 0
+                      ? proxies.map(p => ({ value: p.proxyId, label: p.proxyName || p.proxyId }))
+                      : proxyVirtualGroups.length === 0
+                        ? [{ value: '', label: '暂无代理，请先到代理池创建' }]
+                        : []),
                   ]}
                   className="flex-1 min-w-0"
                 />
