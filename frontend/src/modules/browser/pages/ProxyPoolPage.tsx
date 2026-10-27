@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ConfirmModal, toast } from '../../../shared/components'
 import type { SortOrder } from '../../../shared/components/Table'
@@ -238,6 +238,23 @@ export function ProxyPoolPage() {
     value: buildVirtualProxyGroupFilterValue(group.groupId, group.groupName),
     label: `虚拟：${group.groupName}`,
   }))
+
+  // 可用下载代理选项：测速成功（latency > 0）的节点，按延迟升序；
+  // 数据来自全局测速 store 派生的 latencyMap（与表格展示同源）。
+  const downloadProxyOptions = useMemo(() => {
+    return proxies
+      .filter(proxy => {
+        if (!proxy.proxyId || proxy.proxyConfig === 'direct://') return false
+        const latency = latencyMap[proxy.proxyId]
+        return typeof latency === 'number' && latency > 0
+      })
+      .sort((a, b) => (latencyMap[a.proxyId] || 0) - (latencyMap[b.proxyId] || 0))
+      .slice(0, 20)
+      .map(proxy => ({
+        value: proxy.proxyConfig,
+        label: `${proxy.proxyName} · ${latencyMap[proxy.proxyId]}ms`,
+      }))
+  }, [proxies, latencyMap])
 
   const {
     selectedIds,
@@ -555,6 +572,7 @@ export function ProxyPoolPage() {
         goos={coreDownloadGOOS}
         goarch={coreDownloadGOARCH}
         downloadProxy={coreDownloadProxy}
+        proxyOptions={downloadProxyOptions}
         progress={coreDownloadProgress}
         status={downloadCoreStatus}
         statusLoading={downloadCoreStatusLoading}

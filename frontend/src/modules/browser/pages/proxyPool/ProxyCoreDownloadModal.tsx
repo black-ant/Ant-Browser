@@ -10,6 +10,7 @@ interface ProxyCoreDownloadModalProps {
   goos: string
   goarch: string
   downloadProxy: string
+  proxyOptions: { value: string; label: string }[]
   progress: ProxyCoreDownloadProgress | null
   status: ProxyCoreStatusResult | null
   statusLoading: boolean
@@ -27,6 +28,7 @@ export function ProxyCoreDownloadModal({
   goos,
   goarch,
   downloadProxy,
+  proxyOptions,
   progress,
   status,
   statusLoading,
@@ -152,12 +154,23 @@ export function ProxyCoreDownloadModal({
         </div>
 
         <FormItem label="下载代理（可选）">
-          <Input
-            value={downloadProxy}
-            onChange={e => onDownloadProxyChange(e.target.value)}
-            disabled={downloading}
-            placeholder="默认直连；如 socks5://127.0.0.1:7890"
-          />
+          <div className="space-y-2">
+            <Select
+              value={proxyOptions.some(option => option.value === downloadProxy) ? downloadProxy : ''}
+              onChange={e => onDownloadProxyChange(e.target.value)}
+              disabled={downloading}
+              options={[
+                { value: '', label: proxyOptions.length > 0 ? '直连（不使用代理）' : '直连（暂无可用节点）' },
+                ...proxyOptions,
+              ]}
+            />
+            <Input
+              value={downloadProxy}
+              onChange={e => onDownloadProxyChange(e.target.value)}
+              disabled={downloading}
+              placeholder="或手动输入，如 socks5://127.0.0.1:7890"
+            />
+          </div>
         </FormItem>
 
         {progress && (
