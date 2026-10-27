@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"ant-chrome/backend/internal/config"
+	"ant-chrome/backend/internal/fsutil"
 	"ant-chrome/backend/internal/logger"
 	"gopkg.in/yaml.v3"
 )
@@ -108,9 +109,12 @@ func (m *MieruManager) resolveBinary() (string, error) {
 		binaryNames = []string{"mieru.exe", "mieru"}
 	}
 	platformDir := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
-	searchDirs := make([]string, 0, 4)
+	// 搜索顺序：下载框架的安装目录（bin/{platform}/mieru/，见 proxyCoreInstallDir）优先，
+	// 兼容用户平铺放置（bin/{platform}/、bin/）与 exe 同目录。
+	searchDirs := make([]string, 0, 6)
 	if m.AppRoot != "" {
 		searchDirs = append(searchDirs,
+			filepath.Join(m.AppRoot, "bin", platformDir, "mieru"),
 			filepath.Join(m.AppRoot, "bin", platformDir),
 			filepath.Join(m.AppRoot, "bin"),
 		)
@@ -118,6 +122,7 @@ func (m *MieruManager) resolveBinary() (string, error) {
 	if exePath, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exePath)
 		searchDirs = append(searchDirs,
+			filepath.Join(exeDir, "bin", platformDir, "mieru"),
 			filepath.Join(exeDir, "bin", platformDir),
 			filepath.Join(exeDir, "bin"),
 			exeDir,
@@ -127,11 +132,22 @@ func (m *MieruManager) resolveBinary() (string, error) {
 		for _, name := range binaryNames {
 			candidate := filepath.Join(dir, name)
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				if err := fsutil.EnsureExecutable(candidate); err != nil {
+					return "", fmt.Errorf("mieru 文件不可执行: %s: %w", candidate, err)
+				}
 				return candidate, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("未找到 mieru 可执行文件。请将 mieru 放到 bin/%s/ 或 bin/ 目录，或在配置中设置 MieruBinaryPath", platformDir)
+	for _, name := range binaryNames {
+		if path, err := exec.LookPath(name); err == nil {
+			if err := fsutil.EnsureExecutable(path); err != nil {
+				return "", fmt.Errorf("mieru 文件不可执行: %s: %w", path, err)
+			}
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("未找到 mieru 可执行文件。请将 mieru 放到 bin/%s/mieru/ 或 bin/ 目录，或在配置中设置 MieruBinaryPath", platformDir)
 }
 
 // ─── 协议解析 ───
@@ -585,6 +601,14 @@ func (m *MieruManager) cleanupLoop() {
 			m.stopBridgeProcess(bridge)
 		}
 	}
+}
+
+// ResolveBinaryPath 解析 mieru 可执行文件路径（供诊断与测试使用）。
+func (m *MieruManager) ResolveBinaryPath() (string, error) {
+	if m == nil {
+		return "", fmt.Errorf("mieru 管理器未初始化")
+	}
+	return m.resolveBinary()
 }
 
 // MieruBinaryAvailable 检查 mieru 内核是否已安装（供前端提示下载使用）。
