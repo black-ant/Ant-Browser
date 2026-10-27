@@ -42,11 +42,27 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
 	} else if resolvedProxyID != "" {
+		matched := false
 		for _, item := range proxies {
 			if strings.EqualFold(item.ProxyId, resolvedProxyID) {
 				resolvedProxyID = strings.TrimSpace(item.ProxyId)
 				resolvedProxyConfig = strings.TrimSpace(item.ProxyConfig)
+				matched = true
 				break
+			}
+		}
+		if !matched {
+			// 固定绑定虚拟分组：按策略挑选本次启动的成员代理
+			if group, ok := a.findProxyVirtualGroupByID(resolvedProxyID); ok {
+				if memberID, memberConfig, picked := a.pickVirtualGroupStartProxy(group, proxies, profileID); picked {
+					log.Info("虚拟分组代理已选择成员",
+						logger.F("profile_id", profileID),
+						logger.F("virtual_group", group.GroupName),
+						logger.F("member_proxy_id", memberID),
+					)
+					resolvedProxyID = memberID
+					resolvedProxyConfig = memberConfig
+				}
 			}
 		}
 	}

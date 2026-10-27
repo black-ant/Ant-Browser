@@ -212,9 +212,14 @@ function resolvePoolProxySelection(
   proxyId: string,
   proxyConfig: string,
   proxies: BrowserProxy[],
+  virtualGroupIds?: Set<string>,
 ): { mode: Exclude<ProxySourceMode, 'dynamic'>; proxyId: string; proxyConfig: string } {
   const normalizedProxyId = proxyId.trim()
   if (normalizedProxyId) {
+    // 固定绑定虚拟分组：保留虚拟分组 ID（后端启动时按策略选择成员）
+    if (virtualGroupIds?.has(normalizedProxyId.toLowerCase())) {
+      return { mode: 'fixed', proxyId: normalizedProxyId, proxyConfig: '' }
+    }
     const matchedByID = proxies.find((proxy) => proxy.proxyId.trim() === normalizedProxyId)
     if (matchedByID?.proxyId) {
       return { mode: 'fixed', proxyId: matchedByID.proxyId, proxyConfig: '' }
@@ -241,6 +246,7 @@ function resolveProfileProxySelection(
   proxyConfig: string,
   proxyGroupName: string | undefined,
   proxies: BrowserProxy[],
+  virtualGroupIds?: Set<string>,
 ): { mode: ProxySourceMode; proxyId: string; proxyConfig: string; proxyGroupName: string } {
   if (mode?.trim().toLowerCase() === 'dynamic') {
     return { mode: 'dynamic', proxyId: '', proxyConfig: '', proxyGroupName: (proxyGroupName || '').trim() }
@@ -248,7 +254,7 @@ function resolveProfileProxySelection(
   if (mode?.trim().toLowerCase() === 'local') {
     return { mode: 'local', proxyId: '', proxyConfig: proxyConfig.trim(), proxyGroupName: '' }
   }
-  const resolved = resolvePoolProxySelection(proxyId, proxyConfig, proxies)
+  const resolved = resolvePoolProxySelection(proxyId, proxyConfig, proxies, virtualGroupIds)
   return { ...resolved, proxyGroupName: '' }
 }
 
@@ -335,7 +341,8 @@ export function BrowserEditPage() {
       const normalizedCoreId = !current.coreId || current.coreId.toLowerCase() === 'default'
         ? ''
         : current.coreId
-      const resolvedProxy = resolveProfileProxySelection(current.proxyMode, current.proxyId || '', current.proxyConfig || '', current.proxyGroupName, proxyList)
+      const virtualGroupIds = new Set((proxyVirtualGroupList || []).map(group => (group.groupId || '').trim().toLowerCase()).filter(Boolean))
+      const resolvedProxy = resolveProfileProxySelection(current.proxyMode, current.proxyId || '', current.proxyConfig || '', current.proxyGroupName, proxyList, virtualGroupIds)
       setProxyMode(resolvedProxy.mode)
       setFormData({
         profileName: current.profileName,
@@ -700,11 +707,15 @@ export function BrowserEditPage() {
                   label="代理地址选择"
                   value={formData.proxyId}
                   onChange={value => { handleChange('proxyId', value); setLocationResult(null) }}
-                  options={
-                    proxies.length > 0
+                  options={[
+                    ...(proxies.length > 0
                       ? proxies.map(p => ({ value: p.proxyId, label: p.proxyName || p.proxyId }))
-                      : [{ value: '', label: '暂无代理，请先到代理池创建' }]
-                  }
+                      : [{ value: '', label: '暂无代理，请先到代理池创建' }]),
+                    ...proxyVirtualGroups.map(group => ({
+                      value: group.groupId,
+                      label: `虚拟分组：${group.groupName}（${group.strategy === 'sticky' ? '代理保持' : '绝对轮询'}）`,
+                    })),
+                  ]}
                   className="flex-1 min-w-0"
                 />
                 <Button variant="secondary" size="sm" className="shrink-0" onClick={() => setProxyPickerOpen(true)} title="按分组选择代理">
@@ -716,7 +727,7 @@ export function BrowserEditPage() {
                   className="shrink-0"
                   onClick={handleApplyProxyLocation}
                   loading={locationResolving}
-                  disabled={!formData.proxyId || formData.proxyId === directProxyID}
+                  disabled={!formData.proxyId || formData.proxyId === directProxyID || proxyVirtualGroups.some(group => group.groupId === formData.proxyId)}
                 >
                   按代理匹配定位
                 </Button>

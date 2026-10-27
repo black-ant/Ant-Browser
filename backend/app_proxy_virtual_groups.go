@@ -122,6 +122,20 @@ func (a *App) DeleteBrowserProxyVirtualGroup(groupId string) error {
 	return nil
 }
 
+// findProxyVirtualGroupByID 按分组 ID 查找虚拟分组（实例固定绑定场景）。
+func (a *App) findProxyVirtualGroupByID(groupID string) (browser.ProxyVirtualGroup, bool) {
+	groupID = strings.TrimSpace(groupID)
+	if groupID == "" {
+		return browser.ProxyVirtualGroup{}, false
+	}
+	for _, group := range a.BrowserProxyVirtualGroupList() {
+		if strings.EqualFold(strings.TrimSpace(group.GroupId), groupID) {
+			return browser.NormalizeProxyVirtualGroup(group), true
+		}
+	}
+	return browser.ProxyVirtualGroup{}, false
+}
+
 func (a *App) findProxyVirtualGroup(groupName string) (browser.ProxyVirtualGroup, bool) {
 	groupName = strings.TrimSpace(groupName)
 	if groupName == "" {

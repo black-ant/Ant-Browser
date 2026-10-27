@@ -2,6 +2,7 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/logger"
 	"strings"
 )
 
@@ -142,4 +143,52 @@ func virtualProxyMemberOrder(memberIDs []string, candidates []BrowserProxy) []st
 		orderedIDs = append(orderedIDs, proxyID)
 	}
 	return orderedIDs
+}
+
+// pickVirtualGroupStartProxy 为固定绑定虚拟分组的实例挑选本次启动使用的成员代理。
+// 复用动态代理相同的策略逻辑（round_robin 游标轮询 / sticky 固定选成员）。
+func (a *App) pickVirtualGroupStartProxy(group browser.ProxyVirtualGroup, proxies []BrowserProxy, profileID string) (string, string, bool) {
+	groupName := strings.TrimSpace(group.GroupName)
+	if groupID := strings.TrimSpace(group.GroupId); groupID != "" {
+		if latest, ok := a.findProxyVirtualGroupByID(groupID); ok {
+			group = latest
+		}
+	}
+	resolved := browser.ResolveProxyVirtualGroup(group, proxies)
+	candidates := make([]BrowserProxy, 0, len(resolved.MemberProxyIds))
+	memberSet := make(map[string]struct{}, len(resolved.MemberProxyIds))
+	for _, memberID := range resolved.MemberProxyIds {
+		memberSet[strings.ToLower(strings.TrimSpace(memberID))] = struct{}{}
+	}
+	for _, proxy := range proxies {
+		if _, ok := memberSet[strings.ToLower(strings.TrimSpace(proxy.ProxyId))]; !ok {
+			continue
+		}
+		if strings.TrimSpace(proxy.ProxyConfig) == "" {
+			continue
+		}
+		candidates = append(candidates, proxy)
+	}
+	if len(candidates) == 0 {
+		logger.New("Browser").Warn("虚拟分组没有可用成员代理",
+			logger.F("profile_id", profileID),
+			logger.F("virtual_group", groupName),
+		)
+		return "", "", false
+	}
+
+	groupKey := proxyVirtualGroupCursorKey(resolved.GroupId, resolved.GroupName)
+	release := a.lockProxyVirtualGroup(groupKey)
+	defer release()
+
+	ordered, memberOrder := a.orderVirtualProxyCandidates(groupKey, resolved, candidates, proxies)
+	if len(ordered) == 0 {
+		return "", "", false
+	}
+	chosen := ordered[0]
+	a.commitVirtualProxyCursor(groupKey, chosen.ProxyId, memberOrder, candidates)
+	if browser.NormalizeProxyVirtualGroupStrategy(resolved.Strategy) == browser.ProxyVirtualGroupStrategySticky {
+		a.rememberProxyVirtualGroupSelection(resolved, chosen.ProxyId)
+	}
+	return strings.TrimSpace(chosen.ProxyId), strings.TrimSpace(chosen.ProxyConfig), true
 }

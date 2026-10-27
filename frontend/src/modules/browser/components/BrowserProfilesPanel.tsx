@@ -150,9 +150,13 @@ function selectDynamicProxyCandidate(
   })[0]
 }
 
-function formatProxyLabel(profile: BrowserProfile, proxy?: BrowserProxy): string {
+function formatProxyLabel(profile: BrowserProfile, proxy?: BrowserProxy, virtualGroups?: BrowserProxyVirtualGroup[]): string {
   if (isDynamicProfile(profile)) {
     return profile.proxyGroupName?.trim() ? `动态代理 · ${profile.proxyGroupName.trim()}` : '动态代理'
+  }
+  const boundVirtualGroup = (virtualGroups || []).find(group => group.groupId === profile.proxyId)
+  if (boundVirtualGroup) {
+    return `虚拟分组 · ${boundVirtualGroup.groupName}（${boundVirtualGroup.strategy === 'sticky' ? '保持' : '轮询'}）`
   }
   if (proxy?.proxyName) {
     return proxy.proxyName
@@ -241,8 +245,8 @@ function ProxyInlineActions({
   }
 
   return (
-    <div className={`inline-flex ${maxWidthClass} items-center gap-1.5 text-xs`} title={formatProxyLabel(profile, proxy)}>
-      <span className="min-w-0 truncate text-[var(--color-text-primary)]">{formatProxyLabel(profile, proxy)}</span>
+    <div className={`inline-flex ${maxWidthClass} items-center gap-1.5 text-xs`} title={formatProxyLabel(profile, proxy, virtualGroups)}>
+      <span className="min-w-0 truncate text-[var(--color-text-primary)]">{formatProxyLabel(profile, proxy, virtualGroups)}</span>
       <button
         type="button"
         className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"

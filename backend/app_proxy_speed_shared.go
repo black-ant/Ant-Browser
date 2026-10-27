@@ -12,7 +12,32 @@ import (
 
 func (a *App) testSharedProxySpeed(proxyID string, forceRefresh bool) ProxyTestResult {
 	proxies := a.getLatestProxies()
+	// 实例固定绑定虚拟分组时，测速针对本次选中的成员代理，结果写回该成员。
+	if resolvedID, ok := a.resolveVirtualGroupSpeedTestTarget(strings.TrimSpace(proxyID), proxies); ok {
+		proxyID = resolvedID
+	}
 	return a.testSharedProxySpeedWithOptions(proxyID, forceRefresh, proxies, a.defaultProxyConnectorType(), a.proxySpeedTestConfig())
+}
+
+// resolveVirtualGroupSpeedTestTarget 当 proxyID 是虚拟分组时，挑选一个成员代理作为测速目标。
+func (a *App) resolveVirtualGroupSpeedTestTarget(proxyID string, proxies []BrowserProxy) (string, bool) {
+	if proxyID == "" {
+		return "", false
+	}
+	for _, proxy := range proxies {
+		if strings.EqualFold(strings.TrimSpace(proxy.ProxyId), proxyID) {
+			return "", false
+		}
+	}
+	group, ok := a.findProxyVirtualGroupByID(proxyID)
+	if !ok {
+		return "", false
+	}
+	memberID, _, picked := a.pickVirtualGroupStartProxy(group, proxies, "speed-test")
+	if !picked {
+		return "", false
+	}
+	return memberID, true
 }
 
 func (a *App) testSharedProxySpeedWithOptions(proxyID string, forceRefresh bool, proxies []BrowserProxy, connectorType string, speedConfig *proxy.SpeedTestConfig) ProxyTestResult {
