@@ -99,6 +99,7 @@ export function ProxyVirtualGroupsPage() {
   const [proxyGroupFilter, setProxyGroupFilter] = useState('')
   const [proxyRegionFilter, setProxyRegionFilter] = useState('')
   const [showSelectedOnly, setShowSelectedOnly] = useState(false)
+  const [showAvailableOnly, setShowAvailableOnly] = useState(false)
   const [editorStep, setEditorStep] = useState<'details' | 'nodes'>('details')
 
   const load = async () => {
@@ -231,9 +232,11 @@ export function ProxyVirtualGroupsPage() {
       const matchesSelection = !showSelectedOnly || form.memberProxyIds.some(proxyId => (
         proxyId.toLowerCase() === proxy.proxyId.toLowerCase()
       ))
-      return matchesGroup && matchesRegion && matchesKeyword && matchesSelection
+      const latency = latencyMap[proxy.proxyId]
+      const matchesAvailable = !showAvailableOnly || (typeof latency === 'number' && latency > 0)
+      return matchesGroup && matchesRegion && matchesKeyword && matchesSelection && matchesAvailable
     })
-  }, [availableProxies, form.memberProxyIds, proxyFilter, proxyGroupFilter, proxyRegionFilter, showSelectedOnly])
+  }, [availableProxies, form.memberProxyIds, proxyFilter, proxyGroupFilter, proxyRegionFilter, showSelectedOnly, showAvailableOnly, latencyMap])
   const filteredAvailableDisplayProxies = useMemo(
     () => filteredAvailableProxies
       .map(proxy => displayProxyById.get(proxy.proxyId.trim().toLowerCase()))
@@ -611,6 +614,14 @@ export function ProxyVirtualGroupsPage() {
                   aria-label='仅显示已选节点'
                 />
                 <span>仅显示已选</span>
+              </label>
+              <label className='inline-flex cursor-pointer select-none items-center gap-1.5 text-xs text-[var(--color-text-muted)]'>
+                <Switch
+                  checked={showAvailableOnly}
+                  onChange={setShowAvailableOnly}
+                  aria-label='仅显示可用节点'
+                />
+                <span>仅显示可选</span>
               </label>
             </div>
             {proxyRegionOptions.length > 1 && (

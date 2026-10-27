@@ -559,9 +559,11 @@ export function ProxyPoolPage() {
         open={checkSettingsOpen}
         checkSettings={checkSettings}
         checkTargetsText={checkTargetsText}
+        filterAvailableOnly={filterAvailableOnly}
         saving={savingCheckSettings}
         onClose={() => setCheckSettingsOpen(false)}
         onSave={handleSaveCheckSettings}
+        onFilterAvailableOnlyChange={setFilterAvailableOnly}
         onCheckSettingsChange={setCheckSettings}
         onCheckTargetsTextChange={setCheckTargetsText}
       />
