@@ -64,7 +64,14 @@ func clashNodeType(proxyConfig string) string {
 	}
 	var payload interface{}
 	if err := yaml.Unmarshal([]byte(src), &payload); err != nil {
-		return ""
+		// 历史损坏数据（缩进错位）做一次规范化修复重试，保证协议可识别。
+		if repaired, ok := repairClashNodeYAML(src); ok {
+			if retryErr := yaml.Unmarshal([]byte(repaired), &payload); retryErr != nil {
+				return ""
+			}
+		} else {
+			return ""
+		}
 	}
 	node := pickClashNode(payload)
 	if node == nil {

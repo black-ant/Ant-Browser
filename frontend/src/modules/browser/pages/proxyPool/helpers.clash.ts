@@ -41,6 +41,18 @@ export function parseProxyInfo(proxyConfig: string): { type: string; server: str
     const proxy = Array.isArray(parsed) ? parsed[0] : parsed
     return { type: proxy?.type || '-', server: proxy?.server || '-', port: proxy?.port || 0 }
   } catch {
+    // 历史数据存在缩进损坏导致 YAML 解析失败（后端测速链路会自动修复），
+    // 展示层用正则兜底提取关键字段，保证类型/服务器/端口可见。
+    const typeMatch = cfg.match(/\btype:\s*([A-Za-z0-9_-]+)/)
+    const serverMatch = cfg.match(/\bserver:\s*([^\s]+)/)
+    const portMatch = cfg.match(/\bport:\s*(\d+)/)
+    if (typeMatch || serverMatch) {
+      return {
+        type: typeMatch?.[1] || '-',
+        server: serverMatch?.[1] || '-',
+        port: portMatch ? parseInt(portMatch[1], 10) : 0,
+      }
+    }
     return { type: '-', server: '-', port: 0 }
   }
 }

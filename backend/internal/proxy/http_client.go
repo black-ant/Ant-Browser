@@ -22,10 +22,11 @@ func BuildProxyHTTPClient(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	timeout time.Duration,
 ) (*http.Client, error) {
-	return buildProxyHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+	return buildProxyHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, timeout)
 }
 
 func buildProxyHTTPClient(
@@ -35,10 +36,11 @@ func buildProxyHTTPClient(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	timeout time.Duration,
 ) (*http.Client, error) {
-	return buildProxyHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+	return buildProxyHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, timeout)
 }
 
 // buildProbeHTTPClientContext 构建短时探测（测速/IP 健康/连通性）专用的 HTTP 客户端。
@@ -52,6 +54,7 @@ func buildProbeHTTPClientContext(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	timeout time.Duration,
 ) (*http.Client, func(), error) {
@@ -76,7 +79,7 @@ func buildProbeHTTPClientContext(
 	}
 	l := strings.ToLower(strings.TrimSpace(src))
 	if resolution.Kernel == ProxyKernelNative || l == "" || l == "direct://" {
-		client, err := buildProxyHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+		client, err := buildProxyHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, timeout)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -84,6 +87,25 @@ func buildProbeHTTPClientContext(
 	}
 
 	switch resolution.Kernel {
+	case ProxyKernelMieru:
+		if mieruMgr == nil {
+			return nil, nil, fmt.Errorf("mieru 管理器未初始化")
+		}
+		socks5Addr, key, err := mieruMgr.ensureBridgeContext(ctx, src, proxies, proxyId, true)
+		if err != nil {
+			return nil, nil, fmt.Errorf("mieru 桥接启动失败: %w", err)
+		}
+		client, err := buildSocks5HTTPClient(strings.TrimPrefix(socks5Addr, "socks5://"), timeout)
+		if err != nil {
+			mieruMgr.ReleaseBridge(key)
+			mieruMgr.ReclaimBridgeIfIdle(key)
+			return nil, nil, err
+		}
+		return client, func() {
+			client.CloseIdleConnections()
+			mieruMgr.ReleaseBridge(key)
+			mieruMgr.ReclaimBridgeIfIdle(key)
+		}, nil
 	case ProxyKernelMihomo:
 		if clashMgr == nil {
 			return nil, nil, fmt.Errorf("Mihomo 管理器未初始化")
@@ -154,6 +176,7 @@ func buildProxyHTTPClientContext(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	timeout time.Duration,
 ) (*http.Client, error) {
@@ -214,6 +237,18 @@ func buildProxyHTTPClientContext(
 	}
 
 	switch resolution.Kernel {
+	case ProxyKernelMieru:
+		if mieruMgr == nil {
+			log.Warn("mieru 管理器未初始化", logger.F("proxy_id", proxyId))
+			return nil, fmt.Errorf("mieru 管理器未初始化")
+		}
+		socks5Addr, err := mieruMgr.EnsureBridgeContext(ctx, src, proxies, proxyId)
+		if err != nil {
+			log.Warn("mieru 桥接启动失败", logger.F("proxy_id", proxyId), logger.F("error", err.Error()))
+			return nil, fmt.Errorf("mieru 桥接启动失败: %w", err)
+		}
+		log.Info("mieru 桥接已就绪", logger.F("proxy_id", proxyId), logger.F("socks5_addr", socks5Addr))
+		return buildSocks5HTTPClient(strings.TrimPrefix(socks5Addr, "socks5://"), timeout)
 	case ProxyKernelMihomo:
 		if clashMgr == nil {
 			log.Warn("Mihomo 管理器未初始化", logger.F("proxy_id", proxyId))

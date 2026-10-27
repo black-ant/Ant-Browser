@@ -62,7 +62,7 @@ func TestRealConnectivityWithSingBox(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 ) TestResult {
-	return TestRealConnectivityWithConfig(proxyId, proxies, xrayMgr, singboxMgr, nil)
+	return TestRealConnectivityWithConfig(proxyId, proxies, xrayMgr, singboxMgr, nil, nil)
 }
 
 func TestRealConnectivityWithConfig(
@@ -70,9 +70,10 @@ func TestRealConnectivityWithConfig(
 	proxies []config.BrowserProxy,
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
+	clashMgr *ClashManager,
 	cfg *SpeedTestConfig,
 ) TestResult {
-	return TestRealConnectivityWithRuntimeConfig(proxyId, proxies, xrayMgr, singboxMgr, nil, config.BrowserConnectorXray, cfg)
+	return TestRealConnectivityWithRuntimeConfig(proxyId, proxies, xrayMgr, singboxMgr, clashMgr, nil, config.BrowserConnectorXray, cfg)
 }
 
 func TestRealConnectivityWithRuntimeConfig(
@@ -81,6 +82,7 @@ func TestRealConnectivityWithRuntimeConfig(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	cfg *SpeedTestConfig,
 ) TestResult {
@@ -108,7 +110,7 @@ func TestRealConnectivityWithRuntimeConfig(
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: engine, Error: "真实连通性测试目标 URL 为空"}
 	}
 
-	client, releaseClient, err := buildProbeHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+	client, releaseClient, err := buildProbeHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, timeout)
 	if err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: engine, Error: err.Error()}
 	}

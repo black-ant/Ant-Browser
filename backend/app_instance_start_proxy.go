@@ -94,6 +94,21 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 	log.Info("实际代理内核", logger.F("profile_id", profileID), logger.F("engine", resolution.Kernel), logger.F("protocol", resolution.Protocol), logger.F("proxy_id", resolvedProxyID), logger.F("reason", resolution.Reason))
 
 	switch resolution.Kernel {
+	case proxy.ProxyKernelMieru:
+		if a.mieruMgr == nil {
+			startErr := fmt.Errorf("实例启动失败：mieru 管理器未初始化，无法启动该协议代理。请先下载 mieru 内核。")
+			profile.LastError = startErr.Error()
+			return "", profileProxyBridgeRef{}, false, startErr
+		}
+		socksURL, bridgeKey, bridgeErr := a.mieruMgr.AcquireBridge(resolvedProxyConfig, proxies, resolvedProxyID)
+		if bridgeErr != nil {
+			startErr := fmt.Errorf("实例启动失败：mieru 代理桥接失败：%v", bridgeErr)
+			log.Error("代理桥接失败(mieru)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
+			profile.LastError = startErr.Error()
+			a.reportProxyBridgeFailure(profileID, profile.ProfileName, resolvedProxyID, profileProxyBridgeEngineMieru, bridgeErr)
+			return "", profileProxyBridgeRef{}, false, startErr
+		}
+		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineMieru, bridgeKey, resolvedProxyID), bridgeKey != "", nil
 	case proxy.ProxyKernelMihomo:
 		if a.clashMgr == nil {
 			startErr := fmt.Errorf("实例启动失败：mihomo 管理器未初始化，无法启动该协议代理。请先下载 Mihomo 内核。")

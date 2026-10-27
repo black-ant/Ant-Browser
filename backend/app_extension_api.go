@@ -215,7 +215,7 @@ func (a *App) extensionDownloadHTTPClient(useProxy bool, proxyConfig string) (*h
 		connectorType = a.config.Browser.DefaultConnectorType
 	}
 	log.Info("Chrome 插件下载使用代理", logger.F("connector", connectorType), logger.F("proxy_prefix", proxyConfigLogPrefix(proxyConfig)))
-	return proxy.BuildProxyHTTPClient(proxyConfig, "", proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, connectorType, browser.ExtensionDownloadTimeout())
+	return proxy.BuildProxyHTTPClient(proxyConfig, "", proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, connectorType, browser.ExtensionDownloadTimeout())
 }
 
 func proxyConfigLogPrefix(proxyConfig string) string {

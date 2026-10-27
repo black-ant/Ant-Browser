@@ -32,7 +32,7 @@ func (a *App) unifiedProxyCoreHTTPClient(timeout time.Duration, proxyConfig stri
 			proxies = a.config.Browser.Proxies
 		}
 	}
-	client, err := proxy.BuildProxyHTTPClient(rawProxyConfig, "", proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, connectorType, timeout)
+	client, err := proxy.BuildProxyHTTPClient(rawProxyConfig, "", proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, connectorType, timeout)
 	if err != nil {
 		return nil, "", err
 	}

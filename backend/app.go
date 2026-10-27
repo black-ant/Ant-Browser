@@ -30,6 +30,7 @@ type App struct {
 	xrayMgr         *proxy.XrayManager
 	clashMgr        *proxy.ClashManager
 	singboxMgr      *proxy.SingBoxManager
+	mieruMgr        *proxy.MieruManager
 	launchCodeSvc   *launchcode.LaunchCodeService
 	launchServer    *launchcode.LaunchServer
 	automationMgr   *automation.Manager

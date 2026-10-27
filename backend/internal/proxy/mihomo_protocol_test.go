@@ -185,7 +185,7 @@ func TestMihomoNodeSupportsHysteriaServerPortRanges(t *testing.T) {
 	}
 }
 
-func TestMieruSpeedTestRequiresMihomoConnector(t *testing.T) {
+func TestMieruSpeedTestRequiresMieruManager(t *testing.T) {
 	proxyID := "mieru-proxy"
 	result := SpeedTestWithConnector(
 		proxyID,
@@ -193,17 +193,18 @@ func TestMieruSpeedTestRequiresMihomoConnector(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		config.BrowserConnectorMihomo,
 		&SpeedTestConfig{Timeout: 10, URLs: []string{"http://latency.test/generate_204"}},
 	)
 	if result.Ok {
-		t.Fatalf("speed test should fail without mihomo connector, got success: %+v", result)
+		t.Fatalf("speed test should fail without mieru manager, got success: %+v", result)
 	}
-	if result.Engine != config.BrowserConnectorMihomo {
-		t.Fatalf("engine = %q, want mihomo; result=%+v", result.Engine, result)
+	if result.Engine != ProxyKernelMieru {
+		t.Fatalf("engine = %q, want mieru; result=%+v", result.Engine, result)
 	}
-	if !strings.Contains(result.Error, "Mihomo") {
-		t.Fatalf("error = %q, want Mihomo guidance", result.Error)
+	if !strings.Contains(result.Error, "mieru") {
+		t.Fatalf("error = %q, want mieru guidance", result.Error)
 	}
 }
 

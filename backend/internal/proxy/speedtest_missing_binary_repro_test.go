@@ -48,7 +48,7 @@ func TestReproBatchSpeedMissingBinaryFailsInstantly(t *testing.T) {
 	start := time.Now()
 	results := make([]TestResult, total)
 	for i := range proxies {
-		results[i] = SpeedTestWithConnector(proxies[i].ProxyId, proxies, xrayMgr, nil, nil, config.BrowserConnectorXray, cfg)
+		results[i] = SpeedTestWithConnector(proxies[i].ProxyId, proxies, xrayMgr, nil, nil, nil, config.BrowserConnectorXray, cfg)
 	}
 	elapsed := time.Since(start)
 

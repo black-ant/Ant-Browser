@@ -101,7 +101,7 @@ func (a *App) clashSubscriptionProxyClient(proxyID string) (*http.Client, error)
 		return nil, fmt.Errorf("拉取代理不存在或配置为空")
 	}
 	connectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
-	return proxy.BuildProxyHTTPClient("", proxyID, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, connectorType, clashSubscriptionTimeout)
+	return proxy.BuildProxyHTTPClient("", proxyID, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, connectorType, clashSubscriptionTimeout)
 }
 
 func fetchClashSubscriptionWithFallback(client *http.Client, targetURL string, timeout time.Duration) (string, interface{}, error) {

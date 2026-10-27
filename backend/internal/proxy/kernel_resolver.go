@@ -13,6 +13,7 @@ const (
 	ProxyKernelXray    = "xray"
 	ProxyKernelSingBox = "sing-box"
 	ProxyKernelMihomo  = "mihomo"
+	ProxyKernelMieru   = "mieru"
 )
 
 type ProxyKernelResolution struct {
@@ -34,6 +35,8 @@ func NormalizePreferredKernel(value string) string {
 		return ProxyKernelSingBox
 	case ProxyKernelMihomo, "clash", "clash-meta":
 		return ProxyKernelMihomo
+	case ProxyKernelMieru:
+		return ProxyKernelMieru
 	case ProxyKernelNative:
 		return ProxyKernelNative
 	default:
@@ -160,7 +163,9 @@ func SupportedKernelsForProtocol(protocol string, proxyConfig string, proxies []
 		return []string{ProxyKernelXray, ProxyKernelMihomo}
 	case "hysteria", "hysteria2", "tuic", "anytls":
 		return []string{ProxyKernelSingBox, ProxyKernelMihomo}
-	case "mieru", "wireguard":
+	case "mieru":
+		return []string{ProxyKernelMieru}
+	case "wireguard":
 		return []string{ProxyKernelMihomo}
 	default:
 		if RequiresLocalProxyBridgeForBrowser(proxyConfig) || RequiresBridge(proxyConfig, proxies, proxyId) {
@@ -215,6 +220,9 @@ func connectorAllowsKernel(connectorType string, kernel string) bool {
 	if kernel == ProxyKernelNative {
 		return true
 	}
+	if kernel == ProxyKernelMieru {
+		return true
+	}
 	if connectorType == config.BrowserConnectorMihomo {
 		return kernel == ProxyKernelMihomo
 	}
@@ -223,9 +231,9 @@ func connectorAllowsKernel(connectorType string, kernel string) bool {
 
 func selectKernelForConnector(supported []string, connectorType string) string {
 	connectorType = config.NormalizeBrowserConnectorType(connectorType)
-	order := []string{ProxyKernelXray, ProxyKernelSingBox, ProxyKernelNative}
+	order := []string{ProxyKernelXray, ProxyKernelSingBox, ProxyKernelMieru, ProxyKernelNative}
 	if connectorType == config.BrowserConnectorMihomo {
-		order = []string{ProxyKernelMihomo, ProxyKernelNative}
+		order = []string{ProxyKernelMihomo, ProxyKernelMieru, ProxyKernelNative}
 	}
 	for _, candidate := range order {
 		if containsKernel(supported, candidate) {

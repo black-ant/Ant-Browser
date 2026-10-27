@@ -1907,6 +1907,8 @@ export namespace config {
 	    lastLatencyMs: number;
 	    lastTestOk: boolean;
 	    lastTestedAt: string;
+	    lastTestEngine?: string;
+	    lastTestConnectorType?: string;
 	    speedTestFingerprint: string;
 	    lastIPHealthJson?: string;
 	
@@ -1932,6 +1934,8 @@ export namespace config {
 	        this.lastLatencyMs = source["lastLatencyMs"];
 	        this.lastTestOk = source["lastTestOk"];
 	        this.lastTestedAt = source["lastTestedAt"];
+	        this.lastTestEngine = source["lastTestEngine"];
+	        this.lastTestConnectorType = source["lastTestConnectorType"];
 	        this.speedTestFingerprint = source["speedTestFingerprint"];
 	        this.lastIPHealthJson = source["lastIPHealthJson"];
 	    }

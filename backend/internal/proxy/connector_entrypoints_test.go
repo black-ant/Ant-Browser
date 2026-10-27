@@ -29,6 +29,7 @@ func TestProbeBrowserPageConnectivityUsesConfiguredConnectorStack(t *testing.T) 
 		nil,
 		nil,
 		nil,
+		nil,
 		config.BrowserConnectorMihomo,
 		&BrowserPageProbeConfig{URLs: []string{"http://127.0.0.1"}},
 	)

@@ -48,7 +48,7 @@ func SpeedTest(
 	singboxMgr *SingBoxManager,
 	cfg *SpeedTestConfig,
 ) TestResult {
-	return SpeedTestWithConnector(proxyId, proxies, xrayMgr, singboxMgr, nil, config.BrowserConnectorXray, cfg)
+	return SpeedTestWithConnector(proxyId, proxies, xrayMgr, singboxMgr, nil, nil, config.BrowserConnectorXray, cfg)
 }
 
 // SpeedTestWithConnector 保留 connectorType 参数用于旧调用兼容。
@@ -59,11 +59,12 @@ func SpeedTestWithConnector(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	cfg *SpeedTestConfig,
 ) TestResult {
 	connectorType = config.NormalizeBrowserConnectorType(connectorType)
-	return lightHTTPDelayTestWithConnector(proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, cfg)
+	return lightHTTPDelayTestWithConnector(proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, cfg)
 }
 
 func lightHTTPDelayTestWithConnector(
@@ -72,6 +73,7 @@ func lightHTTPDelayTestWithConnector(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	cfg *SpeedTestConfig,
 ) TestResult {
@@ -104,7 +106,7 @@ func lightHTTPDelayTestWithConnector(
 		logger.F("targets", strings.Join(testURLs, ",")),
 	)
 
-	client, releaseClient, err := buildSpeedTestHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, cfg)
+	client, releaseClient, err := buildSpeedTestHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, cfg)
 	if err != nil {
 		log.Warn("代理测速 HTTP 客户端创建失败",
 			logger.F("proxy_id", proxyId),
@@ -174,6 +176,7 @@ func buildSpeedTestHTTPClient(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
 	connectorType string,
 	cfg *SpeedTestConfig,
 ) (*http.Client, func(), error) {
@@ -200,7 +203,7 @@ func buildSpeedTestHTTPClient(
 	defer cancel()
 	resultCh := make(chan clientResult, 1)
 	go func() {
-		client, release, err := buildProbeHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, connectorType, timeout)
+		client, release, err := buildProbeHTTPClientContext(ctx, src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, timeout)
 		resultCh <- clientResult{client: client, release: release, err: err}
 	}()
 

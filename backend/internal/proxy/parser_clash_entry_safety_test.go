@@ -151,7 +151,7 @@ func TestEndToEndMalformedNodeStartsRealBridge(t *testing.T) {
 	for name, src := range map[string]string{"畸形修复后": malformed, "合法真实形态": legal} {
 		t.Run(name, func(t *testing.T) {
 			proxies := []config.BrowserProxy{{ProxyId: "e2e-" + name, ProxyConfig: src}}
-			result := SpeedTestWithConnector("e2e-"+name, proxies, xrayMgr, nil, nil, config.BrowserConnectorXray, target)
+			result := SpeedTestWithConnector("e2e-"+name, proxies, xrayMgr, nil, nil, nil, config.BrowserConnectorXray, target)
 			if strings.Contains(result.Error, "yaml:") || strings.Contains(result.Error, "indicator") {
 				t.Fatalf("仍卡在 yaml 解析: %s", result.Error)
 			}

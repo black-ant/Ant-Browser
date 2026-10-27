@@ -197,6 +197,8 @@ func normalizeProxyCoreSpec(core string) (proxyCoreSpec, error) {
 		return proxyCoreSpec{Core: "mihomo", Repo: "MetaCubeX/mihomo", DisplayName: "Mihomo", BinaryBase: "mihomo", ConfigKey: "clash", Version: "v1.19.27"}, nil
 	case "sing-box", "singbox":
 		return proxyCoreSpec{Core: "sing-box", Repo: "SagerNet/sing-box", DisplayName: "sing-box", BinaryBase: "sing-box", ConfigKey: "sing-box", Version: "v1.13.13"}, nil
+	case "mieru":
+		return proxyCoreSpec{Core: "mieru", Repo: "enfein/mieru", DisplayName: "mieru", BinaryBase: "mieru", ConfigKey: "mieru", Version: "v3.39.0"}, nil
 	default:
 		return proxyCoreSpec{}, fmt.Errorf("不支持的代理内核: %s", core)
 	}

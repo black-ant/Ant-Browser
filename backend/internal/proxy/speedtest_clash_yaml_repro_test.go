@@ -39,7 +39,7 @@ func TestReproClashYAMLNodeBridgeError(t *testing.T) {
 	for name, src := range samples {
 		t.Run(name, func(t *testing.T) {
 			proxies := []config.BrowserProxy{{ProxyId: "sample-1", ProxyConfig: src}}
-			result := SpeedTestWithConnector("sample-1", proxies, xrayMgr, nil, nil, config.BrowserConnectorXray, cfg)
+			result := SpeedTestWithConnector("sample-1", proxies, xrayMgr, nil, nil, nil, config.BrowserConnectorXray, cfg)
 			t.Logf("输入=%q", src)
 			t.Logf("ok=%v engine=%s error=%s", result.Ok, result.Engine, result.Error)
 		})
@@ -95,7 +95,7 @@ func TestMalformedClashNodeSpeedTestNotYAMLError(t *testing.T) {
 	xrayMgr := NewXrayManager(config.DefaultConfig(), t.TempDir())
 	src := " - name: 香港01\n  server: 127.0.0.1\n  port: 1\n  type: vless\n  password: test"
 	proxies := []config.BrowserProxy{{ProxyId: "malformed-1", ProxyConfig: src}}
-	result := SpeedTestWithConnector("malformed-1", proxies, xrayMgr, nil, nil, config.BrowserConnectorXray, cfg)
+	result := SpeedTestWithConnector("malformed-1", proxies, xrayMgr, nil, nil, nil, config.BrowserConnectorXray, cfg)
 	if strings.Contains(result.Error, "did not find expected '-' indicator") {
 		t.Fatalf("仍报 yaml 缩进错误: %s", result.Error)
 	}

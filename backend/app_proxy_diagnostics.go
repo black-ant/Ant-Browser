@@ -22,7 +22,7 @@ func (a *App) BrowserProxyProbeBrowserPage(request ProxyBrowserProbeRequest) Pro
 	request.ProxyId = strings.TrimSpace(request.ProxyId)
 	proxies := a.getLatestProxies()
 	cfg := buildProxyBrowserProbeConfig(request)
-	result := proxy.ProbeBrowserPageConnectivityWithConnector(request.ProxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.defaultProxyConnectorType(), &cfg)
+	result := proxy.ProbeBrowserPageConnectivityWithConnector(request.ProxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, a.defaultProxyConnectorType(), &cfg)
 	return ProxyBrowserProbeResult{
 		ProxyId:     result.ProxyId,
 		Ok:          result.Ok,

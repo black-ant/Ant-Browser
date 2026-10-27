@@ -29,6 +29,8 @@ func ComputeBridgeKey(proxyConfig string, dnsServers string, engine string) stri
 		return computeNodeKey(src)
 	case ProxyKernelMihomo:
 		return computeNodeKey(src + string(rune(0)) + "mihomo")
+	case ProxyKernelMieru:
+		return computeNodeKey(src + string(rune(0)) + "mieru")
 	default:
 		return ""
 	}

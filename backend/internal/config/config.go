@@ -210,6 +210,7 @@ type BrowserConfig struct {
 	ClashBinaryPath        string                     `yaml:"clash_binary_path,omitempty"`
 	XrayBinaryPath         string                     `yaml:"xray_binary_path,omitempty"`
 	SingBoxBinaryPath      string                     `yaml:"singbox_binary_path,omitempty"`
+	MieruBinaryPath        string                     `yaml:"mieru_binary_path,omitempty"`
 	CoreRoot               string                     `yaml:"core_root,omitempty"`
 	DefaultCoreId          string                     `yaml:"default_core_id,omitempty"`
 	DefaultConnectorType   string                     `yaml:"default_connector_type,omitempty"`

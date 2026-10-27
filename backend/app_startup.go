@@ -172,6 +172,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) error {
 	a.xrayMgr = proxy.NewXrayManager(cfg, a.appRoot)
 	a.clashMgr = proxy.NewClashManager(cfg, a.appRoot)
 	a.singboxMgr = proxy.NewSingBoxManager(cfg, a.appRoot)
+	a.mieruMgr = proxy.NewMieruManager(cfg, a.appRoot)
 	a.browserMgr.CoreDownloadHTTPClientFactory = func(proxyConfig string, timeout time.Duration) (*http.Client, error) {
 		client, _, err := a.unifiedProxyCoreHTTPClient(timeout, proxyConfig)
 		return client, err

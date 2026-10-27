@@ -66,6 +66,9 @@ func proxyCoreIsActive(a *App, spec proxyCoreSpec) bool {
 		return current == "mihomo" || current == "clash"
 	case "sing-box":
 		return current == "sing-box" || current == "singbox"
+	case "mieru":
+		// mieru 是独立的桥接内核，不隶属任何连接栈，按需启用。
+		return true
 	default:
 		return false
 	}
@@ -135,6 +138,8 @@ func proxyCoreConfiguredPath(a *App, spec proxyCoreSpec) string {
 		return a.config.Browser.ClashBinaryPath
 	case "sing-box":
 		return a.config.Browser.SingBoxBinaryPath
+	case "mieru":
+		return a.config.Browser.MieruBinaryPath
 	default:
 		return ""
 	}
@@ -170,6 +175,8 @@ func (a *App) saveProxyCoreBinaryPath(spec proxyCoreSpec, binaryPath string) err
 		a.config.Browser.ClashBinaryPath = clean
 	case "sing-box":
 		a.config.Browser.SingBoxBinaryPath = clean
+	case "mieru":
+		a.config.Browser.MieruBinaryPath = clean
 	default:
 		return fmt.Errorf("未知配置键: %s", spec.ConfigKey)
 	}
@@ -181,6 +188,9 @@ func (a *App) saveProxyCoreBinaryPath(spec proxyCoreSpec, binaryPath string) err
 	}
 	if a.singboxMgr != nil {
 		a.singboxMgr.Config = a.config
+	}
+	if a.mieruMgr != nil {
+		a.mieruMgr.Config = a.config
 	}
 	return a.config.Save(a.resolveAppPath("config.yaml"))
 }

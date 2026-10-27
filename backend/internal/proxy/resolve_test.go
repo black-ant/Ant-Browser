@@ -59,6 +59,7 @@ func TestBuildProxyHTTPClientContextHonorsCancellation(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		"xray",
 		time.Second,
 	)

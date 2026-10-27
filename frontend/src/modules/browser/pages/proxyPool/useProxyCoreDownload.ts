@@ -4,7 +4,7 @@ import { browserProxyCoreDownload, browserProxyCoreStatus } from '../../api'
 import type { ProxyCoreDownloadProgress, ProxyCoreStatusResult } from '../../types'
 import { EventsOff, EventsOn } from '../../../../wailsjs/runtime/runtime'
 
-function defaultProxyCoreTarget(): { goos: string; goarch: string } {
+export function defaultProxyCoreTarget(): { goos: string; goarch: string } {
   const platform = navigator.platform.toLowerCase()
   const userAgent = navigator.userAgent.toLowerCase()
   const goos = platform.includes('mac') ? 'darwin' : platform.includes('linux') ? 'linux' : 'windows'
@@ -84,11 +84,15 @@ export function useProxyCoreDownload() {
     }
   }, [coreDownloadProxy, coreDownloadType, coreDownloadGOOS, coreDownloadGOARCH])
 
-  const openCoreDownload = useCallback(() => {
+  const openCoreDownload = useCallback((core?: string) => {
+    if (core) {
+      setCoreDownloadType(core)
+    }
     setCoreDownloadProgress(null)
     setCoreDownloadOpen(true)
-    void refreshDownloadCoreStatus()
-  }, [refreshDownloadCoreStatus])
+    // 显式传 core：避免本帧 state 尚未更新时刷新到旧内核的状态
+    void refreshDownloadCoreStatus(core ?? coreDownloadType)
+  }, [coreDownloadType, refreshDownloadCoreStatus])
 
   const closeCoreDownload = useCallback(() => {
     setCoreDownloadOpen(false)

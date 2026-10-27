@@ -16,7 +16,7 @@ func TestResolveProxyKernelDefaultPriority(t *testing.T) {
 		{name: "vless uses xray", proxy: "vless://00000000-0000-0000-0000-000000000000@example.com:443", wantKernel: ProxyKernelXray},
 		{name: "hysteria2 uses sing-box", proxy: "hysteria2://pass@example.com:443", wantKernel: ProxyKernelSingBox},
 		{name: "anytls URI uses sing-box", proxy: "anytls://pass@example.com:443?sni=example.com", wantKernel: ProxyKernelSingBox},
-		{name: "mieru uses mihomo", proxy: mieruClashNode, wantKernel: ProxyKernelMihomo},
+		{name: "mieru uses mieru kernel", proxy: mieruClashNode, wantKernel: ProxyKernelMieru},
 		{name: "http uses native", proxy: "http://127.0.0.1:8080", wantKernel: ProxyKernelNative},
 		{name: "socks5 without auth uses native", proxy: "socks5://127.0.0.1:1080", wantKernel: ProxyKernelNative},
 		{name: "socks5 with auth uses xray", proxy: "socks5://user:pass@127.0.0.1:1080", wantKernel: ProxyKernelXray},
@@ -45,7 +45,8 @@ func TestResolveProxyKernelRejectsUnsupportedPreferredKernel(t *testing.T) {
 
 func TestResolveProxyKernelReadsPreferredKernelFromProxy(t *testing.T) {
 	proxyID := "p1"
-	got, err := ResolveProxyKernel("", []config.BrowserProxy{{ProxyId: proxyID, ProxyConfig: mieruClashNode, PreferredKernel: ProxyKernelMihomo}}, proxyID, "")
+	wgNode := "name: wg\ntype: wireguard\nserver: 1.1.1.1\nport: 51820\nprivate-key: k\npublic-key: p"
+	got, err := ResolveProxyKernel("", []config.BrowserProxy{{ProxyId: proxyID, ProxyConfig: wgNode, PreferredKernel: ProxyKernelMihomo}}, proxyID, "")
 	if err != nil {
 		t.Fatalf("ResolveProxyKernel returned error: %v", err)
 	}
@@ -75,12 +76,26 @@ func TestResolveProxyKernelForConnectorKeepsSingBoxOnlyProtocols(t *testing.T) {
 }
 
 func TestResolveProxyKernelForConnectorRejectsMihomoFallbackInXrayStack(t *testing.T) {
-	_, err := ResolveProxyKernelForConnector(mieruClashNode, nil, "", config.BrowserConnectorXray)
+	wgNode := "name: wg\ntype: wireguard\nserver: 1.1.1.1\nport: 51820\nprivate-key: k\npublic-key: p"
+	_, err := ResolveProxyKernelForConnector(wgNode, nil, "", config.BrowserConnectorXray)
 	if err == nil {
 		t.Fatal("expected mihomo-only protocol to be rejected by the xray stack")
 	}
 	if !strings.Contains(err.Error(), "当前 xray 连接栈") {
 		t.Fatalf("error = %q, want current-stack guidance", err.Error())
+	}
+}
+
+// mieru 走独立 mieru 内核，xray/mihomo 两栈均可用。
+func TestResolveProxyKernelForConnectorAllowsMieruInBothStacks(t *testing.T) {
+	for _, connector := range []string{config.BrowserConnectorXray, config.BrowserConnectorMihomo} {
+		got, err := ResolveProxyKernelForConnector(mieruClashNode, nil, "", connector)
+		if err != nil {
+			t.Fatalf("connector %s returned error: %v", connector, err)
+		}
+		if got.Kernel != ProxyKernelMieru {
+			t.Fatalf("connector %s kernel = %q, want mieru", connector, got.Kernel)
+		}
 	}
 }
 

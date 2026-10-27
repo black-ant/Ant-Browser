@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -79,7 +78,7 @@ func reproBatchSpeed(t *testing.T, proxyConfigs []string, concurrency int, cfg *
 		go func() {
 			defer wg.Done()
 			for idx := range jobs {
-				results[idx] = SpeedTestWithConnector(proxies[idx].ProxyId, proxies, xrayMgr, nil, nil, config.BrowserConnectorXray, cfg)
+				results[idx] = SpeedTestWithConnector(proxies[idx].ProxyId, proxies, xrayMgr, nil, nil, nil, config.BrowserConnectorXray, cfg)
 			}
 		}()
 	}
@@ -182,10 +181,6 @@ func TestReproBatchSpeedVlessBridgeConcurrency(t *testing.T) {
 	for i := range configs {
 		configs[i] = fmt.Sprintf("vless://%s@127.0.0.1:1?encryption=none&security=none&type=tcp#dead-%d", reproVlessUUID, i)
 	}
-
-	var bridgeErr5, bridgeErr20 atomic.Int32
-	_ = bridgeErr5
-	_ = bridgeErr20
 
 	ok5, startFail5, elapsed5 := reproBatchSpeed(t, configs, 5, cfg, xrayMgr)
 	ok20, startFail20, elapsed20 := reproBatchSpeed(t, configs, 20, cfg, xrayMgr)

@@ -26,6 +26,7 @@ import {
   ProxyPoolPreviewModal,
   type ProxyEditFormValue,
 } from './proxyPool/ProxyPoolModals'
+import { MieruKernelBanner } from './proxyPool/MieruKernelBanner'
 import { ProxyPoolHeader } from './proxyPool/ProxyPoolHeader'
 import { ProxyPoolTableCard } from './proxyPool/ProxyPoolTableCard'
 import { ProxyVirtualGroupMembersModal } from './proxyPool/ProxyVirtualGroupMembersModal'
@@ -369,6 +370,10 @@ export function ProxyPoolPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <MieruKernelBanner
+        proxies={proxies}
+        onDownload={() => openCoreDownload('mieru')}
+      />
       <ProxyPoolHeader
         checkingAllIPHealth={checkingAllIPHealth}
         currentConnectorStatus={currentCoreStatus?.message || '未知'}
@@ -378,7 +383,7 @@ export function ProxyPoolPage() {
         onOpenUsageGuide={() => setUsageGuideOpen(true)}
         onOpenImport={() => setImportModalOpen(true)}
         onOpenVirtualGroups={() => navigate('/browser/proxy-virtual-groups')}
-        onOpenCoreDownload={openCoreDownload}
+        onOpenCoreDownload={() => openCoreDownload()}
         onRefreshAllSources={() => void handleRefreshAllSources(false)}
         onTestAll={() => void handleTestAll(filteredList.filter(record => !record.isVirtual))}
         refreshingAllSources={refreshingAllSources}
