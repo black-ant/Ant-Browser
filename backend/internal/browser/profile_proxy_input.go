@@ -57,6 +57,13 @@ func (m *Manager) resolveProfileProxyInput(input ProfileInput) (resolvedProfileP
 				HasSelectedProxy: true,
 			}, nil
 		}
+		// 虚拟分组绑定：保留分组 ID，代理配置在实例启动时按成员策略解析。
+		if group, ok := m.getProxyVirtualGroupByIDOrName(proxyId); ok {
+			return resolvedProfileProxyInput{
+				ProxyMode: ProxyModeFixed,
+				ProxyId:   strings.TrimSpace(group.GroupId),
+			}, nil
+		}
 		if proxyConfig != "" {
 			return resolvedProfileProxyInput{
 				ProxyMode:          ProxyModeFixed,
@@ -82,4 +89,27 @@ func (m *Manager) resolveProfileProxyInput(input ProfileInput) (resolvedProfileP
 		ProxyConfig:      "",
 		FallbackToDirect: true,
 	}, nil
+}
+
+// getProxyVirtualGroupByIDOrName 按分组 ID（或名称）识别虚拟分组绑定。
+func (m *Manager) getProxyVirtualGroupByIDOrName(key string) (ProxyVirtualGroup, bool) {
+	key = strings.TrimSpace(key)
+	if key == "" || m == nil || m.ProxyVirtualGroupDAO == nil {
+		return ProxyVirtualGroup{}, false
+	}
+	groups, err := m.ProxyVirtualGroupDAO.List()
+	if err != nil {
+		return ProxyVirtualGroup{}, false
+	}
+	for _, group := range groups {
+		if strings.EqualFold(strings.TrimSpace(group.GroupId), key) {
+			return group, true
+		}
+	}
+	for _, group := range groups {
+		if strings.EqualFold(strings.TrimSpace(group.GroupName), key) {
+			return group, true
+		}
+	}
+	return ProxyVirtualGroup{}, false
 }

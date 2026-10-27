@@ -316,3 +316,129 @@ func TestVirtualGroupBindingValidateProxyConfig(t *testing.T) {
 		t.Fatal("未知代理 ID 不应通过校验")
 	}
 }
+
+// Manager 层创建/更新实例时绑定虚拟分组不应报"代理ID不存在"（切换节点走同一路径）。
+func TestVirtualGroupBindingProfileCreateAndSwitch(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	if err := app.SaveBrowserProxyVirtualGroup(BrowserProxyVirtualGroup{
+		GroupId:        "vg-switch",
+		GroupName:      "switch",
+		Strategy:       "round_robin",
+		MemberProxyIds: []string{"proxy-a"},
+	}); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+
+	// 创建时绑定虚拟分组
+	created, err := app.BrowserProfileCreate(BrowserProfileInput{
+		ProfileName:     "vg-bound-profile",
+		UserDataDir:     "",
+		ProxyId:         "vg-switch",
+		ProxyConfig:     "",
+		LaunchArgs:      []string{},
+		FingerprintArgs: []string{},
+	})
+	if err != nil {
+		t.Fatalf("创建实例绑定虚拟分组失败（用户切换报错点）: %v", err)
+	}
+	if created.ProxyId != "vg-switch" || created.ProxyConfig != "" {
+		t.Fatalf("创建结果 = (%q,%q), want (vg-switch, '')", created.ProxyId, created.ProxyConfig)
+	}
+	if created.ProxyMode != "fixed" {
+		t.Fatalf("ProxyMode = %q, want fixed", created.ProxyMode)
+	}
+
+	// 切换节点：update 用 proxyId=虚拟分组、proxyConfig=''、proxyMode 省略
+	updated, err := app.BrowserProfileUpdate(created.ProfileId, BrowserProfileInput{
+		ProfileName:     created.ProfileName,
+		UserDataDir:     created.UserDataDir,
+		CoreId:          created.CoreId,
+		ProxyId:         "vg-switch",
+		ProxyConfig:     "",
+		FingerprintArgs: created.FingerprintArgs,
+		LaunchArgs:      created.LaunchArgs,
+		MemoryLimitMB:   created.MemoryLimitMB,
+	})
+	if err != nil {
+		t.Fatalf("切换为虚拟分组失败: %v", err)
+	}
+	if updated.ProxyId != "vg-switch" || updated.ProxyConfig != "" {
+		t.Fatalf("切换结果 = (%q,%q), want (vg-switch, '')", updated.ProxyId, updated.ProxyConfig)
+	}
+
+	// 未知 ID 仍应报错（防止把任意字符串当分组）
+	if _, err := app.BrowserProfileUpdate(created.ProfileId, BrowserProfileInput{
+		ProfileName:     created.ProfileName,
+		UserDataDir:     created.UserDataDir,
+		ProxyId:         "vg-not-exist",
+		ProxyConfig:     "",
+		FingerprintArgs: created.FingerprintArgs,
+		LaunchArgs:      created.LaunchArgs,
+	}); err == nil {
+		t.Fatal("未知代理 ID 应保持报错")
+	}
+}
+
+// 用户操作序列：创建实例（实体代理）→ 切换为虚拟分组 → 启动实例。
+func TestVirtualGroupBindingSwitchThenLaunch(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	proxyB := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{
+		"proxy-a": proxyA.URL,
+		"proxy-b": proxyB.URL,
+	})
+	if err := app.SaveBrowserProxyVirtualGroup(BrowserProxyVirtualGroup{
+		GroupId:        "vg-seq",
+		GroupName:      "seq",
+		Strategy:       "round_robin",
+		MemberProxyIds: []string{"proxy-a", "proxy-b"},
+	}); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+
+	created, err := app.BrowserProfileCreate(BrowserProfileInput{
+		ProfileName:     "seq-profile",
+		UserDataDir:     "",
+		ProxyId:         "proxy-a",
+		ProxyConfig:     "",
+		LaunchArgs:      []string{},
+		FingerprintArgs: []string{},
+	})
+	if err != nil {
+		t.Fatalf("create with entity proxy failed: %v", err)
+	}
+	if created.ProxyId != "proxy-a" {
+		t.Fatalf("初始绑定 = %q, want proxy-a", created.ProxyId)
+	}
+
+	// 列表中切换代理 → 虚拟分组（与 saveProfileProxy 相同的 update 调用）
+	updated, err := app.BrowserProfileUpdate(created.ProfileId, BrowserProfileInput{
+		ProfileName:     created.ProfileName,
+		UserDataDir:     created.UserDataDir,
+		CoreId:          created.CoreId,
+		ProxyId:         "vg-seq",
+		ProxyConfig:     "",
+		FingerprintArgs: created.FingerprintArgs,
+		LaunchArgs:      created.LaunchArgs,
+	})
+	if err != nil {
+		t.Fatalf("切换到虚拟分组失败（用户报错点）: %v", err)
+	}
+	if updated.ProxyId != "vg-seq" || updated.ProxyConfig != "" {
+		t.Fatalf("切换后 = (%q,%q), want (vg-seq, '')", updated.ProxyId, updated.ProxyConfig)
+	}
+	if updated.ProxyMode != "fixed" {
+		t.Fatalf("切换后 ProxyMode = %q, want fixed", updated.ProxyMode)
+	}
+
+	// 启动实例：虚拟分组解析到成员并返回可用代理地址
+	proxyURL, _, _, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: updated.ProfileId}, updated)
+	if err != nil {
+		t.Fatalf("切换后启动失败: %v", err)
+	}
+	if proxyURL != proxyA.URL && proxyURL != proxyB.URL {
+		t.Fatalf("启动使用地址 = %s, want 分组成员之一", proxyURL)
+	}
+	t.Logf("创建→切换→启动 OK: %s", proxyURL)
+}

@@ -29,7 +29,16 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 	usingTemporaryProxy := input.hasTemporaryProxy()
 	if usingTemporaryProxy {
 		var err error
-		resolvedProxyID, resolvedProxyConfig, err = resolveTemporaryBrowserStartProxy(input.TemporaryProxyID, input.TemporaryProxyConfig, proxies)
+		temporaryProxyID := input.TemporaryProxyID
+		temporaryProxyConfig := input.TemporaryProxyConfig
+		// 一次性代理也可以是虚拟分组（启动码/API 传参场景），按策略解析到成员。
+		if strings.TrimSpace(temporaryProxyConfig) == "" {
+			if memberID, memberConfig, picked := a.resolveVirtualGroupProxyTarget(strings.TrimSpace(temporaryProxyID), proxies); picked {
+				temporaryProxyID = memberID
+				temporaryProxyConfig = memberConfig
+			}
+		}
+		resolvedProxyID, resolvedProxyConfig, err = resolveTemporaryBrowserStartProxy(temporaryProxyID, temporaryProxyConfig, proxies)
 		if err != nil {
 			startErr := fmt.Errorf("实例启动失败：%s", err.Error())
 			profile.LastError = startErr.Error()
