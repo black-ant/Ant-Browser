@@ -183,6 +183,7 @@ export function ProxyPoolEditModal({
               { value: 'xray', label: 'Xray' },
               { value: 'sing-box', label: 'sing-box' },
               { value: 'mihomo', label: 'Mihomo' },
+              { value: 'mieru', label: 'mieru' },
             ]}
           />
         </FormItem>

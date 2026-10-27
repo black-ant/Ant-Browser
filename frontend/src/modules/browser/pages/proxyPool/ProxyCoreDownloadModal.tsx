@@ -105,6 +105,7 @@ export function ProxyCoreDownloadModal({
               { value: 'xray', label: 'Xray（默认）' },
               { value: 'mihomo', label: 'Mihomo' },
               { value: 'sing-box', label: 'sing-box' },
+              { value: 'mieru', label: 'mieru（按需）' },
             ]}
           />
         </FormItem>
