@@ -208,6 +208,27 @@ function ProxyInlineActions({
   )
   const speedTargetProxy = isDynamic ? dynamicProxy : proxy
   const speedTargetProxyId = speedTargetProxy?.proxyId?.trim() || profile.proxyId.trim()
+  // 固定绑定虚拟分组：展示成员代理中最佳的测速结果（测速实际落在成员上）
+  const boundVirtualGroup = !isDynamic
+    ? virtualGroups.find(group => group.groupId === profile.proxyId)
+    : undefined
+  const virtualGroupMemberIds = useMemo(() => {
+    if (!boundVirtualGroup) return undefined
+    const ids = new Set<string>()
+    ;(boundVirtualGroup.memberProxyIds || []).forEach(proxyId => {
+      const key = proxyId.trim().toLowerCase()
+      if (key) ids.add(key)
+    })
+    const groupNames = new Set((boundVirtualGroup.memberGroupNames || []).map(name => name.trim().toLowerCase()).filter(Boolean))
+    if (groupNames.size > 0) {
+      proxies.forEach(item => {
+        if (groupNames.has((item.groupName || '').trim().toLowerCase())) {
+          ids.add(item.proxyId.trim().toLowerCase())
+        }
+      })
+    }
+    return ids
+  }, [boundVirtualGroup, proxies])
   useEffect(() => {
     useProxySpeedStore.getState().applyBackendResults(proxies, (testedAt) => isProxySpeedResultFresh(testedAt, now, speedResultMaxAgeMs))
   }, [proxies, now, speedResultMaxAgeMs])
@@ -216,13 +237,23 @@ function ProxyInlineActions({
   }, [])
   const speedTargetKey = normalizeProxyKey(speedTargetProxyId)
   const displayResult = useMemo(() => {
+    if (virtualGroupMemberIds) {
+      let best: (typeof speedResults)[string] | null = null
+      virtualGroupMemberIds.forEach(memberKey => {
+        const result = Object.values(speedResults).find(item => normalizeProxyKey(item.proxyId) === memberKey)
+        if (!result || !result.ok) return
+        if (!isProxySpeedResultFresh(result.testedAt, now, speedResultMaxAgeMs)) return
+        if (!best || result.latencyMs < best.latencyMs) best = result
+      })
+      return best
+    }
     if (!speedTargetKey) return null
     const exact = speedResults[speedTargetProxyId]
     const match = exact || Object.values(speedResults).find((result) => normalizeProxyKey(result.proxyId) === speedTargetKey)
     if (!match) return null
     if (!isProxySpeedResultFresh(match.testedAt, now, speedResultMaxAgeMs)) return null
     return match
-  }, [speedResults, speedTargetProxyId, speedTargetKey, now, speedResultMaxAgeMs])
+  }, [speedResults, speedTargetProxyId, speedTargetKey, virtualGroupMemberIds, now, speedResultMaxAgeMs])
   const canTest = isDynamic
     ? !!dynamicProxy
     : !!profile.proxyId || !!profile.proxyConfig.trim()

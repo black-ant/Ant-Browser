@@ -19,21 +19,27 @@ func (a *App) testSharedProxySpeed(proxyID string, forceRefresh bool) ProxyTestR
 	return a.testSharedProxySpeedWithOptions(proxyID, forceRefresh, proxies, a.defaultProxyConnectorType(), a.proxySpeedTestConfig())
 }
 
-// resolveVirtualGroupSpeedTestTarget 当 proxyID 是虚拟分组时，挑选一个成员代理作为测速目标。
-func (a *App) resolveVirtualGroupSpeedTestTarget(proxyID string, proxies []BrowserProxy) (string, bool) {
+// resolveVirtualGroupProxyTarget 当 proxyID 是虚拟分组时，挑选一个成员代理（ID 与配置）。
+// 实体代理 ID 与未知 ID 返回 false，调用方按原有逻辑继续处理。
+func (a *App) resolveVirtualGroupProxyTarget(proxyID string, proxies []BrowserProxy) (string, string, bool) {
 	if proxyID == "" {
-		return "", false
+		return "", "", false
 	}
 	for _, proxy := range proxies {
 		if strings.EqualFold(strings.TrimSpace(proxy.ProxyId), proxyID) {
-			return "", false
+			return "", "", false
 		}
 	}
 	group, ok := a.findProxyVirtualGroupByID(proxyID)
 	if !ok {
-		return "", false
+		return "", "", false
 	}
-	memberID, _, picked := a.pickVirtualGroupStartProxy(group, proxies, "speed-test")
+	return a.pickVirtualGroupStartProxy(group, proxies, "virtual-target")
+}
+
+// resolveVirtualGroupSpeedTestTarget 当 proxyID 是虚拟分组时，挑选一个成员代理作为测速目标。
+func (a *App) resolveVirtualGroupSpeedTestTarget(proxyID string, proxies []BrowserProxy) (string, bool) {
+	memberID, _, picked := a.resolveVirtualGroupProxyTarget(proxyID, proxies)
 	if !picked {
 		return "", false
 	}

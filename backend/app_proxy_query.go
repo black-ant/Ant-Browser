@@ -44,6 +44,13 @@ func (a *App) BrowserProxyListByGroup(groupName string) ([]BrowserProxy, error) 
 // ValidateProxyConfig 验证代理配置是否支持
 func (a *App) ValidateProxyConfig(proxyConfig string, proxyId string) ProxyValidationResult {
 	proxies := a.getLatestProxies()
+	// 虚拟分组绑定：用成员配置校验（需桥接的成员按成员内核校验）
+	if strings.TrimSpace(proxyConfig) == "" {
+		if memberID, memberConfig, picked := a.resolveVirtualGroupProxyTarget(strings.TrimSpace(proxyId), proxies); picked {
+			proxyId = memberID
+			proxyConfig = memberConfig
+		}
+	}
 	supported, errorMsg := proxy.ValidateProxyConfigWithConnector(proxyConfig, proxies, proxyId, a.defaultProxyConnectorType())
 	return ProxyValidationResult{
 		Supported: supported,
@@ -121,8 +128,16 @@ func (a *App) BrowserProxyBatchWarmupBridge(proxyIds []string, concurrency int) 
 
 func (a *App) warmupProxyBridge(proxyId string, proxyConfig string, proxies []BrowserProxy) ProxyBridgeWarmupResult {
 	startedAt := time.Now()
+	requestedProxyId := strings.TrimSpace(proxyId)
+	// 虚拟分组绑定：预热目标映射为本次选中的成员代理
+	if strings.TrimSpace(proxyConfig) == "" {
+		if memberID, memberConfig, picked := a.resolveVirtualGroupProxyTarget(requestedProxyId, proxies); picked {
+			proxyId = memberID
+			proxyConfig = memberConfig
+		}
+	}
+	result := ProxyBridgeWarmupResult{ProxyId: requestedProxyId}
 	proxyId = strings.TrimSpace(proxyId)
-	result := ProxyBridgeWarmupResult{ProxyId: proxyId}
 	src := strings.TrimSpace(resolveProxyConfigForApp(proxyConfig, proxies, proxyId))
 	if src == "" {
 		result.Error = "代理配置为空"

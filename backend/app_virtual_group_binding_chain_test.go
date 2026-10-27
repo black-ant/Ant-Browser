@@ -1,0 +1,318 @@
+package backend
+
+// 虚拟分组绑定真实链路集成测试：
+// 使用真实 SQLite DAO + 本地 HTTP 代理成员，走完整的 resolveBrowserStartProxy 链路
+// （实体匹配失败 → 虚拟分组解析 → 成员选择 → 配置校验 → 内核解析 → 返回代理地址）。
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/config"
+	"ant-chrome/backend/internal/database"
+	"ant-chrome/backend/internal/proxy"
+)
+
+func newVirtualGroupIntegrationApp(t *testing.T, memberConfigs map[string]string) *App {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.NewDB(filepath.Join(dir, "app.db"))
+	if err != nil {
+		t.Fatalf("NewDB failed: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	app := NewApp(dir)
+	app.config = config.DefaultConfig()
+	app.browserMgr = browser.NewManager(app.config, app.appRoot)
+	app.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(db.GetConn())
+	app.browserMgr.ProxyVirtualGroupDAO = browser.NewSQLiteProxyVirtualGroupDAO(db.GetConn())
+
+	proxies := make([]browser.Proxy, 0, len(memberConfigs))
+	for proxyID, proxyConfig := range memberConfigs {
+		proxies = append(proxies, browser.Proxy{
+			ProxyId:     proxyID,
+			ProxyName:   proxyID,
+			ProxyConfig: proxyConfig,
+		})
+	}
+	if err := app.browserMgr.ProxyDAO.ReplaceAll(proxies); err != nil {
+		t.Fatalf("seed proxies failed: %v", err)
+	}
+	return app
+}
+
+func newLocalHTTPProxy(t *testing.T) *httptest.Server {
+	t.Helper()
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(target.Close)
+	upstream := &http.Client{}
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		outReq := r.Clone(r.Context())
+		outReq.RequestURI = ""
+		resp, err := upstream.Do(outReq)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+	}))
+	t.Cleanup(proxy.Close)
+	return proxy
+}
+
+// 完整启动链路：固定绑定虚拟分组（round_robin）→ 每次启动轮询不同成员。
+func TestVirtualGroupBindingStartChainRoundRobin(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	proxyB := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{
+		"proxy-a": proxyA.URL,
+		"proxy-b": proxyB.URL,
+	})
+	group := BrowserProxyVirtualGroup{
+		GroupId:        "vg-e2e-1",
+		GroupName:      "e2e-rr",
+		Strategy:       "round_robin",
+		MemberProxyIds: []string{"proxy-a", "proxy-b"},
+	}
+	if err := app.SaveBrowserProxyVirtualGroup(group); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+
+	profile := BrowserProfile{ProfileId: "profile-e2e", ProxyMode: "fixed", ProxyId: "vg-e2e-1"}
+	firstURL, ref, usingBridge, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: profile.ProfileId}, &profile)
+	if err != nil {
+		t.Fatalf("first start failed: %v", err)
+	}
+	if ref.valid() || usingBridge {
+		t.Fatalf("native 代理不应产生桥接引用: ref=%+v bridge=%v", ref, usingBridge)
+	}
+	if profile.ProxyId != "vg-e2e-1" {
+		t.Fatalf("虚拟分组绑定不应被改写: %s", profile.ProxyId)
+	}
+
+	secondURL, _, _, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: profile.ProfileId}, &profile)
+	if err != nil {
+		t.Fatalf("second start failed: %v", err)
+	}
+	if firstURL == secondURL {
+		t.Fatalf("round_robin 两次启动应轮询不同成员，均为 %s", firstURL)
+	}
+	if !strings.Contains(firstURL, "127.0.0.1") || !strings.Contains(secondURL, "127.0.0.1") {
+		t.Fatalf("返回地址异常: %s / %s", firstURL, secondURL)
+	}
+}
+
+// sticky：固定使用 selectedProxyId 成员。
+func TestVirtualGroupBindingStartChainSticky(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	proxyB := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{
+		"proxy-a": proxyA.URL,
+		"proxy-b": proxyB.URL,
+	})
+	group := BrowserProxyVirtualGroup{
+		GroupId:         "vg-e2e-2",
+		GroupName:       "e2e-sticky",
+		Strategy:        "sticky",
+		SelectedProxyId: "proxy-b",
+		MemberProxyIds:  []string{"proxy-a", "proxy-b"},
+	}
+	if err := app.SaveBrowserProxyVirtualGroup(group); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+
+	profile := BrowserProfile{ProfileId: "profile-sticky", ProxyMode: "fixed", ProxyId: "vg-e2e-2"}
+	for i := 0; i < 3; i++ {
+		proxyURL, _, _, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: profile.ProfileId}, &profile)
+		if err != nil {
+			t.Fatalf("start #%d failed: %v", i, err)
+		}
+		if proxyURL != proxyB.URL {
+			t.Fatalf("sticky 启动 #%d 返回 %s, want %s", i, proxyURL, proxyB.URL)
+		}
+	}
+}
+
+// 分组成员按分组名展开（memberGroupNames）也能选到成员。
+func TestVirtualGroupBindingStartChainByGroupName(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	// 给成员设置分组名，用于 memberGroupNames 展开
+	if err := app.browserMgr.ProxyDAO.Upsert(browser.Proxy{
+		ProxyId:     "proxy-a",
+		ProxyName:   "proxy-a",
+		ProxyConfig: proxyA.URL,
+		GroupName:   "成员分组",
+	}); err != nil {
+		t.Fatalf("upsert member group name failed: %v", err)
+	}
+	group := BrowserProxyVirtualGroup{
+		GroupId:          "vg-e2e-3",
+		GroupName:        "e2e-by-group",
+		Strategy:         "sticky",
+		MemberGroupNames: []string{"成员分组"},
+	}
+	if err := app.SaveBrowserProxyVirtualGroup(group); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+	profile := BrowserProfile{ProfileId: "profile-by-group", ProxyMode: "fixed", ProxyId: "vg-e2e-3"}
+	proxyURL, _, _, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: profile.ProfileId}, &profile)
+	if err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	if proxyURL != proxyA.URL {
+		t.Fatalf("按分组名展开失败: got %s, want %s", proxyURL, proxyA.URL)
+	}
+}
+
+// 删除虚拟分组后，绑定该分组的实例启动应明确报错（不静默直连）。
+func TestVirtualGroupBindingStartChainAfterGroupDeleted(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	group := BrowserProxyVirtualGroup{
+		GroupId:        "vg-e2e-4",
+		GroupName:      "e2e-deleted",
+		Strategy:       "round_robin",
+		MemberProxyIds: []string{"proxy-a"},
+	}
+	if err := app.SaveBrowserProxyVirtualGroup(group); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+	if err := app.DeleteBrowserProxyVirtualGroup("vg-e2e-4"); err != nil {
+		t.Fatalf("delete virtual group failed: %v", err)
+	}
+	profile := BrowserProfile{ProfileId: "profile-deleted", ProxyMode: "fixed", ProxyId: "vg-e2e-4"}
+	_, _, _, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: profile.ProfileId}, &profile)
+	if err == nil {
+		t.Fatal("分组删除后启动应报错，实际成功")
+	}
+	if !strings.Contains(profile.LastError, "代理") {
+		t.Fatalf("错误信息不明确: %q", profile.LastError)
+	}
+}
+
+// 未绑定虚拟分组的普通实体代理行为不受影响（回归保护）。
+func TestVirtualGroupBindingStartChainEntityProxyUnaffected(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	profile := BrowserProfile{ProfileId: "profile-entity", ProxyMode: "fixed", ProxyId: "proxy-a"}
+	proxyURL, _, _, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: profile.ProfileId}, &profile)
+	if err != nil {
+		t.Fatalf("entity proxy start failed: %v", err)
+	}
+	if proxyURL != proxyA.URL {
+		t.Fatalf("entity proxy URL = %s, want %s", proxyURL, proxyA.URL)
+	}
+}
+
+// 编译期保证 config 包引用（测试文件使用 config.DefaultConfig）。
+var _ = config.DefaultConfig
+
+// 虚拟分组绑定 + 需要桥接的内核成员（认证 HTTP → xray 桥接）：
+// 验证完整链路返回 socks5 地址并持有桥接引用，释放后引用回零。
+func TestVirtualGroupBindingStartChainWithBridgeMember(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode")
+	}
+	abs, err := filepath.Abs(filepath.Join("..", "bin", "xray.exe"))
+	if err != nil {
+		t.Fatalf("resolve xray path: %v", err)
+	}
+	if _, statErr := os.Stat(abs); statErr != nil {
+		t.Skipf("本机无 xray.exe（%s），跳过桥接链路验证", abs)
+	}
+	t.Setenv("XRAY_BINARY_PATH", abs)
+
+	proxyA := newLocalHTTPProxy(t)
+	// 认证 HTTP 代理必须走 xray 桥接
+	host := strings.TrimPrefix(proxyA.URL, "http://")
+	memberConfig := "http://user:pass@" + host
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-auth": memberConfig})
+	app.config = config.DefaultConfig()
+	app.xrayMgr = proxy.NewXrayManager(app.config, app.appRoot)
+	t.Cleanup(func() { app.xrayMgr.StopAll() })
+	if err := app.SaveBrowserProxyVirtualGroup(BrowserProxyVirtualGroup{
+		GroupId:        "vg-e2e-bridge",
+		GroupName:      "e2e-bridge",
+		Strategy:       "sticky",
+		MemberProxyIds: []string{"proxy-auth"},
+	}); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+
+	profile := BrowserProfile{ProfileId: "profile-bridge", ProxyMode: "fixed", ProxyId: "vg-e2e-bridge"}
+	proxyURL, ref, usingBridge, err := app.resolveBrowserStartProxy(browserStartInput{ProfileID: profile.ProfileId}, &profile)
+	if err != nil {
+		t.Fatalf("桥接成员启动失败: %v", err)
+	}
+	if !usingBridge || !ref.valid() {
+		t.Fatalf("认证成员应产生桥接引用: bridge=%v ref=%+v", usingBridge, ref)
+	}
+	if !strings.HasPrefix(proxyURL, "socks5://127.0.0.1:") {
+		t.Fatalf("桥接返回地址异常: %s", proxyURL)
+	}
+	app.releaseProxyBridgeRef(ref)
+	t.Logf("桥接成员链路 OK: %s (engine=%s)", proxyURL, ref.Engine)
+}
+
+// 虚拟分组点测速 / IP 健康 / 预热：目标解析到成员（不报配置为空）。
+func TestVirtualGroupBindingTargetsResolveToMember(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	if err := app.SaveBrowserProxyVirtualGroup(BrowserProxyVirtualGroup{
+		GroupId:        "vg-e2e-targets",
+		GroupName:      "e2e-targets",
+		Strategy:       "round_robin",
+		MemberProxyIds: []string{"proxy-a"},
+	}); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+	proxies := app.getLatestProxies()
+
+	memberID, memberConfig, ok := app.resolveVirtualGroupProxyTarget("vg-e2e-targets", proxies)
+	if !ok || memberID != "proxy-a" || memberConfig != proxyA.URL {
+		t.Fatalf("目标解析 = (%q,%q,%v), want proxy-a", memberID, memberConfig, ok)
+	}
+	// 实体 ID 不受影响
+	if id, cfg, ok := app.resolveVirtualGroupProxyTarget("proxy-a", proxies); ok || id != "" || cfg != "" {
+		t.Fatalf("实体 ID 不应被解析: (%q,%q,%v)", id, cfg, ok)
+	}
+}
+
+// 保存实例时的代理校验：虚拟分组 ID 应被成员配置校验通过（否则前端保存会被拒绝）。
+func TestVirtualGroupBindingValidateProxyConfig(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	if err := app.SaveBrowserProxyVirtualGroup(BrowserProxyVirtualGroup{
+		GroupId:        "vg-validate",
+		GroupName:      "validate",
+		Strategy:       "round_robin",
+		MemberProxyIds: []string{"proxy-a"},
+	}); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+	result := app.ValidateProxyConfig("", "vg-validate")
+	if !result.Supported {
+		t.Fatalf("虚拟分组绑定校验未通过: %s", result.ErrorMsg)
+	}
+	// 实体代理校验保持原有行为
+	if entity := app.ValidateProxyConfig("", "proxy-a"); !entity.Supported {
+		t.Fatalf("实体代理校验回归: %s", entity.ErrorMsg)
+	}
+	// 未知 ID 仍应拒绝
+	if unknown := app.ValidateProxyConfig("", "vg-not-exist"); unknown.Supported {
+		t.Fatal("未知代理 ID 不应通过校验")
+	}
+}

@@ -180,6 +180,11 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     ]),
   ), [allProxies, virtualGroupMembers])
 
+  const selectedVirtualGroup = useMemo(
+    () => (showVirtualGroups ? virtualGroups.find(group => getVirtualGroupKey(group) === selectedGroup) : undefined),
+    [showVirtualGroups, virtualGroups, selectedGroup],
+  )
+
   const testOne = async (proxyId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (testingIds[proxyId]) return
@@ -391,6 +396,31 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
             </div>
 
             <div className="flex-1 overflow-y-auto">
+              {selectedVirtualGroup && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelect({
+                      proxyId: selectedVirtualGroup.groupId,
+                      proxyName: `虚拟分组 · ${selectedVirtualGroup.groupName}`,
+                      proxyConfig: '',
+                    })
+                    onClose()
+                  }}
+                  className={`flex w-full items-center justify-between gap-2 border-b border-[var(--color-border-default)] px-4 py-2.5 text-left text-sm ${
+                    currentProxyId === selectedVirtualGroup.groupId
+                      ? 'bg-[var(--color-bg-muted)]'
+                      : 'hover:bg-[var(--color-bg-muted)]'
+                  }`}
+                >
+                  <span className="min-w-0 truncate text-[var(--color-text-primary)]">
+                    整组使用：{selectedVirtualGroup.groupName}
+                  </span>
+                  <span className="shrink-0 text-xs text-[var(--color-text-muted)]">
+                    {selectedVirtualGroup.strategy === 'sticky' ? '代理保持' : '绝对轮询'}
+                  </span>
+                </button>
+              )}
               {loading ? (
                 <div className="flex items-center justify-center h-24 text-sm text-[var(--color-text-muted)]">加载中...</div>
               ) : displayProxies.length === 0 ? (

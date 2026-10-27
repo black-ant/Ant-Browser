@@ -162,3 +162,39 @@ func TestResolveVirtualGroupSpeedTestTarget(t *testing.T) {
 		t.Fatalf("未知 ID 不应被解析: (%q,%v)", id, ok)
 	}
 }
+
+// 固定绑定优先在测速健康的成员间轮询，跳过已失效成员。
+func TestPickVirtualGroupStartProxyPrefersHealthyMembers(t *testing.T) {
+	app := NewApp("")
+	testedAt := time.Now().Format(time.RFC3339)
+	group := browser.ProxyVirtualGroup{
+		GroupId:        "vg-healthy",
+		GroupName:      "healthy",
+		Strategy:       browser.ProxyVirtualGroupStrategyRoundRobin,
+		MemberProxyIds: []string{"proxy-dead", "proxy-alive"},
+	}
+	proxies := []BrowserProxy{
+		{ProxyId: "proxy-dead", ProxyConfig: "http://dead:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: 0},
+		{ProxyId: "proxy-alive", ProxyConfig: "http://alive:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 120},
+	}
+	for i := 0; i < 3; i++ {
+		memberID, _, ok := app.pickVirtualGroupStartProxy(group, proxies, "profile-healthy")
+		if !ok || memberID != "proxy-alive" {
+			t.Fatalf("pick #%d = (%q,%v), want proxy-alive（应跳过失效成员）", i, memberID, ok)
+		}
+	}
+}
+
+// 全部成员都无健康记录时，仍退回配置非空成员（可启动，由实例启动校验兜底）。
+func TestPickVirtualGroupStartProxyFallsBackWhenNoHealthy(t *testing.T) {
+	app := NewApp("")
+	group := browser.ProxyVirtualGroup{
+		GroupId:        "vg-no-healthy",
+		GroupName:      "no-healthy",
+		MemberProxyIds: []string{"proxy-a"},
+	}
+	proxies := []BrowserProxy{{ProxyId: "proxy-a", ProxyConfig: "http://a:8080"}}
+	if memberID, _, ok := app.pickVirtualGroupStartProxy(group, proxies, "profile-fallback"); !ok || memberID != "proxy-a" {
+		t.Fatalf("无健康记录时应退回普通成员: (%q,%v)", memberID, ok)
+	}
+}

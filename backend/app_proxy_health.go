@@ -96,6 +96,10 @@ func (a *App) defaultProxyConnectorType() string {
 // BrowserProxyCheckIPHealth 检测单个代理的出口 IP 健康信息
 func (a *App) BrowserProxyCheckIPHealth(proxyId string) ProxyIPHealthResult {
 	proxies := a.getLatestProxies()
+	// 虚拟分组绑定：检测目标映射为本次选中的成员代理
+	if memberID, _, picked := a.resolveVirtualGroupProxyTarget(proxyId, proxies); picked {
+		proxyId = memberID
+	}
 	connectorType := a.defaultProxyConnectorType()
 	data, err := proxy.FetchIPHealthInfo(proxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, connectorType, a.proxyIPHealthConfig())
 	result := buildProxyIPHealthResult(proxyId, data, err)
@@ -131,7 +135,11 @@ func (a *App) BrowserProxyBatchCheckIPHealth(proxyIds []string, concurrency int)
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
-				data, err := proxy.FetchIPHealthInfo(job.ProxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, connectorType, a.proxyIPHealthConfig())
+				jobProxyId := job.ProxyId
+				if memberID, _, picked := a.resolveVirtualGroupProxyTarget(jobProxyId, proxies); picked {
+					jobProxyId = memberID
+				}
+				data, err := proxy.FetchIPHealthInfo(jobProxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, connectorType, a.proxyIPHealthConfig())
 				result := buildProxyIPHealthResult(job.ProxyId, data, err)
 				a.persistProxyIPHealthResult(result)
 				results[job.Idx] = result

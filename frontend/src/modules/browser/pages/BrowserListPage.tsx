@@ -667,6 +667,7 @@ export function BrowserListPage() {
         open={!!proxyPickerProfile}
         currentProxyId={proxyPickerProfile?.proxyId || directProxyID}
         title={proxyPickerProfile ? `切换代理：${proxyPickerProfile.profileName}` : '切换代理'}
+        showVirtualGroups
         onSelect={(proxy) => {
           if (proxyPickerProfile) {
             void saveProfileProxy(proxyPickerProfile, proxy)

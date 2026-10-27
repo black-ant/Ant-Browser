@@ -4,6 +4,7 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/logger"
 	"strings"
+	"time"
 )
 
 func (a *App) orderVirtualProxyCandidates(groupKey string, group browser.ProxyVirtualGroup, candidates []BrowserProxy, allProxies []BrowserProxy) ([]BrowserProxy, []string) {
@@ -181,12 +182,31 @@ func (a *App) pickVirtualGroupStartProxy(group browser.ProxyVirtualGroup, proxie
 	release := a.lockProxyVirtualGroup(groupKey)
 	defer release()
 
-	ordered, memberOrder := a.orderVirtualProxyCandidates(groupKey, resolved, candidates, proxies)
+	// 优先在测速健康的成员间按策略轮询；仅当没有健康成员时退回全部配置非空成员，
+	// 避免固定绑定恰好落在失效成员上导致启动失败。
+	checkedAt := time.Now()
+	maxTestAge := a.dynamicProxyMaxTestAge()
+	healthy := make([]BrowserProxy, 0, len(candidates))
+	for _, candidate := range candidates {
+		if !candidate.LastTestOk || candidate.LastLatencyMs < 0 {
+			continue
+		}
+		if !isDynamicProxyTestFresh(candidate.LastTestedAt, checkedAt, maxTestAge) {
+			continue
+		}
+		healthy = append(healthy, candidate)
+	}
+	pool := candidates
+	if len(healthy) > 0 {
+		pool = healthy
+	}
+
+	ordered, memberOrder := a.orderVirtualProxyCandidates(groupKey, resolved, pool, proxies)
 	if len(ordered) == 0 {
 		return "", "", false
 	}
 	chosen := ordered[0]
-	a.commitVirtualProxyCursor(groupKey, chosen.ProxyId, memberOrder, candidates)
+	a.commitVirtualProxyCursor(groupKey, chosen.ProxyId, memberOrder, pool)
 	if browser.NormalizeProxyVirtualGroupStrategy(resolved.Strategy) == browser.ProxyVirtualGroupStrategySticky {
 		a.rememberProxyVirtualGroupSelection(resolved, chosen.ProxyId)
 	}
