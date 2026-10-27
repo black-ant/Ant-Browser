@@ -590,10 +590,8 @@ export function BrowserListPage() {
   const handleProxyDeletedFromPicker = (deletedProxyId: string, nextProxies: BrowserProxy[]) => {
     updateProxiesState(nextProxies)
     if (!proxyPickerProfile || proxyPickerProfile.proxyId !== deletedProxyId) return
-    const fallbackProxy = nextProxies.find(proxy => proxy.proxyId === directProxyID || proxy.proxyConfig === 'direct://')
-    if (fallbackProxy) {
-      void saveProfileProxy(proxyPickerProfile, fallbackProxy)
-    }
+    // 不再自动回退直连：直连会暴露真实 IP。保留绑定，由用户显式重新选择代理。
+    toast.error('该实例绑定的代理已被删除，请重新选择代理（不会自动改为直连）')
   }
 
 

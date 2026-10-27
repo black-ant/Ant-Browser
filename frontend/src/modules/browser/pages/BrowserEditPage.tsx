@@ -267,6 +267,12 @@ function resolvePoolProxySelection(
     return { mode: 'local', proxyId: '', proxyConfig: rawProxyConfig }
   }
 
+  // 有代理 ID 但当前池中匹配不到（分组被删、实例来自其他环境、列表加载失败等）：
+  // 保留原绑定，绝不静默降级为直连——直连会暴露真实 IP，且保存后原绑定会被覆盖丢失。
+  if (normalizedProxyId) {
+    return { mode: 'fixed', proxyId: normalizedProxyId, proxyConfig: '' }
+  }
+
   const directProxy = proxies.find((proxy) => proxy.proxyId === directProxyID)
   return { mode: 'fixed', proxyId: directProxy?.proxyId || '', proxyConfig: '' }
 }
@@ -749,6 +755,15 @@ export function BrowserEditPage() {
                       : proxyVirtualGroups.length === 0
                         ? [{ value: '', label: '暂无代理，请先到代理池创建' }]
                         : []),
+                    ...(formData.proxyId.trim()
+                      && formData.proxyId !== directProxyID
+                      && !proxies.some(p => p.proxyId === formData.proxyId)
+                      && !proxyVirtualGroups.some(g => g.groupId === formData.proxyId)
+                      ? [{
+                          value: formData.proxyId,
+                          label: `⚠ 绑定已失效：${formData.proxyId}（代理池/分组中不存在，请重新选择，启动会失败而非直连）`,
+                        }]
+                      : []),
                   ]}
                   className="flex-1 min-w-0"
                 />
