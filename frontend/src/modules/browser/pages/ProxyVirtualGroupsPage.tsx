@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, FolderOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, ConfirmModal, Input, Modal, Select, Switch, Table, toast } from '../../../shared/components'
-import type { TableColumn } from '../../../shared/components/Table'
+import type { SortOrder, TableColumn } from '../../../shared/components/Table'
 import type { BrowserProxy, BrowserProxyVirtualGroup } from '../types'
 import {
   deleteBrowserProxyVirtualGroup,
@@ -100,6 +100,8 @@ export function ProxyVirtualGroupsPage() {
   const [proxyRegionFilter, setProxyRegionFilter] = useState('')
   const [showSelectedOnly, setShowSelectedOnly] = useState(false)
   const [showAvailableOnly, setShowAvailableOnly] = useState(false)
+  const [proxySortColumn, setProxySortColumn] = useState<string>('latency')
+  const [proxySortOrder, setProxySortOrder] = useState<SortOrder>('asc')
   const [editorStep, setEditorStep] = useState<'details' | 'nodes'>('details')
 
   const load = async () => {
@@ -220,7 +222,7 @@ export function ProxyVirtualGroupsPage() {
 
   const filteredAvailableProxies = useMemo(() => {
     const keyword = proxyFilter.trim().toLowerCase()
-    return availableProxies.filter(proxy => {
+    const filtered = availableProxies.filter(proxy => {
       const groupName = (proxy.groupName || '').trim()
       const matchesGroup = !proxyGroupFilter
         || (proxyGroupFilter === ungroupedProxyGroupValue ? !groupName : groupName.toLowerCase() === proxyGroupFilter)
@@ -236,7 +238,24 @@ export function ProxyVirtualGroupsPage() {
       const matchesAvailable = !showAvailableOnly || (typeof latency === 'number' && latency > 0)
       return matchesGroup && matchesRegion && matchesKeyword && matchesSelection && matchesAvailable
     })
-  }, [availableProxies, form.memberProxyIds, proxyFilter, proxyGroupFilter, proxyRegionFilter, showSelectedOnly, showAvailableOnly, latencyMap])
+    if (proxySortColumn !== 'latency' || !proxySortOrder) return filtered
+    // 延迟排序语义：可用（正数）优先按数值升序，其后依次为测速中/超时/不支持/失败，未测速最后
+    const tuple = (proxy: BrowserProxy): [number, number] => {
+      const latency = latencyMap[proxy.proxyId]
+      if (latency === undefined) return [5, Number.MAX_SAFE_INTEGER]
+      if (latency === -1) return [1, Number.MAX_SAFE_INTEGER]
+      if (latency === -2) return [2, Number.MAX_SAFE_INTEGER]
+      if (latency === -3) return [3, Number.MAX_SAFE_INTEGER]
+      if (latency === -4) return [4, Number.MAX_SAFE_INTEGER]
+      return [0, latency]
+    }
+    return [...filtered].sort((a, b) => {
+      const [ca, va] = tuple(a)
+      const [cb, vb] = tuple(b)
+      const cmp = ca !== cb ? ca - cb : va - vb
+      return proxySortOrder === 'asc' ? cmp : -cmp
+    })
+  }, [availableProxies, form.memberProxyIds, proxyFilter, proxyGroupFilter, proxyRegionFilter, showSelectedOnly, showAvailableOnly, proxySortColumn, proxySortOrder, latencyMap])
   const filteredAvailableDisplayProxies = useMemo(
     () => filteredAvailableProxies
       .map(proxy => displayProxyById.get(proxy.proxyId.trim().toLowerCase()))
@@ -423,6 +442,7 @@ export function ProxyVirtualGroupsPage() {
       key: 'latency',
       title: '延迟',
       width: '90px',
+      sortable: true,
       render: (_, proxy) => renderLatency(proxy),
     },
     {
@@ -748,6 +768,12 @@ export function ProxyVirtualGroupsPage() {
                     tableMinWidth='820px'
                     maxHeight='none'
                     emptyText='没有匹配的代理节点'
+                    sortColumn={proxySortColumn}
+                    sortOrder={proxySortOrder}
+                    onSort={result => {
+                      setProxySortColumn(result.column)
+                      setProxySortOrder(result.order)
+                    }}
                   />
                 </div>
               </div>
