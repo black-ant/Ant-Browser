@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, FolderOpen, HelpCircle, Layers, ShieldCheck } from 'lucide-react'
 import { Button, Card, ConfirmModal, FormItem, Input, Modal, Select, Textarea, toast } from '../../../shared/components'
@@ -403,6 +403,19 @@ export function BrowserEditPage() {
     loadData()
   }, [id, isCreate])
 
+  // 虚拟分组成员集合：这些成员不作为独立选项出现在实体列表中，
+  // 只在所属虚拟分组展开后以只读形式展示（默认收起）。
+  const virtualGroupMemberIds = useMemo(() => {
+    const ids = new Set<string>()
+    proxyVirtualGroups.forEach(group => {
+      expandVirtualGroupMembers(group, proxies).forEach(member => {
+        const key = member.value.trim().toLowerCase()
+        if (key) ids.add(key)
+      })
+    })
+    return ids
+  }, [proxyVirtualGroups, proxies])
+
   const fingerprintArgsKey = formData.fingerprintArgs.join('\n')
 
   useEffect(() => {
@@ -750,11 +763,16 @@ export function BrowserEditPage() {
                       label: `虚拟分组：${group.groupName}（${group.strategy === 'sticky' ? '代理保持' : '绝对轮询'}）`,
                       children: expandVirtualGroupMembers(group, proxies),
                     })),
-                    ...(proxies.length > 0
-                      ? proxies.map(p => ({ value: p.proxyId, label: p.proxyName || p.proxyId }))
-                      : proxyVirtualGroups.length === 0
-                        ? [{ value: '', label: '暂无代理，请先到代理池创建' }]
-                        : []),
+                    ...(() => {
+                      const standaloneProxies = proxies.filter(p => !virtualGroupMemberIds.has(p.proxyId.trim().toLowerCase()))
+                      if (standaloneProxies.length > 0) {
+                        return standaloneProxies.map(p => ({ value: p.proxyId, label: p.proxyName || p.proxyId }))
+                      }
+                      if (proxyVirtualGroups.length === 0) {
+                        return [{ value: '', label: '暂无代理，请先到代理池创建' }]
+                      }
+                      return []
+                    })(),
                     ...(formData.proxyId.trim()
                       && formData.proxyId !== directProxyID
                       && !proxies.some(p => p.proxyId === formData.proxyId)
