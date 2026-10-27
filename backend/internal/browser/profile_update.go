@@ -35,7 +35,12 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 	if resolvedProxy.HasSelectedProxy {
 		_ = BindProfileToProxy(profile, resolvedProxy.SelectedProxy, true)
 	} else if resolvedProxy.FallbackToDirect {
-		_ = m.bindProfileToDirectProxy(profile)
+		// 更新时空代理输入不允许自动改为直连（会覆盖用户绑定并暴露真实 IP）：
+		// 完全保留原绑定字段，由前端保证显式直连时传入 __direct__。
+		log.Warn("更新实例时未提供有效代理，保留原绑定（不会自动改为直连）",
+			logger.F("profile_id", profileId),
+			logger.F("current_proxy_id", profile.ProxyId),
+		)
 	} else {
 		profile.ProxyId = resolvedProxy.ProxyId
 		profile.ProxyConfig = resolvedProxy.ProxyConfig

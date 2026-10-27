@@ -442,3 +442,121 @@ func TestVirtualGroupBindingSwitchThenLaunch(t *testing.T) {
 	}
 	t.Logf("创建→切换→启动 OK: %s", proxyURL)
 }
+
+// 复现用户 bug：启动实例时 ApplyDefaults 把虚拟分组绑定实例自动改成直连。
+// 修复前：groupId 在实体代理池找不到 + 无配置 → bindProfileToDirectProxy → __direct__。
+func TestApplyDefaultsKeepsVirtualGroupBinding(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	if err := app.SaveBrowserProxyVirtualGroup(BrowserProxyVirtualGroup{
+		GroupId:        "vg-defaults",
+		GroupName:      "defaults",
+		Strategy:       "round_robin",
+		MemberProxyIds: []string{"proxy-a"},
+	}); err != nil {
+		t.Fatalf("save virtual group failed: %v", err)
+	}
+
+	profile, err := app.BrowserProfileCreate(BrowserProfileInput{
+		ProfileName:     "defaults-profile",
+		UserDataDir:     "",
+		ProxyId:         "vg-defaults",
+		ProxyConfig:     "",
+		LaunchArgs:      []string{},
+		FingerprintArgs: []string{},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	if profile.ProxyId != "vg-defaults" {
+		t.Fatalf("初始绑定异常: %s", profile.ProxyId)
+	}
+
+	// 模拟启动实例：prepareBrowserLaunchContext 会调 ApplyDefaults
+	browserProfile := toBrowserProfileForTest(app, profile)
+	changed := app.browserMgr.ApplyDefaults(browserProfile)
+	_ = changed
+	if browserProfile.ProxyId != "vg-defaults" {
+		t.Fatalf("ApplyDefaults 破坏了虚拟分组绑定: %q（用户遇到的自动直连 bug）", browserProfile.ProxyId)
+	}
+	if browserProfile.ProxyConfig == "direct://" {
+		t.Fatal("ApplyDefaults 把虚拟分组绑定改成了直连")
+	}
+}
+
+// 实体 ID 失效时也不允许自动改直连（保留原绑定，启动时明确报错）。
+func TestApplyDefaultsKeepsDanglingEntityBinding(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	profile, err := app.BrowserProfileCreate(BrowserProfileInput{
+		ProfileName:     "dangling-profile",
+		UserDataDir:     "",
+		ProxyId:         "proxy-a",
+		ProxyConfig:     "",
+		LaunchArgs:      []string{},
+		FingerprintArgs: []string{},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	// 删除绑定代理，模拟失效
+	if err := app.browserMgr.ProxyDAO.Delete("proxy-a"); err != nil {
+		t.Fatalf("delete proxy failed: %v", err)
+	}
+	// 清 Manager 缓存重载
+	app.browserMgr.Profiles[profile.ProfileId].ProxyId = "proxy-gone"
+	app.browserMgr.Profiles[profile.ProfileId].ProxyConfig = ""
+
+	browserProfile := toBrowserProfileForTest(app, profile)
+	browserProfile.ProxyId = "proxy-gone"
+	browserProfile.ProxyConfig = ""
+	app.browserMgr.ApplyDefaults(browserProfile)
+	if browserProfile.ProxyId != "proxy-gone" {
+		t.Fatalf("失效实体绑定被自动改写: %q（不允许自动操作用户绑定）", browserProfile.ProxyId)
+	}
+	if browserProfile.ProxyConfig == "direct://" || browserProfile.ProxyId == "__direct__" {
+		t.Fatal("失效绑定被自动改为直连（隐私风险）")
+	}
+}
+
+func toBrowserProfileForTest(app *App, profile *BrowserProfile) *browser.Profile {
+	// BrowserProfile 与 browser.Profile 字段兼容，直接取 Manager 内部对象
+	if inner, ok := app.browserMgr.Profiles[profile.ProfileId]; ok {
+		return inner
+	}
+	return &browser.Profile{}
+}
+
+// 更新实例时空代理输入保留原绑定（不自动直连）。
+func TestUpdateEmptyProxyInputKeepsBinding(t *testing.T) {
+	proxyA := newLocalHTTPProxy(t)
+	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
+	profile, err := app.BrowserProfileCreate(BrowserProfileInput{
+		ProfileName:     "empty-input-profile",
+		UserDataDir:     "",
+		ProxyId:         "proxy-a",
+		ProxyConfig:     "",
+		LaunchArgs:      []string{},
+		FingerprintArgs: []string{},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	updated, err := app.BrowserProfileUpdate(profile.ProfileId, BrowserProfileInput{
+		ProfileName:     profile.ProfileName,
+		UserDataDir:     profile.UserDataDir,
+		ProxyId:         "",
+		ProxyConfig:     "",
+		FingerprintArgs: profile.FingerprintArgs,
+		LaunchArgs:      profile.LaunchArgs,
+	})
+	if err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	if updated.ProxyId != "proxy-a" {
+		t.Fatalf("空输入覆盖了原绑定: %q（不允许自动操作）", updated.ProxyId)
+	}
+	if updated.ProxyId == "__direct__" || updated.ProxyConfig == "direct://" {
+		t.Fatal("空输入被自动改为直连")
+	}
+}

@@ -66,6 +66,13 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 	if bindChanged {
 		proxyChanged = true
 	}
+	// 虚拟分组绑定是合法形态：ProxyId 为分组 ID、ProxyConfig 特意保持为空，
+	// 启动时按分组策略解析成员，绝不能在此时回退直连。
+	if !boundInPool && strings.TrimSpace(profile.ProxyId) != "" {
+		if _, isVirtualGroup := m.getProxyVirtualGroupByIDOrName(profile.ProxyId); isVirtualGroup {
+			boundInPool = true
+		}
+	}
 	if bindMode != "" && bindMode != "proxy_id" {
 		log.Info("实例代理自动重关联",
 			logger.F("profile_id", profile.ProfileId),
@@ -98,9 +105,10 @@ func (m *Manager) ApplyDefaults(profile *Profile) bool {
 				logger.F("profile_id", profile.ProfileId),
 				logger.F("missing_proxy_id", missingProxyID),
 			)
-		} else if m.bindProfileToDirectProxy(profile) {
-			proxyChanged = true
-			log.Warn("实例代理未找到，已回退到直连",
+		} else {
+			// 不允许自动改写用户绑定：失效 ID 保留原样（启动时代理解析会明确报错），
+			// 自动回退直连会暴露真实 IP 且覆盖用户选择。
+			log.Warn("实例代理未找到，保留原绑定（不会自动改为直连）",
 				logger.F("profile_id", profile.ProfileId),
 				logger.F("missing_proxy_id", missingProxyID),
 			)

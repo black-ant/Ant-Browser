@@ -484,8 +484,9 @@ export function BrowserEditPage() {
       return
     }
     if (proxyMode === 'fixed' && !resolvedProxyId) {
-      payload.proxyId = directProxyID
-      payload.proxyConfig = ''
+      // 不允许静默兜底直连：显式提示用户选择代理（直连需用户主动选择"直连"选项）
+      setSaveError('请选择一个代理（或显式选择直连）后再保存')
+      return
     }
 
     setSaving(true)
