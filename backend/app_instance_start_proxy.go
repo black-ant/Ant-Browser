@@ -79,6 +79,17 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 		return a.resolveDynamicBrowserStartProxy(profileID, profile, proxies)
 	}
 
+	// 防御：代理 ID 与配置快照同时为空时禁止静默直连（Native 内核会把空配置当成直连）。
+	if strings.TrimSpace(resolvedProxyID) == "" && strings.TrimSpace(resolvedProxyConfig) == "" {
+		startErr := fmt.Errorf("实例启动失败：实例未配置代理。请编辑实例并显式选择代理（直连也需要显式选择）后再启动")
+		profile.LastError = startErr.Error()
+		log.Error("实例未配置代理，拒绝启动",
+			logger.F("profile_id", profileID),
+			logger.F("reason", startErr.Error()),
+		)
+		return "", profileProxyBridgeRef{}, false, startErr
+	}
+
 	log.Info("代理配置检查",
 		logger.F("profile_id", profileID),
 		logger.F("proxy_id", profile.ProxyId),
@@ -203,8 +214,6 @@ func resolveTemporaryBrowserStartProxy(proxyID string, proxyConfig string, proxi
 	if strings.EqualFold(proxyID, temporaryDirectProxyID) {
 		return temporaryDirectProxyID, "direct://", nil
 	}
-	if proxyConfig != "" {
-		return "", proxyConfig, nil
-	}
-	return "", "", fmt.Errorf("代理ID不存在（proxy id not found: %s），且未提供 proxyConfig", proxyID)
+	// 一次性代理必须能解析出代理池节点：丢弃 ID 改用配置属于静默改写启动参数。
+	return "", "", fmt.Errorf("代理ID不存在（proxy id not found: %s），请重新选择代理后再启动", proxyID)
 }

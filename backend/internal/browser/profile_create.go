@@ -65,12 +65,6 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 	} else if resolvedProxy.FallbackToDirect {
 		_ = m.bindProfileToDirectProxy(profile)
 	}
-	if resolvedProxy.UsedConfigFallback {
-		log.Warn("代理ID未命中，已改为使用输入的代理配置",
-			logger.F("profile_id", profileId),
-			logger.F("proxy_id", strings.TrimSpace(input.ProxyId)),
-		)
-	}
 	m.Profiles[profileId] = profile
 	log.Info("浏览器配置创建", logger.F("profile_id", profileId), logger.F("profile_name", input.ProfileName))
 	if err := m.SaveProfiles(); err != nil {

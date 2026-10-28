@@ -69,7 +69,7 @@ func TestPrepareBrowserLaunchContextRejectsRecoveredRuntimeForPortableSession(t 
 	app := NewApp(root)
 	app.config = cfg
 	app.browserMgr = browser.NewManager(cfg, root)
-	profile := &browser.Profile{ProfileId: "profile-1", ProfileName: "已有运行态", CoreId: "core-1"}
+	profile := &browser.Profile{ProfileId: "profile-1", ProfileName: "已有运行态", CoreId: "core-1", ProxyId: "__direct__", ProxyConfig: "direct://"}
 	input := newBrowserStartInput(profile.ProfileId, nil, []string{"about:blank"}, true, false, true, "", "")
 	input.RejectExistingRuntime = true
 

@@ -244,6 +244,7 @@ function resolvePoolProxySelection(
   proxyConfig: string,
   proxies: BrowserProxy[],
   virtualGroupIds?: Set<string>,
+  allowDirectFallback = false,
 ): { mode: Exclude<ProxySourceMode, 'dynamic'>; proxyId: string; proxyConfig: string } {
   const normalizedProxyId = proxyId.trim()
   if (normalizedProxyId) {
@@ -255,6 +256,9 @@ function resolvePoolProxySelection(
     if (matchedByID?.proxyId) {
       return { mode: 'fixed', proxyId: matchedByID.proxyId, proxyConfig: '' }
     }
+    // 有代理 ID 但当前池中匹配不到（分组被删、实例来自其他环境、列表加载失败等）：
+    // 保留原绑定，绝不静默降级为 local/直连——直连会暴露真实 IP，保存后原绑定也会被覆盖丢失。
+    return { mode: 'fixed', proxyId: normalizedProxyId, proxyConfig: '' }
   }
 
   const rawProxyConfig = proxyConfig.trim()
@@ -264,15 +268,14 @@ function resolvePoolProxySelection(
     if (matchedByConfig?.proxyId) {
       return { mode: 'fixed', proxyId: matchedByConfig.proxyId, proxyConfig: '' }
     }
+    // 从未绑定过池节点、只有配置快照：按本地代理配置原样展示，不改写。
     return { mode: 'local', proxyId: '', proxyConfig: rawProxyConfig }
   }
 
-  // 有代理 ID 但当前池中匹配不到（分组被删、实例来自其他环境、列表加载失败等）：
-  // 保留原绑定，绝不静默降级为直连——直连会暴露真实 IP，且保存后原绑定会被覆盖丢失。
-  if (normalizedProxyId) {
-    return { mode: 'fixed', proxyId: normalizedProxyId, proxyConfig: '' }
+  // 未配置代理：不注入直连，交给用户显式选择。仅新建实例允许用直连作为初始默认值。
+  if (!allowDirectFallback) {
+    return { mode: 'fixed', proxyId: '', proxyConfig: '' }
   }
-
   const directProxy = proxies.find((proxy) => proxy.proxyId === directProxyID)
   return { mode: 'fixed', proxyId: directProxy?.proxyId || '', proxyConfig: '' }
 }
@@ -357,12 +360,12 @@ export function BrowserEditPage() {
       setGroups(groupList)
 
       if (isCreate) {
-        const resolved = resolvePoolProxySelection('', '', proxyList)
+        const resolved = resolvePoolProxySelection('', '', proxyList, undefined, true)
         setProxyMode('fixed')
         setFormData((prev) => ({
           ...prev,
           proxyMode: 'fixed',
-          proxyId: resolved.proxyId || directProxyID,
+          proxyId: resolved.proxyId,
           proxyConfig: '',
           proxyGroupName: '',
           restoreLastSession: '',
@@ -625,14 +628,8 @@ export function BrowserEditPage() {
     if (formData.proxyId !== deletedProxyId) {
       return
     }
-
-    const fallbackProxy = nextProxies.find((proxy) => proxy.proxyId === directProxyID)
-    if (fallbackProxy) {
-      handleChange('proxyId', fallbackProxy.proxyId)
-      return
-    }
-
-    handleChange('proxyId', '')
+    // 不自动改选直连：保留原 ID，表单会显示「绑定已失效」，保存时后端也会明确报错。
+    toast.error('该实例绑定的代理已被删除，请重新选择代理（不会自动改为直连）')
   }
 
   return (

@@ -474,8 +474,11 @@ func TestApplyDefaultsKeepsVirtualGroupBinding(t *testing.T) {
 
 	// 模拟启动实例：prepareBrowserLaunchContext 会调 ApplyDefaults
 	browserProfile := toBrowserProfileForTest(app, profile)
-	changed := app.browserMgr.ApplyDefaults(browserProfile)
+	changed, _, defaultsErr := app.browserMgr.ApplyDefaults(browserProfile)
 	_ = changed
+	if defaultsErr != nil {
+		t.Fatalf("ApplyDefaults returned error: %v", defaultsErr)
+	}
 	if browserProfile.ProxyId != "vg-defaults" {
 		t.Fatalf("ApplyDefaults 破坏了虚拟分组绑定: %q（用户遇到的自动直连 bug）", browserProfile.ProxyId)
 	}
@@ -510,7 +513,9 @@ func TestApplyDefaultsKeepsDanglingEntityBinding(t *testing.T) {
 	browserProfile := toBrowserProfileForTest(app, profile)
 	browserProfile.ProxyId = "proxy-gone"
 	browserProfile.ProxyConfig = ""
-	app.browserMgr.ApplyDefaults(browserProfile)
+	if _, _, err := app.browserMgr.ApplyDefaults(browserProfile); err != nil {
+		t.Fatalf("失效实体绑定不应在 ApplyDefaults 阶段报错: %v", err)
+	}
 	if browserProfile.ProxyId != "proxy-gone" {
 		t.Fatalf("失效实体绑定被自动改写: %q（不允许自动操作用户绑定）", browserProfile.ProxyId)
 	}
@@ -527,8 +532,8 @@ func toBrowserProfileForTest(app *App, profile *BrowserProfile) *browser.Profile
 	return &browser.Profile{}
 }
 
-// 更新实例时空代理输入保留原绑定（不自动直连）。
-func TestUpdateEmptyProxyInputKeepsBinding(t *testing.T) {
+// 更新实例时空代理输入必须报错，既不自动直连也不静默保留。
+func TestUpdateEmptyProxyInputRejected(t *testing.T) {
 	proxyA := newLocalHTTPProxy(t)
 	app := newVirtualGroupIntegrationApp(t, map[string]string{"proxy-a": proxyA.URL})
 	profile, err := app.BrowserProfileCreate(BrowserProfileInput{
@@ -550,13 +555,17 @@ func TestUpdateEmptyProxyInputKeepsBinding(t *testing.T) {
 		FingerprintArgs: profile.FingerprintArgs,
 		LaunchArgs:      profile.LaunchArgs,
 	})
-	if err != nil {
-		t.Fatalf("update failed: %v", err)
+	if err == nil {
+		t.Fatalf("空代理输入应报错，实际返回: %#v", updated)
 	}
-	if updated.ProxyId != "proxy-a" {
-		t.Fatalf("空输入覆盖了原绑定: %q（不允许自动操作）", updated.ProxyId)
+	current := app.browserMgr.Profiles[profile.ProfileId]
+	if current == nil {
+		t.Fatal("报错后实例丢失")
 	}
-	if updated.ProxyId == "__direct__" || updated.ProxyConfig == "direct://" {
+	if current.ProxyId != "proxy-a" {
+		t.Fatalf("报错路径改动了原绑定: %q（不允许自动操作）", current.ProxyId)
+	}
+	if current.ProxyId == "__direct__" || current.ProxyConfig == "direct://" {
 		t.Fatal("空输入被自动改为直连")
 	}
 }

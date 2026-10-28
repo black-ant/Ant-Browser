@@ -196,6 +196,17 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	}, nil
 }
 
+// joinBrowserStartWarnings 合并启动阶段的多条提示，空值自动跳过。
+func joinBrowserStartWarnings(parts ...string) string {
+	joined := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			joined = append(joined, trimmed)
+		}
+	}
+	return strings.Join(joined, "；")
+}
+
 func joinBrowserStartExtensionWarnings(warnings []error) string {
 	if len(warnings) == 0 {
 		return ""
@@ -226,9 +237,25 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 	logManagedLaunchArgOverrides(log, input.ProfileID, "profile.launchArgs", managedProfileArgs)
 	logManagedLaunchArgOverrides(log, input.ProfileID, "start.extraLaunchArgs", managedExtraArgs)
 
-	proxyChanged := a.browserMgr.ApplyDefaults(profile)
+	proxyChanged, proxyNotice, proxyErr := a.browserMgr.ApplyDefaults(profile)
 	if proxyChanged {
 		_ = a.browserMgr.SaveProfiles()
+	}
+	// 代理绑定被自动修正（按快照找回节点 / 改用配置快照）时必须让用户看见，
+	// 由 execute 阶段并入 RuntimeWarning 返回给前端。
+	if proxyNotice != "" {
+		profile.RuntimeWarning = proxyNotice
+	}
+	if proxyErr != nil {
+		startErr := fmt.Errorf("实例启动失败：%w", proxyErr)
+		log.Error("代理绑定不可用",
+			logger.F("profile_id", input.ProfileID),
+			logger.F("proxy_id", profile.ProxyId),
+			logger.F("error", proxyErr.Error()),
+			logger.F("reason", startErr.Error()),
+		)
+		profile.LastError = startErr.Error()
+		return nil, nil, nil, "", "", startErr
 	}
 
 	chromeBinaryPath, err := a.browserMgr.ResolveChromeBinary(profile)

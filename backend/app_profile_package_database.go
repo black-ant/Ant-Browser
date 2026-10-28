@@ -725,9 +725,9 @@ func (a *App) restoreProfilePackageDatabase(snapshot ProfilePackageDatabase, pre
 					}
 				}
 			} else {
-				appendProfilePackageWarning(warnings, fmt.Sprintf("实例「%s」的代理记录未找到，已清空代理绑定", profile.ProfileName))
-				profile.ProxyId = ""
-				profile.ProxyConfig = ""
+				// 不在导入时清空绑定：清空后启动会因「代理 ID 与配置双空」被拒绝，
+				// 早期版本还会直接落到直连。保留原绑定，由用户在启动前显式重选。
+				appendProfilePackageWarning(warnings, fmt.Sprintf("实例「%s」的代理记录未随实例包导入，已保留原代理绑定（proxyId=%s），启动前请确认代理可用", profile.ProfileName, originalProxyID))
 			}
 		}
 		if err := insertProfilePackageProfile(tx, *profile); err != nil {

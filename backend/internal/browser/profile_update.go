@@ -35,24 +35,19 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 	if resolvedProxy.HasSelectedProxy {
 		_ = BindProfileToProxy(profile, resolvedProxy.SelectedProxy, true)
 	} else if resolvedProxy.FallbackToDirect {
-		// 更新时空代理输入不允许自动改为直连（会覆盖用户绑定并暴露真实 IP）：
-		// 完全保留原绑定字段，由前端保证显式直连时传入 __direct__。
-		log.Warn("更新实例时未提供有效代理，保留原绑定（不会自动改为直连）",
+		// 空代理输入既不保留（用户以为改了）也不自动改直连（暴露真实 IP）：直接报错。
+		// 调用方必须显式传入代理池节点 ID，或显式传入直连 ID。
+		log.Error("更新实例时未提供代理绑定",
 			logger.F("profile_id", profileId),
 			logger.F("current_proxy_id", profile.ProxyId),
 		)
+		return nil, fmt.Errorf("实例未提供代理绑定：请显式选择代理池节点或直连后再保存（不支持清空代理）")
 	} else {
 		profile.ProxyId = resolvedProxy.ProxyId
 		profile.ProxyConfig = resolvedProxy.ProxyConfig
 		_ = ClearProfileProxyBinding(profile)
 	}
 	profile.MemoryLimitMB = normalizeMemoryLimitMB(input.MemoryLimitMB)
-	if resolvedProxy.UsedConfigFallback {
-		log.Warn("代理ID未命中，已改为使用输入的代理配置",
-			logger.F("profile_id", profileId),
-			logger.F("proxy_id", strings.TrimSpace(input.ProxyId)),
-		)
-	}
 	profile.LaunchArgs = input.LaunchArgs
 	profile.Tags = input.Tags
 	profile.Keywords = append([]string{}, input.Keywords...)

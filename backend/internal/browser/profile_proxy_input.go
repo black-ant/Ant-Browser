@@ -10,10 +10,9 @@ type resolvedProfileProxyInput struct {
 	ProxyGroupName     string
 	ProxyId            string
 	ProxyConfig        string
-	SelectedProxy      Proxy
-	HasSelectedProxy   bool
-	FallbackToDirect   bool
-	UsedConfigFallback bool
+	SelectedProxy    Proxy
+	HasSelectedProxy bool
+	FallbackToDirect bool
 }
 
 func (m *Manager) resolveProfileProxyInput(input ProfileInput) (resolvedProfileProxyInput, error) {
@@ -64,15 +63,9 @@ func (m *Manager) resolveProfileProxyInput(input ProfileInput) (resolvedProfileP
 				ProxyId:   strings.TrimSpace(group.GroupId),
 			}, nil
 		}
-		if proxyConfig != "" {
-			return resolvedProfileProxyInput{
-				ProxyMode:          ProxyModeFixed,
-				ProxyId:            "",
-				ProxyConfig:        proxyConfig,
-				UsedConfigFallback: true,
-			}, nil
-		}
-		return resolvedProfileProxyInput{}, fmt.Errorf("代理ID不存在（proxy id not found: %s），且未提供 proxyConfig", proxyId)
+		// 代理 ID 找不到时不允许丢弃 ID 改用配置：那会把「池节点绑定」静默降级为裸配置，
+		// 之后订阅刷新也无法再通过绑定快照找回节点。
+		return resolvedProfileProxyInput{}, fmt.Errorf("代理ID不存在（proxy id not found: %s）。请重新选择代理后再保存（不会自动降级为代理配置或直连）", proxyId)
 	}
 
 	if proxyConfig != "" {

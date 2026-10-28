@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ant-chrome/backend/internal/browser"
@@ -624,6 +625,56 @@ func insertProfilePackageDatabaseFixtures(t *testing.T, conn *sql.DB, profile br
 	}
 	if err := extensionDAO.UpsertProfileExtensionRuntime(browser.ProfileExtensionRuntime{ProfileID: profile.ProfileId, ExtensionID: extensionID, RuntimeExtensionID: "runtime-source-extension", Status: browser.ExtensionRuntimeStatusInstalled, CreatedAt: profile.CreatedAt, UpdatedAt: profile.UpdatedAt}); err != nil {
 		t.Fatalf("insert extension runtime failed: %v", err)
+	}
+}
+
+// 导入包缺少代理记录时必须保留原代理绑定：清空后会变成「ID 与配置双空」实例，
+// 早期版本还会在启动时直接落到直连（暴露真实 IP）。
+func TestProfilePackageImportKeepsProxyBindingWhenProxyMissing(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+
+	snapshot := ProfilePackageDatabase{
+		Format:  profilePackageDatabaseFormat,
+		Version: profilePackageDatabaseVersion,
+		Profiles: []browser.Profile{{
+			ProfileId:   "old-profile",
+			ProfileName: "缺代理实例",
+			ProxyId:     "missing-proxy",
+			ProxyConfig: "http://missing-proxy:8080",
+		}},
+	}
+	prepared := []preparedProfilePackageImport{{
+		OldProfileID: "old-profile",
+		Profile: browser.Profile{
+			ProfileId:   "new-profile",
+			ProfileName: "缺代理实例",
+			UserDataDir: "new-profile",
+			ProxyId:     "missing-proxy",
+			ProxyConfig: "http://missing-proxy:8080",
+			CreatedAt:   "2026-08-31T00:00:00Z",
+			UpdatedAt:   "2026-08-31T00:00:00Z",
+		},
+	}}
+	warnings := make([]string, 0, 1)
+	if err := app.restoreProfilePackageDatabase(snapshot, prepared, &warnings); err != nil {
+		t.Fatalf("restoreProfilePackageDatabase returned error: %v", err)
+	}
+
+	stored, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById("new-profile")
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if stored.ProxyId != "missing-proxy" || stored.ProxyConfig != "http://missing-proxy:8080" {
+		t.Fatalf("导入时清空了代理绑定: proxyId=%q proxyConfig=%q", stored.ProxyId, stored.ProxyConfig)
+	}
+	if joined := strings.Join(warnings, "；"); !strings.Contains(joined, "保留原代理绑定") {
+		t.Fatalf("缺少保留绑定的告警: %v", warnings)
 	}
 }
 
