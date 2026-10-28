@@ -179,6 +179,7 @@ func (d *SQLiteExtensionDAO) GetProfileSettings(profileID string) (ProfileExtens
 	return settings, rows.Err()
 }
 
+
 func (d *SQLiteExtensionDAO) SetProfileSettings(profileID string, extensionIDs []string, configured bool) (ProfileExtensionSettings, error) {
 	profileID = strings.TrimSpace(profileID)
 	if profileID == "" {
@@ -187,6 +188,11 @@ func (d *SQLiteExtensionDAO) SetProfileSettings(profileID string, extensionIDs [
 	ids := []string{}
 	if configured {
 		ids = normalizeExtensionIDs(extensionIDs)
+	}
+	// 空的手动列表不承载任何意图，等价于「没有手动配置」。
+	// 这里统一折叠，避免实例被永久锁在"零插件且不跟随默认安装"的状态。
+	if len(ids) == 0 {
+		configured = false
 	}
 	now := time.Now().Format(time.RFC3339)
 	tx, err := d.db.Begin()

@@ -342,7 +342,9 @@ func (m *Manager) SaveProfileExtensionSettings(profileID string, extensionIDs []
 }
 
 func (m *Manager) effectiveProfileExtensionIDs(settings ProfileExtensionSettings) ([]string, error) {
-	if settings.Configured {
+	// 空的手动列表等价于没有手动配置，必须回落到「默认安装」，
+	// 否则历史脏数据会让实例永久拿不到任何插件。
+	if settings.Configured && len(settings.ExtensionIDs) > 0 {
 		return uniqueExtensionIDs(settings.ExtensionIDs), nil
 	}
 	extensions, err := m.ExtensionDAO.ListDefaultInstall()

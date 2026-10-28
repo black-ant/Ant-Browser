@@ -357,6 +357,20 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_vgm_state_group_state ON browser_proxy_virtual_group_member_state(group_id, state)`,
 		},
 	},
+	{
+		version: 30,
+		desc:    "清理不含任何插件的手动实例插件配置",
+		stmts: []string{
+			// 「手动设置」却一个插件都没绑，是空列表，不承载任何意图，
+			// 等价于没有手动配置。留着会让该实例永久无法跟随「默认安装」。
+			`DELETE FROM browser_profile_extension_settings
+			 WHERE configured = 1
+			   AND NOT EXISTS (
+			     SELECT 1 FROM browser_profile_extensions b
+			     WHERE b.profile_id = browser_profile_extension_settings.profile_id
+			   )`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

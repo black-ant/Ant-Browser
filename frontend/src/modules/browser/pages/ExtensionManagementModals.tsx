@@ -174,6 +174,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
     setSaving(true)
     try {
       const selected = new Set(selectedIds)
+      let manualFlipCount = 0
       const saveTasks = profiles.map((profile) => {
         const current = settingsByProfile[profile.profileId]
         const baseIds = current?.configured ? current.extensionIds : defaultExtensionIds
@@ -183,11 +184,13 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
 
         if (!current?.configured && sameStringSet(baseIds, nextIds)) return null
         if (current?.configured && sameStringSet(current.extensionIds, nextIds)) return null
+        if (!current?.configured) manualFlipCount++
         return saveBrowserProfileExtensionSettings(profile.profileId, nextIds, true)
       }).filter((task): task is Promise<BrowserProfileExtensionSettings> => task !== null)
 
       if (saveTasks.length > 0) await Promise.all(saveTasks)
-      toast.success('实例插件设置已保存；运行中的实例下次启动生效')
+      const flipHint = manualFlipCount > 0 ? `；其中 ${manualFlipCount} 个实例改为手动设置，不再继承默认安装` : ''
+      toast.success(`实例插件设置已保存${flipHint}；运行中的实例下次启动生效`)
       onClose()
     } catch (error: any) {
       toast.error(error?.message || '保存实例限制失败')
@@ -214,7 +217,7 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
       ) : (
         <div className="space-y-3">
           <div className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-            勾选的实例会写入此插件；未勾选的实例会按默认安装状态或本实例的其他设置处理。
+            勾选的实例会写入此插件并改为手动设置；未勾选的实例如果当前是靠「默认安装」继承到该插件，保存后同样会改为手动设置并排除该插件，不再跟随默认安装变化。
           </div>
           {profiles.length > 0 && (
             <div className="flex items-center gap-2">

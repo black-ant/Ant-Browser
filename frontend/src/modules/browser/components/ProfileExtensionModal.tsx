@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Modal, toast } from '../../../shared/components'
 import type { BrowserExtension, BrowserProfile } from '../types'
 import {
@@ -19,8 +20,17 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const navigate = useNavigate()
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const defaultInstallCount = useMemo(
+    () => extensions.filter((item) => item.enabled && item.defaultInstall).length,
+    [extensions],
+  )
+  const goToExtensionManagement = () => {
+    onClose()
+    navigate('/browser/extensions')
+  }
 
   useEffect(() => {
     if (!open || !profile) return
@@ -83,9 +93,15 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
         </label>
 
         {!configured ? (
-          <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
-            当前实例继承“默认安装”插件。打开手动设置后，只写入下方勾选的插件。
-          </div>
+          defaultInstallCount === 0 && extensions.length > 0 ? (
+            <div className="rounded-xl border border-[var(--color-warning)] bg-[var(--color-bg-muted)] px-4 py-5 text-sm text-[var(--color-warning)]">
+              当前没有任何插件勾选「默认安装」，本实例启动时不会安装任何插件。需要插件请打开手动设置并勾选，或到插件包管理为插件勾选「默认安装」。
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+              当前实例继承“默认安装”插件（共 {defaultInstallCount} 个）。打开手动设置后，只写入下方勾选的插件。
+            </div>
+          )
         ) : null}
 
         <div className="max-h-[360px] space-y-2 overflow-auto pr-1">
@@ -111,7 +127,10 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
 
           {extensions.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
-              还没有安装插件，请先到插件包管理页面导入。
+              <div>还没有安装任何插件包。</div>
+              <Button size="sm" variant="secondary" className="mt-3" onClick={goToExtensionManagement}>
+                去插件包管理安装
+              </Button>
             </div>
           ) : null}
         </div>
