@@ -170,13 +170,14 @@ type Manager struct {
 	CoreDownloadHTTPClientFactory          CoreDownloadHTTPClientFactory
 
 	// DAO 层（注入后使用 SQLite 存储，未注入时降级到 config.yaml）
-	ProfileDAO           ProfileDAO
-	ProxyDAO             ProxyDAO
-	ProxyVirtualGroupDAO ProxyVirtualGroupDAO
-	CoreDAO              CoreDAO
-	BookmarkDAO          BookmarkDAO
-	GroupDAO             GroupDAO
-	ExtensionDAO         ExtensionDAO
+	ProfileDAO                      ProfileDAO
+	ProxyDAO                        ProxyDAO
+	ProxyVirtualGroupDAO            ProxyVirtualGroupDAO
+	ProxyVirtualGroupMemberStateDAO ProxyVirtualGroupMemberStateDAO
+	CoreDAO                         CoreDAO
+	BookmarkDAO                     BookmarkDAO
+	GroupDAO                        GroupDAO
+	ExtensionDAO                    ExtensionDAO
 }
 
 // XrayBridge Xray 桥接进程

@@ -16,6 +16,8 @@ func (a *App) BrowserProxyTestSpeed(proxyId string) ProxyTestResult {
 	proxies := a.getLatestProxies()
 	connectorType := a.defaultProxyConnectorType()
 	result := a.testSharedProxySpeedWithOptions(proxyId, true, proxies, connectorType, a.proxySpeedTestConfig())
+	// 手动测速是强信号：失败立刻降级、成功立刻恢复，不等阈值。
+	a.applyManualProxyProbe(result)
 	a.emitRuntimeEvent("proxy:speed:result", result)
 	return result
 }
@@ -45,6 +47,7 @@ func (a *App) BrowserProxyBatchTestSpeed(proxyIds []string, concurrency int) []P
 			for job := range jobs {
 				item := a.testSharedProxySpeedWithOptions(job.ProxyId, true, proxies, connectorType, speedConfig)
 				results[job.Idx] = item
+				a.applyManualProxyProbe(item)
 
 				a.emitRuntimeEvent("proxy:speed:result", item)
 			}

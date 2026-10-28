@@ -570,8 +570,20 @@ export function BrowserProxyTestSpeed(arg1) {
   return window['go']['main']['App']['BrowserProxyTestSpeed'](arg1);
 }
 
+export function BrowserProxyVirtualGroupHealthList() {
+  return window['go']['main']['App']['BrowserProxyVirtualGroupHealthList']();
+}
+
 export function BrowserProxyVirtualGroupList() {
   return window['go']['main']['App']['BrowserProxyVirtualGroupList']();
+}
+
+export function BrowserProxyVirtualGroupProbe(arg1) {
+  return window['go']['main']['App']['BrowserProxyVirtualGroupProbe'](arg1);
+}
+
+export function BrowserProxyVirtualGroupResetHealth(arg1) {
+  return window['go']['main']['App']['BrowserProxyVirtualGroupResetHealth'](arg1);
 }
 
 export function BrowserProxyWarmupBridge(arg1) {

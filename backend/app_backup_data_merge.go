@@ -739,6 +739,7 @@ type backupProxyVirtualGroupSourceRow struct {
 	groupName            string
 	strategy             string
 	selectedProxyID      string
+	preferredProxyID     string
 	memberProxyIDsJSON   string
 	memberGroupNamesJSON string
 	sortOrder            int
@@ -767,6 +768,11 @@ func backupMergeDatabaseProxyVirtualGroups(tx *sql.Tx, mappings *backupImportRef
 	if err != nil {
 		return 0, 0, err
 	}
+	// 旧备份没有 preferred_proxy_id 列，回落空串，导入后由首次选中补写。
+	preferredProxyIDExpression, err := backupSourceColumnExpression(tx, "browser_proxy_virtual_groups", "s", "preferred_proxy_id", "''")
+	if err != nil {
+		return 0, 0, err
+	}
 	memberProxyIDsExpression, err := backupSourceColumnExpression(tx, "browser_proxy_virtual_groups", "s", "member_proxy_ids", "'[]'")
 	if err != nil {
 		return 0, 0, err
@@ -788,10 +794,10 @@ func backupMergeDatabaseProxyVirtualGroups(tx *sql.Tx, mappings *backupImportRef
 		return 0, 0, err
 	}
 	rows, err := tx.Query(fmt.Sprintf(`
-		SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s
+		SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
 		FROM src.browser_proxy_virtual_groups s
 		ORDER BY %s ASC, %s COLLATE NOCASE ASC`,
-		groupIDExpression, groupNameExpression, strategyExpression, selectedProxyIDExpression,
+		groupIDExpression, groupNameExpression, strategyExpression, selectedProxyIDExpression, preferredProxyIDExpression,
 		memberProxyIDsExpression, memberGroupNamesExpression, sortOrderExpression, createdAtExpression, updatedAtExpression,
 		sortOrderExpression, groupNameExpression))
 	if err != nil {
@@ -800,7 +806,7 @@ func backupMergeDatabaseProxyVirtualGroups(tx *sql.Tx, mappings *backupImportRef
 	sourceRows := make([]backupProxyVirtualGroupSourceRow, 0)
 	for rows.Next() {
 		var item backupProxyVirtualGroupSourceRow
-		if err := rows.Scan(&item.groupID, &item.groupName, &item.strategy, &item.selectedProxyID, &item.memberProxyIDsJSON, &item.memberGroupNamesJSON, &item.sortOrder, &item.createdAt, &item.updatedAt); err != nil {
+		if err := rows.Scan(&item.groupID, &item.groupName, &item.strategy, &item.selectedProxyID, &item.preferredProxyID, &item.memberProxyIDsJSON, &item.memberGroupNamesJSON, &item.sortOrder, &item.createdAt, &item.updatedAt); err != nil {
 			rows.Close()
 			return 0, 0, err
 		}
@@ -848,13 +854,14 @@ func backupMergeDatabaseProxyVirtualGroups(tx *sql.Tx, mappings *backupImportRef
 	imported := 0
 	for _, sourceRow := range sourceRows {
 		group := browser.ProxyVirtualGroup{
-			GroupId:         sourceRow.groupID,
-			GroupName:       sourceRow.groupName,
-			Strategy:        sourceRow.strategy,
-			SelectedProxyId: sourceRow.selectedProxyID,
-			SortOrder:       sourceRow.sortOrder,
-			CreatedAt:       sourceRow.createdAt,
-			UpdatedAt:       sourceRow.updatedAt,
+			GroupId:          sourceRow.groupID,
+			GroupName:        sourceRow.groupName,
+			Strategy:         sourceRow.strategy,
+			SelectedProxyId:  sourceRow.selectedProxyID,
+			PreferredProxyId: sourceRow.preferredProxyID,
+			SortOrder:        sourceRow.sortOrder,
+			CreatedAt:        sourceRow.createdAt,
+			UpdatedAt:        sourceRow.updatedAt,
 		}
 		if strings.TrimSpace(sourceRow.memberProxyIDsJSON) != "" {
 			if err := json.Unmarshal([]byte(sourceRow.memberProxyIDsJSON), &group.MemberProxyIds); err != nil {
@@ -902,6 +909,14 @@ func backupMergeDatabaseProxyVirtualGroups(tx *sql.Tx, mappings *backupImportRef
 				group.SelectedProxyId = ""
 			}
 		}
+		if preferredProxyID := strings.TrimSpace(group.PreferredProxyId); preferredProxyID != "" {
+			if mappedPreferredProxyID := backupImportMappedID(mappings.Proxies, preferredProxyID); mappedPreferredProxyID != "" {
+				group.PreferredProxyId = mappedPreferredProxyID
+			} else {
+				backupRecordImportConflict(stats)
+				group.PreferredProxyId = ""
+			}
+		}
 
 		targetGroupID := strings.TrimSpace(group.GroupId)
 		if targetGroupID == "" {
@@ -921,9 +936,9 @@ func backupMergeDatabaseProxyVirtualGroups(tx *sql.Tx, mappings *backupImportRef
 		}
 		if _, err := tx.Exec(`
 			INSERT INTO browser_proxy_virtual_groups (
-				group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			targetGroupID, group.GroupName, group.Strategy, group.SelectedProxyId, string(memberProxyIDsJSON), string(memberGroupNamesJSON), group.SortOrder, group.CreatedAt, group.UpdatedAt,
+				group_id, group_name, strategy, selected_proxy_id, preferred_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			targetGroupID, group.GroupName, group.Strategy, group.SelectedProxyId, group.PreferredProxyId, string(memberProxyIDsJSON), string(memberGroupNamesJSON), group.SortOrder, group.CreatedAt, group.UpdatedAt,
 		); err != nil {
 			return 0, 0, fmt.Errorf("导入虚拟代理分组失败(%s): %w", group.GroupName, err)
 		}

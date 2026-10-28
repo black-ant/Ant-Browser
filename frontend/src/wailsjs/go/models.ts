@@ -1305,6 +1305,105 @@ export namespace backend {
 	        this.errorMsg = source["errorMsg"];
 	    }
 	}
+	export class ProxyVirtualGroupMemberHealth {
+	    proxyId: string;
+	    proxyName: string;
+	    groupName: string;
+	    state: string;
+	    latencyMs: number;
+	    lastProbeAt: string;
+	    lastError: string;
+	    active: boolean;
+	    preferred: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyVirtualGroupMemberHealth(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.proxyId = source["proxyId"];
+	        this.proxyName = source["proxyName"];
+	        this.groupName = source["groupName"];
+	        this.state = source["state"];
+	        this.latencyMs = source["latencyMs"];
+	        this.lastProbeAt = source["lastProbeAt"];
+	        this.lastError = source["lastError"];
+	        this.active = source["active"];
+	        this.preferred = source["preferred"];
+	    }
+	}
+	export class ProxyVirtualGroupHealth {
+	    groupId: string;
+	    groupName: string;
+	    strategy: string;
+	    activeProxyId: string;
+	    preferredProxyId: string;
+	    total: number;
+	    healthy: number;
+	    suspect: number;
+	    degraded: number;
+	    allDegraded: boolean;
+	    members: ProxyVirtualGroupMemberHealth[];
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyVirtualGroupHealth(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupId = source["groupId"];
+	        this.groupName = source["groupName"];
+	        this.strategy = source["strategy"];
+	        this.activeProxyId = source["activeProxyId"];
+	        this.preferredProxyId = source["preferredProxyId"];
+	        this.total = source["total"];
+	        this.healthy = source["healthy"];
+	        this.suspect = source["suspect"];
+	        this.degraded = source["degraded"];
+	        this.allDegraded = source["allDegraded"];
+	        this.members = this.convertValues(source["members"], ProxyVirtualGroupMemberHealth);
+	        this.updatedAt = source["updatedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ProxyVirtualGroupProbeResult {
+	    groupId: string;
+	    tested: number;
+	    healthy: number;
+	    degraded: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyVirtualGroupProbeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupId = source["groupId"];
+	        this.tested = source["tested"];
+	        this.healthy = source["healthy"];
+	        this.degraded = source["degraded"];
+	    }
+	}
 	export class SnapshotInfo {
 	    snapshotId: string;
 	    profileId: string;
@@ -1945,6 +2044,7 @@ export namespace config {
 	    groupName: string;
 	    strategy?: string;
 	    selectedProxyId?: string;
+	    preferredProxyId?: string;
 	    memberProxyIds?: string[];
 	    memberGroupNames?: string[];
 	    sortOrder?: number;
@@ -1961,6 +2061,7 @@ export namespace config {
 	        this.groupName = source["groupName"];
 	        this.strategy = source["strategy"];
 	        this.selectedProxyId = source["selectedProxyId"];
+	        this.preferredProxyId = source["preferredProxyId"];
 	        this.memberProxyIds = source["memberProxyIds"];
 	        this.memberGroupNames = source["memberGroupNames"];
 	        this.sortOrder = source["sortOrder"];
@@ -2000,6 +2101,13 @@ export namespace config {
 	    speedTargetId: string;
 	    ipHealthTargetId: string;
 	    targets: ProxyCheckTarget[];
+	    virtualGroupHealthEnabled?: boolean;
+	    virtualGroupProbeIntervalMinutes: number;
+	    degradeFailureThreshold: number;
+	    restoreSuccessThreshold: number;
+	    runtimeFailoverEnabled?: boolean;
+	    runtimeFailoverCooldownMinutes: number;
+	    runtimeFailoverMaxAttempts: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProxyCheckConfig(source);
@@ -2014,6 +2122,13 @@ export namespace config {
 	        this.speedTargetId = source["speedTargetId"];
 	        this.ipHealthTargetId = source["ipHealthTargetId"];
 	        this.targets = this.convertValues(source["targets"], ProxyCheckTarget);
+	        this.virtualGroupHealthEnabled = source["virtualGroupHealthEnabled"];
+	        this.virtualGroupProbeIntervalMinutes = source["virtualGroupProbeIntervalMinutes"];
+	        this.degradeFailureThreshold = source["degradeFailureThreshold"];
+	        this.restoreSuccessThreshold = source["restoreSuccessThreshold"];
+	        this.runtimeFailoverEnabled = source["runtimeFailoverEnabled"];
+	        this.runtimeFailoverCooldownMinutes = source["runtimeFailoverCooldownMinutes"];
+	        this.runtimeFailoverMaxAttempts = source["runtimeFailoverMaxAttempts"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -26,6 +26,8 @@ interface ProxyRowProps {
   testing: boolean
   speedResult?: SpeedResult
   displayConfig: string
+  /** 测速失败的节点已降级，不允许再被选中。 */
+  unavailable?: boolean
   onSelect: () => void
   onTest: (e: React.MouseEvent) => void
   onEdit: (e: React.MouseEvent) => void
@@ -36,12 +38,12 @@ function SpeedBadge({ testing, result }: { testing: boolean; result?: SpeedResul
   if (testing) return <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-text-muted)] shrink-0" />
   if (!result) return null
   const suffix = result.engine ? ` (${result.engine})` : ''
-  if (!result.ok) return <span className="text-xs text-red-500 shrink-0 whitespace-nowrap">失败{suffix}</span>
+  if (!result.ok) return <span className="text-xs text-red-500 shrink-0 whitespace-nowrap" title={result.error || '测速失败'}>失败{suffix}</span>
   const color = result.latencyMs < 200 ? 'text-green-500' : result.latencyMs < 500 ? 'text-yellow-500' : 'text-red-500'
   return <span className={`text-xs font-medium shrink-0 whitespace-nowrap ${color}`}>{result.latencyMs}ms{suffix}</span>
 }
 
-export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig, onSelect, onTest, onEdit, onDelete }: ProxyRowProps) {
+export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig, unavailable, onSelect, onTest, onEdit, onDelete }: ProxyRowProps) {
   const isDirect = proxy.proxyId === DIRECT_PROXY_ID
   const disableDelete = isDirect
 
@@ -49,8 +51,8 @@ export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig,
     <div
       onClick={onSelect}
       className={`w-full px-4 py-2.5 flex items-center gap-3 cursor-pointer transition-colors border-b border-[var(--color-border)]/40 last:border-0 overflow-hidden ${
-        selected ? 'bg-[var(--color-primary)]/10' : 'hover:bg-[var(--color-bg-hover)]'
-      }`}
+        unavailable ? 'opacity-60' : ''
+      } ${selected ? 'bg-[var(--color-primary)]/10' : 'hover:bg-[var(--color-bg-hover)]'}`}
     >
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="text-sm font-medium text-[var(--color-text-primary)] truncate">

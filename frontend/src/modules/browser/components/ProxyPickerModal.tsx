@@ -96,6 +96,25 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     void loadData()
   }, [open])
 
+  // 弹窗常开时，后台调度器测出的新结果不会触发列表重拉，这里周期性同步一次，
+  // 避免"后端已经测出结果、界面一直显示未测"。
+  useEffect(() => {
+    if (!open) return
+    const timer = window.setInterval(() => {
+      void fetchBrowserProxies()
+        .then(list => {
+          const nextProxies = ensureBuiltinDirectProxy(list)
+          useProxySpeedStore
+            .getState()
+            .applyBackendResults(nextProxies, testedAt => isProxySpeedResultFresh(testedAt))
+        })
+        .catch(() => {
+          // 同步失败不打扰用户，下一轮继续。
+        })
+    }, 20_000)
+    return () => window.clearInterval(timer)
+  }, [open])
+
   const getFreshSpeedResult = (proxy: BrowserProxy): SpeedResult | undefined => {
     const result = speedResults[proxy.proxyId]
     if (!result || !isProxySpeedResultFresh(result.testedAt, now, speedResultMaxAgeMs)) return undefined
@@ -426,27 +445,39 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
               ) : displayProxies.length === 0 ? (
                 <div className="flex items-center justify-center h-24 text-sm text-[var(--color-text-muted)]">暂无代理</div>
               ) : (
-                displayProxies.map(item => (
-                  <ProxyRow
-                    key={item.proxy.proxyId}
-                    proxy={item.proxy}
-                    selected={item.proxy.proxyId === currentProxyId}
-                    testing={!!testingIds[item.proxy.proxyId]}
-                    speedResult={getFreshSpeedResult(item.proxy)}
-                    displayConfig={item.displayConfig}
-                    onSelect={() => { onSelect(item.proxy); onClose() }}
-                    onTest={e => testOne(item.proxy.proxyId, e)}
-                    onEdit={e => handleEditClick(item.proxy, e)}
-                    onDelete={e => handleDeleteClick(item.proxy, e)}
-                  />
-                ))
+                displayProxies.map(item => {
+                  const speedResult = getFreshSpeedResult(item.proxy)
+                  const unavailable = !!speedResult && !speedResult.ok
+                  return (
+                    <ProxyRow
+                      key={item.proxy.proxyId}
+                      proxy={item.proxy}
+                      selected={item.proxy.proxyId === currentProxyId}
+                      testing={!!testingIds[item.proxy.proxyId]}
+                      speedResult={speedResult}
+                      displayConfig={item.displayConfig}
+                      unavailable={unavailable}
+                      onSelect={() => {
+                        if (unavailable) {
+                          toast.error(`${item.proxy.proxyName || item.proxy.proxyId} 测速失败，已被标记为不可用；请先测速恢复后再选择`)
+                          return
+                        }
+                        onSelect(item.proxy)
+                        onClose()
+                      }}
+                      onTest={e => testOne(item.proxy.proxyId, e)}
+                      onEdit={e => handleEditClick(item.proxy, e)}
+                      onDelete={e => handleDeleteClick(item.proxy, e)}
+                    />
+                  )
+                })
               )}
             </div>
           </div>
         </div>
 
         <div className="px-4 py-2.5 border-t border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
-          共 {displayProxies.length} 条，点击行即选中
+          共 {displayProxies.length} 条，点击行即选中（测速失败的节点不可选）
         </div>
       </div>
 

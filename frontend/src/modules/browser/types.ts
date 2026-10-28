@@ -313,12 +313,52 @@ export interface BrowserProxyVirtualGroup {
   groupId: string
   groupName: string
   strategy: 'round_robin' | 'sticky' | string
+  /** 当前实际使用的成员（降级切换会改写它） */
   selectedProxyId?: string
+  /** 用户偏好节点，降级切换不改写，恢复后用于回切 */
+  preferredProxyId?: string
   memberProxyIds: string[]
   memberGroupNames?: string[]
   sortOrder?: number
   createdAt?: string
   updatedAt?: string
+}
+
+export type ProxyVirtualGroupMemberState = 'unknown' | 'healthy' | 'suspect' | 'degraded' | 'recovering'
+
+export interface ProxyVirtualGroupMemberHealth {
+  proxyId: string
+  proxyName?: string
+  groupName?: string
+  state: ProxyVirtualGroupMemberState | string
+  latencyMs: number
+  lastProbeAt?: string
+  lastError?: string
+  active?: boolean
+  preferred?: boolean
+}
+
+export interface ProxyVirtualGroupHealth {
+  groupId: string
+  groupName: string
+  strategy: string
+  activeProxyId?: string
+  preferredProxyId?: string
+  total: number
+  healthy: number
+  suspect: number
+  degraded: number
+  /** 全组成员均已降级，启动会被拒绝 */
+  allDegraded: boolean
+  members: ProxyVirtualGroupMemberHealth[]
+  updatedAt?: string
+}
+
+export interface ProxyVirtualGroupProbeResult {
+  groupId: string
+  tested: number
+  healthy: number
+  degraded: number
 }
 
 export interface ProxyIPHealthResult {

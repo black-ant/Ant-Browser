@@ -103,11 +103,12 @@ func TestPersistProxySpeedResultWritesResult(t *testing.T) {
 	}
 
 	result := ProxyTestResult{
-		ProxyId:   initial.ProxyId,
-		Ok:        true,
-		LatencyMs: 25,
-		Engine:    "xray",
-		TestedAt:  time.Now().Format(time.RFC3339),
+		ProxyId:       initial.ProxyId,
+		Ok:            true,
+		LatencyMs:     25,
+		Engine:        "xray",
+		TestedAt:      time.Now().Format(time.RFC3339),
+		connectorType: config.BrowserConnectorXray,
 	}
 	if err := app.persistProxySpeedResult(result); err != nil {
 		t.Fatalf("persistProxySpeedResult returned error: %v", err)
@@ -125,9 +126,32 @@ func TestPersistProxySpeedResultWritesResult(t *testing.T) {
 		if !item.LastTestOk || item.LastLatencyMs != 25 || item.LastTestedAt == "" {
 			t.Fatalf("speed result was not persisted: %#v", item)
 		}
+		// 连接栈来源必须落库，否则读取侧无法区分结果属于哪个连接栈。
+		if item.LastTestConnectorType != config.BrowserConnectorXray {
+			t.Fatalf("connector type was not persisted: %#v", item)
+		}
 	}
 	if !found {
 		t.Fatal("persisted proxy row not found")
+	}
+}
+
+// 缺少连接栈来源的历史结果不能被当作当前连接栈下的新鲜结果。
+func TestReadFreshProxySpeedResultRejectsMissingConnectorType(t *testing.T) {
+	app := NewApp("")
+	app.config = config.DefaultConfig()
+	fresh := BrowserProxy{
+		ProxyId: "proxy-1", ProxyConfig: "http://127.0.0.1:8080",
+		LastTestOk: true, LastLatencyMs: 40,
+		LastTestedAt:          time.Now().Format(time.RFC3339),
+		LastTestConnectorType: "",
+	}
+	if _, ok := app.readFreshProxySpeedResult("proxy-1", config.BrowserConnectorXray, []BrowserProxy{fresh}); ok {
+		t.Fatal("result without connector type was treated as fresh")
+	}
+	fresh.LastTestConnectorType = config.BrowserConnectorXray
+	if _, ok := app.readFreshProxySpeedResult("proxy-1", config.BrowserConnectorXray, []BrowserProxy{fresh}); !ok {
+		t.Fatal("matching connector type result was not treated as fresh")
 	}
 }
 

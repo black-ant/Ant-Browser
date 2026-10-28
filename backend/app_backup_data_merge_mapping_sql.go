@@ -83,6 +83,7 @@ func backupApplyImportReferenceMappings(incomingCfg *config.Config, mappings *ba
 		}
 		group.MemberProxyIds = mappedProxyIDs
 		group.SelectedProxyId = backupImportMappedIDOrOriginal(mappings.Proxies, group.SelectedProxyId)
+		group.PreferredProxyId = backupImportMappedIDOrOriginal(mappings.Proxies, group.PreferredProxyId)
 	}
 	incomingCfg.Browser.DefaultCoreId = backupImportMappedIDOrOriginal(mappings.Cores, incomingCfg.Browser.DefaultCoreId)
 	for i := range incomingCfg.Browser.Environments {

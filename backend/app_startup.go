@@ -182,6 +182,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) error {
 	a.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(conn)
 	a.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(conn)
 	a.browserMgr.ProxyVirtualGroupDAO = browser.NewSQLiteProxyVirtualGroupDAO(conn)
+	a.browserMgr.ProxyVirtualGroupMemberStateDAO = browser.NewSQLiteProxyVirtualGroupMemberStateDAO(conn)
 	a.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(conn)
 	a.browserMgr.BookmarkDAO = browser.NewSQLiteBookmarkDAO(conn)
 	a.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(conn)
@@ -297,6 +298,12 @@ func (a *App) ensureSpeedScheduler() {
 			return a.proxySpeedResultIsCurrent(item, proxies)
 		})
 		a.speedScheduler.SetResultPersistence(false)
+		a.speedScheduler.SetPriorityFunc(func(item browser.Proxy) int {
+			return a.virtualGroupProbePriority(item.ProxyId)
+		})
+		a.speedScheduler.SetIntervalFunc(func(item browser.Proxy) time.Duration {
+			return a.virtualGroupProbeIntervalFor(item.ProxyId)
+		})
 	}
 	a.speedScheduler.Start()
 }

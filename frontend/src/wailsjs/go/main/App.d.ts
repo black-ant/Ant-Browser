@@ -294,7 +294,13 @@ export function BrowserProxyResolveLocation(arg1:string):Promise<backend.ProxyLo
 
 export function BrowserProxyTestSpeed(arg1:string):Promise<backend.ProxyTestResult>;
 
+export function BrowserProxyVirtualGroupHealthList():Promise<Array<backend.ProxyVirtualGroupHealth>>;
+
 export function BrowserProxyVirtualGroupList():Promise<Array<config.BrowserProxyVirtualGroup>>;
+
+export function BrowserProxyVirtualGroupProbe(arg1:string):Promise<backend.ProxyVirtualGroupProbeResult>;
+
+export function BrowserProxyVirtualGroupResetHealth(arg1:string):Promise<void>;
 
 export function BrowserProxyWarmupBridge(arg1:string):Promise<backend.ProxyBridgeWarmupResult>;
 

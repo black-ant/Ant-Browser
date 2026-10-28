@@ -333,6 +333,30 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_browser_proxy_virtual_groups_sort_order ON browser_proxy_virtual_groups(sort_order, group_name)`,
 		},
 	},
+	{
+		version: 29,
+		desc:    "添加虚拟分组健康状态与偏好节点",
+		stmts: []string{
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN preferred_proxy_id TEXT NOT NULL DEFAULT ''`,
+			`CREATE TABLE IF NOT EXISTS browser_proxy_virtual_group_member_state (
+				group_id              TEXT NOT NULL,
+				proxy_id              TEXT NOT NULL,
+				state                 TEXT NOT NULL DEFAULT 'unknown',
+				consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+				consecutive_successes INTEGER NOT NULL DEFAULT 0,
+				last_probe_at         TEXT NOT NULL DEFAULT '',
+				last_success_at       TEXT NOT NULL DEFAULT '',
+				last_failure_at       TEXT NOT NULL DEFAULT '',
+				next_probe_at         TEXT NOT NULL DEFAULT '',
+				last_error            TEXT NOT NULL DEFAULT '',
+				last_engine           TEXT NOT NULL DEFAULT '',
+				last_connector_type   TEXT NOT NULL DEFAULT '',
+				updated_at            TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (group_id, proxy_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_vgm_state_group_state ON browser_proxy_virtual_group_member_state(group_id, state)`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

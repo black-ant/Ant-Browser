@@ -35,6 +35,12 @@ func (a *App) SaveBrowserProxyVirtualGroup(group BrowserProxyVirtualGroup) error
 		return fmt.Errorf("应用未初始化，无法保存虚拟代理分组")
 	}
 	group = browser.NormalizeProxyVirtualGroup(group)
+	// 编辑保存时前端不传偏好节点：沿用库里已有的值，避免每次保存都把偏好清空。
+	if group.GroupId != "" && group.PreferredProxyId == "" {
+		if existing, ok := a.findProxyVirtualGroupByID(group.GroupId); ok {
+			group.PreferredProxyId = existing.PreferredProxyId
+		}
+	}
 	group, err := validateProxyVirtualGroupMembers(group, a.latestProxiesForVirtualGroup())
 	if err != nil {
 		return err
@@ -88,6 +94,7 @@ func (a *App) SaveBrowserProxyVirtualGroup(group BrowserProxyVirtualGroup) error
 
 	a.resetProxyVirtualGroupCursorByKey(previousCursorKey)
 	a.resetProxyVirtualGroupCursorForGroup(group)
+	a.invalidateVirtualGroupSnapshot()
 	logger.New("Browser").Info("虚拟代理分组已保存", logger.F("group_id", group.GroupId), logger.F("group_name", group.GroupName), logger.F("member_count", len(group.MemberProxyIds)))
 	return nil
 }
@@ -118,7 +125,16 @@ func (a *App) DeleteBrowserProxyVirtualGroup(groupId string) error {
 	} else {
 		return fmt.Errorf("应用未初始化，无法删除虚拟代理分组")
 	}
+	if a.browserMgr.ProxyVirtualGroupMemberStateDAO != nil {
+		if err := a.browserMgr.ProxyVirtualGroupMemberStateDAO.DeleteByGroup(groupId); err != nil {
+			logger.New("Browser").Warn("删除虚拟分组成员健康状态失败",
+				logger.F("group_id", groupId),
+				logger.F("error", err.Error()),
+			)
+		}
+	}
 	a.resetProxyVirtualGroupCursor(groupId)
+	a.invalidateVirtualGroupSnapshot()
 	return nil
 }
 
@@ -154,7 +170,23 @@ func (a *App) findProxyVirtualGroup(groupName string) (browser.ProxyVirtualGroup
 	return browser.ProxyVirtualGroup{}, false
 }
 
+// virtualGroupSelectionReason 说明本次写入选点的来源，决定是否同时改写偏好节点。
+type virtualGroupSelectionReason string
+
+const (
+	// virtualGroupSelectionInitial 启动选中：只在没有偏好节点时补写 preferred。
+	virtualGroupSelectionInitial virtualGroupSelectionReason = "initial"
+	// virtualGroupSelectionFailover 降级切换：只改 selected，保留 preferred 以便恢复后回切。
+	virtualGroupSelectionFailover virtualGroupSelectionReason = "failover"
+	// virtualGroupSelectionManual 用户手动指定：同时改 selected 与 preferred。
+	virtualGroupSelectionManual virtualGroupSelectionReason = "manual"
+)
+
 func (a *App) rememberProxyVirtualGroupSelection(group browser.ProxyVirtualGroup, proxyID string) {
+	a.rememberVirtualGroupSelection(group, proxyID, virtualGroupSelectionInitial)
+}
+
+func (a *App) rememberVirtualGroupSelection(group browser.ProxyVirtualGroup, proxyID string, reason virtualGroupSelectionReason) {
 	if a == nil || a.browserMgr == nil || browser.NormalizeProxyVirtualGroupStrategy(group.Strategy) != browser.ProxyVirtualGroupStrategySticky {
 		return
 	}
@@ -164,6 +196,16 @@ func (a *App) rememberProxyVirtualGroupSelection(group browser.ProxyVirtualGroup
 	}
 	group = browser.NormalizeProxyVirtualGroup(group)
 	group.SelectedProxyId = proxyID
+	switch reason {
+	case virtualGroupSelectionFailover:
+		// 降级切换不覆盖偏好节点。
+	case virtualGroupSelectionManual:
+		group.PreferredProxyId = proxyID
+	default:
+		if group.PreferredProxyId == "" {
+			group.PreferredProxyId = proxyID
+		}
+	}
 	if a.browserMgr.ProxyVirtualGroupDAO != nil {
 		if err := a.browserMgr.ProxyVirtualGroupDAO.Upsert(group); err != nil {
 			logger.New("Browser").Warn("保存虚拟代理分组保持节点失败", logger.F("group_id", group.GroupId), logger.F("proxy_id", proxyID), logger.F("error", err))
@@ -177,7 +219,8 @@ func (a *App) rememberProxyVirtualGroupSelection(group browser.ProxyVirtualGroup
 	for index := range a.config.Browser.ProxyVirtualGroups {
 		item := &a.config.Browser.ProxyVirtualGroups[index]
 		if (group.GroupId != "" && item.GroupId == group.GroupId) || (group.GroupId == "" && strings.EqualFold(strings.TrimSpace(item.GroupName), group.GroupName)) {
-			item.SelectedProxyId = proxyID
+			item.SelectedProxyId = group.SelectedProxyId
+			item.PreferredProxyId = group.PreferredProxyId
 			updated = true
 			break
 		}
@@ -319,18 +362,24 @@ func validateProxyVirtualGroupMembers(group browser.ProxyVirtualGroup, proxies [
 	group.Strategy = browser.NormalizeProxyVirtualGroupStrategy(group.Strategy)
 	if group.Strategy != browser.ProxyVirtualGroupStrategySticky {
 		group.SelectedProxyId = ""
+		group.PreferredProxyId = ""
 	} else {
-		selectedProxyID := strings.ToLower(strings.TrimSpace(group.SelectedProxyId))
-		selectedExists := false
-		for _, memberProxyID := range group.MemberProxyIds {
-			if strings.EqualFold(strings.TrimSpace(memberProxyID), selectedProxyID) {
-				selectedExists = true
-				break
-			}
-		}
-		if !selectedExists {
-			group.SelectedProxyId = ""
-		}
+		group.SelectedProxyId = keepMemberProxyID(group.SelectedProxyId, group.MemberProxyIds)
+		group.PreferredProxyId = keepMemberProxyID(group.PreferredProxyId, group.MemberProxyIds)
 	}
 	return browser.NormalizeProxyVirtualGroup(group), nil
+}
+
+// keepMemberProxyID 仅保留确实属于分组成员的代理 ID，避免保存悬空引用。
+func keepMemberProxyID(proxyID string, memberProxyIDs []string) string {
+	proxyID = strings.TrimSpace(proxyID)
+	if proxyID == "" {
+		return ""
+	}
+	for _, memberProxyID := range memberProxyIDs {
+		if strings.EqualFold(strings.TrimSpace(memberProxyID), proxyID) {
+			return proxyID
+		}
+	}
+	return ""
 }

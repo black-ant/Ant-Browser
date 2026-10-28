@@ -23,6 +23,7 @@ func (d *SQLiteProxyVirtualGroupDAO) List() ([]ProxyVirtualGroup, error) {
 	rows, err := d.db.Query(`
 		SELECT COALESCE(group_id, ''), COALESCE(group_name, ''),
 		       COALESCE(strategy, 'round_robin'), COALESCE(selected_proxy_id, ''),
+		       COALESCE(preferred_proxy_id, ''),
 		       COALESCE(member_proxy_ids, '[]'), COALESCE(member_group_names, '[]'),
 		       COALESCE(sort_order, 0), COALESCE(created_at, ''), COALESCE(updated_at, '')
 		FROM browser_proxy_virtual_groups
@@ -54,6 +55,7 @@ func (d *SQLiteProxyVirtualGroupDAO) GetByName(groupName string) (*ProxyVirtualG
 	row := d.db.QueryRow(`
 		SELECT COALESCE(group_id, ''), COALESCE(group_name, ''),
 		       COALESCE(strategy, 'round_robin'), COALESCE(selected_proxy_id, ''),
+		       COALESCE(preferred_proxy_id, ''),
 		       COALESCE(member_proxy_ids, '[]'), COALESCE(member_group_names, '[]'),
 		       COALESCE(sort_order, 0), COALESCE(created_at, ''), COALESCE(updated_at, '')
 		FROM browser_proxy_virtual_groups
@@ -91,17 +93,18 @@ func (d *SQLiteProxyVirtualGroupDAO) Upsert(group ProxyVirtualGroup) error {
 	}
 	_, err = d.db.Exec(`
 		INSERT INTO browser_proxy_virtual_groups (
-			group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			group_id, group_name, strategy, selected_proxy_id, preferred_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(group_id) DO UPDATE SET
 			group_name = excluded.group_name,
 			strategy = excluded.strategy,
 			selected_proxy_id = excluded.selected_proxy_id,
+			preferred_proxy_id = excluded.preferred_proxy_id,
 			member_proxy_ids = excluded.member_proxy_ids,
 			member_group_names = excluded.member_group_names,
 			sort_order = excluded.sort_order,
 			updated_at = excluded.updated_at`,
-		group.GroupId, group.GroupName, group.Strategy, group.SelectedProxyId, string(memberProxyIDs), string(memberGroupNames), group.SortOrder, group.CreatedAt, group.UpdatedAt)
+		group.GroupId, group.GroupName, group.Strategy, group.SelectedProxyId, group.PreferredProxyId, string(memberProxyIDs), string(memberGroupNames), group.SortOrder, group.CreatedAt, group.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("保存虚拟代理分组失败: %w", err)
 	}
@@ -128,14 +131,16 @@ func scanProxyVirtualGroup(row rowScanner) (ProxyVirtualGroup, error) {
 		group                ProxyVirtualGroup
 		strategy             string
 		selectedProxyID      string
+		preferredProxyID     string
 		memberProxyIDsJSON   string
 		memberGroupNamesJSON string
 	)
-	if err := row.Scan(&group.GroupId, &group.GroupName, &strategy, &selectedProxyID, &memberProxyIDsJSON, &memberGroupNamesJSON, &group.SortOrder, &group.CreatedAt, &group.UpdatedAt); err != nil {
+	if err := row.Scan(&group.GroupId, &group.GroupName, &strategy, &selectedProxyID, &preferredProxyID, &memberProxyIDsJSON, &memberGroupNamesJSON, &group.SortOrder, &group.CreatedAt, &group.UpdatedAt); err != nil {
 		return ProxyVirtualGroup{}, err
 	}
 	group.Strategy = strategy
 	group.SelectedProxyId = selectedProxyID
+	group.PreferredProxyId = preferredProxyID
 	if err := json.Unmarshal([]byte(memberProxyIDsJSON), &group.MemberProxyIds); err != nil {
 		return ProxyVirtualGroup{}, fmt.Errorf("解析虚拟代理分组代理节点失败: %w", err)
 	}

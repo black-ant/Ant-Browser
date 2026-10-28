@@ -29,6 +29,10 @@ func newRealDataApp(t *testing.T, dbPath string) *App {
 		t.Fatalf("open db failed: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	// 副本库可能来自旧版本，先对齐到当前 schema 再测。
+	if err := db.Migrate(); err != nil {
+		t.Fatalf("migrate copy failed: %v", err)
+	}
 
 	cfg := config.DefaultConfig()
 	cfg.Browser.XrayBinaryPath = mustAbsIfExists(t, filepath.Join("..", "bin", "xray.exe"))
@@ -44,6 +48,7 @@ func newRealDataApp(t *testing.T, dbPath string) *App {
 	app.browserMgr = browser.NewManager(cfg, app.appRoot)
 	app.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(db.GetConn())
 	app.browserMgr.ProxyVirtualGroupDAO = browser.NewSQLiteProxyVirtualGroupDAO(db.GetConn())
+	app.browserMgr.ProxyVirtualGroupMemberStateDAO = browser.NewSQLiteProxyVirtualGroupMemberStateDAO(db.GetConn())
 	app.xrayMgr = proxy.NewXrayManager(cfg, app.appRoot)
 	app.singboxMgr = proxy.NewSingBoxManager(cfg, app.appRoot)
 	app.mieruMgr = proxy.NewMieruManager(cfg, app.appRoot)

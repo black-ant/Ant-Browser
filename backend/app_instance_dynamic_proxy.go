@@ -27,12 +27,19 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 	groupName := browser.NormalizeProxyGroupName(profile.ProxyGroupName)
 	virtualGroup, isVirtualGroup := a.findProxyVirtualGroup(groupName)
 	candidates := selectDynamicBrowserProxyCandidates(proxies, groupName, maxTestAge)
+	allDegraded := false
 	if isVirtualGroup {
 		virtualGroup = browser.ResolveProxyVirtualGroup(virtualGroup, proxies)
-		candidates = selectVirtualDynamicBrowserProxyCandidates(proxies, virtualGroup, maxTestAge)
+		memberStates := a.virtualGroupMemberStates(virtualGroup.GroupId)
+		candidates, allDegraded = a.selectVirtualDynamicBrowserProxyCandidates(proxies, virtualGroup, maxTestAge, memberStates)
 	}
 	log := logger.New("Browser")
 	if len(candidates) == 0 {
+		if allDegraded {
+			startErr := fmt.Errorf("实例启动失败：虚拟分组「%s」的成员全部处于降级状态，已拒绝启动。请先恢复至少一个节点，或在该分组执行「立即巡检」/「清除降级」后重试", groupName)
+			profile.LastError = startErr.Error()
+			return "", profileProxyBridgeRef{}, false, startErr
+		}
 		groupLabel := "全部分组"
 		if groupName != "" {
 			groupLabel = fmt.Sprintf("分组「%s」", groupName)
@@ -112,7 +119,8 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 	return "", profileProxyBridgeRef{}, false, startErr
 }
 
-func selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group browser.ProxyVirtualGroup, maxTestAge time.Duration) []BrowserProxy {
+// selectVirtualDynamicBrowserProxyCandidates 返回可用候选；第二个返回值表示"全组降级"。
+func (a *App) selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group browser.ProxyVirtualGroup, maxTestAge time.Duration, states map[string]browser.ProxyVirtualGroupMemberState) ([]BrowserProxy, bool) {
 	memberIDs := make(map[string]struct{})
 	for _, member := range browser.ExpandProxyVirtualGroup(group, proxies) {
 		proxyID := strings.ToLower(strings.TrimSpace(member.ProxyId))
@@ -121,17 +129,47 @@ func selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy, group br
 		}
 	}
 	if len(memberIDs) == 0 {
-		return []BrowserProxy{}
+		return []BrowserProxy{}, false
 	}
 
 	available := selectDynamicBrowserProxyCandidates(proxies, "", maxTestAge)
+	matched := make([]BrowserProxy, 0, len(memberIDs))
 	candidates := make([]BrowserProxy, 0, len(memberIDs))
+	degradedCount := 0
 	for _, candidate := range available {
-		if _, exists := memberIDs[strings.ToLower(strings.TrimSpace(candidate.ProxyId))]; exists {
-			candidates = append(candidates, candidate)
+		if _, exists := memberIDs[strings.ToLower(strings.TrimSpace(candidate.ProxyId))]; !exists {
+			continue
 		}
+		matched = append(matched, candidate)
+		if a.memberStateDegraded(candidate.ProxyId, states) {
+			degradedCount++
+			continue
+		}
+		candidates = append(candidates, candidate)
 	}
-	return candidates
+	// 只有"每个成员都被明确降级"才拒绝；全部未观测仍按旧逻辑尝试。
+	if len(candidates) == 0 && len(matched) > 0 && degradedCount == len(matched) {
+		logger.New("Browser").Warn("虚拟分组成员全部降级，动态代理拒绝使用该分组",
+			logger.F("group_id", group.GroupId),
+			logger.F("virtual_group", group.GroupName),
+			logger.F("member_count", len(matched)),
+			logger.F("reason", "all_degraded"),
+		)
+		return []BrowserProxy{}, true
+	}
+	return candidates, false
+}
+
+// memberStateDegraded 成员是否被明确标记为降级/恢复观察（跨栈状态不算）。
+func (a *App) memberStateDegraded(proxyID string, states map[string]browser.ProxyVirtualGroupMemberState) bool {
+	if states == nil {
+		return false
+	}
+	row, exists := states[strings.ToLower(strings.TrimSpace(proxyID))]
+	if !exists || !a.memberStateMatchesConnector(row) {
+		return false
+	}
+	return row.State == browser.MemberStateDegraded || row.State == browser.MemberStateRecovering
 }
 
 func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName string, maxTestAge time.Duration) []BrowserProxy {

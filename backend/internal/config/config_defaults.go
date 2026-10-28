@@ -30,6 +30,18 @@ const (
 	MaxProxySpeedConcurrency              = 10
 )
 
+const (
+	// 虚拟分组健康状态默认参数。
+	DefaultVirtualGroupProbeIntervalMinutes  = 5
+	DefaultDegradeFailureThreshold           = 2
+	DefaultRestoreSuccessThreshold           = 2
+	DefaultRuntimeFailoverCooldownMinutes    = 10
+	DefaultRuntimeFailoverMaxAttempts        = 3
+	MaxVirtualGroupHealthThreshold           = 5
+	MaxRuntimeFailoverCooldownMinutes        = 24 * 60
+	MaxRuntimeFailoverAttempts               = 10
+)
+
 // NormalizeBrowserConnectorType 规范化连接栈配置。
 func NormalizeBrowserConnectorType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
@@ -179,6 +191,41 @@ func normalizeConfig(config *Config) {
 	} else if config.ProxyCheck.SpeedConcurrency > MaxProxySpeedConcurrency {
 		config.ProxyCheck.SpeedConcurrency = MaxProxySpeedConcurrency
 	}
+	if config.ProxyCheck.VirtualGroupHealthEnabled == nil {
+		config.ProxyCheck.VirtualGroupHealthEnabled = defaultConfig.ProxyCheck.VirtualGroupHealthEnabled
+	}
+	if config.ProxyCheck.RuntimeFailoverEnabled == nil {
+		config.ProxyCheck.RuntimeFailoverEnabled = defaultConfig.ProxyCheck.RuntimeFailoverEnabled
+	}
+	if config.ProxyCheck.VirtualGroupProbeIntervalMinutes <= 0 {
+		config.ProxyCheck.VirtualGroupProbeIntervalMinutes = defaultConfig.ProxyCheck.VirtualGroupProbeIntervalMinutes
+	} else if config.ProxyCheck.VirtualGroupProbeIntervalMinutes > MaxProxySpeedIntervalMinutes {
+		config.ProxyCheck.VirtualGroupProbeIntervalMinutes = MaxProxySpeedIntervalMinutes
+	}
+	config.ProxyCheck.DegradeFailureThreshold = clampInt(
+		config.ProxyCheck.DegradeFailureThreshold,
+		defaultConfig.ProxyCheck.DegradeFailureThreshold,
+		1,
+		MaxVirtualGroupHealthThreshold,
+	)
+	config.ProxyCheck.RestoreSuccessThreshold = clampInt(
+		config.ProxyCheck.RestoreSuccessThreshold,
+		defaultConfig.ProxyCheck.RestoreSuccessThreshold,
+		1,
+		MaxVirtualGroupHealthThreshold,
+	)
+	config.ProxyCheck.RuntimeFailoverCooldownMinutes = clampInt(
+		config.ProxyCheck.RuntimeFailoverCooldownMinutes,
+		defaultConfig.ProxyCheck.RuntimeFailoverCooldownMinutes,
+		1,
+		MaxRuntimeFailoverCooldownMinutes,
+	)
+	config.ProxyCheck.RuntimeFailoverMaxAttempts = clampInt(
+		config.ProxyCheck.RuntimeFailoverMaxAttempts,
+		defaultConfig.ProxyCheck.RuntimeFailoverMaxAttempts,
+		1,
+		MaxRuntimeFailoverAttempts,
+	)
 	if strings.TrimSpace(config.ProxyCheck.SpeedTargetID) == "" {
 		config.ProxyCheck.SpeedTargetID = defaultConfig.ProxyCheck.SpeedTargetID
 	}
@@ -337,6 +384,14 @@ func DefaultConfig() *Config {
 			SpeedTargetID:        "",
 			IPHealthTargetID:     "",
 			Targets:              []ProxyCheckTarget{},
+
+			VirtualGroupHealthEnabled:        boolPtr(true),
+			VirtualGroupProbeIntervalMinutes: DefaultVirtualGroupProbeIntervalMinutes,
+			DegradeFailureThreshold:          DefaultDegradeFailureThreshold,
+			RestoreSuccessThreshold:          DefaultRestoreSuccessThreshold,
+			RuntimeFailoverEnabled:           boolPtr(true),
+			RuntimeFailoverCooldownMinutes:   DefaultRuntimeFailoverCooldownMinutes,
+			RuntimeFailoverMaxAttempts:       DefaultRuntimeFailoverMaxAttempts,
 		},
 		Logging: LoggingConfig{
 			Level:           "info",
@@ -474,4 +529,18 @@ func normalizeAutomationNodeSource(value string) string {
 func boolPtr(value bool) *bool {
 	v := value
 	return &v
+}
+
+// clampInt 未配置（<=0）时回落到默认值，再钳制到 [min, max]。
+func clampInt(value int, fallback int, min int, max int) int {
+	if value <= 0 {
+		value = fallback
+	}
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }

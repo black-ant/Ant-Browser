@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, FolderOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, ConfirmModal, Input, Modal, Select, Switch, Table, toast } from '../../../shared/components'
 import type { SortOrder, TableColumn } from '../../../shared/components/Table'
-import type { BrowserProxy, BrowserProxyVirtualGroup } from '../types'
+import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyVirtualGroupHealth } from '../types'
 import {
   deleteBrowserProxyVirtualGroup,
   fetchBrowserProxies,
+  fetchBrowserProxyVirtualGroupHealth,
   fetchBrowserProxyVirtualGroups,
+  probeBrowserProxyVirtualGroup,
   saveBrowserProxyVirtualGroup,
 } from '../api'
+import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import { useProxyChecks } from './proxyPool/useProxyChecks'
 import { ProxyVirtualGroupMembersModal } from './proxyPool/ProxyVirtualGroupMembersModal'
 import { toDisplayList, type ProxyDisplayInfo } from './proxyPool/helpers'
@@ -94,6 +97,7 @@ export function ProxyVirtualGroupsPage() {
     groupName: string
     strategy?: string
     members: ProxyDisplayInfo[]
+    health: ProxyVirtualGroupHealth | null
   } | null>(null)
   const [proxyFilter, setProxyFilter] = useState('')
   const [proxyGroupFilter, setProxyGroupFilter] = useState('')
@@ -103,6 +107,17 @@ export function ProxyVirtualGroupsPage() {
   const [proxySortColumn, setProxySortColumn] = useState<string>('latency')
   const [proxySortOrder, setProxySortOrder] = useState<SortOrder>('asc')
   const [editorStep, setEditorStep] = useState<'details' | 'nodes'>('details')
+  const [healthByGroupId, setHealthByGroupId] = useState<Map<string, ProxyVirtualGroupHealth>>(new Map())
+  const [probingGroupId, setProbingGroupId] = useState('')
+
+  const loadHealth = async () => {
+    try {
+      const list = await fetchBrowserProxyVirtualGroupHealth()
+      setHealthByGroupId(new Map(list.map(item => [item.groupId, item])))
+    } catch {
+      // 健康聚合失败不应阻塞分组列表展示。
+    }
+  }
 
   const load = async () => {
     setLoading(true)
@@ -113,6 +128,7 @@ export function ProxyVirtualGroupsPage() {
       ])
       setProxies(poolProxies)
       setVirtualGroups(configuredGroups)
+      await loadHealth()
     } catch (error: any) {
       toast.error(error?.message || '加载虚拟分组失败')
     } finally {
@@ -121,6 +137,26 @@ export function ProxyVirtualGroupsPage() {
   }
 
   useEffect(() => { void load() }, [])
+
+  useEffect(() => {
+    const off = EventsOn('proxy:virtual-group:health', () => { void loadHealth() })
+    return () => { off?.() }
+  }, [])
+
+  const handleProbe = async (group: BrowserProxyVirtualGroup) => {
+    setProbingGroupId(group.groupId)
+    try {
+      const result = await probeBrowserProxyVirtualGroup(group.groupId)
+      if (result) {
+        toast.success(`「${group.groupName}」巡检完成：可用 ${result.healthy} / ${result.tested}`)
+      }
+      await loadHealth()
+    } catch (error: any) {
+      toast.error(error?.message || '巡检失败')
+    } finally {
+      setProbingGroupId('')
+    }
+  }
 
   const proxyById = useMemo(() => {
     const result = new Map<string, BrowserProxy>()
@@ -217,6 +253,7 @@ export function ProxyVirtualGroupsPage() {
       groupName: group.groupName,
       strategy: group.strategy,
       members,
+      health: healthByGroupId.get(group.groupId) ?? null,
     })
   }
 
@@ -517,12 +554,50 @@ export function ProxyVirtualGroupsPage() {
       render: (_, group) => <span className='text-sm text-[var(--color-text-secondary)]'>{getVirtualGroupStrategyLabel(group.strategy)}</span>,
     },
     {
+      key: 'health',
+      title: '健康',
+      width: '150px',
+      render: (_, group) => {
+        const health = healthByGroupId.get(group.groupId)
+        if (!health || health.total === 0) {
+          return <span className='text-xs text-[var(--color-text-muted)]'>-</span>
+        }
+        const usable = health.healthy + health.suspect
+        const observed = usable + health.degraded
+        if (observed === 0) {
+          return <span className='text-xs text-[var(--color-text-muted)]'>待观测</span>
+        }
+        const tone = usable === 0 ? 'text-red-500' : usable < health.total ? 'text-amber-500' : 'text-emerald-500'
+        const degradedHint = health.members
+          .filter(member => member.state === 'degraded' || member.state === 'recovering')
+          .map(member => `${member.proxyName || member.proxyId}${member.lastError ? `：${member.lastError}` : ''}`)
+          .join('\n')
+        return (
+          <div className='flex min-w-0 flex-col gap-1' title={degradedHint}>
+            <span className={`text-xs font-medium ${tone}`}>可用 {usable}/{health.total}</span>
+            {health.allDegraded && (
+              <span className='w-fit rounded bg-red-500/10 px-1.5 py-0.5 text-[11px] text-red-500'>全部降级</span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       key: 'actions',
       title: '操作',
-      width: '140px',
+      width: '180px',
       align: 'center',
       render: (_, group) => (
         <div className='flex items-center justify-center gap-1'>
+          <Button
+            size='sm'
+            variant='ghost'
+            loading={probingGroupId === group.groupId}
+            onClick={() => void handleProbe(group)}
+            title='立即巡检'
+          >
+            <RefreshCw className='h-4 w-4' />
+          </Button>
           <Button size='sm' variant='ghost' onClick={() => openEdit(group)} title='编辑'>
             <Pencil className='h-4 w-4' />
           </Button>
@@ -572,6 +647,7 @@ export function ProxyVirtualGroupsPage() {
         groupName={membersModal?.groupName || ''}
         strategy={membersModal?.strategy}
         members={membersModal?.members || []}
+        health={membersModal?.health || null}
         onClose={() => setMembersModal(null)}
       />
 

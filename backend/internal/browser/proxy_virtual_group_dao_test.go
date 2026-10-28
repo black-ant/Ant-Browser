@@ -63,6 +63,7 @@ func TestSQLiteProxyVirtualGroupDAOHandlesNullJSON(t *testing.T) {
 			group_name TEXT,
 			strategy TEXT,
 			selected_proxy_id TEXT,
+			preferred_proxy_id TEXT,
 			member_proxy_ids TEXT,
 			member_group_names TEXT,
 			sort_order INTEGER,

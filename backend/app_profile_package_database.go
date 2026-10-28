@@ -465,6 +465,10 @@ func queryProfilePackageProxyVirtualGroups(conn *sql.DB, groupNames map[string]s
 	if err != nil {
 		return nil, err
 	}
+	hasPreferredProxyID, err := profilePackageDatabaseColumnExists(conn, "browser_proxy_virtual_groups", "preferred_proxy_id")
+	if err != nil {
+		return nil, err
+	}
 	memberProxyIDsExpression := `'[]'`
 	if hasMemberProxyIDs {
 		memberProxyIDsExpression = `COALESCE(member_proxy_ids,'[]')`
@@ -481,6 +485,10 @@ func queryProfilePackageProxyVirtualGroups(conn *sql.DB, groupNames map[string]s
 	if hasSelectedProxyID {
 		selectedProxyIDExpression = `COALESCE(selected_proxy_id,'')`
 	}
+	preferredProxyIDExpression := `''`
+	if hasPreferredProxyID {
+		preferredProxyIDExpression = `COALESCE(preferred_proxy_id,'')`
+	}
 	legacyProxies := make([]browser.Proxy, 0)
 	if hasMemberGroupNames {
 		legacyProxies, err = queryProfilePackageProxyVirtualGroupMembers(conn)
@@ -489,8 +497,8 @@ func queryProfilePackageProxyVirtualGroups(conn *sql.DB, groupNames map[string]s
 		}
 	}
 	rows, err := conn.Query(fmt.Sprintf(`
-		SELECT group_id, group_name, %s, %s, %s, %s, sort_order, created_at, updated_at
-		FROM browser_proxy_virtual_groups ORDER BY sort_order ASC, group_name COLLATE NOCASE ASC`, strategyExpression, selectedProxyIDExpression, memberProxyIDsExpression, memberGroupNamesExpression))
+		SELECT group_id, group_name, %s, %s, %s, %s, %s, sort_order, created_at, updated_at
+		FROM browser_proxy_virtual_groups ORDER BY sort_order ASC, group_name COLLATE NOCASE ASC`, strategyExpression, selectedProxyIDExpression, preferredProxyIDExpression, memberProxyIDsExpression, memberGroupNamesExpression))
 	if err != nil {
 		return nil, fmt.Errorf("读取虚拟代理分组失败: %w", err)
 	}
@@ -502,14 +510,16 @@ func queryProfilePackageProxyVirtualGroups(conn *sql.DB, groupNames map[string]s
 			group                browser.ProxyVirtualGroup
 			strategy             string
 			selectedProxyID      string
+			preferredProxyID     string
 			memberProxyIDsJSON   string
 			memberGroupNamesJSON string
 		)
-		if err := rows.Scan(&group.GroupId, &group.GroupName, &strategy, &selectedProxyID, &memberProxyIDsJSON, &memberGroupNamesJSON, &group.SortOrder, &group.CreatedAt, &group.UpdatedAt); err != nil {
+		if err := rows.Scan(&group.GroupId, &group.GroupName, &strategy, &selectedProxyID, &preferredProxyID, &memberProxyIDsJSON, &memberGroupNamesJSON, &group.SortOrder, &group.CreatedAt, &group.UpdatedAt); err != nil {
 			return nil, err
 		}
 		group.Strategy = strategy
 		group.SelectedProxyId = selectedProxyID
+		group.PreferredProxyId = preferredProxyID
 		if err := json.Unmarshal([]byte(memberProxyIDsJSON), &group.MemberProxyIds); err != nil {
 			return nil, fmt.Errorf("解析虚拟代理分组代理节点失败: %w", err)
 		}
@@ -1259,6 +1269,14 @@ func restoreProfilePackageProxyVirtualGroups(tx *sql.Tx, source []browser.ProxyV
 				group.SelectedProxyId = ""
 			}
 		}
+		if preferredProxyID := strings.TrimSpace(group.PreferredProxyId); preferredProxyID != "" {
+			if mapped := proxyMappings[backupImportIDKey(preferredProxyID)]; mapped != "" {
+				group.PreferredProxyId = mapped
+			} else {
+				appendProfilePackageWarning(warnings, fmt.Sprintf("虚拟代理分组「%s」的偏好代理「%s」未找到，已清空偏好", group.GroupName, preferredProxyID))
+				group.PreferredProxyId = ""
+			}
+		}
 
 		if _, exists := usedNames[nameKey]; exists {
 			group.GroupName = profilePackageUniqueProxyVirtualGroupName(group.GroupName, usedNames)
@@ -1294,9 +1312,9 @@ func restoreProfilePackageProxyVirtualGroups(tx *sql.Tx, source []browser.ProxyV
 		}
 		if _, err := tx.Exec(`
 			INSERT INTO browser_proxy_virtual_groups (
-				group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			targetID, group.GroupName, group.Strategy, group.SelectedProxyId, string(memberProxyIDs), string(memberGroupNames), group.SortOrder, createdAt, updatedAt,
+				group_id, group_name, strategy, selected_proxy_id, preferred_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			targetID, group.GroupName, group.Strategy, group.SelectedProxyId, group.PreferredProxyId, string(memberProxyIDs), string(memberGroupNames), group.SortOrder, createdAt, updatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("恢复虚拟代理分组失败(%s): %w", group.GroupName, err)
 		}

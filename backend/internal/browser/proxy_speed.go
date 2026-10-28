@@ -2,6 +2,7 @@ package browser
 
 import (
 	"ant-chrome/backend/internal/config"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,10 @@ type ProxySpeedScheduler struct {
 	testFn        SpeedTestFunc
 	proxyTestFn   ProxySpeedTestFunc
 	resultCurrent ProxySpeedResultCurrentFunc
+	// priorityFn 值越大越先探测，用于让虚拟分组成员优先于全池。
+	priorityFn func(proxy Proxy) int
+	// intervalFn 返回单个代理的自定义探测间隔，<=0 表示沿用全局设置。
+	intervalFn    func(proxy Proxy) time.Duration
 	persistResult bool
 	interval      time.Duration
 	failureRetry  time.Duration
@@ -92,6 +97,20 @@ func (s *ProxySpeedScheduler) SetResultCurrentFunc(check ProxySpeedResultCurrent
 func (s *ProxySpeedScheduler) SetResultPersistence(enabled bool) {
 	s.mu.Lock()
 	s.persistResult = enabled
+	s.mu.Unlock()
+}
+
+// SetPriorityFunc 设置探测优先级（值越大越先探测）；传 nil 表示取消。
+func (s *ProxySpeedScheduler) SetPriorityFunc(fn func(proxy Proxy) int) {
+	s.mu.Lock()
+	s.priorityFn = fn
+	s.mu.Unlock()
+}
+
+// SetIntervalFunc 设置单个代理的探测间隔；返回 <=0 表示沿用全局设置。
+func (s *ProxySpeedScheduler) SetIntervalFunc(fn func(proxy Proxy) time.Duration) {
+	s.mu.Lock()
+	s.intervalFn = fn
 	s.mu.Unlock()
 }
 
@@ -198,15 +217,25 @@ func (s *ProxySpeedScheduler) runAll() {
 		return
 	}
 
-	sem := make(chan struct{}, s.concLimit)
-	var wg sync.WaitGroup
 	s.mu.Lock()
 	testFn := s.testFn
 	proxyTestFn := s.proxyTestFn
 	resultCurrent := s.resultCurrent
 	persistResult := s.persistResult
+	priorityFn := s.priorityFn
+	intervalFn := s.intervalFn
 	s.mu.Unlock()
 
+	if testFn == nil && proxyTestFn == nil {
+		return
+	}
+
+	type probeJob struct {
+		proxy    Proxy
+		priority int
+	}
+	jobs := make([]probeJob, 0, len(proxies))
+	checkedAt := time.Now()
 	for _, p := range proxies {
 		// 跳过直连（无意义测速）
 		if p.ProxyConfig == "direct://" {
@@ -216,13 +245,35 @@ func (s *ProxySpeedScheduler) runAll() {
 		if !p.LastTestOk {
 			nextInterval = s.failureRetry
 		}
-		due := isProxySpeedResultDue(p.LastTestedAt, time.Now(), nextInterval)
+		if intervalFn != nil {
+			if custom := intervalFn(p); custom > 0 {
+				// 失败节点保留更短的失败重试间隔，避免把退避拉长。
+				if p.LastTestOk || custom < nextInterval {
+					nextInterval = custom
+				}
+			}
+		}
+		due := isProxySpeedResultDue(p.LastTestedAt, checkedAt, nextInterval)
 		if !due && resultCurrent != nil && !resultCurrent(p, proxies) {
 			due = true
 		}
-		if !due || testFn == nil && proxyTestFn == nil {
+		if !due {
 			continue
 		}
+		priority := 0
+		if priorityFn != nil {
+			priority = priorityFn(p)
+		}
+		jobs = append(jobs, probeJob{proxy: p, priority: priority})
+	}
+
+	// 两段式：先按优先级排序，再提交并发闸门，保证分组成员在大池子里也先被观测。
+	sort.SliceStable(jobs, func(i, j int) bool { return jobs[i].priority > jobs[j].priority })
+
+	sem := make(chan struct{}, s.concLimit)
+	var wg sync.WaitGroup
+	for _, job := range jobs {
+		p := job.proxy
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(proxy Proxy) {

@@ -107,6 +107,7 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 	}
 	profileIDs := make([]string, 0)
 	proxyIDs := make(map[string]string)
+	profileProxyIDs := make(map[string]string)
 	a.bridgeMu.Lock()
 	for profileID, ref := range a.profileBridgeRefs {
 		if !strings.EqualFold(strings.TrimSpace(ref.Engine), engine) || strings.TrimSpace(ref.Key) != key {
@@ -115,6 +116,7 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 		profileIDs = append(profileIDs, profileID)
 		if proxyID := strings.TrimSpace(ref.ProxyID); proxyID != "" {
 			proxyIDs[strings.ToLower(proxyID)] = proxyID
+			profileProxyIDs[profileID] = proxyID
 		}
 	}
 	a.bridgeMu.Unlock()
@@ -143,6 +145,15 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 		"profileIds": profileIDs,
 		"proxyIds":   proxyIDList,
 	})
+
+	// 桥接进程死亡是强信号：绑定了虚拟分组的实例尝试切到组内其他健康成员。
+	for _, profileID := range profileIDs {
+		proxyID := profileProxyIDs[profileID]
+		if proxyID == "" {
+			continue
+		}
+		a.scheduleVirtualGroupProxyFailure(profileID, proxyID, "bridge_died", err)
+	}
 }
 
 func (a *App) recordProxyBridgeFailure(proxyID string) {
@@ -166,6 +177,8 @@ func (a *App) recordProxyBridgeFailure(proxyID string) {
 
 func (a *App) reportProxyBridgeFailure(profileID string, profileName string, proxyID string, engine string, cause error) {
 	a.recordProxyBridgeFailure(proxyID)
+	// 启动期桥接失败同样视为该成员不可用，后续候选选择直接跳过它。
+	a.markProxyDegradedInAllGroups(proxyID, cause)
 	a.emitRuntimeEvent("proxy:bridge:failed", map[string]interface{}{
 		"profileId":   profileID,
 		"profileName": profileName,

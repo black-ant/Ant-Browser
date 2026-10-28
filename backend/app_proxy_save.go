@@ -62,13 +62,20 @@ func (a *App) pruneProxyVirtualGroupMembers(proxies []BrowserProxy) error {
 		}
 		selectedProxyID := strings.ToLower(strings.TrimSpace(group.SelectedProxyId))
 		_, selectedExists := validProxyIDs[selectedProxyID]
-		if len(filteredIDs) == len(group.MemberProxyIds) && (selectedProxyID == "" || selectedExists) {
+		preferredProxyID := strings.ToLower(strings.TrimSpace(group.PreferredProxyId))
+		_, preferredExists := validProxyIDs[preferredProxyID]
+		if len(filteredIDs) == len(group.MemberProxyIds) &&
+			(selectedProxyID == "" || selectedExists) &&
+			(preferredProxyID == "" || preferredExists) {
 			configGroups = append(configGroups, group)
 			continue
 		}
 		group.MemberProxyIds = filteredIDs
 		if !selectedExists {
 			group.SelectedProxyId = ""
+		}
+		if !preferredExists {
+			group.PreferredProxyId = ""
 		}
 		configGroups = append(configGroups, group)
 		a.resetProxyVirtualGroupCursorForGroup(group)
@@ -86,5 +93,6 @@ func (a *App) pruneProxyVirtualGroupMembers(proxies []BrowserProxy) error {
 			return fmt.Errorf("保存清理后的虚拟代理分组失败: %w", err)
 		}
 	}
+	a.invalidateVirtualGroupSnapshot()
 	return nil
 }

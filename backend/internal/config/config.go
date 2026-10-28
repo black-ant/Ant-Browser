@@ -68,6 +68,25 @@ type ProxyCheckConfig struct {
 	SpeedTargetID        string             `yaml:"speed_target_id" json:"speedTargetId"`
 	IPHealthTargetID     string             `yaml:"ip_health_target_id" json:"ipHealthTargetId"`
 	Targets              []ProxyCheckTarget `yaml:"targets" json:"targets"`
+
+	// 虚拟分组健康状态（降级/升级）相关配置。
+	VirtualGroupHealthEnabled        *bool `yaml:"virtual_group_health_enabled,omitempty" json:"virtualGroupHealthEnabled,omitempty"`
+	VirtualGroupProbeIntervalMinutes int   `yaml:"virtual_group_probe_interval_minutes" json:"virtualGroupProbeIntervalMinutes"`
+	DegradeFailureThreshold          int   `yaml:"degrade_failure_threshold" json:"degradeFailureThreshold"`
+	RestoreSuccessThreshold          int   `yaml:"restore_success_threshold" json:"restoreSuccessThreshold"`
+	RuntimeFailoverEnabled           *bool `yaml:"runtime_failover_enabled,omitempty" json:"runtimeFailoverEnabled,omitempty"`
+	RuntimeFailoverCooldownMinutes   int   `yaml:"runtime_failover_cooldown_minutes" json:"runtimeFailoverCooldownMinutes"`
+	RuntimeFailoverMaxAttempts       int   `yaml:"runtime_failover_max_attempts" json:"runtimeFailoverMaxAttempts"`
+}
+
+// IsVirtualGroupHealthEnabled 未显式配置时默认开启。
+func (c ProxyCheckConfig) IsVirtualGroupHealthEnabled() bool {
+	return c.VirtualGroupHealthEnabled == nil || *c.VirtualGroupHealthEnabled
+}
+
+// IsRuntimeFailoverEnabled 未显式配置时默认开启（仅响应桥接死亡强信号）。
+func (c ProxyCheckConfig) IsRuntimeFailoverEnabled() bool {
+	return c.RuntimeFailoverEnabled == nil || *c.RuntimeFailoverEnabled
 }
 
 type ProxyCheckTarget struct {
@@ -249,10 +268,13 @@ type BrowserProxy struct {
 }
 
 type BrowserProxyVirtualGroup struct {
-	GroupId          string   `yaml:"group_id" json:"groupId"`
-	GroupName        string   `yaml:"group_name" json:"groupName"`
-	Strategy         string   `yaml:"strategy,omitempty" json:"strategy,omitempty"`
-	SelectedProxyId  string   `yaml:"selected_proxy_id,omitempty" json:"selectedProxyId,omitempty"`
+	GroupId   string `yaml:"group_id" json:"groupId"`
+	GroupName string `yaml:"group_name" json:"groupName"`
+	Strategy  string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+	// SelectedProxyId 当前实际使用的成员代理（降级切换会改写它）。
+	SelectedProxyId string `yaml:"selected_proxy_id,omitempty" json:"selectedProxyId,omitempty"`
+	// PreferredProxyId 用户偏好节点，降级切换时不改写，节点恢复后用于回切。
+	PreferredProxyId string   `yaml:"preferred_proxy_id,omitempty" json:"preferredProxyId,omitempty"`
 	MemberProxyIds   []string `yaml:"member_proxy_ids,omitempty" json:"memberProxyIds,omitempty"`
 	MemberGroupNames []string `yaml:"member_group_names,omitempty" json:"memberGroupNames,omitempty"`
 	SortOrder        int      `yaml:"sort_order,omitempty" json:"sortOrder,omitempty"`

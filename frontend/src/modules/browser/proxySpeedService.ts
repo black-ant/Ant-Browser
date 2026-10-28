@@ -5,8 +5,28 @@ import type { ProxySpeedTestResult } from './types'
 
 const SPEED_RESULT_EVENT = 'proxy:speed:result'
 
+// 单次测速最长等待：内核启动 15s + 两次探测 3s + 重试余量。
+const SPEED_TEST_TIMEOUT_MS = 45_000
+// 批量测速按并发分批，给足整体余量。
+const SPEED_BATCH_TIMEOUT_MS = 180_000
 
 let listenerReady = false
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      error => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
 
 function normalizeResult(proxyId: string, result: Partial<ProxySpeedTestResult>): ProxySpeedResult {
   return {
@@ -41,7 +61,7 @@ export async function testProxySpeedOnce(proxyId: string): Promise<ProxySpeedRes
   const store = useProxySpeedStore.getState()
   store.setTesting(id, true)
   try {
-    const result = await browserProxyTestSpeed(id)
+    const result = await withTimeout(browserProxyTestSpeed(id), SPEED_TEST_TIMEOUT_MS, '测速超时：内核启动或探测耗时过长')
     const normalized = normalizeResult(id, result)
     useProxySpeedStore.getState().setResult(normalized)
     return normalized
@@ -61,7 +81,7 @@ export async function testProxySpeeds(proxyIds: string[], concurrency = 0): Prom
   const store = useProxySpeedStore.getState()
   store.setManyTesting(ids, true)
   try {
-    const results = await browserProxyBatchTestSpeed(ids, concurrency)
+    const results = await withTimeout(browserProxyBatchTestSpeed(ids, concurrency), SPEED_BATCH_TIMEOUT_MS, '批量测速超时')
     const normalized = results
       .filter((result) => !!result?.proxyId)
       .map((result) => normalizeResult(result.proxyId, result))

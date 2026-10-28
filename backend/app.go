@@ -11,6 +11,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 )
 
 type quitMode uint8
@@ -53,6 +54,10 @@ type App struct {
 	proxyVirtualGroupMu           sync.Mutex
 	proxyVirtualGroupCursor       map[string]int
 	proxyVirtualGroupLocks        map[string]*sync.Mutex
+	virtualGroupSnapshot          virtualGroupSnapshotCache
+	proxyFailoverMu               sync.Mutex
+	proxyFailoverLastAt           map[string]time.Time
+	proxyFailoverCount            map[string]int
 	profileBridgeRefs             map[string]profileProxyBridgeRef
 	deferredStartTargetsMu        sync.Mutex
 	deferredStartTargets          map[string]deferredStartTargetsPlan
@@ -78,6 +83,8 @@ func NewApp(appRoot string, appVersion ...string) *App {
 		profileBridgeRefs:       make(map[string]profileProxyBridgeRef),
 		proxyVirtualGroupCursor: make(map[string]int),
 		proxyVirtualGroupLocks:  make(map[string]*sync.Mutex),
+		proxyFailoverLastAt:     make(map[string]time.Time),
+		proxyFailoverCount:      make(map[string]int),
 		deferredStartTargets:    make(map[string]deferredStartTargetsPlan),
 		automationTargetCursor:  make(map[string]string),
 		profileWindowMarkers:    make(map[string]*profileWindowMarker),

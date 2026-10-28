@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
@@ -34,7 +35,25 @@ func (a *App) resolveVirtualGroupProxyTarget(proxyID string, proxies []BrowserPr
 	if !ok {
 		return "", "", false
 	}
-	return a.pickVirtualGroupStartProxy(group, proxies, "virtual-target")
+	if memberID, memberConfig, picked := a.pickVirtualGroupStartProxy(group, proxies, "virtual-target"); picked {
+		return memberID, memberConfig, true
+	}
+	// 全员降级时选点会返回空，但手动测速必须仍可用，否则用户无法把节点测回来。
+	resolved := browser.ResolveProxyVirtualGroup(group, proxies)
+	memberSet := make(map[string]struct{}, len(resolved.MemberProxyIds))
+	for _, memberID := range resolved.MemberProxyIds {
+		memberSet[strings.ToLower(strings.TrimSpace(memberID))] = struct{}{}
+	}
+	for _, proxy := range proxies {
+		if strings.TrimSpace(proxy.ProxyConfig) == "" {
+			continue
+		}
+		if _, isMember := memberSet[strings.ToLower(strings.TrimSpace(proxy.ProxyId))]; !isMember {
+			continue
+		}
+		return strings.TrimSpace(proxy.ProxyId), strings.TrimSpace(proxy.ProxyConfig), true
+	}
+	return "", "", false
 }
 
 // resolveVirtualGroupSpeedTestTarget 当 proxyID 是虚拟分组时，挑选一个成员代理作为测速目标。
@@ -68,6 +87,16 @@ func (a *App) testSharedProxySpeedWithOptions(proxyID string, forceRefresh bool,
 			logger.F("error", err.Error()),
 		)
 	}
+	// 单点汇聚：定时调度与手动测速都经过这里，统一喂给虚拟分组健康状态机。
+	// 缓存命中路径在上面提前返回，不会重复计数。
+	a.recordVirtualGroupMemberProbe(proxyID, browser.MemberProbeOutcome{
+		Ok:            item.Ok,
+		LatencyMs:     item.LatencyMs,
+		Error:         item.Error,
+		Engine:        item.Engine,
+		ConnectorType: connectorType,
+		At:            time.Now(),
+	})
 	return item
 }
 
@@ -112,7 +141,9 @@ func (a *App) persistProxySpeedResult(result ProxyTestResult) error {
 		UpdateSpeedResultWithProvenance(string, bool, int64, string, string, string, string) error
 	})
 	if ok {
-		if err := updater.UpdateSpeedResultWithProvenance(result.ProxyId, result.Ok, result.LatencyMs, testedAt, result.Engine, "", ""); err != nil {
+		// connectorType 必须落库：读取侧（readFreshProxySpeedResult）与健康状态判定都依赖它区分连接栈。
+		// fingerprint 目前没有生产来源（proxy.TestResult 未提供），保持空串，不参与任何判定。
+		if err := updater.UpdateSpeedResultWithProvenance(result.ProxyId, result.Ok, result.LatencyMs, testedAt, result.Engine, result.connectorType, result.fingerprint); err != nil {
 			// 兼容跨分支旧 schema（缺 last_test_engine 等列）：降级为基础列写入，保留可用的测速结果。
 			if fallbackErr := a.browserMgr.ProxyDAO.UpdateSpeedResult(result.ProxyId, result.Ok, result.LatencyMs, testedAt); fallbackErr == nil {
 				return nil

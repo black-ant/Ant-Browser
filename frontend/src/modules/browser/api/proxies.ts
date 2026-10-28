@@ -1,4 +1,4 @@
-﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySpeedTestResult } from '../types'
+﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySpeedTestResult, ProxyVirtualGroupHealth, ProxyVirtualGroupProbeResult } from '../types'
 import { getBindings, getGoApp, getMockProxies, nowISOString, setMockProxies } from './runtime'
 
 import type { BrowserProxyVirtualGroup } from '../types'
@@ -13,6 +13,7 @@ function normalizeBrowserProxyVirtualGroup(value: unknown): BrowserProxyVirtualG
     groupName: typeof source.groupName === 'string' ? source.groupName.trim() : '',
     strategy: source.strategy === 'sticky' ? 'sticky' : 'round_robin',
     selectedProxyId: typeof source.selectedProxyId === 'string' ? source.selectedProxyId.trim() : '',
+    preferredProxyId: typeof source.preferredProxyId === 'string' ? source.preferredProxyId.trim() : '',
     memberProxyIds: Array.isArray(source.memberProxyIds)
       ? source.memberProxyIds.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean)
       : [],
@@ -107,6 +108,32 @@ export async function fetchBrowserProxyVirtualGroups(): Promise<BrowserProxyVirt
     )
   }
   return normalizeBrowserProxyVirtualGroups(mockProxyVirtualGroups)
+}
+
+export async function fetchBrowserProxyVirtualGroupHealth(): Promise<ProxyVirtualGroupHealth[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyVirtualGroupHealthList) {
+    const list = await withBackendStartupRetry(() => bindings.BrowserProxyVirtualGroupHealthList())
+    return Array.isArray(list) ? (list as ProxyVirtualGroupHealth[]) : []
+  }
+  return []
+}
+
+export async function probeBrowserProxyVirtualGroup(groupId: string): Promise<ProxyVirtualGroupProbeResult | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyVirtualGroupProbe) {
+    return (await bindings.BrowserProxyVirtualGroupProbe(groupId)) as ProxyVirtualGroupProbeResult
+  }
+  return null
+}
+
+export async function resetBrowserProxyVirtualGroupHealth(groupId: string): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyVirtualGroupResetHealth) {
+    await bindings.BrowserProxyVirtualGroupResetHealth(groupId)
+    return true
+  }
+  return false
 }
 
 export async function saveBrowserProxyVirtualGroup(group: BrowserProxyVirtualGroup): Promise<boolean> {

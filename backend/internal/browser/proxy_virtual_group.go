@@ -19,6 +19,7 @@ func NormalizeProxyVirtualGroup(group ProxyVirtualGroup) ProxyVirtualGroup {
 	group.GroupName = strings.TrimSpace(group.GroupName)
 	group.Strategy = NormalizeProxyVirtualGroupStrategy(group.Strategy)
 	group.SelectedProxyId = strings.TrimSpace(group.SelectedProxyId)
+	group.PreferredProxyId = strings.TrimSpace(group.PreferredProxyId)
 	group.MemberProxyIds = normalizeProxyVirtualGroupProxyIDs(group.MemberProxyIds)
 	group.MemberGroupNames = normalizeProxyVirtualGroupMemberNames(group.MemberGroupNames)
 	return group

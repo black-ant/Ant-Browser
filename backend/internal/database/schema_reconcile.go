@@ -287,7 +287,8 @@ func (db *DB) schemaDiff(expected map[string]*expectedTable) (stmts []string, ad
 		if !existingTables[tableName] {
 			stmts = append(stmts, table.createStmt)
 			addedTables = append(addedTables, tableName)
-			continue
+			// 不跳过列比对：期望结构里的列可能来自后续版本的 ALTER，
+			// 只执行建表语句会漏掉这些列，导致对齐后仍缺字段。
 		}
 		existingCols := map[string]bool{}
 		colRows, err := db.conn.Query(fmt.Sprintf(`PRAGMA table_info(%q)`, tableName))
