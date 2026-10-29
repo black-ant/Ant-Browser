@@ -1,0 +1,107 @@
+# Maintainer: Ant Browser Team <contact@antblack.de>
+pkgname=ant-browser
+pkgver=1.2.0
+pkgrel=1
+pkgdesc="Multi-profile browser launcher with proxy-pool management"
+arch=('x86_64')
+url="https://github.com/black-ant/Ant-Browser"
+license=('LicenseRef-Ant-Browser')
+depends=(
+  'at-spi2-core'
+  'cairo'
+  'gdk-pixbuf2'
+  'glibc'
+  'glib2'
+  'gtk3'
+  'harfbuzz'
+  'hicolor-icon-theme'
+  'libnotify'
+  'libsoup3'
+  'libx11'
+  'libxcb'
+  'libxcomposite'
+  'libxcursor'
+  'libxdamage'
+  'libxext'
+  'libxfixes'
+  'libxi'
+  'libxrandr'
+  'libxrender'
+  'mesa'
+  'nspr'
+  'nss'
+  'pango'
+  'webkit2gtk-4.1'
+  'xdg-utils'
+  'zlib'
+)
+makedepends=(
+  'git'
+)
+optdepends=(
+  'xray: external proxy runtime if bundled binary is replaced'
+  'sing-box: external proxy runtime if bundled binary is replaced'
+)
+options=('!strip' '!debug')
+
+_appdir="usr/lib/ant-browser"
+
+package() {
+  local repo_root
+  if [[ -n "${ANT_BROWSER_REPO_ROOT:-}" ]]; then
+    repo_root="$(realpath "${ANT_BROWSER_REPO_ROOT}")"
+  else
+    repo_root="$(git -C "${PWD}" rev-parse --show-toplevel)"
+  fi
+
+  install -Dm755 "${repo_root}/build/bin/ant-chrome" "${pkgdir}/${_appdir}/ant-chrome"
+  install -Dm644 "${repo_root}/publish/config.init.linux.yaml" "${pkgdir}/${_appdir}/config.yaml"
+  install -Dm755 "${repo_root}/bin/linux-amd64/xray" "${pkgdir}/${_appdir}/bin/xray"
+  install -Dm755 "${repo_root}/bin/linux-amd64/sing-box" "${pkgdir}/${_appdir}/bin/sing-box"
+
+  install -dm755 "${pkgdir}/${_appdir}/data" "${pkgdir}/${_appdir}/chrome"
+  touch "${pkgdir}/${_appdir}/data/.keep"
+  install -Dm644 "${repo_root}/chrome/README.md" "${pkgdir}/${_appdir}/chrome/README.md"
+
+  install -Dm644 "${repo_root}/build/appicon.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/ant-browser.png"
+  for size in 16 24 32 48 64 128 256; do
+    install -dm755 "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps"
+    ln -s "../../512x512/apps/ant-browser.png" "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/ant-browser.png"
+  done
+  install -dm755 "${pkgdir}/usr/share/pixmaps"
+  ln -s "../icons/hicolor/512x512/apps/ant-browser.png" "${pkgdir}/usr/share/pixmaps/ant-browser.png"
+
+  install -dm755 "${pkgdir}/usr/bin" "${pkgdir}/usr/share/applications" "${pkgdir}/usr/share/metainfo"
+  ln -s "/${_appdir}/ant-chrome" "${pkgdir}/usr/bin/ant-browser"
+  ln -s "/${_appdir}/ant-chrome" "${pkgdir}/usr/bin/ant-chrome"
+
+  cat > "${pkgdir}/usr/share/applications/ant-browser.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=Ant Browser
+Comment=Multi-profile browser launcher with proxy-pool management
+Exec=/usr/lib/ant-browser/ant-chrome
+TryExec=/usr/lib/ant-browser/ant-chrome
+Icon=ant-browser
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+StartupNotify=true
+EOF
+
+  cat > "${pkgdir}/usr/share/metainfo/ant-browser.metainfo.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ant-browser</id>
+  <name>Ant Browser</name>
+  <summary>Multi-profile browser launcher with proxy-pool management</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>LicenseRef-Ant-Browser</project_license>
+  <launchable type="desktop-id">ant-browser.desktop</launchable>
+  <url type="homepage">https://github.com/black-ant/Ant-Browser</url>
+</component>
+EOF
+
+  install -Dm644 "${repo_root}/README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 "${repo_root}/README.md" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
