@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font: 13px/1.6 system-ui, "Microsoft YaHei", sans-serif; width: 340px; padding: 12px; margin: 0; }
+    h1 { font-size: 14px; margin: 0 0 10px; }
+    h2 { font-size: 12px; margin: 12px 0 4px; color: #555; font-weight: 600; }
+    .row { display: flex; justify-content: space-between; gap: 8px; }
+    .row span:last-child { font-weight: 600; word-break: break-all; text-align: right; }
+    .mono { font-family: Consolas, monospace; font-size: 11px; }
+    input { width: 100%; padding: 4px 6px; box-sizing: border-box; margin-top: 4px; }
+    button { padding: 4px 9px; cursor: pointer; margin: 0 4px 4px 0; }
+    textarea { width: 100%; height: 96px; box-sizing: border-box; font-family: Consolas, monospace; font-size: 11px; }
+    .muted { color: #777; font-size: 11px; }
+    .ok { color: #15803d; }
+    .bad { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>隔离自检 Pro</h1>
+
+  <div class="row"><span>实例指纹</span><span id="fingerprint" class="mono">-</span></div>
+  <div class="row"><span>启动次数</span><span id="launches">-</span></div>
+  <div class="row"><span>首次看到</span><span id="firstSeen" class="mono">-</span></div>
+  <div class="row"><span>插件 ID</span><span id="extId" class="mono">-</span></div>
+  <div class="row"><span>版本</span><span id="version">-</span></div>
+
+  <h2>四种存储通道（各自独立累加）</h2>
+  <div class="row"><span>chrome.storage.local</span><span id="cLocal">-</span></div>
+  <div class="row"><span>chrome.storage.sync</span><span id="cSync">-</span></div>
+  <div class="row"><span>IndexedDB</span><span id="cIdb">-</span></div>
+  <div class="row"><span>localStorage</span><span id="cLs">-</span></div>
+
+  <h2>操作</h2>
+  <button id="bumpAll">全部 +1</button>
+  <button id="reset">只清空本实例</button>
+  <button id="export">导出快照</button>
+  <input id="mark" placeholder="给这个实例做个标记，例如 实例A" />
+  <button id="saveMark" style="margin-top:6px">保存标记</button>
+  <div class="row"><span>当前标记</span><span id="markValue" class="mono">-</span></div>
+
+  <h2>快照</h2>
+  <textarea id="snapshot" readonly placeholder="点「导出快照」生成，可直接复制去对比"></textarea>
+  <div id="status" class="muted"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

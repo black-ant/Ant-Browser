@@ -173,9 +173,11 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		return nil, startErr
 	}
 
-	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, launchTargets, restoreLastSession)
-	extensionWarnings := a.browserMgr.PrepareProfileExtensions(profile, chromeBinaryPath, userDataDir)
-	extensionWarning := joinBrowserStartExtensionWarnings(extensionWarnings)
+	// 插件通过启动参数加载未打包目录：只对本次启动生效，不写注册表、
+	// 不写 Chrome 的 Secure Preferences，宿主机与其他实例都不受影响。
+	extensionPaths := a.browserMgr.ProfileExtensionLoadPaths(profile)
+	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, extensionPaths, launchTargets, restoreLastSession)
+	extensionWarning := ""
 
 	return &browserStartPlan{
 		profile:              profile,
@@ -388,7 +390,7 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 	return sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, fingerprintLaunchArgs, chromeBinaryPath, userDataDir, nil
 }
 
-func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy string, fingerprintLaunchArgs []string, sanitizedProfileLaunchArgs []string, sanitizedExtraLaunchArgs []string, launchTargets []string, restoreLastSession bool) []string {
+func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy string, fingerprintLaunchArgs []string, sanitizedProfileLaunchArgs []string, sanitizedExtraLaunchArgs []string, extensionPaths []string, launchTargets []string, restoreLastSession bool) []string {
 	args := []string{
 		fmt.Sprintf("--user-data-dir=%s", userDataDir),
 		fmt.Sprintf("--remote-debugging-port=%d", debugPort),
@@ -396,6 +398,9 @@ func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy st
 	}
 	if restoreLastSession {
 		args = append(args, "--restore-last-session")
+	}
+	if len(extensionPaths) > 0 {
+		args = append(args, "--load-extension="+strings.Join(extensionPaths, ","))
 	}
 
 	if effectiveProxy == "direct://" {

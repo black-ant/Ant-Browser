@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Download, ExternalLink, FolderOpen, History, Power, Puzzle, RefreshCw, RotateCw, Search, Settings, Trash2, Users } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Download, ExternalLink, FolderOpen, History, MonitorSmartphone, Power, Puzzle, RefreshCw, RotateCw, Search, Settings, Trash2, Users } from 'lucide-react'
 import { Badge, Button, Card, Input } from '../../../shared/components'
 import type { BrowserExtension, BrowserExtensionLookupResult, BrowserProxy } from '../types'
 import { useProxySpeedFreshness } from '../proxySpeedFreshness'
@@ -238,13 +238,14 @@ export interface InstalledExtensionsListProps {
   busyAction: 'toggle' | 'delete' | 'default' | ''
   updatingId: string
   onRestrictProfiles: (item: BrowserExtension) => void
+  onShowProfiles: (item: BrowserExtension) => void
   onDefaultInstallToggle: (item: BrowserExtension) => void
   onUpdate: (item: BrowserExtension) => void
   onToggle: (item: BrowserExtension) => void
   onDelete: (item: BrowserExtension) => void
 }
 
-export function InstalledExtensionsList({ items, busyId, busyAction, updatingId, onRestrictProfiles, onDefaultInstallToggle, onUpdate, onToggle, onDelete }: InstalledExtensionsListProps) {
+export function InstalledExtensionsList({ items, busyId, busyAction, updatingId, onRestrictProfiles, onShowProfiles, onDefaultInstallToggle, onUpdate, onToggle, onDelete }: InstalledExtensionsListProps) {
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
@@ -259,6 +260,7 @@ export function InstalledExtensionsList({ items, busyId, busyAction, updatingId,
             busyAction={busyId === item.extensionId ? busyAction : ''}
             updating={updatingId === item.extensionId}
             onRestrictProfiles={onRestrictProfiles}
+            onShowProfiles={onShowProfiles}
             onDefaultInstallToggle={onDefaultInstallToggle}
             onUpdate={onUpdate}
             onToggle={onToggle}
@@ -282,13 +284,14 @@ export interface InstalledExtensionCardProps {
   busyAction: 'toggle' | 'delete' | 'default' | ''
   updating: boolean
   onRestrictProfiles: (item: BrowserExtension) => void
+  onShowProfiles: (item: BrowserExtension) => void
   onDefaultInstallToggle: (item: BrowserExtension) => void
   onUpdate: (item: BrowserExtension) => void
   onToggle: (item: BrowserExtension) => void
   onDelete: (item: BrowserExtension) => void
 }
 
-export function InstalledExtensionCard({ item, busy, busyAction, updating, onRestrictProfiles, onDefaultInstallToggle, onUpdate, onToggle, onDelete }: InstalledExtensionCardProps) {
+export function InstalledExtensionCard({ item, busy, busyAction, updating, onRestrictProfiles, onShowProfiles, onDefaultInstallToggle, onUpdate, onToggle, onDelete }: InstalledExtensionCardProps) {
   const meta = getExtensionManifestMeta(item)
   const storeUrl = extensionStoreURL(item)
   const actionButtonClass = 'min-w-[72px] will-change-transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]'
@@ -349,6 +352,10 @@ export function InstalledExtensionCard({ item, busy, busyAction, updating, onRes
           <Button type="button" size="sm" variant="secondary" onClick={() => onRestrictProfiles(item)} className="min-w-[96px] will-change-transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]">
             <Users className="h-4 w-4" />
             设置实例
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => onShowProfiles(item)} className="min-w-[96px] will-change-transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]">
+            <MonitorSmartphone className="h-4 w-4" />
+            打开实例
           </Button>
           <Button type="button" size="sm" variant="secondary" onClick={() => onUpdate(item)} disabled={updating} className={actionButtonClass}>
             <RotateCw className={`h-4 w-4 ${updating ? 'animate-spin' : ''}`} />

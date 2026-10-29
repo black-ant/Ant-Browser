@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"ant-chrome/backend/internal/logger"
 )
 
 const (
@@ -156,6 +158,7 @@ func (m *Manager) profileHasRuntime(profile *Profile) bool {
 }
 
 func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath string, userDataDir string) []error {
+	log := logger.New("Extension")
 	warnings := make([]error, 0, 1)
 	if m == nil || m.ExtensionDAO == nil || profile == nil {
 		return warnings
@@ -188,10 +191,21 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 		return warnings
 	}
 
+	log.Debug("实例插件期望集合",
+		logger.F("profile_id", profile.ProfileId),
+		logger.F("configured", settings.Configured),
+		logger.F("binding_count", len(settings.ExtensionIDs)),
+		logger.F("desired_count", len(extensions)),
+		logger.F("user_data_dir", userDataDir))
+
 	desired := make(map[string]Extension, len(extensions))
 	for _, extension := range extensions {
 		desired[extension.ExtensionID] = extension
 		if _, installErr := m.ensurePersistentExtensionInstalled(profile, userDataDir, chromeBinaryPath, extension); installErr != nil {
+			log.Error("实例插件安装失败",
+				logger.F("profile_id", profile.ProfileId),
+				logger.F("extension_id", extension.ExtensionID),
+				logger.F("error", installErr))
 			warnings = append(warnings, installErr)
 			continue
 		}
@@ -206,7 +220,23 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 		if _, ok := desired[runtimeState.ExtensionID]; ok {
 			continue
 		}
+		log.Warn("实例插件不在期望集合，清理代码目录",
+			logger.F("profile_id", profile.ProfileId),
+			logger.F("extension_id", runtimeState.ExtensionID),
+			logger.F("runtime_id", runtimeState.RuntimeExtensionID),
+			logger.F("configured", settings.Configured),
+			logger.F("desired_count", len(desired)))
 		if err := cleanupProfileExtensionRuntime(userDataDir, runtimeState.RuntimeExtensionID); err != nil {
+			// 清理半途失败时目录可能已被删掉，必须把错误写回运行态，
+			// 否则数据库会一直显示「已安装」而磁盘上什么都没有。
+			runtimeState.LastError = err.Error()
+			runtimeState.LastVerifiedAt = time.Now().Format(time.RFC3339)
+			if upsertErr := m.ExtensionDAO.UpsertProfileExtensionRuntime(runtimeState); upsertErr != nil {
+				log.Error("回写实例插件清理失败状态时出错",
+					logger.F("profile_id", profile.ProfileId),
+					logger.F("extension_id", runtimeState.ExtensionID),
+					logger.F("error", upsertErr))
+			}
 			warnings = append(warnings, fmt.Errorf("清理实例插件运行态失败（%s）：%w", runtimeState.ExtensionID, err))
 			continue
 		}
@@ -241,6 +271,30 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 
 	return warnings
 }
+// EnsureExtensionUnusedByRunningProfiles 只查配置，不扫文件系统：
+// 删除插件前确认没有运行中的实例正在使用它。
+func (m *Manager) EnsureExtensionUnusedByRunningProfiles(extensionID string) error {
+	if m == nil || m.ExtensionDAO == nil {
+		return nil
+	}
+	extensionID = strings.TrimSpace(extensionID)
+	if extensionID == "" {
+		return nil
+	}
+	m.InitData()
+	m.Mutex.Lock()
+	defer m.Mutex.Unlock()
+	for _, profile := range m.Profiles {
+		if profile == nil || !m.profileHasRuntime(profile) {
+			continue
+		}
+		if m.profileUsesExtension(profile.ProfileId, extensionID) {
+			return fmt.Errorf("插件仍在使用中的实例：%s。请先停止实例后再删除", profile.ProfileName)
+		}
+	}
+	return nil
+}
+
 func (m *Manager) RemoveExtensionFromStoppedProfiles(extensionID string) error {
 	if m == nil || m.ExtensionDAO == nil {
 		return nil
@@ -358,7 +412,30 @@ func (m *Manager) effectiveProfileExtensionIDs(settings ProfileExtensionSettings
 	return uniqueExtensionIDs(ids), nil
 }
 
+// profileUsesExtension 该实例当前是否会加载这个插件（手动绑定优先，否则看默认安装）。
+func (m *Manager) profileUsesExtension(profileID string, extensionID string) bool {
+	settings, err := m.ExtensionDAO.GetProfileSettings(profileID)
+	if err != nil {
+		return false
+	}
+	ids, err := m.effectiveProfileExtensionIDs(settings)
+	if err != nil {
+		return false
+	}
+	for _, id := range ids {
+		if id == extensionID {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Manager) validateExtensionRemovalFromRunningProfile(profile *Profile, extensionID string, extension Extension, extensionErr error) error {
+	// 插件改为启动参数加载后，实例目录里不再有代码副本，下面的文件级判断会失效，
+	// 这里直接按配置判断该实例是否正在使用它，避免删除/禁用打断运行中的实例。
+	if m.profileUsesExtension(profile.ProfileId, extensionID) {
+		return fmt.Errorf("插件仍在运行中的实例中：%s。请先停止实例后再禁用或删除", profile.ProfileName)
+	}
 	runtimeState, runtimeErr := m.ExtensionDAO.GetProfileExtensionRuntime(profile.ProfileId, extensionID)
 	if runtimeErr != nil && runtimeErr != sql.ErrNoRows {
 		return runtimeErr
@@ -499,6 +576,7 @@ func (m *Manager) ExtensionPackagePaths(extension Extension) ([]string, error) {
 }
 
 func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataDir string, chromeBinaryPath string, extension Extension) (string, error) {
+	log := logger.New("Extension")
 	if m.profileHasRuntime(profile) {
 		return ``, fmt.Errorf(`实例仍在运行，不能安装插件文件：%s。请先停止实例后重试`, profile.ProfileName)
 	}
@@ -522,15 +600,35 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 		runtimeState.InstalledVersion == extension.Version && runtimeState.PackageHash == packageHash {
 		installContext.RuntimeExtensionID = runtimeState.RuntimeExtensionID
 		expectedArtifactPath := persistentExtensionCodePath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version)
-		if artifactPath := persistentExtensionArtifactPath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version); artifactPath != "" && sameProfileExtensionPath(artifactPath, expectedArtifactPath) {
+		artifactPath := persistentExtensionArtifactPath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version)
+		if artifactPath != "" && sameProfileExtensionPath(artifactPath, expectedArtifactPath) {
 			if err := ensureProfileExtensionRegistration(userDataDir, artifactPath, runtimeState.RuntimeExtensionID, packagePath); err == nil {
 				runtimeState.LastVerifiedAt = time.Now().Format(time.RFC3339)
 				runtimeState.LastError = ""
 				if err := m.ExtensionDAO.UpsertProfileExtensionRuntime(runtimeState); err != nil {
 					return "", wrapExtensionInstallError(extensionInstallPhasePersistRuntime, installContext, err)
 				}
+				log.Debug("实例插件校验通过",
+					logger.F("profile_id", profile.ProfileId),
+					logger.F("extension_id", extension.ExtensionID),
+					logger.F("runtime_id", runtimeState.RuntimeExtensionID))
 				return artifactPath, nil
+			} else {
+				log.Warn("实例插件注册失效，重新安装",
+					logger.F("profile_id", profile.ProfileId),
+					logger.F("extension_id", extension.ExtensionID),
+					logger.F("runtime_id", runtimeState.RuntimeExtensionID),
+					logger.F("error", err))
 			}
+		} else {
+			// 数据库记着已安装，但磁盘上代码目录没了，这里必须重装，
+			// 否则 Chrome 找不到扩展，界面上看起来就是「没装上」。
+			log.Warn("实例插件代码目录缺失，重新安装",
+				logger.F("profile_id", profile.ProfileId),
+				logger.F("extension_id", extension.ExtensionID),
+				logger.F("runtime_id", runtimeState.RuntimeExtensionID),
+				logger.F("expected_path", expectedArtifactPath),
+				logger.F("found_path", artifactPath))
 		}
 	}
 

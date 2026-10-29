@@ -193,6 +193,9 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) error {
 	}
 
 	a.browserMgr.InitData()
+	if err := a.browserMgr.SyncBuiltinExtensions(); err != nil {
+		logger.New("Browser").Error("初始化内置插件失败", logger.F("error", err))
+	}
 	if err := a.browserMgr.MigrateLegacyExternalExtensionRegistry(); err != nil {
 		logger.New("Browser").Error("启动迁移旧版插件外部注册失败", logger.F("error", err))
 	}
