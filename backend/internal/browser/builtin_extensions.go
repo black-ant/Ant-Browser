@@ -81,9 +81,11 @@ func (m *Manager) SyncBuiltinExtensions() error {
 				ManifestJSON:   string(manifestData),
 				SourceURL:      "builtin://" + spec.Dir,
 				InstallDir:     targetDir,
-				InstallMode:    ExtensionInstallModePersistent,
-				Enabled:        true,
-				DefaultInstall: true,
+				InstallMode: ExtensionInstallModePersistent,
+				Enabled:     true,
+				// 内置插件只保证「装完就有」，不默认安装到实例：
+				// 由用户在插件包管理里勾「默认安装」或按实例指定。
+				DefaultInstall: false,
 				InstalledAt:    now,
 				UpdatedAt:      now,
 			}); err != nil {

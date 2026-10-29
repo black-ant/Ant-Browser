@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSyncBuiltinExtensionsInstallsAsDefaultInstall(t *testing.T) {
+func TestSyncBuiltinExtensionsInstallsWithoutDefaultInstall(t *testing.T) {
 	manager := newIsolationManager(t)
 	spec := builtinExtensionSpecs[0]
 
@@ -19,8 +19,11 @@ func TestSyncBuiltinExtensionsInstallsAsDefaultInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
-	if !extension.Enabled || !extension.DefaultInstall {
-		t.Fatalf("extension = %#v, want enabled and default install", extension)
+	if !extension.Enabled {
+		t.Fatalf("extension = %#v, want enabled", extension)
+	}
+	if extension.DefaultInstall {
+		t.Fatalf("extension = %#v, 内置插件不应默认安装到实例", extension)
 	}
 	manifestPath := filepath.Join(extension.InstallDir, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
