@@ -296,19 +296,43 @@ func latestXrayErrorSummary(path string) string {
 }
 
 func doSpeedTestRequest(client *http.Client, testURL string) (int64, int, error) {
-	latency, statusCode, err := doSpeedTestRequestWithMethod(client, http.MethodHead, testURL)
+	latency, statusCode, err := doSpeedTestProbe(client, http.MethodHead, testURL)
 	if err != nil {
 		return latency, statusCode, err
 	}
 	if statusCode == http.StatusMethodNotAllowed || statusCode == http.StatusNotImplemented {
-		return doSpeedTestRequestWithMethod(client, http.MethodGet, testURL)
+		return doSpeedTestProbe(client, http.MethodGet, testURL)
 	}
 	// 第一次请求负责建立连接（TCP/代理握手，数值偏大），报告第二次（热连接）请求的纯往返延迟。
-	secondLatency, secondStatusCode, secondErr := doSpeedTestRequestWithMethod(client, http.MethodHead, testURL)
+	secondLatency, secondStatusCode, secondErr := doSpeedTestProbe(client, http.MethodHead, testURL)
 	if secondErr == nil {
 		return secondLatency, secondStatusCode, nil
 	}
 	return latency, statusCode, nil
+}
+
+// doSpeedTestProbe 带超时重试的探测请求：冷启动的桥接/内核可能恰好卡在超时边界，
+// 第一次请求负责建连，重试时连接通常已就绪，避免把"慢而非死"的节点误判为失败。
+func doSpeedTestProbe(client *http.Client, method string, testURL string) (int64, int, error) {
+	latency, statusCode, err := doSpeedTestRequestWithMethod(client, method, testURL)
+	if err == nil || !isSpeedTestTimeoutError(err) {
+		return latency, statusCode, err
+	}
+	return doSpeedTestRequestWithMethod(client, method, testURL)
+}
+
+// isSpeedTestTimeoutError 判断是否为超时类错误（客户端整体超时 / 上下文截止 / 底层 i/o 超时）。
+func isSpeedTestTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
+		return true
+	}
+	message := err.Error()
+	return strings.Contains(message, "Client.Timeout") ||
+		strings.Contains(message, "context deadline exceeded") ||
+		strings.Contains(message, "i/o timeout")
 }
 
 func doSpeedTestRequestWithMethod(client *http.Client, method string, testURL string) (int64, int, error) {
