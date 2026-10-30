@@ -50,6 +50,8 @@ export function useProxyImportFlow({
   const [importMode, setImportMode] = useState<ProxyImportMode>('clash')
   const [importUrl, setImportUrl] = useState('')
   const [importFetchProxyId, setImportFetchProxyId] = useState('')
+  // 自动更新订阅开关（仅 URL 导入）：开启后该源参与后端定时拉取，间隔跟随全局设置。
+  const [importAutoRefresh, setImportAutoRefresh] = useState(globalAutoRefreshEnabled)
   const [importResolvedUrl, setImportResolvedUrl] = useState('')
   const [importText, setImportText] = useState('')
   const [importDnsServers, setImportDnsServers] = useState('')
@@ -226,7 +228,7 @@ export function useProxyImportFlow({
       const isURLImport = !!sourceURL
       const sourceNamePrefix = importMode === 'clash' ? importNamePrefix.trim() : ''
       const sourceID = isURLImport ? resolveImportSourceID(proxies, sourceURL, sourceNamePrefix) : ''
-      const sourceAutoRefresh = isURLImport ? globalAutoRefreshEnabled : false
+      const sourceAutoRefresh = isURLImport ? importAutoRefresh : false
       const sourceRefreshIntervalM = sourceAutoRefresh ? globalRefreshInterval : 0
       const sourceLastRefreshAt = isURLImport ? new Date().toISOString() : ''
       const oldSourceProxies = isURLImport
@@ -280,6 +282,7 @@ export function useProxyImportFlow({
       setPreviewModalOpen(false)
       setImportUrl('')
       setImportFetchProxyId('')
+      setImportAutoRefresh(globalAutoRefreshEnabled)
       setImportResolvedUrl('')
       setImportText('')
       setImportDnsServers('')
@@ -309,7 +312,7 @@ export function useProxyImportFlow({
         && !!chainImportForm.second.port.trim()
 
   return {
-    importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importResolvedUrl, importText,
+    importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importAutoRefresh, setImportAutoRefresh, importResolvedUrl, importText,
     importDnsServers, importNamePrefix, importGroupName, chainImportText, directImportText,
     chainImportForm, directImportForm, previewModalOpen, setPreviewModalOpen, previewList, removedPreviewProxyNames,
     importing, fetchingImportUrl, canParseImport, setImportText, setImportDnsServers,

@@ -1,4 +1,4 @@
-import { Button, FormItem, Input, Modal, Select, Textarea } from '../../../../shared/components'
+import { Button, FormItem, Input, Modal, Select, Switch, Textarea } from '../../../../shared/components'
 import type { BrowserProxy } from '../../types'
 import {
   CHAIN_QUICK_IMPORT_TEMPLATE,
@@ -15,6 +15,7 @@ interface ProxyPoolImportModalProps {
   importMode: ProxyImportMode
   importUrl: string
   importFetchProxyId: string
+  importAutoRefresh: boolean
   importResolvedUrl: string
   importText: string
   importDnsServers: string
@@ -33,6 +34,7 @@ interface ProxyPoolImportModalProps {
   onImportModeChange: (nextMode: ProxyImportMode) => void
   onImportUrlChange: (nextValue: string) => void
   onImportFetchProxyIdChange: (nextValue: string) => void
+  onImportAutoRefreshChange: (nextValue: boolean) => void
   onImportTextChange: (nextValue: string) => void
   onImportDnsServersChange: (nextValue: string) => void
   onImportNamePrefixChange: (nextValue: string) => void
@@ -62,6 +64,7 @@ export function ProxyPoolImportModal({
   importMode,
   importUrl,
   importFetchProxyId,
+  importAutoRefresh,
   importResolvedUrl,
   importText,
   importDnsServers,
@@ -80,6 +83,7 @@ export function ProxyPoolImportModal({
   onImportModeChange,
   onImportUrlChange,
   onImportFetchProxyIdChange,
+  onImportAutoRefreshChange,
   onImportTextChange,
   onImportDnsServersChange,
   onImportNamePrefixChange,
@@ -414,6 +418,22 @@ export function ProxyPoolImportModal({
             />
             <p className="text-xs text-[var(--color-text-muted)] mt-1">
               填写后代理名称将变为 <code className="px-1 bg-[var(--color-bg-secondary)] rounded">前缀-原名称</code>，留空则保持原名
+            </p>
+          </FormItem>
+        )}
+        {importMode === 'clash' && (
+          <FormItem label="自动更新订阅">
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={importAutoRefresh}
+                onChange={onImportAutoRefreshChange}
+              />
+              <span className="text-xs text-[var(--color-text-secondary)]">
+                {importAutoRefresh ? '开启：定时拉取该订阅的最新列表' : '关闭：仅手动刷新'}
+              </span>
+            </div>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">
+              开启后由应用后台定期核验该订阅（间隔跟随代理池页的全局自动刷新设置），节点按名称/国家自动匹配更新
             </p>
           </FormItem>
         )}

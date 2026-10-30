@@ -133,7 +133,7 @@ export function ProxyPoolPage() {
   }, [])
 
   const {
-    importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importResolvedUrl, importText,
+    importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importAutoRefresh, setImportAutoRefresh, importResolvedUrl, importText,
     importDnsServers, importNamePrefix, importGroupName, chainImportText, directImportText,
     chainImportForm, directImportForm, previewModalOpen, setPreviewModalOpen, previewList, removedPreviewProxyNames,
     importing, fetchingImportUrl, canParseImport, setImportText, setImportDnsServers,
@@ -504,6 +504,7 @@ export function ProxyPoolPage() {
         importMode={importMode}
         importUrl={importUrl}
         importFetchProxyId={importFetchProxyId}
+        importAutoRefresh={importAutoRefresh}
         importResolvedUrl={importResolvedUrl}
         importText={importText}
         importDnsServers={importDnsServers}
@@ -522,6 +523,7 @@ export function ProxyPoolPage() {
         onImportModeChange={handleImportModeChange}
         onImportUrlChange={handleImportUrlChange}
         onImportFetchProxyIdChange={setImportFetchProxyId}
+        onImportAutoRefreshChange={setImportAutoRefresh}
         onImportTextChange={setImportText}
         onImportDnsServersChange={setImportDnsServers}
         onImportNamePrefixChange={setImportNamePrefix}

@@ -318,25 +318,27 @@ func TestProxySourceRefreshSchedulerDueWindow(t *testing.T) {
 	stale := now.Add(-90 * time.Minute).Format(time.RFC3339)
 	fresh := now.Add(-10 * time.Minute).Format(time.RFC3339)
 	pool := []BrowserProxy{
-		{ProxyId: "due", ProxyName: "due", ProxyConfig: "ss://a", SourceID: "src-due", SourceURL: "https://due", SourceLastRefreshAt: stale},
-		{ProxyId: "fresh", ProxyName: "fresh", ProxyConfig: "ss://b", SourceID: "src-fresh", SourceURL: "https://fresh", SourceLastRefreshAt: fresh},
+		{ProxyId: "due", ProxyName: "due", ProxyConfig: "ss://a", SourceID: "src-due", SourceURL: "https://due", SourceAutoRefresh: true, SourceLastRefreshAt: stale},
+		{ProxyId: "fresh", ProxyName: "fresh", ProxyConfig: "ss://b", SourceID: "src-fresh", SourceURL: "https://fresh", SourceAutoRefresh: true, SourceLastRefreshAt: fresh},
 	}
-	metas := collectProxySourceMetas(pool)
-	if len(metas) != 2 {
-		t.Fatalf("metas = %d", len(metas))
+	due := selectDueProxySources(pool, now)
+	if len(due) != 1 {
+		t.Fatalf("due = %d, want 1（60 分钟间隔内不应重复刷新）", len(due))
 	}
-	dueCount := 0
-	for _, meta := range metas {
-		interval := defaultProxySourceRefreshIntervalM
-		if meta.IntervalM > 0 {
-			interval = meta.IntervalM
-		}
-		last := time.UnixMilli(parseProxyTimestampMs(meta.LastRefreshAt))
-		if last.IsZero() || now.Sub(last) >= time.Duration(interval)*time.Minute {
-			dueCount++
-		}
+	if due[0].SourceID != "src-due" {
+		t.Fatalf("到期源 = %q, want src-due", due[0].SourceID)
 	}
-	if dueCount != 1 {
-		t.Fatalf("dueCount = %d, want 1（60 分钟间隔内不应重复刷新）", dueCount)
+}
+
+// 导入弹窗的"自动更新订阅"开关必须真正生效：关掉的源不参与定时拉取。
+func TestSelectDueProxySourcesRespectsAutoRefresh(t *testing.T) {
+	now := time.Now()
+	pool := []BrowserProxy{
+		{ProxyId: "auto", ProxyName: "auto", ProxyConfig: "ss://a", SourceID: "src-auto", SourceURL: "https://auto", SourceAutoRefresh: true, SourceLastRefreshAt: now.Add(-90 * time.Minute).Format(time.RFC3339)},
+		{ProxyId: "manual", ProxyName: "manual", ProxyConfig: "ss://b", SourceID: "src-manual", SourceURL: "https://manual", SourceAutoRefresh: false, SourceLastRefreshAt: now.Add(-90 * time.Minute).Format(time.RFC3339)},
+	}
+	due := selectDueProxySources(pool, now)
+	if len(due) != 1 || due[0].SourceID != "src-auto" {
+		t.Fatalf("due = %+v, want 仅 src-auto（关闭自动更新的源不参与定时拉取）", due)
 	}
 }

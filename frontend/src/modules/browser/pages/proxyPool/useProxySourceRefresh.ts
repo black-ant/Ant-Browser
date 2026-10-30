@@ -116,6 +116,8 @@ export function useProxySourceRefresh({
       const intervalMs = globalRefreshInterval * 60 * 1000
       const metas = collectURLImportSources(proxiesRef.current).filter(meta => {
         if (!meta.sourceUrl.trim()) return false
+        // 与后端调度器同口径：导入时关闭“自动更新订阅”的源不参与自动刷新
+        if (!meta.sourceAutoRefresh) return false
         const last = parseTimestampMs(meta.sourceLastRefreshAt)
         return last <= 0 || Date.now() - last >= intervalMs
       })

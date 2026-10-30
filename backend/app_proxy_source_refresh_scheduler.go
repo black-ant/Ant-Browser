@@ -115,27 +115,12 @@ func (s *proxySourceRefreshScheduler) check(now time.Time) {
 // refreshDueSources 找出到期的订阅源并串行刷新（订阅请求较重，不做并发）。
 func (s *proxySourceRefreshScheduler) refreshDueSources(now time.Time) {
 	app := s.app
-	pool := app.getLatestProxies()
-	due := make([]proxySourceMeta, 0)
-	for _, meta := range collectProxySourceMetas(pool) {
-		intervalM := meta.IntervalM
-		if intervalM <= 0 {
-			intervalM = defaultProxySourceRefreshIntervalM
-		}
-		if intervalM < minProxySourceRefreshIntervalM {
-			intervalM = minProxySourceRefreshIntervalM
-		}
-		last := time.UnixMilli(parseProxyTimestampMs(meta.LastRefreshAt))
-		if !last.IsZero() && now.Sub(last) < time.Duration(intervalM)*time.Minute {
-			continue
-		}
+	due := selectDueProxySources(app.getLatestProxies(), now)
+
+	for _, meta := range due {
 		if attemptAt, ok := s.nextAttempt(meta.SourceID); ok && now.Before(attemptAt) {
 			continue
 		}
-		due = append(due, meta)
-	}
-
-	for _, meta := range due {
 		if _, err := app.refreshProxySourceWithMeta(app.getLatestProxies(), meta, ""); err != nil {
 			s.setNextAttempt(meta.SourceID, now.Add(proxySourceRefreshFailureRetry))
 			logger.New("ProxySource").Warn("订阅源定时刷新失败",
@@ -148,6 +133,30 @@ func (s *proxySourceRefreshScheduler) refreshDueSources(now time.Time) {
 		}
 		s.clearNextAttempt(meta.SourceID)
 	}
+}
+
+// selectDueProxySources 只挑出"开启了自动更新"且到期的订阅源。
+// 导入弹窗的"自动更新订阅"开关写入行上的 source_auto_refresh；关掉的源不参与定时拉取。
+func selectDueProxySources(pool []BrowserProxy, now time.Time) []proxySourceMeta {
+	due := make([]proxySourceMeta, 0)
+	for _, meta := range collectProxySourceMetas(pool) {
+		if !meta.AutoRefresh {
+			continue
+		}
+		intervalM := meta.IntervalM
+		if intervalM <= 0 {
+			intervalM = defaultProxySourceRefreshIntervalM
+		}
+		if intervalM < minProxySourceRefreshIntervalM {
+			intervalM = minProxySourceRefreshIntervalM
+		}
+		last := time.UnixMilli(parseProxyTimestampMs(meta.LastRefreshAt))
+		if !last.IsZero() && now.Sub(last) < time.Duration(intervalM)*time.Minute {
+			continue
+		}
+		due = append(due, meta)
+	}
+	return due
 }
 
 func (s *proxySourceRefreshScheduler) nextAttempt(sourceID string) (time.Time, bool) {
