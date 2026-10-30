@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import type { ProxySpeedTestResult } from './types'
+import type { BrowserProxy, ProxySpeedTestResult } from './types'
 
 // 全局唯一的测速结果存放处：所有页面共享同一份，不再各自维护 speedMap / 本地缓存。
 export interface ProxySpeedResult extends Omit<ProxySpeedTestResult, 'testedAt'> {
@@ -26,6 +26,18 @@ interface ProxySpeedStoreState {
   applyBackendResults: (proxies: ProxySpeedSource[], isFresh: (testedAt?: string) => boolean) => void
   prune: (validIds: Set<string>) => void
   reset: () => void
+}
+
+// 测速成功（延迟为正）的代理子集，按延迟升序。
+// 订阅拉取、下载等"只给能用节点"的下拉共用：失败/未测速的节点拉取大概率也不可用。
+export function selectUsableProxies(proxies: BrowserProxy[], results: Record<string, ProxySpeedResult>): BrowserProxy[] {
+  return proxies
+    .filter(proxy => {
+      if (!proxy.proxyId || proxy.proxyConfig === 'direct://') return false
+      const latency = results[proxy.proxyId]?.latencyMs
+      return typeof latency === 'number' && latency > 0
+    })
+    .sort((a, b) => (results[a.proxyId]?.latencyMs ?? 0) - (results[b.proxyId]?.latencyMs ?? 0))
 }
 
 export const useProxySpeedStore = create<ProxySpeedStoreState>((set) => ({

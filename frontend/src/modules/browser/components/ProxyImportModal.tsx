@@ -3,6 +3,7 @@ import { Button, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserProxy } from '../types'
 import { fetchClashImportFromURL, saveBrowserProxies } from '../api'
+import { selectUsableProxies, useProxySpeedStore } from '../proxySpeedStore'
 import { DIRECT_QUICK_IMPORT_TEMPLATE, buildDirectImportCandidatesFromText, parseDirectImportText } from '../pages/proxyPool/helpers'
 import {
   INITIAL_CHAIN_IMPORT_FORM,
@@ -51,6 +52,12 @@ export function ProxyImportModal({
   const [previewList, setPreviewList] = useState<ProxyDisplayInfo[]>([])
   const [importing, setImporting] = useState(false)
   const [fetchingImportUrl, setFetchingImportUrl] = useState(false)
+  // 订阅拉取代理选项：只给测速成功（延迟为正）的节点，按延迟升序。
+  const speedResults = useProxySpeedStore(state => state.results)
+  const fetchProxyOptions = useMemo(
+    () => selectUsableProxies(existingProxies, speedResults),
+    [existingProxies, speedResults],
+  )
 
   useEffect(() => {
     if (open) return
@@ -295,7 +302,7 @@ export function ProxyImportModal({
       directImportForm={directImportForm}
       chainImportForm={chainImportForm}
       groups={groups}
-      fetchProxyOptions={existingProxies.filter(proxy => proxy.proxyConfig.trim() && !proxy.proxyConfig.trim().toLowerCase().startsWith('direct://'))}
+      fetchProxyOptions={fetchProxyOptions}
       previewModalOpen={previewModalOpen}
       previewList={previewList}
       importing={importing}

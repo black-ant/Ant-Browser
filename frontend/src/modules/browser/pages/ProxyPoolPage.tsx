@@ -35,6 +35,7 @@ import { ProxyPoolUsageGuideModal } from './proxyPool/ProxyPoolUsageGuideModal'
 import { ProxyCoreDownloadModal } from './proxyPool/ProxyCoreDownloadModal'
 import { useProxySourceRefresh } from './proxyPool/useProxySourceRefresh'
 import { useProxyImportFlow } from './proxyPool/useProxyImportFlow'
+import { selectUsableProxies, useProxySpeedStore } from '../proxySpeedStore'
 import { useProxyChecks } from './proxyPool/useProxyChecks'
 import { useProxySelection } from './proxyPool/useProxySelection'
 import { useProxyCheckSettingsModal } from './proxyPool/useProxyCheckSettingsModal'
@@ -252,6 +253,14 @@ export function ProxyPoolPage() {
     value: buildVirtualProxyGroupFilterValue(group.groupId, group.groupName),
     label: `虚拟：${group.groupName}`,
   }))
+
+  // 订阅拉取代理选项：只给测速成功（延迟为正）的节点，按延迟升序；
+  // 失败/未测速的节点拉订阅大概率也不可用，不再出现在下拉里。
+  const speedResults = useProxySpeedStore(state => state.results)
+  const fetchProxyOptions = useMemo(
+    () => selectUsableProxies(proxies, speedResults),
+    [proxies, speedResults],
+  )
 
   // 可用下载代理选项：测速成功（latency > 0）的节点，按延迟升序；
   // 数据来自全局测速 store 派生的 latencyMap（与表格展示同源）。
@@ -505,7 +514,7 @@ export function ProxyPoolPage() {
         chainImportForm={chainImportForm}
         directImportForm={directImportForm}
         fetchingImportUrl={fetchingImportUrl}
-        fetchProxyOptions={proxies.filter(proxy => proxy.proxyConfig.trim() && !proxy.proxyConfig.trim().toLowerCase().startsWith('direct://'))}
+        fetchProxyOptions={fetchProxyOptions}
         canParseImport={canParseImport}
         onClose={() => setImportModalOpen(false)}
         onParse={handleParseImport}
