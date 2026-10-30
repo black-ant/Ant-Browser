@@ -42,6 +42,11 @@ const (
 	MaxRuntimeFailoverAttempts               = 10
 )
 
+// MaxVirtualGroupProbeIntervalMinutes 是虚拟分组成员核验间隔的硬上限。
+// 需求是"至少每 3 小时核验一次"，这里压到 2 小时，给调度轮询粒度留出余量，
+// 保证即使配置写满上限，实际核验间隔也不会突破 3 小时。
+const MaxVirtualGroupProbeIntervalMinutes = 120
+
 // NormalizeBrowserConnectorType 规范化连接栈配置。
 func NormalizeBrowserConnectorType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
@@ -199,8 +204,8 @@ func normalizeConfig(config *Config) {
 	}
 	if config.ProxyCheck.VirtualGroupProbeIntervalMinutes <= 0 {
 		config.ProxyCheck.VirtualGroupProbeIntervalMinutes = defaultConfig.ProxyCheck.VirtualGroupProbeIntervalMinutes
-	} else if config.ProxyCheck.VirtualGroupProbeIntervalMinutes > MaxProxySpeedIntervalMinutes {
-		config.ProxyCheck.VirtualGroupProbeIntervalMinutes = MaxProxySpeedIntervalMinutes
+	} else if config.ProxyCheck.VirtualGroupProbeIntervalMinutes > MaxVirtualGroupProbeIntervalMinutes {
+		config.ProxyCheck.VirtualGroupProbeIntervalMinutes = MaxVirtualGroupProbeIntervalMinutes
 	}
 	config.ProxyCheck.DegradeFailureThreshold = clampInt(
 		config.ProxyCheck.DegradeFailureThreshold,
@@ -235,6 +240,11 @@ func normalizeConfig(config *Config) {
 	if len(config.ProxyCheck.Targets) == 0 {
 		config.ProxyCheck.Targets = append([]ProxyCheckTarget{}, defaultConfig.ProxyCheck.Targets...)
 	}
+
+	if config.ProxySourceRefresh.Enabled == nil {
+		config.ProxySourceRefresh.Enabled = defaultConfig.ProxySourceRefresh.Enabled
+	}
+	config.Browser.ProxySourceIgnoredNames = normalizeSourceIgnoredNames(config.Browser.ProxySourceIgnoredNames)
 
 	if config.LaunchServer.Port <= 0 {
 		config.LaunchServer.Port = defaultConfig.LaunchServer.Port
@@ -375,6 +385,9 @@ func DefaultConfig() *Config {
 			StartReadyTimeoutMs:    3000,
 			StartStableWindowMs:    1200,
 			DefaultConnectorType:   BrowserConnectorXray,
+		},
+		ProxySourceRefresh: ProxySourceRefreshConfig{
+			Enabled: boolPtr(true),
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,
@@ -529,6 +542,33 @@ func normalizeAutomationNodeSource(value string) string {
 func boolPtr(value bool) *bool {
 	v := value
 	return &v
+}
+
+// normalizeSourceIgnoredNames 清洗订阅源忽略名单：去掉空 key/空名称，空列表整体剔除。
+func normalizeSourceIgnoredNames(input map[string][]string) map[string][]string {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make(map[string][]string, len(input))
+	for sourceID, names := range input {
+		key := strings.TrimSpace(sourceID)
+		if key == "" {
+			continue
+		}
+		cleaned := make([]string, 0, len(names))
+		for _, name := range names {
+			if trimmed := strings.TrimSpace(name); trimmed != "" {
+				cleaned = append(cleaned, trimmed)
+			}
+		}
+		if len(cleaned) > 0 {
+			result[key] = cleaned
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // clampInt 未配置（<=0）时回落到默认值，再钳制到 [min, max]。

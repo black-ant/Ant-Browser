@@ -1267,6 +1267,32 @@ export namespace backend {
 		    return a;
 		}
 	}
+	export class ProxySourceRefreshResult {
+	    sourceId: string;
+	    sourceUrl: string;
+	    fetched: number;
+	    nameMatched: number;
+	    countryMatched: number;
+	    added: number;
+	    markedMissing: number;
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxySourceRefreshResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceId = source["sourceId"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.fetched = source["fetched"];
+	        this.nameMatched = source["nameMatched"];
+	        this.countryMatched = source["countryMatched"];
+	        this.added = source["added"];
+	        this.markedMissing = source["markedMissing"];
+	        this.total = source["total"];
+	    }
+	}
 	export class ProxyTestResult {
 	    proxyId: string;
 	    ok: boolean;
@@ -2003,6 +2029,8 @@ export namespace config {
 	    sourceAutoRefresh?: boolean;
 	    sourceRefreshIntervalM?: number;
 	    sourceLastRefreshAt?: string;
+	    sourceMissing?: boolean;
+	    sourceMissingSince?: string;
 	    lastLatencyMs: number;
 	    lastTestOk: boolean;
 	    lastTestedAt: string;
@@ -2030,6 +2058,8 @@ export namespace config {
 	        this.sourceAutoRefresh = source["sourceAutoRefresh"];
 	        this.sourceRefreshIntervalM = source["sourceRefreshIntervalM"];
 	        this.sourceLastRefreshAt = source["sourceLastRefreshAt"];
+	        this.sourceMissing = source["sourceMissing"];
+	        this.sourceMissingSince = source["sourceMissingSince"];
 	        this.lastLatencyMs = source["lastLatencyMs"];
 	        this.lastTestOk = source["lastTestOk"];
 	        this.lastTestedAt = source["lastTestedAt"];

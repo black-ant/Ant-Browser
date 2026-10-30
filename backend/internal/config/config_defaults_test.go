@@ -59,6 +59,26 @@ func TestNormalizeConfigSetsAndBoundsProxySpeedSettings(t *testing.T) {
 	}
 }
 
+// 虚拟分组核验间隔必须有硬上限，"至少每 3 小时核验一次"不能靠配置自觉。
+func TestNormalizeConfigBoundsVirtualGroupProbeInterval(t *testing.T) {
+	config := &Config{}
+	normalizeConfig(config)
+	if config.ProxyCheck.VirtualGroupProbeIntervalMinutes != DefaultVirtualGroupProbeIntervalMinutes {
+		t.Fatalf("default virtual group probe interval = %d, want %d",
+			config.ProxyCheck.VirtualGroupProbeIntervalMinutes, DefaultVirtualGroupProbeIntervalMinutes)
+	}
+	if MaxVirtualGroupProbeIntervalMinutes > 3*60 {
+		t.Fatalf("虚拟分组核验上限 = %d 分钟, 必须 <= 180", MaxVirtualGroupProbeIntervalMinutes)
+	}
+
+	config.ProxyCheck.VirtualGroupProbeIntervalMinutes = MaxProxySpeedIntervalMinutes
+	normalizeConfig(config)
+	if config.ProxyCheck.VirtualGroupProbeIntervalMinutes != MaxVirtualGroupProbeIntervalMinutes {
+		t.Fatalf("bounded virtual group probe interval = %d, want %d",
+			config.ProxyCheck.VirtualGroupProbeIntervalMinutes, MaxVirtualGroupProbeIntervalMinutes)
+	}
+}
+
 func assertStringSliceContains(t *testing.T, values []string, expected string) {
 	t.Helper()
 	for _, value := range values {

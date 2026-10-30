@@ -27,8 +27,9 @@ func TestMigrateClearsEmptyManualProfileExtensionSettings(t *testing.T) {
 		t.Fatalf("seed binding: %v", err)
 	}
 
-	// 删掉版本记录，模拟从 v29 升级上来时重放该迁移。
-	if _, err := conn.Exec(`DELETE FROM schema_migrations WHERE version = 30`); err != nil {
+	// 删掉 v30 起的版本记录，模拟从 v29 升级上来时重放该迁移。
+	// （后面追加的新版本也要一并重放，测试意图是"从 v29 升级"，与最新版本号解耦。）
+	if _, err := conn.Exec(`DELETE FROM schema_migrations WHERE version >= 30`); err != nil {
 		t.Fatalf("reset migration marker: %v", err)
 	}
 	if err := db.Migrate(); err != nil {
@@ -39,7 +40,7 @@ func TestMigrateClearsEmptyManualProfileExtensionSettings(t *testing.T) {
 	assertProfileSettingCount(t, db, "profile-bound", 1)
 
 	// 再次执行迁移不应有任何变化（幂等）。
-	if _, err := conn.Exec(`DELETE FROM schema_migrations WHERE version = 30`); err != nil {
+	if _, err := conn.Exec(`DELETE FROM schema_migrations WHERE version >= 30`); err != nil {
 		t.Fatalf("reset migration marker: %v", err)
 	}
 	if err := db.Migrate(); err != nil {

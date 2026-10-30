@@ -128,7 +128,8 @@ export function ProxyPoolTableCard({
       return <span className="text-[var(--color-text-muted)] text-xs">不适用</span>
     }
     const value = latencyMap[record.proxyId]
-    if (value === undefined) return <span className="text-[var(--color-text-muted)] text-xs">-</span>
+    // 状态列不允许空白/含糊占位：没有结果时明确显示“未测速”。
+    if (value === undefined) return <span className="text-[var(--color-text-muted)] text-xs">未测速</span>
     if (value === -1) return <span className="text-[var(--color-text-muted)] text-xs animate-pulse">测试中...</span>
     const error = latencyErrorMap[record.proxyId] || ''
     if (value === -2) return <span className="text-red-500 text-xs" title={error || '测速超时'}>超时</span>
@@ -161,7 +162,7 @@ export function ProxyPoolTableCard({
     }
 
     const result = ipHealthMap[record.proxyId]
-    if (!result) return <span className="text-[var(--color-text-muted)] text-xs">-</span>
+    if (!result) return <span className="text-[var(--color-text-muted)] text-xs">未检测</span>
     if (!result.ok) {
       return (
         <div className="flex items-center gap-2">
@@ -201,7 +202,25 @@ export function ProxyPoolTableCard({
         />
       ),
     },
-    { key: 'proxyName', title: '代理名称', width: '180px', sortable: true },
+    {
+      key: 'proxyName',
+      title: '代理名称',
+      width: '180px',
+      sortable: true,
+      render: (value, record) => (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="truncate" title={value}>{value}</span>
+          {record.sourceMissing && (
+            <span
+              className="shrink-0 px-1.5 py-0.5 text-[11px] rounded bg-red-500/10 text-red-500 whitespace-nowrap"
+              title="订阅中已无此节点（名称/国家都未匹配），节点保留、实例绑定不变"
+            >
+              异常
+            </span>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'groupName',
       title: '分组',

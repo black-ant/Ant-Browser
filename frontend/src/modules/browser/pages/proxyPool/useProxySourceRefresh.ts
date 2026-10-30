@@ -1,28 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '../../../../shared/components'
 import type { BrowserProxy } from '../../types'
-import { fetchClashImportFromURL } from '../../api'
-import {
-  buildRefreshedSourceProxies,
-  collectURLImportSources,
-  parseClashImportText,
-  parseTimestampMs,
-  type URLImportSourceMeta,
-} from './helpers'
-import { applyIgnoredProxyNamesForSource, readSourceIgnoredProxyNames } from './storage'
+import { refreshProxySource } from '../../api'
+import { collectURLImportSources, parseTimestampMs } from './helpers'
 
 interface UseProxySourceRefreshOptions {
   proxies: BrowserProxy[]
   globalAutoRefreshEnabled: boolean
   globalRefreshInterval: number
-  saveProxies: (list: BrowserProxy[]) => Promise<void>
+  /** 刷新成功后重新加载代理池（后端已完成匹配与保存） */
+  reloadProxies: () => Promise<void>
 }
 
+// 刷新逻辑统一收敛在后端 BrowserProxyRefreshSource：
+// 定时调度（app_proxy_source_refresh_scheduler.go）与前端按钮走同一条链路，
+// 保证“名称 → 同国家 → 标记异常”的匹配语义只有一份实现。
 export function useProxySourceRefresh({
   proxies,
   globalAutoRefreshEnabled,
   globalRefreshInterval,
-  saveProxies,
+  reloadProxies,
 }: UseProxySourceRefreshOptions) {
   const [refreshingAllSources, setRefreshingAllSources] = useState(false)
   const [refreshingSourceIds, setRefreshingSourceIds] = useState<Set<string>>(new Set())
@@ -41,10 +38,21 @@ export function useProxySourceRefresh({
   const sourceMetas = useMemo(() => collectURLImportSources(proxies), [proxies])
   const hasURLImportSources = sourceMetas.length > 0
 
+  const describeRefreshResult = (result: any): string => {
+    const parts = [
+      `${result?.nameMatched ?? 0} 个名称匹配`,
+      `${result?.countryMatched ?? 0} 个国家匹配`,
+      `${result?.added ?? 0} 个新增`,
+    ]
+    if ((result?.markedMissing ?? 0) > 0) {
+      parts.push(`${result.markedMissing} 个已标记异常`)
+    }
+    return parts.join('，')
+  }
+
   const refreshSingleSource = useCallback(async (sourceId: string, silent: boolean) => {
     const currentList = proxiesRef.current
-    const metas = collectURLImportSources(currentList)
-    const meta = metas.find(item => item.sourceId === sourceId)
+    const meta = collectURLImportSources(currentList).find(item => item.sourceId === sourceId)
     if (!meta) return false
 
     if (refreshingSourceIdsRef.current.has(sourceId)) return false
@@ -55,32 +63,10 @@ export function useProxySourceRefresh({
     })
 
     try {
-      const result = await fetchClashImportFromURL(meta.sourceUrl)
-      const parsed = parseClashImportText(result.content || '')
-      if (!parsed.length) {
-        throw new Error('订阅内容未解析到可用代理')
-      }
-      const ignoredNameMap = readSourceIgnoredProxyNames()
-      const sourceIgnoredNames = ignoredNameMap[sourceId] || []
-      const filteredParsed = applyIgnoredProxyNamesForSource(parsed, meta.sourceNamePrefix, sourceIgnoredNames)
-
-      const latest = proxiesRef.current
-      const oldSourceProxies = latest.filter(item => (item.sourceId || '').trim() === sourceId)
-      const refreshedAt = new Date().toISOString()
-      const effectiveMeta: URLImportSourceMeta = {
-        ...meta,
-        sourceAutoRefresh: globalAutoRefreshEnabled,
-        sourceRefreshIntervalM: globalRefreshInterval,
-      }
-      const refreshedSourceProxies = buildRefreshedSourceProxies(filteredParsed, oldSourceProxies, effectiveMeta, refreshedAt)
-
-      const merged = latest
-        .filter(item => (item.sourceId || '').trim() !== sourceId)
-        .concat(refreshedSourceProxies)
-
-      await saveProxies(merged)
+      const result = await refreshProxySource(sourceId)
+      await reloadProxies()
       if (!silent) {
-        toast.success(`订阅刷新成功：${meta.sourceUrl}（${refreshedSourceProxies.length} 条）`)
+        toast.success(`订阅刷新成功（${describeRefreshResult(result)}）`)
       }
       return true
     } catch (error: any) {
@@ -95,7 +81,7 @@ export function useProxySourceRefresh({
         return next
       })
     }
-  }, [globalAutoRefreshEnabled, globalRefreshInterval, saveProxies])
+  }, [reloadProxies])
 
   const handleRefreshAllSources = useCallback(async (silent = false) => {
     const metas = collectURLImportSources(proxiesRef.current)

@@ -136,6 +136,42 @@ func TestProxySpeedSchedulerAppliesPriorityAndInterval(t *testing.T) {
 	}
 }
 
+// 全局间隔很大时，分组成员的自定义间隔必须把调度等待时间拉回来，
+// 否则"至少每 3 小时核验一次"会被全局间隔（最长 24 小时）架空。
+func TestProxySpeedSchedulerTickHonorsMemberInterval(t *testing.T) {
+	dao := &proxySpeedSchedulerTestDAO{
+		proxies: []Proxy{{ProxyId: "member", ProxyConfig: "http://member:8080"}},
+		updates: make(chan string, 1),
+	}
+	scheduler := NewProxySpeedSchedulerWithRetry(dao, nil, 24*time.Hour, 24*time.Hour, 1)
+	scheduler.SetIntervalFunc(func(item Proxy) time.Duration {
+		if item.ProxyId == "member" {
+			return 5 * time.Minute
+		}
+		return 0
+	})
+
+	tick := scheduler.tickInterval()
+	if tick > 5*time.Minute {
+		t.Fatalf("tick = %v, want <= 5m（分组成员间隔必须参与调度）", tick)
+	}
+	if tick < time.Minute {
+		t.Fatalf("tick = %v, want >= 1m", tick)
+	}
+}
+
+// 尚无自定义间隔时，等待时间也必须受安全上限约束，避免运行期新建的分组长时间排不上核验。
+func TestProxySpeedSchedulerTickCappedForNewGroups(t *testing.T) {
+	dao := &proxySpeedSchedulerTestDAO{
+		proxies: []Proxy{{ProxyId: "pool", ProxyConfig: "http://pool:8080"}},
+		updates: make(chan string, 1),
+	}
+	scheduler := NewProxySpeedSchedulerWithRetry(dao, nil, 24*time.Hour, 24*time.Hour, 1)
+	if tick := scheduler.tickInterval(); tick != proxySpeedSchedulerMaxTick {
+		t.Fatalf("tick = %v, want %v", tick, proxySpeedSchedulerMaxTick)
+	}
+}
+
 func (dao *blockingProxySpeedDAO) List() ([]Proxy, error) {
 	return []Proxy{{ProxyId: "proxy-1", ProxyConfig: "http://127.0.0.1:8080"}}, nil
 }

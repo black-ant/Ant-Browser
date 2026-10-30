@@ -209,3 +209,71 @@ func TestBrowserProxyVirtualGroupProbeRejectsUnknownGroup(t *testing.T) {
 		t.Fatal("未知分组应返回错误")
 	}
 }
+
+// 核验间隔必须有硬上限：无论配置是"跟随全局"还是写满上限，成员都不能超过 3 小时不核验。
+func TestVirtualGroupProbeIntervalAlwaysWithinThreeHours(t *testing.T) {
+	cases := []struct {
+		name          string
+		groupMinutes  int
+		globalMinutes int
+	}{
+		{name: "unset-follows-default", groupMinutes: 0, globalMinutes: 0},
+		{name: "unset-follows-24h-global", groupMinutes: 0, globalMinutes: 24 * 60},
+		{name: "configured-24h", groupMinutes: 24 * 60, globalMinutes: 30},
+		{name: "configured-10h", groupMinutes: 10 * 60, globalMinutes: 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newVirtualGroupHealthTestApp(t)
+			app.config.ProxyCheck.VirtualGroupProbeIntervalMinutes = tc.groupMinutes
+			app.config.ProxyCheck.SpeedIntervalMinutes = tc.globalMinutes
+			got := app.virtualGroupProbeInterval()
+			if got <= 0 {
+				t.Fatalf("核验间隔 = %v, want > 0（成员必须有自己的间隔，不能回落全局）", got)
+			}
+			if got > 3*time.Hour {
+				t.Fatalf("核验间隔 = %v, want <= 3h", got)
+			}
+		})
+	}
+}
+
+// 只有分组成员使用专用间隔，池内其他代理仍跟随全局设置。
+func TestVirtualGroupProbeIntervalOnlyAppliesToMembers(t *testing.T) {
+	app, _ := newStickyHealthGroup(t)
+
+	memberInterval := app.virtualGroupProbeIntervalFor("proxy-a")
+	if memberInterval <= 0 || memberInterval > 3*time.Hour {
+		t.Fatalf("成员核验间隔 = %v, want (0, 3h]", memberInterval)
+	}
+	if poolInterval := app.virtualGroupProbeIntervalFor("not-in-any-group"); poolInterval != 0 {
+		t.Fatalf("非分组成员间隔 = %v, want 0（跟随全局）", poolInterval)
+	}
+}
+
+// 保存测速设置时不能把虚拟分组核验配置清零。
+func TestSaveProxyCheckSettingsPreservesVirtualGroupFields(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	t.Cleanup(func() {
+		if app.speedScheduler != nil {
+			app.speedScheduler.Stop()
+		}
+	})
+	app.config.ProxyCheck.VirtualGroupProbeIntervalMinutes = 17
+	app.config.ProxyCheck.DegradeFailureThreshold = 3
+	app.config.ProxyCheck.VirtualGroupHealthEnabled = boolPtrForTest(false)
+
+	if err := app.SaveProxyCheckSettings(ProxyCheckSettings{SpeedIntervalMinutes: 60}); err != nil {
+		t.Fatalf("SaveProxyCheckSettings failed: %v", err)
+	}
+	got := app.GetProxyCheckSettings()
+	if got.VirtualGroupProbeIntervalMinutes != 17 {
+		t.Fatalf("虚拟分组核验间隔 = %d, want 17（保存测速设置不得覆盖）", got.VirtualGroupProbeIntervalMinutes)
+	}
+	if got.DegradeFailureThreshold != 3 {
+		t.Fatalf("降级阈值 = %d, want 3", got.DegradeFailureThreshold)
+	}
+	if got.VirtualGroupHealthEnabled == nil || *got.VirtualGroupHealthEnabled {
+		t.Fatal("虚拟分组健康开关被保存动作重置")
+	}
+}

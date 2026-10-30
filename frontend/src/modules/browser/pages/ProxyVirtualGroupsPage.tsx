@@ -416,7 +416,8 @@ export function ProxyVirtualGroupsPage() {
 
   const renderLatency = (proxy: BrowserProxy) => {
     const value = latencyMap[proxy.proxyId]
-    if (value === undefined) return <span className='text-xs text-[var(--color-text-muted)]'>-</span>
+    // 状态列不允许空白/含糊占位：没有结果时明确显示“未测速”。
+    if (value === undefined) return <span className='text-xs text-[var(--color-text-muted)]'>未测速</span>
     if (value === -1) return <span className='animate-pulse text-xs text-[var(--color-text-muted)]'>测试中...</span>
     const error = latencyErrorMap[proxy.proxyId] || ''
     if (value === -2) return <span className='text-xs text-red-500' title={error || '测速超时'}>超时</span>

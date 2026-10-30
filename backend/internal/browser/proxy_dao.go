@@ -36,6 +36,7 @@ func (d *SQLiteProxyDAO) List() ([]Proxy, error) {
 		SELECT proxy_id, proxy_name, proxy_config, COALESCE(preferred_kernel, ''), dns_servers, COALESCE(group_name, ''),
 		       COALESCE(source_id, ''), COALESCE(source_url, ''), COALESCE(source_name_prefix, ''),
 		       COALESCE(source_auto_refresh, 0), COALESCE(source_refresh_interval_m, 0), COALESCE(source_last_refresh_at, ''),
+		       COALESCE(source_missing, 0), COALESCE(source_missing_since, ''),
 		       COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
 		       COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
 		       COALESCE(last_ip_health_json, ''),
@@ -54,6 +55,7 @@ func (d *SQLiteProxyDAO) ListByGroup(groupName string) ([]Proxy, error) {
 		SELECT proxy_id, proxy_name, proxy_config, COALESCE(preferred_kernel, ''), dns_servers, COALESCE(group_name, ''),
 		       COALESCE(source_id, ''), COALESCE(source_url, ''), COALESCE(source_name_prefix, ''),
 		       COALESCE(source_auto_refresh, 0), COALESCE(source_refresh_interval_m, 0), COALESCE(source_last_refresh_at, ''),
+		       COALESCE(source_missing, 0), COALESCE(source_missing_since, ''),
 		       COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
 		       COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
 		       COALESCE(last_ip_health_json, ''),
@@ -159,13 +161,18 @@ func upsertProxy(exec proxySQLExecutor, proxy Proxy) error {
 	if proxy.SourceAutoRefresh {
 		autoRefreshInt = 1
 	}
+	sourceMissingInt := 0
+	if proxy.SourceMissing {
+		sourceMissingInt = 1
+	}
 	_, err := exec.Exec(`
 		INSERT INTO browser_proxies (
 		  proxy_id, proxy_name, proxy_config, preferred_kernel, dns_servers, group_name,
 		  source_id, source_url, source_name_prefix, source_auto_refresh, source_refresh_interval_m, source_last_refresh_at,
+		  source_missing, source_missing_since,
 		  sort_order, created_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(proxy_id) DO UPDATE SET
 		  proxy_name   = excluded.proxy_name,
 		  proxy_config = excluded.proxy_config,
@@ -178,9 +185,12 @@ func upsertProxy(exec proxySQLExecutor, proxy Proxy) error {
 		  source_auto_refresh = excluded.source_auto_refresh,
 		  source_refresh_interval_m = excluded.source_refresh_interval_m,
 		  source_last_refresh_at = excluded.source_last_refresh_at,
+		  source_missing = excluded.source_missing,
+		  source_missing_since = excluded.source_missing_since,
 		  sort_order   = excluded.sort_order`,
 		proxy.ProxyId, proxy.ProxyName, proxy.ProxyConfig, proxy.PreferredKernel, proxy.DnsServers, proxy.GroupName,
 		proxy.SourceID, proxy.SourceURL, proxy.SourceNamePrefix, autoRefreshInt, proxy.SourceRefreshIntervalM, proxy.SourceLastRefreshAt,
+		sourceMissingInt, proxy.SourceMissingSince,
 		proxy.SortOrder, now,
 	)
 	if err != nil {
@@ -296,9 +306,11 @@ func scanProxies(rows *sql.Rows) ([]Proxy, error) {
 		var p Proxy
 		var okInt int
 		var autoRefreshInt int
+		var sourceMissingInt int
 		if err := rows.Scan(
 			&p.ProxyId, &p.ProxyName, &p.ProxyConfig, &p.PreferredKernel, &p.DnsServers, &p.GroupName,
 			&p.SourceID, &p.SourceURL, &p.SourceNamePrefix, &autoRefreshInt, &p.SourceRefreshIntervalM, &p.SourceLastRefreshAt,
+			&sourceMissingInt, &p.SourceMissingSince,
 			&p.LastLatencyMs, &okInt, &p.LastTestedAt, &p.LastTestEngine, &p.LastTestConnectorType, &p.LastTestFingerprint,
 			&p.LastIPHealthJSON, &p.SortOrder,
 		); err != nil {
@@ -306,6 +318,7 @@ func scanProxies(rows *sql.Rows) ([]Proxy, error) {
 		}
 		p.LastTestOk = okInt == 1
 		p.SourceAutoRefresh = autoRefreshInt == 1
+		p.SourceMissing = sourceMissingInt == 1
 		list = append(list, p)
 	}
 	return list, rows.Err()

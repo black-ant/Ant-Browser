@@ -148,6 +148,20 @@ export function ProxyPoolPage() {
     saveProxies,
   })
 
+  // 订阅刷新后的池重载：仅拉取并应用最新状态，不做 IP 健康缓存清理。
+  const reloadPoolState = useCallback(async () => {
+    const [list, groupList, virtualGroupList] = await Promise.all([
+      fetchBrowserProxies(),
+      fetchBrowserProxyGroups(),
+      fetchBrowserProxyVirtualGroups(),
+    ])
+    const finalList = await ensureBuiltinProxies(list)
+    setProxies(finalList)
+    setGroups(groupList)
+    setVirtualGroups(virtualGroupList)
+    setDisplayList([...toDisplayList(finalList), ...toVirtualDisplayList(virtualGroupList, finalList)])
+  }, [])
+
   const {
     hasURLImportSources,
     refreshingAllSources,
@@ -158,7 +172,7 @@ export function ProxyPoolPage() {
     proxies,
     globalAutoRefreshEnabled,
     globalRefreshInterval,
-    saveProxies,
+    reloadProxies: reloadPoolState,
   })
 
   const {

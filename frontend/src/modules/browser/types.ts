@@ -300,6 +300,9 @@ export interface BrowserProxy {
   sourceAutoRefresh?: boolean
   sourceRefreshIntervalM?: number
   sourceLastRefreshAt?: string
+  /** 订阅刷新后该节点已不在来源列表中（名称/国家都匹配不上），保留在池内但标记异常 */
+  sourceMissing?: boolean
+  sourceMissingSince?: string
   lastLatencyMs?: number
   lastTestOk?: boolean
 lastTestedAt?: string
@@ -307,6 +310,18 @@ lastTestedAt?: string
   lastTestEngine?: string
   lastTestConnectorType?: string
   lastIPHealthJson?: string
+}
+
+/** 订阅源刷新结果（后端统一匹配逻辑：名称 → 同国家 → 标记异常） */
+export interface ProxySourceRefreshResult {
+  sourceId: string
+  sourceUrl: string
+  fetched: number
+  nameMatched: number
+  countryMatched: number
+  added: number
+  markedMissing: number
+  total: number
 }
 
 export interface BrowserProxyVirtualGroup {

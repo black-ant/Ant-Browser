@@ -1,4 +1,4 @@
-﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySpeedTestResult, ProxyVirtualGroupHealth, ProxyVirtualGroupProbeResult } from '../types'
+﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySourceRefreshResult, ProxySpeedTestResult, ProxyVirtualGroupHealth, ProxyVirtualGroupProbeResult } from '../types'
 import { getBindings, getGoApp, getMockProxies, nowISOString, setMockProxies } from './runtime'
 
 import type { BrowserProxyVirtualGroup } from '../types'
@@ -237,6 +237,42 @@ export async function saveBrowserProxies(proxies: BrowserProxy[]): Promise<boole
   }
   setMockProxies(proxies)
   return true
+}
+
+/** 刷新订阅源：后端统一匹配（名称 → 同国家 → 标记异常），与定时刷新同一条链路 */
+export async function refreshProxySource(sourceId: string, proxyId = ''): Promise<ProxySourceRefreshResult> {
+  const bindings: any = await getBindings()
+  const trimmedSourceId = sourceId.trim()
+  const trimmedProxyId = proxyId.trim()
+  const emptyResult: ProxySourceRefreshResult = {
+    sourceId: trimmedSourceId, sourceUrl: '', fetched: 0, nameMatched: 0,
+    countryMatched: 0, added: 0, markedMissing: 0, total: 0,
+  }
+  if (bindings?.BrowserProxyRefreshSource) {
+    return (await bindings.BrowserProxyRefreshSource(trimmedSourceId, trimmedProxyId)) || emptyResult
+  }
+  const goApp = getGoApp()
+  if (goApp?.BrowserProxyRefreshSource) {
+    return (await goApp.BrowserProxyRefreshSource(trimmedSourceId, trimmedProxyId)) || emptyResult
+  }
+  throw new Error('当前环境不支持订阅刷新')
+}
+
+/** 持久化订阅源忽略名单（导入预览取消勾选的节点），定时刷新不再导入它们 */
+export async function setSourceIgnoredProxyNames(sourceId: string, names: string[]): Promise<boolean> {
+  const bindings: any = await getBindings()
+  const trimmedSourceId = sourceId.trim()
+  if (!trimmedSourceId) return false
+  if (bindings?.BrowserProxySetSourceIgnoredNames) {
+    await bindings.BrowserProxySetSourceIgnoredNames(trimmedSourceId, names)
+    return true
+  }
+  const goApp = getGoApp()
+  if (goApp?.BrowserProxySetSourceIgnoredNames) {
+    await goApp.BrowserProxySetSourceIgnoredNames(trimmedSourceId, names)
+    return true
+  }
+  return false
 }
 
 export async function validateProxyConfig(proxyConfig: string, proxyId: string): Promise<{ supported: boolean; errorMsg: string }> {

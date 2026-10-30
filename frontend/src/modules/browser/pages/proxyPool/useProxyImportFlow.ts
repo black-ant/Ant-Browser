@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { toast } from '../../../../shared/components'
 import type { BrowserProxy } from '../../types'
-import { fetchClashImportFromURL } from '../../api'
+import { fetchClashImportFromURL, setSourceIgnoredProxyNames } from '../../api'
 import {
   CHAIN_QUICK_IMPORT_TEMPLATE,
   DIRECT_QUICK_IMPORT_TEMPLATE,
@@ -251,12 +251,31 @@ export function useProxyImportFlow({
         sourceLastRefreshAt: sourceLastRefreshAt || undefined,
         }
       })
+      // 与后端订阅刷新语义一致：名称匹配不上的旧节点不删除，
+      // 保留在池内并标记异常（实例绑定不动），订阅里重新出现时自动恢复。
+      const refreshedNames = new Set(newProxies.map(item => (item.proxyName || '').trim()))
+      const keptMissing = isURLImport
+        ? oldSourceProxies
+            .filter(item => !refreshedNames.has((item.proxyName || '').trim()))
+            .map(item => ({
+              ...item,
+              sourceMissing: true,
+              sourceMissingSince: item.sourceMissingSince || new Date().toISOString(),
+              sourceAutoRefresh,
+              sourceRefreshIntervalM,
+            }))
+        : []
       const allProxies = isURLImport
-        ? proxies.filter(item => (item.sourceId || '').trim() !== sourceID).concat(newProxies)
+        ? proxies.filter(item => (item.sourceId || '').trim() !== sourceID).concat(newProxies, keptMissing)
         : [...proxies, ...newProxies]
       await saveProxies(allProxies)
       if (isURLImport && removedPreviewProxyNames.length > 0) {
         appendSourceIgnoredProxyNames(sourceID, removedPreviewProxyNames)
+        try {
+          await setSourceIgnoredProxyNames(sourceID, removedPreviewProxyNames)
+        } catch {
+          // 后端持久化失败不阻断导入，本地名单仍然生效
+        }
       }
       setPreviewModalOpen(false)
       setImportUrl('')

@@ -562,8 +562,16 @@ export function BrowserProxyProbeBrowserPage(arg1) {
   return window['go']['main']['App']['BrowserProxyProbeBrowserPage'](arg1);
 }
 
+export function BrowserProxyRefreshSource(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProxyRefreshSource'](arg1, arg2);
+}
+
 export function BrowserProxyResolveLocation(arg1) {
   return window['go']['main']['App']['BrowserProxyResolveLocation'](arg1);
+}
+
+export function BrowserProxySetSourceIgnoredNames(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProxySetSourceIgnoredNames'](arg1, arg2);
 }
 
 export function BrowserProxyTestSpeed(arg1) {

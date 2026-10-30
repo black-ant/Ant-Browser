@@ -1,6 +1,5 @@
 import type { BrowserProxy } from '../../types'
-import type { ClashProxy, URLImportSourceMeta } from './helpers.types'
-import { nextProxyID, proxyToYaml, resolveImportedProxyName } from './helpers.clash'
+import type { URLImportSourceMeta } from './helpers.types'
 
 export function parseTimestampMs(value: string): number {
   const trimmed = value.trim()
@@ -128,40 +127,3 @@ export function createExistingProxyPicker(oldSourceProxies: BrowserProxy[]) {
   }
 }
 
-export function createExistingProxyIDPicker(oldSourceProxies: BrowserProxy[]) {
-  const pickExisting = createExistingProxyPicker(oldSourceProxies)
-  return (name: string, configText: string): string | null => pickExisting(name, configText)?.proxyId || null
-}
-export function buildRefreshedSourceProxies(
-  parsedProxies: ClashProxy[],
-  oldSourceProxies: BrowserProxy[],
-  meta: URLImportSourceMeta,
-  refreshedAt: string,
-): BrowserProxy[] {
-  const pickExisting = createExistingProxyPicker(oldSourceProxies)
-  const prefix = meta.sourceNamePrefix.trim()
-  const sourceGroupName = meta.sourceGroupName.trim()
-  const sourceDnsServers = meta.sourceDnsServers.trim()
-
-  return parsedProxies.map((proxy, index) => {
-    const proxyName = resolveImportedProxyName(proxy, index, prefix)
-    const proxyConfig = proxyToYaml(proxy)
-    const existingProxy = pickExisting(proxyName, proxyConfig)
-    const proxyId = existingProxy?.proxyId || nextProxyID()
-
-    return {
-      proxyId,
-      proxyName,
-      proxyConfig,
-      preferredKernel: existingProxy?.preferredKernel || undefined,
-      dnsServers: sourceDnsServers || undefined,
-      groupName: sourceGroupName || undefined,
-      sourceId: meta.sourceId,
-      sourceUrl: meta.sourceUrl,
-      sourceNamePrefix: prefix || undefined,
-      sourceAutoRefresh: meta.sourceAutoRefresh,
-      sourceRefreshIntervalM: meta.sourceRefreshIntervalM,
-      sourceLastRefreshAt: refreshedAt,
-    }
-  })
-}

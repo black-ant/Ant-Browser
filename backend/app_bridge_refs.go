@@ -3,6 +3,7 @@ package backend
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
@@ -156,6 +157,10 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 	}
 }
 
+// recordProxyBridgeFailure 桥接故障后把该代理标记为一次明确的测速失败。
+// 旧实现直接清空 last_tested_at，前端会把“记录被抹掉”渲染成空白，
+// 用户看到的是数据凭空消失；写入失败记录（tested_at=now）让 UI 显示“失败”，
+// 同时调度器会按失败重试间隔尽快复测，connector_type 一并清空以强制真实重测。
 func (a *App) recordProxyBridgeFailure(proxyID string) {
 	proxyID = strings.TrimSpace(proxyID)
 	if a == nil || proxyID == "" {
@@ -164,14 +169,8 @@ func (a *App) recordProxyBridgeFailure(proxyID string) {
 	if a.browserMgr == nil || a.browserMgr.ProxyDAO == nil {
 		return
 	}
-	if invalidator, ok := a.browserMgr.ProxyDAO.(interface{ InvalidateSpeedResult(string) error }); ok {
-		if err := invalidator.InvalidateSpeedResult(proxyID); err != nil {
-			logger.New("ProxyBridge").Warn("桥接故障后清除测速结果失败", logger.F("proxy_id", proxyID), logger.F("error", err))
-		}
-		return
-	}
-	if err := a.browserMgr.ProxyDAO.UpdateSpeedResult(proxyID, false, -1, ""); err != nil {
-		logger.New("ProxyBridge").Warn("桥接故障后清除测速结果失败", logger.F("proxy_id", proxyID), logger.F("error", err))
+	if err := a.browserMgr.ProxyDAO.UpdateSpeedResult(proxyID, false, -1, time.Now().Format(time.RFC3339)); err != nil {
+		logger.New("ProxyBridge").Warn("桥接故障后标记测速失败时出错", logger.F("proxy_id", proxyID), logger.F("error", err))
 	}
 }
 

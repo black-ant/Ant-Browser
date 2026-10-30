@@ -290,7 +290,11 @@ export function BrowserProxyListGroups():Promise<Array<string>>;
 
 export function BrowserProxyProbeBrowserPage(arg1:backend.ProxyBrowserProbeRequest):Promise<backend.ProxyBrowserProbeResult>;
 
+export function BrowserProxyRefreshSource(arg1:string,arg2:string):Promise<backend.ProxySourceRefreshResult>;
+
 export function BrowserProxyResolveLocation(arg1:string):Promise<backend.ProxyLocationResolveResult>;
+
+export function BrowserProxySetSourceIgnoredNames(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function BrowserProxyTestSpeed(arg1:string):Promise<backend.ProxyTestResult>;
 

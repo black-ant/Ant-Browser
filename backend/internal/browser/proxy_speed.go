@@ -178,20 +178,58 @@ func (s *ProxySpeedScheduler) loop(doneCh chan struct{}) {
 	}
 	s.runTracked()
 
-	tickInterval := s.interval
-	if s.failureRetry > 0 && s.failureRetry < tickInterval {
-		tickInterval = s.failureRetry
-	}
-	ticker := time.NewTicker(tickInterval)
-	defer ticker.Stop()
 	for {
+		// 每轮重新计算等待时间：分组/成员可能在运行期被新增，间隔函数随之变化。
+		timer := time.NewTimer(s.tickInterval())
 		select {
-		case <-ticker.C:
+		case <-timer.C:
 			s.runTracked()
 		case <-s.stopCh:
+			timer.Stop()
 			return
 		}
 	}
+}
+
+// proxySpeedSchedulerMaxTick 是调度的等待上限。
+// 分组可能在调度器运行期间新建，等待过长会让新成员迟迟排不上核验。
+const proxySpeedSchedulerMaxTick = 5 * time.Minute
+
+// tickInterval 计算下一轮调度的等待时间。
+//
+// 必须把自定义间隔（intervalFn）纳入最小值：全局测速间隔与失败重试间隔都允许配置到 24 小时，
+// 只按全局间隔等待会让虚拟分组成员的分钟级核验间隔永远等不到 tick，周期核验被无限期推后。
+func (s *ProxySpeedScheduler) tickInterval() time.Duration {
+	s.mu.Lock()
+	interval := s.interval
+	failureRetry := s.failureRetry
+	intervalFn := s.intervalFn
+	dao := s.dao
+	s.mu.Unlock()
+
+	tick := interval
+	if tick <= 0 {
+		tick = DefaultProxySpeedInterval
+	}
+	if failureRetry > 0 && failureRetry < tick {
+		tick = failureRetry
+	}
+	if intervalFn != nil && dao != nil {
+		if proxies, err := dao.List(); err == nil {
+			for _, proxy := range proxies {
+				if custom := intervalFn(proxy); custom > 0 && custom < tick {
+					tick = custom
+				}
+			}
+		}
+	}
+	if tick > proxySpeedSchedulerMaxTick {
+		tick = proxySpeedSchedulerMaxTick
+	}
+	if tick < time.Minute {
+		tick = time.Minute
+	}
+	return tick
 }
 
 func (s *ProxySpeedScheduler) runTracked() {

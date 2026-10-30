@@ -11,7 +11,9 @@ const PROXY_GLOBAL_REFRESH_INTERVAL_KEY = 'browser:proxyPool:globalRefreshInterv
 // 选择弹窗、实例列表、插件管理页的历史测速结果显示窗口
 export const PROXY_SPEED_RESULT_MAX_AGE_MS = 72 * 60 * 60 * 1000
 export const PROXY_IP_HEALTH_RESULT_MAX_AGE_MS = 12 * 60 * 60 * 1000
-
+// 显示端的 now 往往是挂载时/定时 tick 的快照，刚完成的测速 testedAt 会比它"新"，
+// 负 age 是时钟快照滞后而非数据异常，允许 1 分钟以内的偏差，否则刚测完的结果会被误判不新鲜。
+export const PROXY_SPEED_RESULT_CLOCK_SKEW_MS = 60 * 1000
 
 export function isProxySpeedResultFresh(testedAt?: string, now = Date.now(), maxAgeMs = PROXY_SPEED_RESULT_MAX_AGE_MS): boolean {
   if (!testedAt) return false
@@ -19,7 +21,7 @@ export function isProxySpeedResultFresh(testedAt?: string, now = Date.now(), max
   if (!Number.isFinite(timestamp)) return false
   const age = now - timestamp
   const effectiveMaxAgeMs = maxAgeMs > 0 ? maxAgeMs : PROXY_SPEED_RESULT_MAX_AGE_MS
-  return age >= 0 && age <= effectiveMaxAgeMs
+  return age >= -PROXY_SPEED_RESULT_CLOCK_SKEW_MS && age <= effectiveMaxAgeMs
 }
 
 export function readSourceIgnoredProxyNames(): Record<string, string[]> {

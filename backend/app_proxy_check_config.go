@@ -30,6 +30,29 @@ func (a *App) SaveProxyCheckSettings(settings ProxyCheckSettings) error {
 	if settings.SpeedConcurrency <= 0 {
 		settings.SpeedConcurrency = a.config.ProxyCheck.SpeedConcurrency
 	}
+	// 测速设置弹窗不携带虚拟分组字段，缺省（0/nil）时沿用现有配置。
+	// 否则一次保存就会把核验间隔重置为“跟随全局”，周期核验随之失去约束。
+	if settings.VirtualGroupProbeIntervalMinutes <= 0 {
+		settings.VirtualGroupProbeIntervalMinutes = a.config.ProxyCheck.VirtualGroupProbeIntervalMinutes
+	}
+	if settings.DegradeFailureThreshold <= 0 {
+		settings.DegradeFailureThreshold = a.config.ProxyCheck.DegradeFailureThreshold
+	}
+	if settings.RestoreSuccessThreshold <= 0 {
+		settings.RestoreSuccessThreshold = a.config.ProxyCheck.RestoreSuccessThreshold
+	}
+	if settings.RuntimeFailoverCooldownMinutes <= 0 {
+		settings.RuntimeFailoverCooldownMinutes = a.config.ProxyCheck.RuntimeFailoverCooldownMinutes
+	}
+	if settings.RuntimeFailoverMaxAttempts <= 0 {
+		settings.RuntimeFailoverMaxAttempts = a.config.ProxyCheck.RuntimeFailoverMaxAttempts
+	}
+	if settings.VirtualGroupHealthEnabled == nil {
+		settings.VirtualGroupHealthEnabled = a.config.ProxyCheck.VirtualGroupHealthEnabled
+	}
+	if settings.RuntimeFailoverEnabled == nil {
+		settings.RuntimeFailoverEnabled = a.config.ProxyCheck.RuntimeFailoverEnabled
+	}
 	a.config.ProxyCheck = proxy.NormalizeCheckSettings(settings)
 	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
 		return err

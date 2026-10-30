@@ -371,6 +371,14 @@ var migrations = []migration{
 			   )`,
 		},
 	},
+	{
+		version: 31,
+		desc:    "代理订阅刷新：标记已从来源消失的节点",
+		stmts: []string{
+			`ALTER TABLE browser_proxies ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE browser_proxies ADD COLUMN source_missing_since TEXT NOT NULL DEFAULT ''`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

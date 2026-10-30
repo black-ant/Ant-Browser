@@ -36,7 +36,8 @@ interface ProxyRowProps {
 
 function SpeedBadge({ testing, result }: { testing: boolean; result?: SpeedResult }) {
   if (testing) return <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-text-muted)] shrink-0" />
-  if (!result) return null
+  // 状态列不允许空白：没有结果时明确显示“未测速”。
+  if (!result) return <span className="text-xs text-[var(--color-text-muted)] shrink-0 whitespace-nowrap">未测速</span>
   const suffix = result.engine ? ` (${result.engine})` : ''
   if (!result.ok) return <span className="text-xs text-red-500 shrink-0 whitespace-nowrap" title={result.error || '测速失败'}>失败{suffix}</span>
   const color = result.latencyMs < 200 ? 'text-green-500' : result.latencyMs < 500 ? 'text-yellow-500' : 'text-red-500'

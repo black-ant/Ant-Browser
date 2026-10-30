@@ -62,6 +62,8 @@ func NormalizeBrowserProxies(proxies []config.BrowserProxy, generateID func() st
 			SourceAutoRefresh:      sourceAutoRefresh,
 			SourceRefreshIntervalM: sourceRefreshIntervalM,
 			SourceLastRefreshAt:    sourceLastRefreshAt,
+			SourceMissing:          item.SourceMissing,
+			SourceMissingSince:     strings.TrimSpace(item.SourceMissingSince),
 			SortOrder:              i,
 		})
 	}

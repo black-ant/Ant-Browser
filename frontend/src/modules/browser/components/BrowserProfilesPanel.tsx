@@ -172,7 +172,11 @@ function formatProxyLabel(profile: BrowserProfile, proxy?: BrowserProxy, virtual
 }
 
 function ProxyLatency({ result }: { result?: ProxySpeedTestResult | null }) {
-  if (!result) return null
+  // 不渲染空白：没有可展示的结果时明确显示“未测速”，
+  // 失败显示“失败”，避免“数据凭空消失”的观感。
+  if (!result) {
+    return <span className="text-[var(--color-text-muted)] text-xs">未测速</span>
+  }
   if (!result.ok) return <span className="text-xs text-red-500">失败</span>
   const color = result.latencyMs < 200 ? 'text-green-500' : result.latencyMs < 500 ? 'text-yellow-500' : 'text-red-500'
   return <span className={`text-xs font-medium ${color}`}>{result.latencyMs}ms</span>

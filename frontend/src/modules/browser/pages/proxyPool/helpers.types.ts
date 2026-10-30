@@ -152,6 +152,7 @@ export interface ProxyDisplayInfo {
   sourceAutoRefresh: boolean
   sourceRefreshIntervalM: number
   sourceLastRefreshAt: string
+  sourceMissing?: boolean
   type: string
   server: string
   port: number

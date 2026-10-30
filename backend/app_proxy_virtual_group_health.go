@@ -101,14 +101,25 @@ func (a *App) memberHealthPolicy() browser.MemberHealthPolicy {
 	}
 }
 
-// virtualGroupProbeInterval 分组成员的独立探测间隔；0 表示跟随全局测速间隔。
+// virtualGroupProbeInterval 分组成员的核验间隔。
+//
+// 优先级：虚拟分组专用间隔 → 全局测速间隔 → 默认值；得到的结果再做硬性封顶。
+// 这里绝不返回 0（0 在调度器里表示“跟随全局间隔”），因为全局间隔允许配置到 24 小时，
+// 会让“至少每 3 小时核验一次”失效。封顶值见 config.MaxVirtualGroupProbeIntervalMinutes。
 func (a *App) virtualGroupProbeInterval() time.Duration {
-	if a == nil || a.config == nil {
-		return 0
+	minutes := config.DefaultVirtualGroupProbeIntervalMinutes
+	if a != nil && a.config != nil {
+		if configured := a.config.ProxyCheck.VirtualGroupProbeIntervalMinutes; configured > 0 {
+			minutes = configured
+		} else if global := a.config.ProxyCheck.SpeedIntervalMinutes; global > 0 {
+			minutes = global
+		}
 	}
-	minutes := a.config.ProxyCheck.VirtualGroupProbeIntervalMinutes
+	if minutes > config.MaxVirtualGroupProbeIntervalMinutes {
+		minutes = config.MaxVirtualGroupProbeIntervalMinutes
+	}
 	if minutes <= 0 {
-		return 0
+		minutes = config.DefaultVirtualGroupProbeIntervalMinutes
 	}
 	return time.Duration(minutes) * time.Minute
 }

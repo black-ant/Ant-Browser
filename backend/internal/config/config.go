@@ -47,17 +47,28 @@ type AutomationConfig struct {
 	PlaywrightCoreVersion string `yaml:"playwright_core_version,omitempty"`
 }
 
+// ProxySourceRefreshConfig 订阅源定时刷新（后端调度器）。
+type ProxySourceRefreshConfig struct {
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
+// IsEnabled 未显式配置时默认开启：URL 导入的订阅按各自间隔定期拉取。
+func (c ProxySourceRefreshConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
 // Config 应用配置
 type Config struct {
-	Database     DatabaseConfig     `yaml:"database"`
-	App          AppConfig          `yaml:"app"`
-	Runtime      RuntimeConfig      `yaml:"runtime"`
-	Logging      LoggingConfig      `yaml:"logging"`
-	Browser      BrowserConfig      `yaml:"browser"`
-	ProxyCheck   ProxyCheckConfig   `yaml:"proxy_check"`
-	LaunchServer LaunchServerConfig `yaml:"launch_server"`
-	Automation   AutomationConfig   `yaml:"automation"`
-	Backup       BackupConfig       `yaml:"backup"`
+	Database           DatabaseConfig           `yaml:"database"`
+	App                AppConfig                `yaml:"app"`
+	Runtime            RuntimeConfig            `yaml:"runtime"`
+	Logging            LoggingConfig            `yaml:"logging"`
+	Browser            BrowserConfig            `yaml:"browser"`
+	ProxyCheck         ProxyCheckConfig         `yaml:"proxy_check"`
+	ProxySourceRefresh ProxySourceRefreshConfig `yaml:"proxy_source_refresh,omitempty"`
+	LaunchServer       LaunchServerConfig       `yaml:"launch_server"`
+	Automation         AutomationConfig         `yaml:"automation"`
+	Backup             BackupConfig             `yaml:"backup"`
 }
 
 type ProxyCheckConfig struct {
@@ -234,6 +245,9 @@ type BrowserConfig struct {
 	DefaultCoreId          string                     `yaml:"default_core_id,omitempty"`
 	DefaultConnectorType   string                     `yaml:"default_connector_type,omitempty"`
 	Environments           []BrowserEnvironment       `yaml:"environments,omitempty"`
+	// ProxySourceIgnoredNames 按 sourceId 记录订阅刷新时要跳过的节点名（导入预览里被用户取消勾选的节点）。
+	// 之前只存在前端 localStorage，后端定时刷新无法感知，导致被忽略节点反复“复活”。
+	ProxySourceIgnoredNames map[string][]string `yaml:"proxy_source_ignored_names,omitempty" json:"proxySourceIgnoredNames,omitempty"`
 }
 
 type BrowserCore struct {
@@ -257,14 +271,18 @@ type BrowserProxy struct {
 	SourceAutoRefresh      bool   `yaml:"source_auto_refresh,omitempty" json:"sourceAutoRefresh,omitempty"`
 	SourceRefreshIntervalM int    `yaml:"source_refresh_interval_m,omitempty" json:"sourceRefreshIntervalM,omitempty"`
 	SourceLastRefreshAt    string `yaml:"source_last_refresh_at,omitempty" json:"sourceLastRefreshAt,omitempty"`
-	LastLatencyMs          int64  `yaml:"-" json:"lastLatencyMs"`
-	LastTestOk             bool   `yaml:"-" json:"lastTestOk"`
-	LastTestedAt           string `yaml:"-" json:"lastTestedAt"`
-	LastTestEngine         string `yaml:"-" json:"lastTestEngine,omitempty"`
-	LastTestConnectorType  string `yaml:"-" json:"lastTestConnectorType,omitempty"`
-	LastTestFingerprint    string `yaml:"-" json:"-"`
-	SpeedTestFingerprint   string `yaml:"-" json:"speedTestFingerprint"`
-	LastIPHealthJSON       string `yaml:"-" json:"lastIPHealthJson,omitempty"`
+	// SourceMissing 订阅刷新后该节点已不在来源列表中（名称/国家都匹配不上）。
+	// 节点保留在池内、实例绑定不变，仅标记异常供 UI 与排查使用。
+	SourceMissing         bool   `yaml:"source_missing,omitempty" json:"sourceMissing,omitempty"`
+	SourceMissingSince    string `yaml:"source_missing_since,omitempty" json:"sourceMissingSince,omitempty"`
+	LastLatencyMs         int64  `yaml:"-" json:"lastLatencyMs"`
+	LastTestOk            bool   `yaml:"-" json:"lastTestOk"`
+	LastTestedAt          string `yaml:"-" json:"lastTestedAt"`
+	LastTestEngine        string `yaml:"-" json:"lastTestEngine,omitempty"`
+	LastTestConnectorType string `yaml:"-" json:"lastTestConnectorType,omitempty"`
+	LastTestFingerprint   string `yaml:"-" json:"-"`
+	SpeedTestFingerprint  string `yaml:"-" json:"speedTestFingerprint"`
+	LastIPHealthJSON      string `yaml:"-" json:"lastIPHealthJson,omitempty"`
 }
 
 type BrowserProxyVirtualGroup struct {
