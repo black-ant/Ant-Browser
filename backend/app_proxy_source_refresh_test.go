@@ -342,3 +342,16 @@ func TestSelectDueProxySourcesRespectsAutoRefresh(t *testing.T) {
 		t.Fatalf("due = %+v, want 仅 src-auto（关闭自动更新的源不参与定时拉取）", due)
 	}
 }
+
+// 定时刷新间隔按每个源自己设置：24 小时间隔下，23 小时前刷过不算到期，25 小时前刷过的懒加载补拉。
+func TestSelectDueProxySourcesHonorsSourceInterval(t *testing.T) {
+	now := time.Now()
+	pool := []BrowserProxy{
+		{ProxyId: "recent24h", ProxyName: "recent24h", ProxyConfig: "ss://a", SourceID: "src-recent", SourceURL: "https://recent", SourceAutoRefresh: true, SourceRefreshIntervalM: 1440, SourceLastRefreshAt: now.Add(-23 * time.Hour).Format(time.RFC3339)},
+		{ProxyId: "overdue24h", ProxyName: "overdue24h", ProxyConfig: "ss://b", SourceID: "src-overdue", SourceURL: "https://overdue", SourceAutoRefresh: true, SourceRefreshIntervalM: 1440, SourceLastRefreshAt: now.Add(-25 * time.Hour).Format(time.RFC3339)},
+	}
+	due := selectDueProxySources(pool, now)
+	if len(due) != 1 || due[0].SourceID != "src-overdue" {
+		t.Fatalf("due = %+v, want 仅 src-overdue（24 小时内不应重复拉取，超过的懒加载补拉）", due)
+	}
+}

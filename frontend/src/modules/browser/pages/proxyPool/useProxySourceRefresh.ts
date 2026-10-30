@@ -113,13 +113,14 @@ export function useProxySourceRefresh({
     const runAutoRefresh = async () => {
       if (autoRefreshRunningRef.current || refreshingAllSources) return
       if (!globalAutoRefreshEnabled) return
-      const intervalMs = globalRefreshInterval * 60 * 1000
       const metas = collectURLImportSources(proxiesRef.current).filter(meta => {
         if (!meta.sourceUrl.trim()) return false
-        // 与后端调度器同口径：导入时关闭“自动更新订阅”的源不参与自动刷新
+        // 与后端调度器同口径：导入时关闭“定时刷新”的源不参与自动刷新；
+        // 间隔按每个源自己的设置（未设置时回落 60 分钟），到期即刷，应用没开错过的时间点下次启动补拉
         if (!meta.sourceAutoRefresh) return false
+        const interval = (meta.sourceRefreshIntervalM > 0 ? meta.sourceRefreshIntervalM : 60) * 60 * 1000
         const last = parseTimestampMs(meta.sourceLastRefreshAt)
-        return last <= 0 || Date.now() - last >= intervalMs
+        return last <= 0 || Date.now() - last >= interval
       })
       if (metas.length === 0) return
 

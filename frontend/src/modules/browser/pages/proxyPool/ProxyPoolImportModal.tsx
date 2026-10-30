@@ -16,6 +16,7 @@ interface ProxyPoolImportModalProps {
   importUrl: string
   importFetchProxyId: string
   importAutoRefresh: boolean
+  importRefreshIntervalM: number
   importResolvedUrl: string
   importText: string
   importDnsServers: string
@@ -35,6 +36,7 @@ interface ProxyPoolImportModalProps {
   onImportUrlChange: (nextValue: string) => void
   onImportFetchProxyIdChange: (nextValue: string) => void
   onImportAutoRefreshChange: (nextValue: boolean) => void
+  onImportRefreshIntervalMChange: (nextValue: number) => void
   onImportTextChange: (nextValue: string) => void
   onImportDnsServersChange: (nextValue: string) => void
   onImportNamePrefixChange: (nextValue: string) => void
@@ -65,6 +67,7 @@ export function ProxyPoolImportModal({
   importUrl,
   importFetchProxyId,
   importAutoRefresh,
+  importRefreshIntervalM,
   importResolvedUrl,
   importText,
   importDnsServers,
@@ -84,6 +87,7 @@ export function ProxyPoolImportModal({
   onImportUrlChange,
   onImportFetchProxyIdChange,
   onImportAutoRefreshChange,
+  onImportRefreshIntervalMChange,
   onImportTextChange,
   onImportDnsServersChange,
   onImportNamePrefixChange,
@@ -422,18 +426,30 @@ export function ProxyPoolImportModal({
           </FormItem>
         )}
         {importMode === 'clash' && (
-          <FormItem label="自动更新订阅">
+          <FormItem label="定时刷新">
             <div className="flex items-center gap-2">
               <Switch
                 checked={importAutoRefresh}
                 onChange={onImportAutoRefreshChange}
               />
-              <span className="text-xs text-[var(--color-text-secondary)]">
-                {importAutoRefresh ? '开启：定时拉取该订阅的最新列表' : '关闭：仅手动刷新'}
-              </span>
+              {importAutoRefresh && (
+                <Select
+                  value={String(importRefreshIntervalM)}
+                  onChange={(event) => onImportRefreshIntervalMChange(Number(event.target.value) || 1440)}
+                  className="w-40"
+                  options={[
+                    { value: '60', label: '每 1 小时' },
+                    { value: '360', label: '每 6 小时' },
+                    { value: '720', label: '每 12 小时' },
+                    { value: '1440', label: '每 24 小时' },
+                  ]}
+                />
+              )}
             </div>
             <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              开启后由应用后台定期核验该订阅（间隔跟随代理池页的全局自动刷新设置），节点按名称/国家自动匹配更新
+              {importAutoRefresh
+                ? '开启后按所选间隔在后台拉取同步；应用没开也不会错过，下次启动时自动补拉。节点按名称/国家自动匹配更新'
+                : '关闭：仅手动点“刷新订阅”时拉取'}
             </p>
           </FormItem>
         )}

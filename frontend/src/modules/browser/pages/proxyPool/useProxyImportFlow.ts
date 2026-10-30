@@ -43,15 +43,15 @@ function createInitialChainImportForm(): ChainImportForm {
 export function useProxyImportFlow({
   proxies,
   globalAutoRefreshEnabled,
-  globalRefreshInterval,
   saveProxies,
 }: UseProxyImportFlowOptions) {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [importMode, setImportMode] = useState<ProxyImportMode>('clash')
   const [importUrl, setImportUrl] = useState('')
   const [importFetchProxyId, setImportFetchProxyId] = useState('')
-  // 自动更新订阅开关（仅 URL 导入）：开启后该源参与后端定时拉取，间隔跟随全局设置。
+  // 定时刷新开关 + 间隔（仅 URL 导入）：开启后该源参与后端定时拉取，懒加载补拉（错过的时间点下次启动补上）。
   const [importAutoRefresh, setImportAutoRefresh] = useState(globalAutoRefreshEnabled)
+  const [importRefreshIntervalM, setImportRefreshIntervalM] = useState(1440)
   const [importResolvedUrl, setImportResolvedUrl] = useState('')
   const [importText, setImportText] = useState('')
   const [importDnsServers, setImportDnsServers] = useState('')
@@ -229,7 +229,7 @@ export function useProxyImportFlow({
       const sourceNamePrefix = importMode === 'clash' ? importNamePrefix.trim() : ''
       const sourceID = isURLImport ? resolveImportSourceID(proxies, sourceURL, sourceNamePrefix) : ''
       const sourceAutoRefresh = isURLImport ? importAutoRefresh : false
-      const sourceRefreshIntervalM = sourceAutoRefresh ? globalRefreshInterval : 0
+      const sourceRefreshIntervalM = sourceAutoRefresh ? importRefreshIntervalM : 0
       const sourceLastRefreshAt = isURLImport ? new Date().toISOString() : ''
       const oldSourceProxies = isURLImport
         ? proxies.filter(item => (item.sourceId || '').trim() === sourceID)
@@ -283,6 +283,7 @@ export function useProxyImportFlow({
       setImportUrl('')
       setImportFetchProxyId('')
       setImportAutoRefresh(globalAutoRefreshEnabled)
+      setImportRefreshIntervalM(1440)
       setImportResolvedUrl('')
       setImportText('')
       setImportDnsServers('')
@@ -312,7 +313,7 @@ export function useProxyImportFlow({
         && !!chainImportForm.second.port.trim()
 
   return {
-    importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importAutoRefresh, setImportAutoRefresh, importResolvedUrl, importText,
+    importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importAutoRefresh, setImportAutoRefresh, importRefreshIntervalM, setImportRefreshIntervalM, importResolvedUrl, importText,
     importDnsServers, importNamePrefix, importGroupName, chainImportText, directImportText,
     chainImportForm, directImportForm, previewModalOpen, setPreviewModalOpen, previewList, removedPreviewProxyNames,
     importing, fetchingImportUrl, canParseImport, setImportText, setImportDnsServers,
