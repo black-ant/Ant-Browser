@@ -355,3 +355,51 @@ func TestSelectDueProxySourcesHonorsSourceInterval(t *testing.T) {
 		t.Fatalf("due = %+v, want 仅 src-overdue（24 小时内不应重复拉取，超过的懒加载补拉）", due)
 	}
 }
+
+// 端到端（真库）：导入写入的定时刷新间隔必须原样持久化；
+// 超过间隔的源到期补拉（懒加载），补拉刷新后不再重复到期。
+func TestProxySourceRefreshIntervalRoundTripAndDue(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	imported := []BrowserProxy{{
+		ProxyId:                "p1",
+		ProxyName:              "share 01",
+		ProxyConfig:            "ss://a",
+		SourceID:               "src-share",
+		SourceURL:              "https://sub.example.com/list",
+		SourceNamePrefix:       "share",
+		SourceAutoRefresh:      true,
+		SourceRefreshIntervalM: 1440,
+		SourceLastRefreshAt:    time.Now().Add(-25 * time.Hour).Format(time.RFC3339),
+	}}
+	if err := app.SaveBrowserProxies(imported); err != nil {
+		t.Fatalf("SaveBrowserProxies failed: %v", err)
+	}
+
+	pool := app.getLatestProxies()
+	row, ok := findRowByID(pool, "p1")
+	if !ok {
+		t.Fatalf("导入的节点应持久化: %#v", pool)
+	}
+	if !row.SourceAutoRefresh || row.SourceRefreshIntervalM != 1440 {
+		t.Fatalf("24 小时间隔应原样落库: %+v", row)
+	}
+
+	// 导入后已超 24 小时未刷（懒加载场景：应用期间没开）→ 启动后应到期补拉。
+	if due := selectDueProxySources(app.getLatestProxies(), time.Now()); len(due) != 1 || due[0].SourceID != "src-share" {
+		t.Fatalf("due = %+v, want src-share 到期补拉", due)
+	}
+
+	// 模拟补拉完成：刷新时间拨回现在 → 不应再次到期（避免重复拉取）。
+	refreshed := append([]BrowserProxy{}, pool...)
+	for i := range refreshed {
+		if strings.EqualFold(refreshed[i].ProxyId, "p1") {
+			refreshed[i].SourceLastRefreshAt = time.Now().Format(time.RFC3339)
+		}
+	}
+	if err := app.SaveBrowserProxies(refreshed); err != nil {
+		t.Fatalf("回写刷新时间失败: %v", err)
+	}
+	if due := selectDueProxySources(app.getLatestProxies(), time.Now()); len(due) != 0 {
+		t.Fatalf("刚刷新过的源不应再次到期: %+v", due)
+	}
+}
