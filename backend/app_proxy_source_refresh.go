@@ -347,11 +347,14 @@ func asciiWordContains(text string, token string) bool {
 }
 
 // proxySourceIgnoredNames 读取订阅源忽略名单（导入预览取消勾选的节点，不再导入）。
+// 名单 map 同时被调度器 goroutine 读取、Wails 调用写入，必须加锁防并发读写 panic。
 func (a *App) proxySourceIgnoredNames(sourceID string) []string {
 	if a == nil || a.config == nil {
 		return nil
 	}
-	names := a.config.Browser.ProxySourceIgnoredNames[strings.TrimSpace(sourceID)]
+	a.proxySourceIgnoredMu.Lock()
+	names := append([]string{}, a.config.Browser.ProxySourceIgnoredNames[strings.TrimSpace(sourceID)]...)
+	a.proxySourceIgnoredMu.Unlock()
 	result := make([]string, 0, len(names))
 	for _, name := range names {
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
@@ -359,6 +362,18 @@ func (a *App) proxySourceIgnoredNames(sourceID string) []string {
 		}
 	}
 	return result
+}
+
+// setProxySourceIgnoredNamesLocked 在持锁状态下更新内存中的忽略名单。
+func (a *App) setProxySourceIgnoredNamesLocked(sourceID string, names []string) {
+	if a.config.Browser.ProxySourceIgnoredNames == nil {
+		a.config.Browser.ProxySourceIgnoredNames = make(map[string][]string)
+	}
+	if len(names) == 0 {
+		delete(a.config.Browser.ProxySourceIgnoredNames, sourceID)
+	} else {
+		a.config.Browser.ProxySourceIgnoredNames[sourceID] = names
+	}
 }
 
 // refreshedSourcePlan 订阅刷新的合并计划。
@@ -647,14 +662,9 @@ func (a *App) BrowserProxySetSourceIgnoredNames(sourceId string, names []string)
 			cleaned = append(cleaned, trimmed)
 		}
 	}
-	if a.config.Browser.ProxySourceIgnoredNames == nil {
-		a.config.Browser.ProxySourceIgnoredNames = make(map[string][]string)
-	}
-	if len(cleaned) == 0 {
-		delete(a.config.Browser.ProxySourceIgnoredNames, sourceId)
-	} else {
-		a.config.Browser.ProxySourceIgnoredNames[sourceId] = cleaned
-	}
+	a.proxySourceIgnoredMu.Lock()
+	a.setProxySourceIgnoredNamesLocked(sourceId, cleaned)
+	a.proxySourceIgnoredMu.Unlock()
 	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
 		return fmt.Errorf("保存订阅源忽略名单失败: %w", err)
 	}

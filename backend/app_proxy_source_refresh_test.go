@@ -3,6 +3,7 @@ package backend
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -341,6 +342,31 @@ func TestSelectDueProxySourcesRespectsAutoRefresh(t *testing.T) {
 	if len(due) != 1 || due[0].SourceID != "src-auto" {
 		t.Fatalf("due = %+v, want 仅 src-auto（关闭自动更新的源不参与定时拉取）", due)
 	}
+}
+
+// 忽略名单同时被调度器读取与保存动作写入，必须无数据竞争（需在 go test -race 下验证）。
+func TestProxySourceIgnoredNamesConcurrentAccess(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 25; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				_ = app.proxySourceIgnoredNames("src-share")
+			}
+		}()
+	}
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for j := 0; j < 5; j++ {
+				_ = app.BrowserProxySetSourceIgnoredNames("src-share", []string{fmt.Sprintf("节点-%d-%d", n, j)})
+			}
+		}(i)
+	}
+	wg.Wait()
 }
 
 // 定时刷新间隔按每个源自己设置：24 小时间隔下，23 小时前刷过不算到期，25 小时前刷过的懒加载补拉。

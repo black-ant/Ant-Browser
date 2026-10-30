@@ -57,6 +57,7 @@ type App struct {
 	proxyVirtualGroupLocks        map[string]*sync.Mutex
 	virtualGroupSnapshot          virtualGroupSnapshotCache
 	proxyFailoverMu               sync.Mutex
+	proxySourceIgnoredMu          sync.Mutex
 	proxyFailoverLastAt           map[string]time.Time
 	proxyFailoverCount            map[string]int
 	profileBridgeRefs             map[string]profileProxyBridgeRef
