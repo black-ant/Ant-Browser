@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ConfirmModal, toast } from '../../../shared/components'
 import type { SortOrder } from '../../../shared/components/Table'
 import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyIPHealthResult } from '../types'
-import { fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies } from '../api'
+import { fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies, updateProxySourceConfig } from '../api'
 import {
   buildChainImportCandidate,
   buildDirectImportCandidate,
@@ -32,6 +32,7 @@ import { ProxyPoolTableCard } from './proxyPool/ProxyPoolTableCard'
 import { ProxyVirtualGroupMembersModal } from './proxyPool/ProxyVirtualGroupMembersModal'
 import { ProxyPoolCheckSettingsModal } from './proxyPool/ProxyPoolCheckSettingsModal'
 import { ProxyPoolUsageGuideModal } from './proxyPool/ProxyPoolUsageGuideModal'
+import { ProxySourceRefreshModal } from './proxyPool/ProxySourceRefreshModal'
 import { ProxyCoreDownloadModal } from './proxyPool/ProxyCoreDownloadModal'
 import { useProxySourceRefresh } from './proxyPool/useProxySourceRefresh'
 import { useProxyImportFlow } from './proxyPool/useProxyImportFlow'
@@ -39,7 +40,6 @@ import { selectUsableProxies, useProxySpeedStore } from '../proxySpeedStore'
 import { useProxyChecks } from './proxyPool/useProxyChecks'
 import { useProxySelection } from './proxyPool/useProxySelection'
 import { useProxyCheckSettingsModal } from './proxyPool/useProxyCheckSettingsModal'
-import { useProxyGlobalRefreshConfig } from './proxyPool/useProxyGlobalRefreshConfig'
 import { useProxyDeleteFlow } from './proxyPool/useProxyDeleteFlow'
 import { useProxyCoreDownload } from './proxyPool/useProxyCoreDownload'
 import { useProxyPoolFilter } from './proxyPool/useProxyPoolFilter'
@@ -55,6 +55,7 @@ export function ProxyPoolPage() {
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [usageGuideOpen, setUsageGuideOpen] = useState(false)
+  const [sourceManagerOpen, setSourceManagerOpen] = useState(false)
   const {
     coreDownloadOpen,
     coreDownloadType,
@@ -96,14 +97,6 @@ export function ProxyPoolPage() {
     saveCheckSettings,
   } = useProxyCheckSettingsModal()
 
-  const {
-    globalAutoRefreshEnabled,
-    setGlobalAutoRefreshEnabled,
-    globalRefreshInterval,
-    globalRefreshIntervalM,
-    setGlobalRefreshIntervalM,
-  } = useProxyGlobalRefreshConfig()
-
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editingProxy, setEditingProxy] = useState<BrowserProxy | null>(null)
   const [chainEditMode, setChainEditMode] = useState(false)
@@ -144,8 +137,6 @@ export function ProxyPoolPage() {
     handleFetchImportURL, handleParseImport, handleConfirmImport,
   } = useProxyImportFlow({
     proxies,
-    globalAutoRefreshEnabled,
-    globalRefreshInterval,
     saveProxies,
   })
 
@@ -164,6 +155,7 @@ export function ProxyPoolPage() {
   }, [])
 
   const {
+    sourceMetas,
     hasURLImportSources,
     refreshingAllSources,
     refreshingSourceIds,
@@ -171,8 +163,6 @@ export function ProxyPoolPage() {
     handleRefreshAllSources,
   } = useProxySourceRefresh({
     proxies,
-    globalAutoRefreshEnabled,
-    globalRefreshInterval,
     reloadProxies: reloadPoolState,
   })
 
@@ -256,9 +246,14 @@ export function ProxyPoolPage() {
 
   // 订阅拉取代理选项：只给测速成功（延迟为正）的节点，按延迟升序；
   // 失败/未测速的节点拉订阅大概率也不可用，不再出现在下拉里。
+  // 延迟合入测速 store 的最新值（store 未覆盖时回落行上持久化的上次结果），
+  // 导入弹窗与更新管理弹窗共用这份选项展示延迟。
   const speedResults = useProxySpeedStore(state => state.results)
   const fetchProxyOptions = useMemo(
-    () => selectUsableProxies(proxies, speedResults),
+    () => selectUsableProxies(proxies, speedResults).map(proxy => ({
+      ...proxy,
+      lastLatencyMs: speedResults[proxy.proxyId]?.latencyMs ?? proxy.lastLatencyMs,
+    })),
     [proxies, speedResults],
   )
 
@@ -420,6 +415,7 @@ export function ProxyPoolPage() {
         hasURLImportSources={hasURLImportSources}
         onCheckAllIPHealth={() => void handleCheckAllIPHealth(filteredList.filter(record => !record.isVirtual))}
         onOpenSettings={() => void openCheckSettings()}
+        onOpenSourceManager={() => setSourceManagerOpen(true)}
         onOpenUsageGuide={() => setUsageGuideOpen(true)}
         onOpenImport={() => setImportModalOpen(true)}
         onOpenVirtualGroups={() => navigate('/browser/proxy-virtual-groups')}
@@ -439,9 +435,6 @@ export function ProxyPoolPage() {
         filterKeyword={filterKeyword}
         filterProtocol={filterProtocol}
         filterAvailableOnly={filterAvailableOnly}
-        globalAutoRefreshEnabled={globalAutoRefreshEnabled}
-        globalRefreshInterval={globalRefreshInterval}
-        globalRefreshIntervalM={globalRefreshIntervalM}
         groups={groups}
         virtualGroupOptions={virtualGroupOptions}
         ipHealthMap={ipHealthMap}
@@ -462,8 +455,6 @@ export function ProxyPoolPage() {
         onFilterKeywordChange={setFilterKeyword}
         onFilterProtocolChange={setFilterProtocol}
         onFilterAvailableOnlyChange={setFilterAvailableOnly}
-        onGlobalAutoRefreshEnabledChange={setGlobalAutoRefreshEnabled}
-        onGlobalRefreshIntervalMChange={setGlobalRefreshIntervalM}
         onOpenBatchDelete={() => setBatchDeleteConfirmOpen(true)}
         onOpenIPHealthDetail={openIPHealthDetail}
         onOpenVirtualGroupMembers={openVirtualGroupMembers}
@@ -496,6 +487,28 @@ export function ProxyPoolPage() {
       <ProxyPoolUsageGuideModal
         open={usageGuideOpen}
         onClose={() => setUsageGuideOpen(false)}
+      />
+
+      <ProxySourceRefreshModal
+        open={sourceManagerOpen}
+        sources={sourceMetas}
+        proxies={proxies}
+        refreshingAll={refreshingAllSources}
+        refreshingSourceIds={refreshingSourceIds}
+        fetchProxyOptions={fetchProxyOptions}
+        onClose={() => setSourceManagerOpen(false)}
+        onRefreshAll={() => void handleRefreshAllSources(false)}
+        onRefreshOne={(sourceId) => void refreshSingleSource(sourceId, false)}
+        onSaveSourceConfig={async (sourceId, autoRefresh, intervalM, fetchProxyId) => {
+          try {
+            await updateProxySourceConfig(sourceId, autoRefresh, intervalM, fetchProxyId)
+            await reloadPoolState()
+            toast.success('订阅源配置已更新')
+          } catch (error: any) {
+            toast.error(error?.message || '保存订阅源配置失败')
+            throw error
+          }
+        }}
       />
 
       <ProxyPoolImportModal

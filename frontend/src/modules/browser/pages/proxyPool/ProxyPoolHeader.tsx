@@ -8,6 +8,7 @@ interface ProxyPoolHeaderProps {
   onOpenVirtualGroups: () => void
   onOpenCoreDownload: () => void
   onOpenSettings: () => void
+  onOpenSourceManager: () => void
   onOpenUsageGuide: () => void
   onRefreshAllSources: () => void
   onTestAll: () => void
@@ -24,6 +25,7 @@ export function ProxyPoolHeader({
   onOpenVirtualGroups,
   onOpenCoreDownload,
   onOpenSettings,
+  onOpenSourceManager,
   onOpenUsageGuide,
   onRefreshAllSources,
   onTestAll,
@@ -49,6 +51,13 @@ export function ProxyPoolHeader({
             onClick={onOpenSettings}
           >
             检测设置
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onOpenSourceManager}
+          >
+            更新管理
           </Button>
           <Button
             size="sm"

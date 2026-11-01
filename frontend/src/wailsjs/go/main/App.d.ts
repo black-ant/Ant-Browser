@@ -298,6 +298,8 @@ export function BrowserProxySetSourceIgnoredNames(arg1:string,arg2:Array<string>
 
 export function BrowserProxyTestSpeed(arg1:string):Promise<backend.ProxyTestResult>;
 
+export function BrowserProxyUpdateSourceConfig(arg1:string,arg2:boolean,arg3:number,arg4:string):Promise<void>;
+
 export function BrowserProxyVirtualGroupHealthList():Promise<Array<backend.ProxyVirtualGroupHealth>>;
 
 export function BrowserProxyVirtualGroupList():Promise<Array<config.BrowserProxyVirtualGroup>>;

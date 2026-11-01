@@ -271,6 +271,12 @@ type BrowserProxy struct {
 	SourceAutoRefresh      bool   `yaml:"source_auto_refresh,omitempty" json:"sourceAutoRefresh,omitempty"`
 	SourceRefreshIntervalM int    `yaml:"source_refresh_interval_m,omitempty" json:"sourceRefreshIntervalM,omitempty"`
 	SourceLastRefreshAt    string `yaml:"source_last_refresh_at,omitempty" json:"sourceLastRefreshAt,omitempty"`
+	// SourceFetchProxyID 该订阅源拉取订阅内容时使用的代理（导入时选定并持久化）。
+	// 为空表示直连；定时刷新与手动刷新都会复用它，避免被墙订阅导入后无法再刷新。
+	SourceFetchProxyID string `yaml:"source_fetch_proxy_id,omitempty" json:"sourceFetchProxyId,omitempty"`
+	// SourceLastRefreshError 最近一次刷新失败的错误信息（成功刷新后清空）。
+	// 失败必须留下明确记录，不能只靠日志，否则前端无法展示"上次刷新失败"。
+	SourceLastRefreshError string `yaml:"source_last_refresh_error,omitempty" json:"sourceLastRefreshError,omitempty"`
 	// SourceMissing 订阅刷新后该节点已不在来源列表中（名称/国家都匹配不上）。
 	// 节点保留在池内、实例绑定不变，仅标记异常供 UI 与排查使用。
 	SourceMissing         bool   `yaml:"source_missing,omitempty" json:"sourceMissing,omitempty"`

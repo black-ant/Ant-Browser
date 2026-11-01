@@ -58,8 +58,11 @@ type App struct {
 	virtualGroupSnapshot          virtualGroupSnapshotCache
 	proxyFailoverMu               sync.Mutex
 	proxySourceIgnoredMu          sync.Mutex
-	proxyFailoverLastAt           map[string]time.Time
-	proxyFailoverCount            map[string]int
+	// proxySourceRefreshMu 串行化订阅刷新的"读池 → 合并 → 全量保存"过程。
+	// 前端手动刷新、前端自动刷新与后端调度器可能同时触发，非原子会导致后保存者覆盖先保存者的结果。
+	proxySourceRefreshMu sync.Mutex
+	proxyFailoverLastAt  map[string]time.Time
+	proxyFailoverCount   map[string]int
 	profileBridgeRefs             map[string]profileProxyBridgeRef
 	deferredStartTargetsMu        sync.Mutex
 	deferredStartTargets          map[string]deferredStartTargetsPlan

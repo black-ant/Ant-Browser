@@ -26,6 +26,8 @@ func NormalizeBrowserProxies(proxies []config.BrowserProxy, generateID func() st
 		sourceID := strings.TrimSpace(item.SourceID)
 		sourceNamePrefix := strings.TrimSpace(item.SourceNamePrefix)
 		sourceLastRefreshAt := strings.TrimSpace(item.SourceLastRefreshAt)
+		sourceFetchProxyID := strings.TrimSpace(item.SourceFetchProxyID)
+		sourceLastRefreshError := strings.TrimSpace(item.SourceLastRefreshError)
 		sourceRefreshIntervalM := item.SourceRefreshIntervalM
 		if sourceRefreshIntervalM < 0 {
 			sourceRefreshIntervalM = 0
@@ -45,6 +47,8 @@ func NormalizeBrowserProxies(proxies []config.BrowserProxy, generateID func() st
 			sourceID = ""
 			sourceNamePrefix = ""
 			sourceLastRefreshAt = ""
+			sourceFetchProxyID = ""
+			sourceLastRefreshError = ""
 			sourceAutoRefresh = false
 			sourceRefreshIntervalM = 0
 		}
@@ -62,6 +66,8 @@ func NormalizeBrowserProxies(proxies []config.BrowserProxy, generateID func() st
 			SourceAutoRefresh:      sourceAutoRefresh,
 			SourceRefreshIntervalM: sourceRefreshIntervalM,
 			SourceLastRefreshAt:    sourceLastRefreshAt,
+			SourceFetchProxyID:     sourceFetchProxyID,
+			SourceLastRefreshError: sourceLastRefreshError,
 			SourceMissing:          item.SourceMissing,
 			SourceMissingSince:     strings.TrimSpace(item.SourceMissingSince),
 			SortOrder:              i,

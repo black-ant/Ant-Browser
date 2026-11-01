@@ -18,6 +18,8 @@ func backupBuildMappedProxyMergeSQL(tx *sql.Tx) (string, error) {
 		{name: "preferred_kernel", fallback: "''"}, {name: "dns_servers", fallback: "''"}, {name: "group_name", fallback: "''"},
 		{name: "source_id", fallback: "''"}, {name: "source_url", fallback: "''"}, {name: "source_name_prefix", fallback: "''"},
 		{name: "source_auto_refresh", fallback: "0"}, {name: "source_refresh_interval_m", fallback: "0"}, {name: "source_last_refresh_at", fallback: "''"},
+		{name: "source_fetch_proxy_id", fallback: "''"}, {name: "source_last_refresh_error", fallback: "''"},
+		{name: "source_missing", fallback: "0"}, {name: "source_missing_since", fallback: "''"},
 		{name: "last_latency_ms", fallback: "-1"}, {name: "last_test_ok", fallback: "0"}, {name: "last_tested_at", fallback: "''"},
 		{name: "last_ip_health_json", fallback: "''"}, {name: "sort_order", fallback: "0"}, {name: "created_at", fallback: "CURRENT_TIMESTAMP"},
 	}, map[string]string{"proxy_id": backupImportProxyMapTable}, backupImportMapExistsExpression("s.proxy_id", backupImportProxyMapTable, true))

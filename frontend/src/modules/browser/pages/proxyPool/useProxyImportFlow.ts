@@ -12,6 +12,7 @@ import {
   buildDirectImportCandidatesFromText,
   buildImportCandidatesFromClash,
   buildImportPreview,
+  buildKeptMissingSourceProxies,
   createExistingProxyPicker,
   nextProxyID,
   parseChainImportJSON,
@@ -27,8 +28,6 @@ import { appendSourceIgnoredProxyNames } from './storage'
 
 interface UseProxyImportFlowOptions {
   proxies: BrowserProxy[]
-  globalAutoRefreshEnabled: boolean
-  globalRefreshInterval: number
   saveProxies: (list: BrowserProxy[]) => Promise<void>
 }
 
@@ -42,15 +41,15 @@ function createInitialChainImportForm(): ChainImportForm {
 
 export function useProxyImportFlow({
   proxies,
-  globalAutoRefreshEnabled,
   saveProxies,
 }: UseProxyImportFlowOptions) {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [importMode, setImportMode] = useState<ProxyImportMode>('clash')
   const [importUrl, setImportUrl] = useState('')
   const [importFetchProxyId, setImportFetchProxyId] = useState('')
-  // 定时刷新开关 + 间隔（仅 URL 导入）：开启后该源参与后端定时拉取，懒加载补拉（错过的时间点下次启动补上）。
-  const [importAutoRefresh, setImportAutoRefresh] = useState(globalAutoRefreshEnabled)
+  // 定时刷新开关 + 间隔（仅 URL 导入）：默认关闭，由用户在导入弹窗显式开启。
+  // 开启后该源参与后端定时拉取（后端调度器默认启用），错过的时间点下次启动补上。
+  const [importAutoRefresh, setImportAutoRefresh] = useState(false)
   const [importRefreshIntervalM, setImportRefreshIntervalM] = useState(1440)
   const [importResolvedUrl, setImportResolvedUrl] = useState('')
   const [importText, setImportText] = useState('')
@@ -235,6 +234,8 @@ export function useProxyImportFlow({
         ? proxies.filter(item => (item.sourceId || '').trim() === sourceID)
         : []
       const pickExisting = createExistingProxyPicker(oldSourceProxies)
+      // 持久化导入时选用的拉取代理：定时/手动刷新复用，避免被墙订阅导入后无法再刷新
+      const sourceFetchProxyId = (importMode === 'clash' ? importFetchProxyId.trim() : '') || undefined
 
       const newProxies: BrowserProxy[] = previewList.map((p) => {
         const existingProxy = pickExisting(p.proxyName, p.proxyConfig)
@@ -251,21 +252,19 @@ export function useProxyImportFlow({
         sourceAutoRefresh,
         sourceRefreshIntervalM,
         sourceLastRefreshAt: sourceLastRefreshAt || undefined,
+        sourceFetchProxyId,
         }
       })
       // 与后端订阅刷新语义一致：名称匹配不上的旧节点不删除，
       // 保留在池内并标记异常（实例绑定不动），订阅里重新出现时自动恢复。
+      // 保留行同步该源的新配置，避免同一源出现两套开关/间隔/拉取代理。
       const refreshedNames = new Set(newProxies.map(item => (item.proxyName || '').trim()))
       const keptMissing = isURLImport
-        ? oldSourceProxies
-            .filter(item => !refreshedNames.has((item.proxyName || '').trim()))
-            .map(item => ({
-              ...item,
-              sourceMissing: true,
-              sourceMissingSince: item.sourceMissingSince || new Date().toISOString(),
-              sourceAutoRefresh,
-              sourceRefreshIntervalM,
-            }))
+        ? buildKeptMissingSourceProxies(oldSourceProxies, refreshedNames, {
+          sourceAutoRefresh,
+          sourceRefreshIntervalM,
+          sourceFetchProxyId,
+        })
         : []
       const allProxies = isURLImport
         ? proxies.filter(item => (item.sourceId || '').trim() !== sourceID).concat(newProxies, keptMissing)
@@ -282,7 +281,7 @@ export function useProxyImportFlow({
       setPreviewModalOpen(false)
       setImportUrl('')
       setImportFetchProxyId('')
-      setImportAutoRefresh(globalAutoRefreshEnabled)
+      setImportAutoRefresh(false)
       setImportRefreshIntervalM(1440)
       setImportResolvedUrl('')
       setImportText('')

@@ -1,13 +1,11 @@
 import type { ProxyIPHealthResult } from '../../types'
 
 import type { ClashProxy } from './helpers'
-import { normalizeRefreshIntervalM, resolveImportedProxyName } from './helpers'
+import { resolveImportedProxyName } from './helpers'
 
 
 const PROXY_IP_HEALTH_CACHE_KEY = 'browser:proxyPool:ipHealthMap:v1'
 const PROXY_SOURCE_IGNORED_NAMES_KEY = 'browser:proxyPool:sourceIgnoredProxyNames:v1'
-const PROXY_GLOBAL_AUTO_REFRESH_KEY = 'browser:proxyPool:globalAutoRefreshEnabled:v1'
-const PROXY_GLOBAL_REFRESH_INTERVAL_KEY = 'browser:proxyPool:globalRefreshIntervalM:v1'
 // 选择弹窗、实例列表、插件管理页的历史测速结果显示窗口
 export const PROXY_SPEED_RESULT_MAX_AGE_MS = 72 * 60 * 60 * 1000
 export const PROXY_IP_HEALTH_RESULT_MAX_AGE_MS = 12 * 60 * 60 * 1000
@@ -103,30 +101,6 @@ export function applyIgnoredProxyNamesForSource(
   })
 }
 
-export function readGlobalRefreshConfig(): { enabled: boolean; intervalM: number } {
-  try {
-    const rawEnabled = localStorage.getItem(PROXY_GLOBAL_AUTO_REFRESH_KEY)
-    const rawInterval = localStorage.getItem(PROXY_GLOBAL_REFRESH_INTERVAL_KEY)
-    const enabled = rawEnabled === '1'
-    const interval = normalizeRefreshIntervalM(Number(rawInterval || 0))
-    return {
-      enabled,
-      intervalM: interval > 0 ? interval : 60,
-    }
-  } catch {
-    return { enabled: false, intervalM: 60 }
-  }
-}
-
-export function writeGlobalRefreshConfig(enabled: boolean, intervalM: number) {
-  try {
-    localStorage.setItem(PROXY_GLOBAL_AUTO_REFRESH_KEY, enabled ? '1' : '0')
-    localStorage.setItem(PROXY_GLOBAL_REFRESH_INTERVAL_KEY, String(intervalM))
-  } catch {
-    // ignore write failures
-  }
-}
-
 export function toLatencyValue(ok: boolean, latencyMs: number, error?: string): number {
   if (ok) return latencyMs
   const message = (error || '').toLowerCase()
@@ -162,6 +136,38 @@ export function writeIPHealthCache(data: Record<string, ProxyIPHealthResult>) {
       timestamp: Date.now(),
       data,
     }))
+  } catch {
+    // ignore write failures
+  }
+}
+
+// 对齐工作台：每个订阅源最近一次人工对齐的记录（展示用，非权威数据）
+const PROXY_SOURCE_ALIGN_RECORD_KEY = 'browser:proxyPool:sourceAlignRecord:v1'
+
+export interface SourceAlignRecord {
+  at: string
+  pairs: Array<{ oldName: string; newName: string }>
+  added: number
+  keptMissing: number
+}
+
+export function readSourceAlignRecord(sourceId: string): SourceAlignRecord | null {
+  try {
+    const raw = localStorage.getItem(PROXY_SOURCE_ALIGN_RECORD_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Record<string, SourceAlignRecord>
+    return parsed[sourceId] || null
+  } catch {
+    return null
+  }
+}
+
+export function writeSourceAlignRecord(sourceId: string, record: SourceAlignRecord) {
+  try {
+    const raw = localStorage.getItem(PROXY_SOURCE_ALIGN_RECORD_KEY)
+    const parsed = raw ? (JSON.parse(raw) as Record<string, SourceAlignRecord>) : {}
+    parsed[sourceId] = record
+    localStorage.setItem(PROXY_SOURCE_ALIGN_RECORD_KEY, JSON.stringify(parsed))
   } catch {
     // ignore write failures
   }

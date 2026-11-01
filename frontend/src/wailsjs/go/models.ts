@@ -2029,6 +2029,8 @@ export namespace config {
 	    sourceAutoRefresh?: boolean;
 	    sourceRefreshIntervalM?: number;
 	    sourceLastRefreshAt?: string;
+	    sourceFetchProxyId?: string;
+	    sourceLastRefreshError?: string;
 	    sourceMissing?: boolean;
 	    sourceMissingSince?: string;
 	    lastLatencyMs: number;
@@ -2058,6 +2060,8 @@ export namespace config {
 	        this.sourceAutoRefresh = source["sourceAutoRefresh"];
 	        this.sourceRefreshIntervalM = source["sourceRefreshIntervalM"];
 	        this.sourceLastRefreshAt = source["sourceLastRefreshAt"];
+	        this.sourceFetchProxyId = source["sourceFetchProxyId"];
+	        this.sourceLastRefreshError = source["sourceLastRefreshError"];
 	        this.sourceMissing = source["sourceMissing"];
 	        this.sourceMissingSince = source["sourceMissingSince"];
 	        this.lastLatencyMs = source["lastLatencyMs"];

@@ -153,6 +153,7 @@ export interface ProxyDisplayInfo {
   sourceRefreshIntervalM: number
   sourceLastRefreshAt: string
   sourceMissing?: boolean
+  sourceMissingSince?: string
   type: string
   server: string
   port: number
@@ -178,4 +179,8 @@ export interface URLImportSourceMeta {
   sourceAutoRefresh: boolean
   sourceRefreshIntervalM: number
   sourceLastRefreshAt: string
+  /** 拉取订阅内容时使用的代理（空为直连） */
+  sourceFetchProxyId: string
+  /** 最近一次刷新失败的错误信息（空表示最近一次成功或未刷新过） */
+  sourceLastRefreshError: string
 }

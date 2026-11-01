@@ -379,6 +379,14 @@ var migrations = []migration{
 			`ALTER TABLE browser_proxies ADD COLUMN source_missing_since TEXT NOT NULL DEFAULT ''`,
 		},
 	},
+	{
+		version: 32,
+		desc:    "代理订阅刷新：持久化每源的拉取代理与最近一次刷新失败原因",
+		stmts: []string{
+			`ALTER TABLE browser_proxies ADD COLUMN source_fetch_proxy_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxies ADD COLUMN source_last_refresh_error TEXT NOT NULL DEFAULT ''`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

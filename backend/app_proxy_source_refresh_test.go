@@ -279,6 +279,77 @@ func TestCollectProxySourceMetasGroupsAndAggregates(t *testing.T) {
 	}
 }
 
+func TestCollectProxySourceMetasAggregatesFetchProxy(t *testing.T) {
+	row1 := BrowserProxy{ProxyId: "p1", ProxyName: "n1", ProxyConfig: "ss://x", SourceID: "src-1", SourceURL: "https://s1"}
+	row2 := BrowserProxy{ProxyId: "p2", ProxyName: "n2", ProxyConfig: "ss://x", SourceID: "src-1", SourceURL: "https://s1", SourceFetchProxyID: "proxy-fetch-1"}
+
+	metas := collectProxySourceMetas([]BrowserProxy{row1, row2})
+	if len(metas) != 1 {
+		t.Fatalf("metas = %+v, want 1 个订阅源", metas)
+	}
+	if metas[0].SourceFetchProxy != "proxy-fetch-1" {
+		t.Fatalf("SourceFetchProxy 应取首个非空: %q", metas[0].SourceFetchProxy)
+	}
+
+	empty := collectProxySourceMetas([]BrowserProxy{row1})
+	if empty[0].SourceFetchProxy != "" {
+		t.Fatalf("未配置拉取代理时应为空(直连): %q", empty[0].SourceFetchProxy)
+	}
+}
+
+func TestBuildRefreshedProxyPoolClearsRefreshError(t *testing.T) {
+	meta := proxySourceMeta{SourceID: "src-1", SourceURL: "https://sub.example.com/list", SourceFetchProxy: "proxy-fetch-1"}
+
+	// 名称匹配行：刷新成功后失败记录必须清除。
+	matched := testProxyRow("proxy-old-1", "美国 01", testClashNode(t, "美国 01", map[string]interface{}{"type": "ss"}), "src-1")
+	matched.SourceLastRefreshError = "上次的错误"
+
+	// 无匹配行：保留并标记异常，但失败记录同样清除（订阅已成功拉取）。
+	missing := testProxyRow("proxy-old-2", "神秘节点 X", testClashNode(t, "神秘节点 X", map[string]interface{}{"type": "ss"}), "src-1")
+	missing.SourceLastRefreshError = "上次的错误"
+
+	plan := buildRefreshedProxyPool(
+		[]BrowserProxy{matched, missing},
+		meta,
+		[]clashNode{
+			testClashNode(t, "美国 01", map[string]interface{}{"type": "ss"}),
+			testClashNode(t, "美国 02", map[string]interface{}{"type": "ss"}),
+		},
+		nil,
+		newTestIDGenerator(),
+		time.Now(),
+	)
+
+	matchedRow, ok := findRowByID(plan.merged, "proxy-old-1")
+	if !ok {
+		t.Fatalf("名称匹配行必须沿用旧 proxyId: %#v", plan.merged)
+	}
+	if matchedRow.SourceLastRefreshError != "" {
+		t.Fatalf("刷新成功后名称匹配行的失败记录应清除: %q", matchedRow.SourceLastRefreshError)
+	}
+
+	missingRow, ok := findRowByID(plan.merged, "proxy-old-2")
+	if !ok || !missingRow.SourceMissing {
+		t.Fatalf("无匹配行应保留并标记异常: %#v", plan.merged)
+	}
+	if missingRow.SourceLastRefreshError != "" {
+		t.Fatalf("刷新成功后异常保留行的失败记录应清除: %q", missingRow.SourceLastRefreshError)
+	}
+
+	addedCount := 0
+	for _, row := range plan.merged {
+		if row.SourceID == "src-1" && row.ProxyName == "美国 02" {
+			addedCount++
+			if row.SourceFetchProxyID != "proxy-fetch-1" {
+				t.Fatalf("新增行应继承订阅源拉取代理: %q", row.SourceFetchProxyID)
+			}
+		}
+	}
+	if addedCount == 0 {
+		t.Fatalf("订阅节点应正常新增: %#v", plan.merged)
+	}
+}
+
 func TestParseClashNodesFromPayload(t *testing.T) {
 	payload := map[string]interface{}{
 		"proxies": []interface{}{
@@ -427,5 +498,66 @@ func TestProxySourceRefreshIntervalRoundTripAndDue(t *testing.T) {
 	}
 	if due := selectDueProxySources(app.getLatestProxies(), time.Now()); len(due) != 0 {
 		t.Fatalf("刚刷新过的源不应再次到期: %+v", due)
+	}
+}
+
+// 更新管理弹窗的"编辑订阅源"：开关/间隔/拉取代理按 sourceId 批量落到该源所有行，
+// 其他源不受影响；间隔钳制到 [5,1440]；拉取代理必须存在。
+func TestBrowserProxyUpdateSourceConfig(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	imported := []BrowserProxy{
+		{ProxyId: "p1", ProxyName: "share 01", ProxyConfig: "ss://a", SourceID: "src-share", SourceURL: "https://s1", SourceAutoRefresh: false, SourceRefreshIntervalM: 0},
+		{ProxyId: "p2", ProxyName: "share 02", ProxyConfig: "ss://b", SourceID: "src-share", SourceURL: "https://s1", SourceAutoRefresh: true, SourceRefreshIntervalM: 30},
+		{ProxyId: "p3", ProxyName: "other 01", ProxyConfig: "ss://c", SourceID: "src-other", SourceURL: "https://s2", SourceAutoRefresh: true, SourceRefreshIntervalM: 15},
+	}
+	if err := app.SaveBrowserProxies(imported); err != nil {
+		t.Fatalf("SaveBrowserProxies failed: %v", err)
+	}
+
+	// 拉取代理不存在必须拒绝。
+	if err := app.BrowserProxyUpdateSourceConfig("src-share", true, 30, "proxy-missing"); err == nil {
+		t.Fatal("拉取代理不存在应报错")
+	}
+
+	// 间隔低于下限应钳制到 5 分钟；拉取代理指向池内节点。
+	if err := app.BrowserProxyUpdateSourceConfig("src-share", true, 3, "p3"); err != nil {
+		t.Fatalf("BrowserProxyUpdateSourceConfig failed: %v", err)
+	}
+	pool := app.getLatestProxies()
+	for _, id := range []string{"p1", "p2"} {
+		row, ok := findRowByID(pool, id)
+		if !ok {
+			t.Fatalf("行 %s 应存在: %#v", id, pool)
+		}
+		if !row.SourceAutoRefresh || row.SourceRefreshIntervalM != 5 || row.SourceFetchProxyID != "p3" {
+			t.Fatalf("%s 配置应更新且间隔钳制到 5: %+v", id, row)
+		}
+	}
+	otherRow, _ := findRowByID(pool, "p3")
+	if !otherRow.SourceAutoRefresh || otherRow.SourceRefreshIntervalM != 15 || otherRow.SourceFetchProxyID != "" {
+		t.Fatalf("其他源不应被波及: %+v", otherRow)
+	}
+
+	// 关闭自动更新：normalize 会把间隔清零。
+	if err := app.BrowserProxyUpdateSourceConfig("src-share", false, 30, ""); err != nil {
+		t.Fatalf("关闭自动更新失败: %v", err)
+	}
+	row, _ := findRowByID(app.getLatestProxies(), "p1")
+	if row.SourceAutoRefresh || row.SourceRefreshIntervalM != 0 || row.SourceFetchProxyID != "" {
+		t.Fatalf("关闭后应回落手动刷新: %+v", row)
+	}
+
+	// 支持用 source_url 定位源（与刷新入口同口径）。
+	if err := app.BrowserProxyUpdateSourceConfig("https://s1", true, 60, ""); err != nil {
+		t.Fatalf("按 URL 定位源失败: %v", err)
+	}
+	row, _ = findRowByID(app.getLatestProxies(), "p2")
+	if !row.SourceAutoRefresh || row.SourceRefreshIntervalM != 60 {
+		t.Fatalf("按 URL 更新应生效: %+v", row)
+	}
+
+	// 不存在的源必须报错。
+	if err := app.BrowserProxyUpdateSourceConfig("src-none", true, 30, ""); err == nil {
+		t.Fatal("订阅源不存在应报错")
 	}
 }

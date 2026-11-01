@@ -23,9 +23,9 @@ import {
   createExistingProxyPicker,
   parseClashImportText,
   nextProxyID,
-  normalizeRefreshIntervalM,
   resolveImportSourceID,
 } from './ProxyImportModal.helpers'
+import { buildKeptMissingSourceProxies } from '../pages/proxyPool/helpers'
 import { ProxyImportModalView } from './ProxyImportModalView'
 
 export function ProxyImportModal({
@@ -33,8 +33,6 @@ export function ProxyImportModal({
   onClose,
   existingProxies,
   groups,
-  globalAutoRefreshEnabled = false,
-  globalRefreshIntervalM = 60,
   onImported,
 }: ProxyImportModalProps) {
   const [importMode, setImportMode] = useState<ProxyImportMode>('clash')
@@ -206,15 +204,16 @@ export function ProxyImportModal({
       const isURLImport = !!sourceURL
       const sourceNamePrefix = importMode === 'clash' ? importNamePrefix.trim() : ''
       const sourceID = isURLImport ? resolveImportSourceID(existingProxies, sourceURL, sourceNamePrefix) : ''
-      const sourceAutoRefresh = isURLImport ? !!globalAutoRefreshEnabled : false
-      const sourceRefreshIntervalM = sourceAutoRefresh
-        ? normalizeRefreshIntervalM(Number(globalRefreshIntervalM || 0))
-        : 0
+      // 该入口没有自动刷新开关 UI：与既有行为一致，导入的订阅默认手动刷新，
+      // 需要定时刷新时在代理池页的更新管理里开启。
+      const sourceAutoRefresh = false
+      const sourceRefreshIntervalM = 0
       const sourceLastRefreshAt = isURLImport ? new Date().toISOString() : ''
       const oldSourceProxies = isURLImport
         ? existingProxies.filter(item => (item.sourceId || '').trim() === sourceID)
         : []
       const pickExisting = createExistingProxyPicker(oldSourceProxies)
+      const sourceFetchProxyId = (importMode === 'clash' ? importFetchProxyId.trim() : '') || undefined
 
       const newProxies: BrowserProxy[] = previewList.map((p) => {
         const existingProxy = pickExisting(p.proxyName, p.proxyConfig)
@@ -231,10 +230,22 @@ export function ProxyImportModal({
         sourceAutoRefresh,
         sourceRefreshIntervalM,
         sourceLastRefreshAt: sourceLastRefreshAt || undefined,
+        // 持久化导入时选用的拉取代理：定时/手动刷新复用，避免被墙订阅导入后无法再刷新
+        sourceFetchProxyId,
         }
       })
+      // 与代理池导入和后端刷新同语义：订阅里消失的旧节点标异常保留，不物理删除
+      //（删除会让绑定这些节点的实例悬空）。
+      const refreshedNames = new Set(newProxies.map(item => (item.proxyName || '').trim()))
+      const keptMissing = isURLImport
+        ? buildKeptMissingSourceProxies(oldSourceProxies, refreshedNames, {
+          sourceAutoRefresh,
+          sourceRefreshIntervalM,
+          sourceFetchProxyId,
+        })
+        : []
       const allProxies = isURLImport
-        ? existingProxies.filter(item => (item.sourceId || '').trim() !== sourceID).concat(newProxies)
+        ? existingProxies.filter(item => (item.sourceId || '').trim() !== sourceID).concat(newProxies, keptMissing)
         : [...existingProxies, ...newProxies]
 
       await saveBrowserProxies(allProxies)

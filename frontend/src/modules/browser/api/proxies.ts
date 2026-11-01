@@ -258,6 +258,28 @@ export async function refreshProxySource(sourceId: string, proxyId = ''): Promis
   throw new Error('当前环境不支持订阅刷新')
 }
 
+/** 更新订阅源配置（自动更新开关/间隔/拉取代理），按 sourceId 批量落到该源所有行 */
+export async function updateProxySourceConfig(
+  sourceId: string,
+  autoRefresh: boolean,
+  intervalM: number,
+  fetchProxyId: string,
+): Promise<boolean> {
+  const bindings: any = await getBindings()
+  const trimmedSourceId = sourceId.trim()
+  if (!trimmedSourceId) throw new Error('订阅源 ID 不能为空')
+  if (bindings?.BrowserProxyUpdateSourceConfig) {
+    await bindings.BrowserProxyUpdateSourceConfig(trimmedSourceId, autoRefresh, intervalM, fetchProxyId.trim())
+    return true
+  }
+  const goApp = getGoApp()
+  if (goApp?.BrowserProxyUpdateSourceConfig) {
+    await goApp.BrowserProxyUpdateSourceConfig(trimmedSourceId, autoRefresh, intervalM, fetchProxyId.trim())
+    return true
+  }
+  throw new Error('当前环境不支持订阅源配置编辑')
+}
+
 /** 持久化订阅源忽略名单（导入预览取消勾选的节点），定时刷新不再导入它们 */
 export async function setSourceIgnoredProxyNames(sourceId: string, names: string[]): Promise<boolean> {
   const bindings: any = await getBindings()

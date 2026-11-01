@@ -18,6 +18,8 @@ const (
 	defaultProxySourceRefreshIntervalM = 60
 	// minProxySourceRefreshIntervalM 最小刷新间隔（与前端 normalizeRefreshIntervalM 一致）。
 	minProxySourceRefreshIntervalM = 5
+	// maxProxySourceRefreshIntervalM 最大刷新间隔（与 internal/proxy 的 normalize 上限一致）。
+	maxProxySourceRefreshIntervalM = 24 * 60
 )
 
 // proxySourceRefreshScheduler 后端订阅刷新调度器。
@@ -121,7 +123,7 @@ func (s *proxySourceRefreshScheduler) refreshDueSources(now time.Time) {
 		if attemptAt, ok := s.nextAttempt(meta.SourceID); ok && now.Before(attemptAt) {
 			continue
 		}
-		if _, err := app.refreshProxySourceWithMeta(app.getLatestProxies(), meta, ""); err != nil {
+		if _, err := app.refreshProxySourceWithMeta(app.getLatestProxies(), meta, meta.SourceFetchProxy); err != nil {
 			s.setNextAttempt(meta.SourceID, now.Add(proxySourceRefreshFailureRetry))
 			logger.New("ProxySource").Warn("订阅源定时刷新失败",
 				logger.F("source_id", meta.SourceID),

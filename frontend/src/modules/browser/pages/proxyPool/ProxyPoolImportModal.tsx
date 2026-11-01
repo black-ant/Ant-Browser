@@ -158,10 +158,13 @@ export function ProxyPoolImportModal({
                   disabled={fetchingImportUrl}
                   options={[
                     { value: '', label: '直连拉取' },
-                    ...fetchProxyOptions.map(proxy => ({
-                      value: proxy.proxyId,
-                      label: proxy.proxyName || proxy.proxyId,
-                    })),
+                    ...fetchProxyOptions.map(proxy => {
+                      const latency = proxy.lastLatencyMs
+                      return {
+                        value: proxy.proxyId,
+                        label: `${proxy.proxyName || proxy.proxyId}${typeof latency === 'number' && latency > 0 ? ` · ${latency}ms` : ''}`,
+                      }
+                    }),
                   ]}
                 />
                 <Button

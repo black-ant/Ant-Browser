@@ -73,6 +73,7 @@ export function toDisplayList(proxies: BrowserProxy[]): ProxyDisplayInfo[] {
       sourceRefreshIntervalM: Math.max(0, Number(proxy.sourceRefreshIntervalM || 0)),
       sourceLastRefreshAt: proxy.sourceLastRefreshAt || '',
       sourceMissing: !!proxy.sourceMissing,
+      sourceMissingSince: proxy.sourceMissingSince || '',
       ...info,
     }
   })

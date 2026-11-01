@@ -578,6 +578,10 @@ export function BrowserProxyTestSpeed(arg1) {
   return window['go']['main']['App']['BrowserProxyTestSpeed'](arg1);
 }
 
+export function BrowserProxyUpdateSourceConfig(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BrowserProxyUpdateSourceConfig'](arg1, arg2, arg3, arg4);
+}
+
 export function BrowserProxyVirtualGroupHealthList() {
   return window['go']['main']['App']['BrowserProxyVirtualGroupHealthList']();
 }

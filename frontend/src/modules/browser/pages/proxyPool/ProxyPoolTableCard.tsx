@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { MoreHorizontal, Pencil, Wifi } from 'lucide-react'
 
-import { Button, Card, Input, Switch, Table } from '../../../../shared/components'
+import { Button, Card, Input, Table } from '../../../../shared/components'
 import type { SortOrder, TableColumn } from '../../../../shared/components/Table'
 import type { ProxyIPHealthResult } from '../../types'
 
@@ -15,9 +16,6 @@ interface ProxyPoolTableCardProps {
   filterKeyword: string
   filterProtocol: string
   filterAvailableOnly: boolean
-  globalAutoRefreshEnabled: boolean
-  globalRefreshInterval: number
-  globalRefreshIntervalM: string
   groups: string[]
   virtualGroupOptions: Array<{ value: string; label: string }>
   ipHealthMap: Record<string, ProxyIPHealthResult>
@@ -30,8 +28,6 @@ interface ProxyPoolTableCardProps {
   onFilterKeywordChange: (nextValue: string) => void
   onFilterProtocolChange: (nextValue: string) => void
   onFilterAvailableOnlyChange: (checked: boolean) => void
-  onGlobalAutoRefreshEnabledChange: (checked: boolean) => void
-  onGlobalRefreshIntervalMChange: (nextValue: string) => void
   onOpenBatchDelete: () => void
   onOpenIPHealthDetail: (proxyId: string) => void
   onOpenVirtualGroupMembers: (record: ProxyDisplayInfo) => void
@@ -61,9 +57,6 @@ export function ProxyPoolTableCard({
   filterKeyword,
   filterProtocol,
   filterAvailableOnly,
-  globalAutoRefreshEnabled,
-  globalRefreshInterval,
-  globalRefreshIntervalM,
   groups,
   virtualGroupOptions,
   ipHealthMap,
@@ -76,8 +69,6 @@ export function ProxyPoolTableCard({
   onFilterKeywordChange,
   onFilterProtocolChange,
   onFilterAvailableOnlyChange,
-  onGlobalAutoRefreshEnabledChange,
-  onGlobalRefreshIntervalMChange,
   onOpenBatchDelete,
   onOpenIPHealthDetail,
   onOpenVirtualGroupMembers,
@@ -213,7 +204,11 @@ export function ProxyPoolTableCard({
           {record.sourceMissing && (
             <span
               className="shrink-0 px-1.5 py-0.5 text-[11px] rounded bg-red-500/10 text-red-500 whitespace-nowrap"
-              title="订阅中已无此节点（名称/国家都未匹配），节点保留、实例绑定不变"
+              title={[
+                '订阅中已无此节点（名称/国家都未匹配，或导入时被取消勾选加入忽略名单）',
+                '节点保留、实例绑定不变，订阅里重新出现时自动恢复',
+                record.sourceMissingSince ? `异常自 ${record.sourceMissingSince}` : '',
+              ].filter(Boolean).join('；')}
             >
               异常
             </span>
@@ -235,11 +230,14 @@ export function ProxyPoolTableCard({
       render: (_, record) => {
         if (!record.sourceUrl) return '-'
         const host = sourceHostLabel(record.sourceUrl)
+        // 显示行级订阅配置的真值：自动更新开关与间隔都来自该行自身，
+        // 与后端调度器（app_proxy_source_refresh_scheduler.go）的判定口径一致。
+        const intervalM = record.sourceRefreshIntervalM > 0 ? record.sourceRefreshIntervalM : 60
         return (
           <div className="text-xs leading-5">
             <div className="text-[var(--color-text-primary)] truncate" title={record.sourceUrl}>{host}</div>
             <div className="text-[var(--color-text-muted)]">
-              {globalAutoRefreshEnabled ? `自动刷新 ${globalRefreshInterval} 分钟（全局）` : '手动刷新'}
+              {record.sourceAutoRefresh ? `自动刷新 ${intervalM} 分钟` : '手动刷新'}
             </div>
           </div>
         )
@@ -283,7 +281,7 @@ export function ProxyPoolTableCard({
     {
       key: 'actions',
       title: '操作',
-      width: '190px',
+      width: '132px',
       render: (_, record) => {
         if (record.isVirtual) return <Button size='sm' variant='secondary' onClick={event => { event.stopPropagation(); onManageVirtualGroup() }}>管理</Button>
         const isBuiltin = BUILTIN_PROXY_IDS.has(record.proxyId)
@@ -292,33 +290,38 @@ export function ProxyPoolTableCard({
         const moreOpen = openMoreProxyId === record.proxyId
         const closeMore = () => setOpenMoreProxyId(null)
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               size="sm"
               variant="ghost"
+              className="px-2"
+              title="测速"
               onClick={(event) => { event.stopPropagation(); closeMore(); onTestOne(record) }}
               loading={latencyMap[record.proxyId] === -1}
               disabled={record.proxyConfig === 'direct://'}
             >
-              测速
+              {latencyMap[record.proxyId] !== -1 && <Wifi className="w-3.5 h-3.5" />}
             </Button>
             <Button
               size="sm"
               variant="ghost"
+              className="px-2"
               disabled={isBuiltin}
-              title={isBuiltin ? '内置代理不可编辑' : undefined}
+              title={isBuiltin ? '内置代理不可编辑' : '编辑'}
               onClick={(event) => {
                 event.stopPropagation()
                 closeMore()
                 if (!isBuiltin) onEdit(record)
               }}
             >
-              编辑
+              <Pencil className="w-3.5 h-3.5" />
             </Button>
             <div className="relative" onClick={(event) => event.stopPropagation()}>
               <Button
                 size="sm"
-                variant="secondary"
+                variant="ghost"
+                className="px-2"
+                title="更多"
                 aria-expanded={moreOpen}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -330,7 +333,7 @@ export function ProxyPoolTableCard({
                   setOpenMoreProxyId(record.proxyId)
                 }}
               >
-                更多
+                <MoreHorizontal className="w-3.5 h-3.5" />
               </Button>
               {moreOpen && (
                 <div className={`absolute right-0 z-30 w-28 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-1 shadow-lg ${moreMenuPlacement === 'up' ? 'bottom-9' : 'top-9'}`}>
@@ -378,8 +381,6 @@ export function ProxyPoolTableCard({
     },
   ], [
     checkingIPHealthIds,
-    globalAutoRefreshEnabled,
-    globalRefreshInterval,
     ipHealthMap,
     latencyMap,
     latencyEngineMap,
@@ -442,23 +443,6 @@ export function ProxyPoolTableCard({
           />
           只展示可用
         </label>
-        <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-2 py-1.5">
-          <span className="text-xs text-[var(--color-text-muted)]">全局自动刷新</span>
-          <Switch
-            checked={globalAutoRefreshEnabled}
-            onChange={onGlobalAutoRefreshEnabledChange}
-          />
-          <Input
-            type="number"
-            min={5}
-            max={1440}
-            value={globalRefreshIntervalM}
-            onChange={event => onGlobalRefreshIntervalMChange(event.target.value)}
-            className="w-24"
-            disabled={!globalAutoRefreshEnabled}
-          />
-          <span className="text-xs text-[var(--color-text-muted)]">分钟</span>
-        </div>
         <div className="flex-1" />
         {data.some(isSelectableProxyDisplay) && (
           <label className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] cursor-pointer select-none">

@@ -300,6 +300,10 @@ export interface BrowserProxy {
   sourceAutoRefresh?: boolean
   sourceRefreshIntervalM?: number
   sourceLastRefreshAt?: string
+  /** 该订阅源拉取订阅内容时使用的代理（导入时选定并持久化，刷新时复用；空为直连） */
+  sourceFetchProxyId?: string
+  /** 最近一次订阅刷新失败的错误信息（成功刷新后由后端清空） */
+  sourceLastRefreshError?: string
   /** 订阅刷新后该节点已不在来源列表中（名称/国家都匹配不上），保留在池内但标记异常 */
   sourceMissing?: boolean
   sourceMissingSince?: string

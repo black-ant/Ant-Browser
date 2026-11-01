@@ -5,8 +5,6 @@ export interface ProxyImportModalProps {
   onClose: () => void
   existingProxies: BrowserProxy[]
   groups: string[]
-  globalAutoRefreshEnabled?: boolean
-  globalRefreshIntervalM?: number
   onImported?: (newProxies: BrowserProxy[]) => void | Promise<void>
 }
 
