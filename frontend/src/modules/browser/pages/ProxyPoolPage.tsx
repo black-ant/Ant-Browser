@@ -499,6 +499,7 @@ export function ProxyPoolPage() {
         onClose={() => setSourceManagerOpen(false)}
         onRefreshAll={() => void handleRefreshAllSources(false)}
         onRefreshOne={(sourceId) => void refreshSingleSource(sourceId, false)}
+        onReloadProxies={() => reloadPoolState()}
         onSaveSourceConfig={async (sourceId, autoRefresh, intervalM, fetchProxyId) => {
           try {
             await updateProxySourceConfig(sourceId, autoRefresh, intervalM, fetchProxyId)

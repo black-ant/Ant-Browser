@@ -4,6 +4,8 @@ import type { TableColumn } from '../../../../shared/components/Table'
 import type { BrowserProxy } from '../../types'
 import { normalizeRefreshIntervalM, parseTimestampMs, sourceHostLabel } from './helpers.sources'
 import type { URLImportSourceMeta } from './helpers.types'
+import { readSourceAlignRecord } from './storage'
+import { ProxySourceAlignModal } from './ProxySourceAlignModal'
 
 interface ProxySourceRefreshModalProps {
   open: boolean
@@ -18,6 +20,8 @@ interface ProxySourceRefreshModalProps {
   onRefreshOne: (sourceId: string) => void
   /** 保存订阅源配置（自动更新开关/间隔/拉取代理），成功后由父级重载池 */
   onSaveSourceConfig: (sourceId: string, autoRefresh: boolean, intervalM: number, fetchProxyId: string) => Promise<void>
+  /** 对齐工作台应用后由父级重载代理池 */
+  onReloadProxies: () => Promise<void>
 }
 
 interface SourceManagerRow extends URLImportSourceMeta {
@@ -71,6 +75,7 @@ export function ProxySourceRefreshModal({
   onRefreshAll,
   onRefreshOne,
   onSaveSourceConfig,
+  onReloadProxies,
 }: ProxySourceRefreshModalProps) {
   // 相对时间（x 分钟前/分钟后）随时间流逝会过期，弹窗打开期间每 30 秒重算一次。
   const [, setNowTick] = useState(0)
@@ -116,6 +121,15 @@ export function ProxySourceRefreshModal({
   const abnormalDetail = abnormalDetailSourceId
     ? rows.find(row => row.sourceId === abnormalDetailSourceId) || null
     : null
+  const [alignOpen, setAlignOpen] = useState(false)
+  const abnormalSourceRows = useMemo(
+    () => (abnormalDetail ? proxies.filter(proxy => (proxy.sourceId || '').trim() === abnormalDetail.sourceId) : []),
+    [abnormalDetail, proxies],
+  )
+  const lastAlignRecord = useMemo(
+    () => (abnormalDetail && open ? readSourceAlignRecord(abnormalDetail.sourceId) : null),
+    [abnormalDetail, open],
+  )
 
   const columns: TableColumn<SourceManagerRow>[] = [
     {
@@ -306,11 +320,19 @@ export function ProxySourceRefreshModal({
               <span className="text-sm font-medium text-[var(--color-text-primary)]">
                 异常节点详情：{sourceHostLabel(abnormalDetail.sourceUrl)}（{abnormalDetail.missingNodes.length} 个）
               </span>
-              <Button size="sm" variant="ghost" onClick={() => setAbnormalDetailSourceId(null)}>收起</Button>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" onClick={() => setAlignOpen(true)}>开始对齐</Button>
+                <Button size="sm" variant="ghost" onClick={() => setAbnormalDetailSourceId(null)}>收起</Button>
+              </div>
             </div>
             <p className="text-[11px] text-[var(--color-text-muted)]">
               这些节点已不在订阅中（或导入时被取消勾选）。节点保留在池内、实例绑定不变，订阅里重新出现时会自动恢复。
             </p>
+            {lastAlignRecord && (
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                上次对齐记录：{new Date(lastAlignRecord.at).toLocaleString()} · 对齐 {lastAlignRecord.pairs.length} 对 · 新增 {lastAlignRecord.added} 个 · 异常保留 {lastAlignRecord.keptMissing} 个
+              </p>
+            )}
             <div className="max-h-52 overflow-y-auto rounded border border-[var(--color-border-muted)] divide-y divide-[var(--color-border-muted)]">
               {abnormalDetail.missingNodes.map(node => (
                 <div key={node.name} className="flex items-center justify-between gap-3 px-2.5 py-1.5 text-xs">
@@ -388,6 +410,15 @@ export function ProxySourceRefreshModal({
           emptyText="暂无 URL 订阅源，请先在「导入代理」中导入订阅"
         />
       </div>
+      {abnormalDetail && (
+        <ProxySourceAlignModal
+          open={alignOpen}
+          source={abnormalDetail}
+          sourceRows={abnormalSourceRows}
+          onClose={() => setAlignOpen(false)}
+          onApplied={onReloadProxies}
+        />
+      )}
     </Modal>
   )
 }
