@@ -79,6 +79,7 @@ profiles.yaml
 # Frontend deps/cache
 frontend/node_modules/
 frontend/dist/
+frontend/dist_stub/
 frontend/.vite/
 
 # Python cache
