@@ -234,6 +234,21 @@ export interface BrowserTab {
   active: boolean
 }
 
+// 安全控制/订阅对齐：后端记录的对齐明细（刷新自动对齐与对齐工作台共用）
+export interface SourceAlignPair {
+  oldName: string
+  newName: string
+  match: string // name / endpoint / country
+}
+
+export interface SourceAlignRecord {
+  at: string
+  mode: string // auto = 刷新自动对齐 / manual = 对齐工作台
+  pairs?: SourceAlignPair[]
+  added: number
+  keptMissing: number
+}
+
 export interface BrowserSettings {
   userDataRoot: string
   defaultFingerprintArgs: string[]
@@ -243,6 +258,8 @@ export interface BrowserSettings {
   restoreLastSession: boolean
   startReadyTimeoutMs: number
   startStableWindowMs: number
+  /** 同时运行实例数上限；0 = 不限制，超出后启动请求排队等待空闲名额 */
+  maxConcurrentInstances: number
   // xray 表示 Xray + sing-box 组合连接栈；mihomo 表示独立 Mihomo 连接栈。
   defaultConnectorType: 'xray' | 'mihomo' | string
 }

@@ -22,6 +22,7 @@ export function CoreManagementPage() {
 
   // 全局设置状态
   const [settings, setSettings] = useState<BrowserSettings>({
+    maxConcurrentInstances: 0,
     userDataRoot: '',
     defaultFingerprintArgs: [],
     defaultLaunchArgs: [],
@@ -453,6 +454,7 @@ export function CoreManagementPage() {
     setSavingSettings(true)
     try {
       const newSettings: BrowserSettings = {
+        maxConcurrentInstances: 0,
         userDataRoot: settingsForm.userDataRoot.trim(),
         defaultFingerprintArgs: settingsForm.defaultFingerprintArgs.split('\n').map(s => s.trim()).filter(Boolean),
         defaultLaunchArgs: settingsForm.defaultLaunchArgs.split('\n').map(s => s.trim()).filter(Boolean),

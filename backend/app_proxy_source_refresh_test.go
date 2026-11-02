@@ -141,11 +141,11 @@ func TestBuildRefreshedProxyPoolCountryFallbackReplacesByID(t *testing.T) {
 }
 
 func TestBuildRefreshedProxyPoolMarksMissingWithoutMatch(t *testing.T) {
-	oldNode := testClashNode(t, "神秘节点 X", map[string]interface{}{"type": "ss"})
+	oldNode := testClashNode(t, "神秘节点 X", map[string]interface{}{"type": "ss", "server": "9.9.9.9", "port": 1})
 	meta := proxySourceMeta{SourceID: "src-1", SourceURL: "https://sub.example.com/list"}
 	pool := []BrowserProxy{testProxyRow("proxy-old-1", "神秘节点 X", oldNode, "src-1")}
 
-	newUS := testClashNode(t, "US-01", map[string]interface{}{"type": "ss"})
+	newUS := testClashNode(t, "US-01", map[string]interface{}{"type": "ss", "server": "8.8.8.8", "port": 2})
 	plan := buildRefreshedProxyPool(pool, meta, []clashNode{newUS}, nil, newTestIDGenerator(), time.Unix(1700000000, 0))
 
 	if plan.result.MarkedMissing != 1 || plan.result.Added != 1 {
@@ -305,7 +305,8 @@ func TestBuildRefreshedProxyPoolClearsRefreshError(t *testing.T) {
 	matched.SourceLastRefreshError = "上次的错误"
 
 	// 无匹配行：保留并标记异常，但失败记录同样清除（订阅已成功拉取）。
-	missing := testProxyRow("proxy-old-2", "神秘节点 X", testClashNode(t, "神秘节点 X", map[string]interface{}{"type": "ss"}), "src-1")
+	// 端点与上面两个新节点都不同，避免被端点匹配级合并。
+	missing := testProxyRow("proxy-old-2", "神秘节点 X", testClashNode(t, "神秘节点 X", map[string]interface{}{"type": "ss", "server": "9.9.9.9", "port": 1}), "src-1")
 	missing.SourceLastRefreshError = "上次的错误"
 
 	plan := buildRefreshedProxyPool(
@@ -559,5 +560,56 @@ func TestBrowserProxyUpdateSourceConfig(t *testing.T) {
 	// 不存在的源必须报错。
 	if err := app.BrowserProxyUpdateSourceConfig("src-none", true, 30, ""); err == nil {
 		t.Fatal("订阅源不存在应报错")
+	}
+}
+
+// 安全控制配套·自动对齐：订阅方改节点名但端点不变时，刷新应自动合并（旧 ID 保留、名字/配置更新），
+// 不再走"旧标异常+新加入"的老路。
+func TestBuildRefreshedProxyPoolEndpointMatch(t *testing.T) {
+	meta := proxySourceMeta{SourceID: "src-1", SourceURL: "https://sub.example.com/list", NamePrefix: "自用-"}
+	oldRow := testProxyRow("proxy-old-1", "自用--old-node", testClashNode(t, "old-node", map[string]interface{}{"type": "hysteria2", "server": "1.2.3.4", "port": 50000}), "src-1")
+
+	plan := buildRefreshedProxyPool(
+		[]BrowserProxy{oldRow},
+		meta,
+		[]clashNode{
+			testClashNode(t, "renamed-node", map[string]interface{}{"type": "hysteria2", "server": "1.2.3.4", "port": 50000}),
+			testClashNode(t, "brand-new", map[string]interface{}{"type": "ss", "server": "5.6.7.8", "port": 8443}),
+		},
+		nil,
+		newTestIDGenerator(),
+		time.Now(),
+	)
+
+	if plan.result.EndpointMatched != 1 {
+		t.Fatalf("端点匹配应命中 1 次: %+v", plan.result)
+	}
+	row, ok := findRowByID(plan.merged, "proxy-old-1")
+	if !ok {
+		t.Fatalf("合并必须沿用旧 proxyId: %#v", plan.merged)
+	}
+	if row.ProxyName != "自用--renamed-node" {
+		t.Fatalf("合并后名字应为前缀+新名: %q", row.ProxyName)
+	}
+	if row.SourceMissing {
+		t.Fatal("合并后不应再标记异常")
+	}
+	hasNew := false
+	for _, r := range plan.merged {
+		if r.ProxyName == "自用--brand-new" && r.ProxyId != "proxy-old-1" {
+			hasNew = true
+		}
+	}
+	if !hasNew {
+		t.Fatal("无主新节点应正常新增")
+	}
+	var endpointPair *ProxyRefreshPair
+	for i := range plan.result.Pairs {
+		if plan.result.Pairs[i].Match == "endpoint" {
+			endpointPair = &plan.result.Pairs[i]
+		}
+	}
+	if endpointPair == nil || endpointPair.OldName != "自用--old-node" || endpointPair.NewName != "自用--renamed-node" {
+		t.Fatalf("对齐明细应记录端点配对: %+v", plan.result.Pairs)
 	}
 }

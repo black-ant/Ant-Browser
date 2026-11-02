@@ -300,6 +300,22 @@ export function BrowserListSettingsModal({
             />
           </div>
         </FormItem>
+        <FormItem label="安全控制 · 同时运行实例数上限" hint="0 = 不限制。达到上限后，新启动请求自动排队等待，有实例停止腾出名额后按顺序启动。">
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              max={999}
+              value={String(settings.maxConcurrentInstances ?? 0)}
+              onChange={(event) => {
+                const parsed = Math.max(0, Math.min(999, Math.floor(Number(event.target.value) || 0)))
+                onSettingsChange({ maxConcurrentInstances: parsed })
+              }}
+              className="w-32"
+            />
+            <span className="text-sm text-[var(--color-text-muted)]">个（0 = 不限制）</span>
+          </div>
+        </FormItem>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
           <FormItem label="启动就绪超时（毫秒）">
             <Input

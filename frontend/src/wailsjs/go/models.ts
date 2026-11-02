@@ -1939,6 +1939,7 @@ export namespace browser {
 	    restoreLastSession: boolean;
 	    startReadyTimeoutMs: number;
 	    startStableWindowMs: number;
+	    maxConcurrentInstances: number;
 	    defaultConnectorType: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1955,6 +1956,7 @@ export namespace browser {
 	        this.restoreLastSession = source["restoreLastSession"];
 	        this.startReadyTimeoutMs = source["startReadyTimeoutMs"];
 	        this.startStableWindowMs = source["startStableWindowMs"];
+	        this.maxConcurrentInstances = source["maxConcurrentInstances"];
 	        this.defaultConnectorType = source["defaultConnectorType"];
 	    }
 	}

@@ -71,6 +71,22 @@ type Config struct {
 	Backup             BackupConfig             `yaml:"backup"`
 }
 
+// SourceAlignPair 一次对齐明细：旧节点名 → 新节点名及匹配方式。
+type SourceAlignPair struct {
+	OldName string `yaml:"old_name" json:"oldName"`
+	NewName string `yaml:"new_name" json:"newName"`
+	Match   string `yaml:"match" json:"match"` // name / endpoint / country
+}
+
+// SourceAlignRecord 订阅源对齐记录（刷新自动对齐或对齐工作台手动对齐）。
+type SourceAlignRecord struct {
+	At          string            `yaml:"at" json:"at"`
+	Mode        string            `yaml:"mode" json:"mode"` // auto / manual
+	Pairs       []SourceAlignPair `yaml:"pairs,omitempty" json:"pairs,omitempty"`
+	Added       int               `yaml:"added" json:"added"`
+	KeptMissing int               `yaml:"kept_missing" json:"keptMissing"`
+}
+
 type ProxyCheckConfig struct {
 	SpeedIntervalMinutes int                `yaml:"speed_interval_minutes" json:"speedIntervalMinutes"`
 	BridgeStartTimeoutMs int                `yaml:"bridge_start_timeout_ms" json:"bridgeStartTimeoutMs"`
@@ -230,12 +246,16 @@ type BrowserConfig struct {
 	RestoreLastSession     bool                       `yaml:"restore_last_session"`
 	StartReadyTimeoutMs    int                        `yaml:"start_ready_timeout_ms,omitempty"`
 	StartStableWindowMs    int                        `yaml:"start_stable_window_ms,omitempty"`
+	// MaxConcurrentInstances 同时运行实例数上限；0 表示不限制，超出后启动请求排队等待空闲名额。
+	MaxConcurrentInstances   int                        `yaml:"max_concurrent_instances,omitempty"`
 	DefaultBookmarks       []BrowserBookmark          `yaml:"default_bookmarks,omitempty"`
 	DeletedBookmarkURLs    []string                   `yaml:"deleted_bookmark_urls,omitempty"`
 	Cores                  []BrowserCore              `yaml:"cores,omitempty"`
 	Proxies                []BrowserProxy             `yaml:"proxies,omitempty"`
 	ProxyVirtualGroups     []BrowserProxyVirtualGroup `yaml:"proxy_virtual_groups,omitempty"`
 	Profiles               []BrowserProfileConfig     `yaml:"profiles,omitempty"`
+	// AlignRecords 订阅源对齐记录（sourceId -> 最近 3 条），由刷新自动对齐与对齐工作台写入。
+	AlignRecords map[string][]SourceAlignRecord `yaml:"align_records,omitempty" json:"align_records,omitempty"`
 	ChromeBinaryPath       string                     `yaml:"chrome_binary_path,omitempty"`
 	ClashBinaryPath        string                     `yaml:"clash_binary_path,omitempty"`
 	XrayBinaryPath         string                     `yaml:"xray_binary_path,omitempty"`

@@ -12,6 +12,7 @@ import {
 } from '../../api'
 
 const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
+  maxConcurrentInstances: 0,
   userDataRoot: 'data',
   defaultFingerprintArgs: [],
   defaultLaunchArgs: [],

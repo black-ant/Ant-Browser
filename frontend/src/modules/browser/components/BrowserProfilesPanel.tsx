@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { Copy, Download, FolderOpen, Key, Loader2, MoreHorizontal, Play, Puzzle, Repeat2, RotateCcw, Settings, Square, Trash2, Wifi } from 'lucide-react'
 
-import { Badge, Button, Card, Table } from '../../../shared/components'
+import { Badge, Button, Card, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 
 import type { BrowserCore, BrowserProfile, BrowserProxy, BrowserProxyVirtualGroup, ProxySpeedTestResult } from '../types'
@@ -12,6 +12,7 @@ import { useProxySpeedFreshness } from '../proxySpeedFreshness'
 import { isProxySpeedResultFresh } from '../pages/proxyPool/storage'
 import { useProxySpeedStore } from '../proxySpeedStore'
 import { ensureProxySpeedListener, recordProxySpeedResult, testProxySpeedOnce } from '../proxySpeedService'
+import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import type { BrowserViewMode } from './BrowserListLayout'
 import { KeywordInlineRow, LaunchCodeCell } from './BrowserListWidgets'
 
@@ -606,6 +607,22 @@ export function BrowserProfilesPanel({
   onDelete,
 }: BrowserProfilesPanelProps) {
   const { now, speedResultMaxAgeMs } = useProxySpeedFreshness()
+
+  // 安全控制：并发启动闸门的排队/放行反馈（事件由后端启动闸门发出）。
+  useEffect(() => {
+    const nameOf = (profileId?: string) =>
+      profiles.find(item => item.profileId === profileId)?.profileName || profileId || ''
+    const offQueued = EventsOn('instance:launch:queued', (payload: { profileId?: string; position?: number; limit?: number }) => {
+      toast.info(`实例「${nameOf(payload?.profileId)}」已进入启动队列（第 ${payload?.position || '-'} 位），等待空闲名额后自动启动`)
+    })
+    const offAdmitted = EventsOn('instance:launch:admitted', (payload: { profileId?: string }) => {
+      toast.success(`实例「${nameOf(payload?.profileId)}」已获得启动名额，开始启动`)
+    })
+    return () => {
+      offQueued?.()
+      offAdmitted?.()
+    }
+  }, [profiles])
   const allSelected = profiles.length > 0 && selectedIds.size === profiles.length
   const partiallySelected = selectedIds.size > 0 && selectedIds.size < profiles.length
   const [openMoreProfileId, setOpenMoreProfileId] = useState<string | null>(null)

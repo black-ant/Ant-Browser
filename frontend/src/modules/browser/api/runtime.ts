@@ -26,6 +26,7 @@ export function createDefaultBrowserSettings(): BrowserSettings {
     restoreLastSession: false,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
+    maxConcurrentInstances: 0,
     defaultConnectorType: 'xray',
   }
 }

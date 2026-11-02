@@ -63,6 +63,9 @@ type App struct {
 	proxySourceRefreshMu sync.Mutex
 	proxyFailoverLastAt  map[string]time.Time
 	proxyFailoverCount   map[string]int
+	// instanceGate 实例并发启动闸门（安全控制），见 app_instance_launch_gate.go。
+	instanceGate     *instanceLaunchGate
+	instanceGateOnce sync.Once
 	profileBridgeRefs             map[string]profileProxyBridgeRef
 	deferredStartTargetsMu        sync.Mutex
 	deferredStartTargets          map[string]deferredStartTargetsPlan

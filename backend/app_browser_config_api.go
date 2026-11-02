@@ -24,6 +24,7 @@ func (a *App) GetBrowserSettings() BrowserSettings {
 		StartReadyTimeoutMs:    browserStartReadyTimeoutMillis(a.config),
 		StartStableWindowMs:    browserStartStableWindowMillis(a.config),
 		DefaultConnectorType:   config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType),
+		MaxConcurrentInstances: a.config.Browser.MaxConcurrentInstances,
 	}
 }
 
@@ -41,6 +42,10 @@ func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	a.config.Browser.LightStartEnabled = &lightStartEnabled
 	a.config.Browser.RestoreLastSession = settings.RestoreLastSession
 	a.config.Browser.DefaultConnectorType = config.NormalizeBrowserConnectorType(settings.DefaultConnectorType)
+	a.config.Browser.MaxConcurrentInstances = settings.MaxConcurrentInstances
+	if a.config.Browser.MaxConcurrentInstances < 0 {
+		a.config.Browser.MaxConcurrentInstances = 0
+	}
 	if settings.StartReadyTimeoutMs > 0 {
 		a.config.Browser.StartReadyTimeoutMs = settings.StartReadyTimeoutMs
 	} else if a.config.Browser.StartReadyTimeoutMs <= 0 {

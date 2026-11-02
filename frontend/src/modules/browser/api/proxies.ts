@@ -1,4 +1,4 @@
-﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySourceRefreshResult, ProxySpeedTestResult, ProxyVirtualGroupHealth, ProxyVirtualGroupProbeResult } from '../types'
+﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySourceRefreshResult, ProxySpeedTestResult, ProxyVirtualGroupHealth, ProxyVirtualGroupProbeResult, SourceAlignRecord } from '../types'
 import { getBindings, getGoApp, getMockProxies, nowISOString, setMockProxies } from './runtime'
 
 import type { BrowserProxyVirtualGroup } from '../types'
@@ -29,6 +29,21 @@ function normalizeBrowserProxyVirtualGroup(value: unknown): BrowserProxyVirtualG
 function normalizeBrowserProxyVirtualGroups(value: unknown): BrowserProxyVirtualGroup[] {
   if (!Array.isArray(value)) return []
   return value.map(normalizeBrowserProxyVirtualGroup).filter((item): item is BrowserProxyVirtualGroup => item !== null)
+}
+
+/** 读取订阅源的对齐记录（最新在前；后端随 config.yaml 持久化） */
+export async function fetchSourceAlignRecords(sourceId: string): Promise<SourceAlignRecord[]> {
+  const bindings: any = await getBindings()
+  const trimmed = sourceId.trim()
+  if (!trimmed) return []
+  if (bindings?.BrowserProxyAlignRecords) {
+    return (await bindings.BrowserProxyAlignRecords(trimmed)) || []
+  }
+  const goApp = getGoApp()
+  if (goApp?.BrowserProxyAlignRecords) {
+    return (await goApp.BrowserProxyAlignRecords(trimmed)) || []
+  }
+  return []
 }
 
 export interface ClashImportURLResult {

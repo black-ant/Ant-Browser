@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
 
@@ -20,9 +21,41 @@ type ProxySourceRefreshResult struct {
 	Fetched        int    `json:"fetched"`        // 订阅解析出的节点数（已过滤忽略名单）
 	NameMatched    int    `json:"nameMatched"`    // 按名称匹配沿用旧 ID
 	CountryMatched int    `json:"countryMatched"` // 名称匹配不上时按同国家替换
+	EndpointMatched int   `json:"endpointMatched"` // 名称匹配不上但端点相同（服务器:端口:协议）= 改名节点，自动对齐
 	Added          int    `json:"added"`          // 全新节点
+	Pairs          []ProxyRefreshPair `json:"pairs,omitempty"` // 本次刷新的对齐明细（旧名→新名+匹配方式）
 	MarkedMissing  int    `json:"markedMissing"`  // 名称/国家都匹配不上，标记为异常的旧节点
 	Total          int    `json:"total"`          // 该源最终保留的节点数
+}
+
+// ProxyRefreshPair 一次刷新中的对齐明细：旧节点名 → 新节点名及匹配方式。
+type ProxyRefreshPair struct {
+	OldName string `json:"oldName"`
+	NewName string `json:"newName"`
+	Match   string `json:"match"` // name / endpoint / country
+}
+
+// clashNodeEndpoint 提取节点配置的端点标识 server:port:type（同端点视为同一台服务器的改名节点）。
+func clashNodeEndpoint(configText string) string {
+	parsed, ok := parseClashPayload(configText)
+	if !ok {
+		return ""
+	}
+	arr, ok := parsed.([]interface{})
+	if !ok || len(arr) != 1 {
+		return ""
+	}
+	item := toStringMap(arr[0])
+	if item == nil {
+		return ""
+	}
+	server := strings.TrimSpace(fmt.Sprint(item["server"]))
+	port := strings.TrimSpace(fmt.Sprint(item["port"]))
+	typ := strings.ToLower(strings.TrimSpace(fmt.Sprint(item["type"])))
+	if server == "" || port == "" || typ == "" || server == "<nil>" || port == "<nil>" || typ == "<nil>" {
+		return ""
+	}
+	return server + ":" + port + ":" + typ
 }
 
 // proxySourceMeta 从代理行聚合出的订阅源元数据。
@@ -493,10 +526,52 @@ func buildRefreshedProxyPool(
 		entry.SourceLastRefreshError = ""
 		entriesByOld[chosen] = entry
 		result.NameMatched++
+		result.Pairs = append(result.Pairs, ProxyRefreshPair{OldName: pool[chosen].ProxyName, NewName: plan.finalName, Match: "name"})
 	}
 
-	// 第二级：同国家匹配（1:1，按列表顺序配对）。
+	// 第二级：端点匹配（server:port:type 相同 = 同一台服务器改了名），沿用旧 ID 并更新名字/配置。
 	freshUsed := make(map[int]bool, len(fresh))
+	for _, oi := range oldIndexes {
+		if claimed[oi] {
+			continue
+		}
+		rowEndpoint := clashNodeEndpoint(pool[oi].ProxyConfig)
+		if rowEndpoint == "" {
+			continue
+		}
+		pick := -1
+		for _, pi := range fresh {
+			if freshUsed[pi] {
+				continue
+			}
+			if clashNodeEndpoint(plans[pi].config) == rowEndpoint {
+				pick = pi
+				break
+			}
+		}
+		if pick < 0 {
+			continue
+		}
+		freshUsed[pick] = true
+		plan := &plans[pick]
+		plan.oldIndex = oi
+		entry := pool[oi]
+		if clashConfigType(entry.ProxyConfig) != clashConfigType(plan.config) {
+			// 协议变化时不得沿用 preferred_kernel：跨栈指定会被拒绝。
+			entry.PreferredKernel = ""
+		}
+		entry.ProxyName = plan.finalName
+		entry.ProxyConfig = plan.config
+		entry.SourceLastRefreshAt = refreshedAt
+		entry.SourceMissing = false
+		entry.SourceMissingSince = ""
+		entry.SourceLastRefreshError = ""
+		entriesByOld[oi] = entry
+		result.EndpointMatched++
+		result.Pairs = append(result.Pairs, ProxyRefreshPair{OldName: pool[oi].ProxyName, NewName: plan.finalName, Match: "endpoint"})
+	}
+
+	// 第三级：同国家匹配（1:1，按列表顺序配对）。
 	for _, oi := range oldIndexes {
 		if claimed[oi] {
 			continue
@@ -532,6 +607,7 @@ func buildRefreshedProxyPool(
 		entry.SourceLastRefreshError = ""
 		entriesByOld[oi] = entry
 		result.CountryMatched++
+		result.Pairs = append(result.Pairs, ProxyRefreshPair{OldName: pool[oi].ProxyName, NewName: plan.finalName, Match: "country"})
 	}
 
 	// 第三级：无匹配的旧节点保留并标记异常；仍无主的新节点正常新增。
@@ -730,6 +806,18 @@ func (a *App) refreshProxySourceWithMeta(pool []BrowserProxy, meta proxySourceMe
 	if err := a.SaveBrowserProxies(plan.merged); err != nil {
 		return plan.result, err
 	}
+	// 需求②：把本次刷新的对齐明细落盘（每源保留最近 3 条）。
+	alignPairs := make([]config.SourceAlignPair, 0, len(plan.result.Pairs))
+	for _, pair := range plan.result.Pairs {
+		alignPairs = append(alignPairs, config.SourceAlignPair{OldName: pair.OldName, NewName: pair.NewName, Match: pair.Match})
+	}
+	a.appendSourceAlignRecord(meta.SourceID, config.SourceAlignRecord{
+		At:          time.Now().Format(time.RFC3339),
+		Mode:        "auto",
+		Pairs:       alignPairs,
+		Added:       plan.result.Added,
+		KeptMissing: plan.result.MarkedMissing,
+	})
 	logger.New("ProxySource").Info("订阅源刷新完成",
 		logger.F("source_id", meta.SourceID),
 		logger.F("source_url", meta.SourceURL),
@@ -737,6 +825,7 @@ func (a *App) refreshProxySourceWithMeta(pool []BrowserProxy, meta proxySourceMe
 		logger.F("fetched", plan.result.Fetched),
 		logger.F("name_matched", plan.result.NameMatched),
 		logger.F("country_matched", plan.result.CountryMatched),
+		logger.F("endpoint_matched", plan.result.EndpointMatched),
 		logger.F("added", plan.result.Added),
 		logger.F("marked_missing", plan.result.MarkedMissing),
 		logger.F("total", plan.result.Total),
@@ -823,4 +912,37 @@ func (a *App) proxySourceRefreshEnabled() bool {
 		return false
 	}
 	return a.config.ProxySourceRefresh.IsEnabled()
+}
+
+const maxSourceAlignRecords = 3
+
+// appendSourceAlignRecord 追加订阅源对齐记录（最新在前，保留最近 3 条），随 config.yaml 持久化。
+func (a *App) appendSourceAlignRecord(sourceId string, record config.SourceAlignRecord) {
+	if a == nil || a.config == nil {
+		return
+	}
+	if a.config.Browser.AlignRecords == nil {
+		a.config.Browser.AlignRecords = map[string][]config.SourceAlignRecord{}
+	}
+	records := append([]config.SourceAlignRecord{record}, a.config.Browser.AlignRecords[sourceId]...)
+	if len(records) > maxSourceAlignRecords {
+		records = records[:maxSourceAlignRecords]
+	}
+	a.config.Browser.AlignRecords[sourceId] = records
+	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
+		logger.New("ProxySource").Warn("对齐记录写入失败", logger.F("error", err.Error()))
+	}
+}
+
+// BrowserProxyAlignRecords 返回指定订阅源的对齐记录（最新在前）。
+func (a *App) BrowserProxyAlignRecords(sourceId string) []config.SourceAlignRecord {
+	sourceId = strings.TrimSpace(sourceId)
+	if a == nil || a.config == nil || sourceId == "" {
+		return []config.SourceAlignRecord{}
+	}
+	records := a.config.Browser.AlignRecords[sourceId]
+	if records == nil {
+		return []config.SourceAlignRecord{}
+	}
+	return records
 }

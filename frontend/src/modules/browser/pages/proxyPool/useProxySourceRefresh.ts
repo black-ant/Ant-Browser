@@ -47,6 +47,7 @@ export function useProxySourceRefresh({
   const describeRefreshResult = (result: any): string => {
     const parts = [
       `${result?.nameMatched ?? 0} 个名称匹配`,
+      `${result?.endpointMatched ?? 0} 个端点对齐`,
       `${result?.countryMatched ?? 0} 个国家匹配`,
       `${result?.added ?? 0} 个新增`,
     ]

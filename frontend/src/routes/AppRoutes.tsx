@@ -53,6 +53,10 @@ const ProxyVirtualGroupsPage = lazyNamed(
   () => import("../modules/browser/pages/ProxyVirtualGroupsPage"),
   "ProxyVirtualGroupsPage",
 );
+const ProxySourceAlignPage = lazyNamed(
+  () => import("../modules/browser/pages/proxyPool/ProxySourceAlignPage"),
+  "ProxySourceAlignPage",
+);
 const CoreManagementPage = lazyNamed(
   () => import("../modules/browser/pages/CoreManagementPage"),
   "CoreManagementPage",
@@ -103,6 +107,7 @@ export function AppRoutes() {
       <Route path="/browser/logs" element={<BrowserLogsPage />} />
       <Route path="/browser/proxy-pool" element={<ProxyPoolPage />} />
       <Route path="/browser/proxy-virtual-groups" element={<ProxyVirtualGroupsPage />} />
+      <Route path="/browser/proxy-align" element={<ProxySourceAlignPage />} />
       <Route path="/browser/cores" element={<CoreManagementPage />} />
       <Route path="/browser/extensions" element={<ExtensionManagementPage />} />
       <Route path="/browser/bookmarks" element={<BookmarkSettingsPage />} />

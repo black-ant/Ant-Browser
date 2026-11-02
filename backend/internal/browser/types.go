@@ -88,6 +88,7 @@ type Settings struct {
 	RestoreLastSession     bool     `json:"restoreLastSession"`
 	StartReadyTimeoutMs    int      `json:"startReadyTimeoutMs"`
 	StartStableWindowMs    int      `json:"startStableWindowMs"`
+	MaxConcurrentInstances int      `json:"maxConcurrentInstances"`
 	DefaultConnectorType   string   `json:"defaultConnectorType"`
 }
 
