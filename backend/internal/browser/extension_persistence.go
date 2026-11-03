@@ -289,7 +289,7 @@ func (m *Manager) EnsureExtensionUnusedByRunningProfiles(extensionID string) err
 			continue
 		}
 		if m.profileUsesExtension(profile.ProfileId, extensionID) {
-			return fmt.Errorf("插件仍在使用中的实例：%s。请先停止实例后再删除", profile.ProfileName)
+			return fmt.Errorf("插件正在被运行中的实例使用：%s。请先停止该实例后再重试", profile.ProfileName)
 		}
 	}
 	return nil
@@ -396,9 +396,10 @@ func (m *Manager) SaveProfileExtensionSettings(profileID string, extensionIDs []
 }
 
 func (m *Manager) effectiveProfileExtensionIDs(settings ProfileExtensionSettings) ([]string, error) {
-	// 空的手动列表等价于没有手动配置，必须回落到「默认安装」，
-	// 否则历史脏数据会让实例永久拿不到任何插件。
-	if settings.Configured && len(settings.ExtensionIDs) > 0 {
+	// 与启动加载（ProfileExtensionLoadPaths）保持同一套语义：
+	// 只要实例被手动配置过，就严格按配置执行；configured=true 且列表为空
+	// 表示用户主动选择了"零插件"，不能再回落到默认安装集合。
+	if settings.Configured {
 		return uniqueExtensionIDs(settings.ExtensionIDs), nil
 	}
 	extensions, err := m.ExtensionDAO.ListDefaultInstall()

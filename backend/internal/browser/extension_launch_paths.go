@@ -27,9 +27,10 @@ func (m *Manager) ProfileExtensionLoadPaths(profile *Profile) []string {
 		return nil
 	}
 
-	// 手动列表为空等价于没有手动配置，回落到默认安装集合。
+	// 只要实例做过插件配置，就严格按用户选择执行：配置为空表示用户明确选择不加载任何插件。
+	// 仅当实例从未配置过插件时，才回落到默认安装集合，避免删除插件后凭空加载用户没选过的插件。
 	var extensions []Extension
-	if settings.Configured && len(settings.ExtensionIDs) > 0 {
+	if settings.Configured {
 		extensions, err = m.ExtensionDAO.ListByIDs(settings.ExtensionIDs)
 	} else {
 		extensions, err = m.ExtensionDAO.ListDefaultInstall()

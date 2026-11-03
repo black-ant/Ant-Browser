@@ -88,7 +88,6 @@ func (d *SQLiteExtensionDAO) Upsert(extension Extension) error {
 		  install_mode = excluded.install_mode,
 		  package_path = excluded.package_path,
 		  package_hash = excluded.package_hash,
-		  enabled = excluded.enabled,
 		  updated_at = excluded.updated_at`,
 		extension.ExtensionID,
 		extension.Name,
@@ -189,11 +188,9 @@ func (d *SQLiteExtensionDAO) SetProfileSettings(profileID string, extensionIDs [
 	if configured {
 		ids = normalizeExtensionIDs(extensionIDs)
 	}
-	// 空的手动列表不承载任何意图，等价于「没有手动配置」。
-	// 这里统一折叠，避免实例被永久锁在"零插件且不跟随默认安装"的状态。
-	if len(ids) == 0 {
-		configured = false
-	}
+	// 注意：configured=true 且列表为空是合法状态 —— 用户在「手动设置本实例」里
+	// 一个插件都没勾选，含义就是"本实例不加载任何插件"。这里不能把它折叠成
+	// 「未配置」，否则启动时会回落到默认安装集合，插件会凭空出现。
 	now := time.Now().Format(time.RFC3339)
 	tx, err := d.db.Begin()
 	if err != nil {

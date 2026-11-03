@@ -482,7 +482,36 @@ func readZipFile(file *zip.File, limit int64) ([]byte, error) {
 
 func extensionIDFromManifest(manifestData []byte) string {
 	sum := sha256.Sum256(manifestData)
-	hexValue := hex.EncodeToString(sum[:16])
+	return extensionIDFromHashBytes(sum[:16])
+}
+
+// extensionIdentityManifest 返回去掉版本字段后的 manifest 字节。
+//
+// 插件 ID 必须跨版本稳定：如果直接对整份 manifest 取哈希，升级时 version 变了
+// ID 就跟着变，同一个插件会被当成"另一个插件"装进新目录 —— 旧版本仍然留在库里、
+// 实例配置还指向旧 ID，浏览器继续加载旧代码。这里把版本相关字段剔除后再哈希。
+func extensionIdentityManifest(manifestData []byte) []byte {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(manifestData, &root); err != nil {
+		return manifestData
+	}
+	for _, key := range []string{"version", "version_name"} {
+		delete(root, key)
+	}
+	normalized, err := json.Marshal(root)
+	if err != nil {
+		return manifestData
+	}
+	return normalized
+}
+
+func extensionIDFromIdentityManifest(manifestData []byte) string {
+	sum := sha256.Sum256(extensionIdentityManifest(manifestData))
+	return extensionIDFromHashBytes(sum[:16])
+}
+
+func extensionIDFromHashBytes(raw []byte) string {
+	hexValue := hex.EncodeToString(raw)
 	var builder strings.Builder
 	for _, char := range hexValue {
 		if char >= '0' && char <= '9' {
