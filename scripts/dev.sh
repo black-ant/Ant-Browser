@@ -45,11 +45,20 @@ resolve_wails_devserver() {
   export WAILS_DEVSERVER_ADDRESS
 }
 
+detect_wails_build_tags() {
+  WAILS_BUILD_TAGS=()
+  if require_cmd pkg-config && ! pkg-config --exists webkit2gtk-4.0 && pkg-config --exists webkit2gtk-4.1; then
+    echo "Detected webkit2gtk-4.1 only, enabling Wails tag: webkit2_41"
+    WAILS_BUILD_TAGS=(-tags webkit2_41)
+  fi
+}
+
 prepare_env() {
   require_cmd node
   require_cmd npm
   require_cmd go
   require_cmd wails
+  detect_wails_build_tags
 
   if [[ -n "${DEV_PROXY_URL:-}" ]]; then
     export HTTP_PROXY="$DEV_PROXY_URL"
@@ -100,7 +109,7 @@ run_stable() {
   cd "$ROOT_DIR"
   echo "Starting Wails dev..."
   echo "Wails dev server: http://$WAILS_DEVSERVER_ADDRESS"
-  exec wails dev -m -nogorebuild -noreload -s -skipbindings -assetdir frontend/dist -devserver "$WAILS_DEVSERVER_ADDRESS"
+  exec wails dev ${WAILS_BUILD_TAGS[@]+"${WAILS_BUILD_TAGS[@]}"} -m -nogorebuild -noreload -s -skipbindings -assetdir frontend/dist -devserver "$WAILS_DEVSERVER_ADDRESS"
 }
 
 run_live() {
@@ -129,7 +138,7 @@ run_live() {
   cd "$ROOT_DIR"
   echo "Starting Wails dev..."
   echo "Wails dev server: http://$WAILS_DEVSERVER_ADDRESS"
-  exec wails dev -m -s -skipbindings -frontenddevserverurl "http://127.0.0.1:$frontend_port" -viteservertimeout 60 -devserver "$WAILS_DEVSERVER_ADDRESS"
+  exec wails dev ${WAILS_BUILD_TAGS[@]+"${WAILS_BUILD_TAGS[@]}"} -m -s -skipbindings -frontenddevserverurl "http://127.0.0.1:$frontend_port" -viteservertimeout 60 -devserver "$WAILS_DEVSERVER_ADDRESS"
 }
 
 case "$MODE" in

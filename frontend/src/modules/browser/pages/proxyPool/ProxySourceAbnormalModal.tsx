@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Modal, Select, Table, toast } from '../../../../shared/components'
 import type { TableColumn } from '../../../../shared/components/Table'
 import type { BrowserProxy, SourceAlignRecord } from '../../types'
@@ -36,6 +37,7 @@ export function ProxySourceAbnormalModal({
   onClose,
   onApplied,
 }: ProxySourceAbnormalModalProps) {
+  const navigate = useNavigate()
   const sourceRows = useMemo(
     () => (source ? proxies.filter(proxy => (proxy.sourceId || '').trim() === source.sourceId) : []),
     [proxies, source],
@@ -203,6 +205,15 @@ export function ProxySourceAbnormalModal({
       width="900px"
       footer={
         <>
+          <Button
+            variant='ghost'
+            onClick={() => {
+              onClose()
+              navigate(`/browser/proxy-align?sourceId=${encodeURIComponent(source.sourceId)}`)
+            }}
+          >
+            打开对齐工作台
+          </Button>
           <Button variant='secondary' onClick={onClose}>关闭</Button>
           <Button onClick={() => void handleApply()} loading={applying} disabled={fetching || !!fetchError}>
             应用对齐

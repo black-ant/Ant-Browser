@@ -195,7 +195,23 @@ func isMacAppBundleRoot(dir string) bool {
 }
 
 func dirWritable(dir string) bool {
-	file, err := os.CreateTemp(dir, ".ant-browser-write-test-*")
+	probe := dir
+	for {
+		if info, err := os.Stat(probe); err == nil {
+			if !info.IsDir() {
+				return false
+			}
+			break
+		} else if !os.IsNotExist(err) {
+			return false
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			return false
+		}
+		probe = parent
+	}
+	file, err := os.CreateTemp(probe, ".ant-browser-write-test-*")
 	if err != nil {
 		return false
 	}

@@ -51,10 +51,17 @@ func TestProfilePackageImportCleansFinalDirWhenSaveFails(t *testing.T) {
 	}}, map[string]string{"source-1/Default/Preferences": "{}"})
 
 	configPath := filepath.Join(app.appRoot, "config.yaml")
-	if err := os.WriteFile(configPath, []byte("blocked"), 0o444); err != nil {
-		t.Fatalf("prepare readonly config failed: %v", err)
+	if err := os.WriteFile(configPath, []byte("blocked"), 0o644); err != nil {
+		t.Fatalf("prepare config file failed: %v", err)
+	}
+	if err := os.Chmod(configPath, 0o444); err != nil {
+		t.Fatalf("chmod config readonly failed: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(configPath, 0o644) })
+	// 以 root 运行时只读权限位无法阻止写入，用例前提不成立；此时跳过而不是误报失败。
+	if probeErr := os.WriteFile(configPath, []byte("probe"), 0o444); probeErr == nil {
+		t.Skip("当前用户可写入只读文件（常见于以 root 运行），无法模拟配置保存失败")
+	}
 
 	_, err := app.importProfilePackageFromPath(zipPath)
 	if err == nil {
