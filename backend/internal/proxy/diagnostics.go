@@ -13,6 +13,7 @@ type BuildDiagnosticOptions struct {
 	XrayMgr       *XrayManager
 	SingBoxMgr    *SingBoxManager
 	ClashMgr      *ClashManager
+	MieruMgr      *MieruManager
 	ConnectorType string
 }
 
@@ -101,6 +102,9 @@ func BuildProxyDiagnostic(proxyConfig string, proxies []config.BrowserProxy, pro
 	case ProxyKernelXray:
 		buildXrayDiagnostic(src, proxies, proxyId, options.XrayMgr, &result)
 		return result
+	case ProxyKernelMieru:
+		buildMieruDiagnostic(src, options.MieruMgr, &result)
+		return result
 	case ProxyKernelNative:
 		result.Engine = "native"
 		result.Ok = true
@@ -109,6 +113,33 @@ func BuildProxyDiagnostic(proxyConfig string, proxies []config.BrowserProxy, pro
 	}
 	result.Errors = append(result.Errors, fmt.Sprintf("无法为协议 %s 选择代理内核", resolution.Protocol))
 	return result
+}
+
+// buildMieruDiagnostic 生成 mieru 节点诊断：只解析节点并构建客户端配置，不启动 mieru 进程。
+// 端口参数仅为让配置通过构建校验，诊断过程不监听端口。
+func buildMieruDiagnostic(src string, manager *MieruManager, result *ProxyBuildDiagnostic) {
+	result.Engine = "mieru"
+	node, err := ParseMieruClashNode(src)
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	result.NodeKey = computeNodeKey(src)
+	clientConfig, err := buildMieruClientConfig(node, 1080, 2090)
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	result.Ok = true
+	result.Outbound = sanitizeDiagnosticMap(clientConfig)
+	if manager == nil {
+		return
+	}
+	if _, binErr := manager.ResolveBinaryPath(); binErr != nil {
+		result.Errors = append(result.Errors, binErr.Error())
+		return
+	}
+	result.Runtime = buildRuntimeDiagnostic(manager.resolveWorkdir(result.NodeKey), "client.json", "mieru-stderr.log", "", "")
 }
 
 func buildMihomoDiagnostic(src string, manager *ClashManager, result *ProxyBuildDiagnostic) {

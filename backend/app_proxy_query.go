@@ -4,6 +4,7 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/proxy"
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -176,6 +177,13 @@ func (a *App) warmupProxyBridge(proxyId string, proxyConfig string, proxies []Br
 			return result
 		}
 		socksURL, err = a.singboxMgr.EnsureBridge(src, proxies, proxyId)
+	case proxy.ProxyKernelMieru:
+		if a.mieruMgr == nil {
+			result.Error = "mieru 管理器不可用，请先下载 mieru 内核"
+			result.LatencyMs = time.Since(startedAt).Milliseconds()
+			return result
+		}
+		socksURL, err = a.mieruMgr.EnsureBridgeContext(context.Background(), src, proxies, proxyId)
 	case proxy.ProxyKernelXray:
 		if a.xrayMgr == nil {
 			result.Error = "xray 管理器不可用"

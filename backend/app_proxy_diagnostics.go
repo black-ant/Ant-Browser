@@ -13,6 +13,7 @@ func (a *App) BrowserProxyBuildDiagnostic(proxyId string, proxyConfig string) Pr
 		XrayMgr:       a.xrayMgr,
 		SingBoxMgr:    a.singboxMgr,
 		ClashMgr:      a.clashMgr,
+		MieruMgr:      a.mieruMgr,
 		ConnectorType: a.defaultProxyConnectorType(),
 	})
 }

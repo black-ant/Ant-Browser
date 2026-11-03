@@ -2,6 +2,7 @@ package launchcode
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -109,6 +110,7 @@ type LaunchServer struct {
 	browserMgr  *browser.Manager
 	port        int
 	server      *http.Server
+	listener    net.Listener
 	mu          sync.Mutex
 	authMu      sync.RWMutex
 	logMu       sync.Mutex
@@ -149,9 +151,13 @@ func (s *LaunchServer) Start() error {
 		return err
 	}
 
+	// 在启动 goroutine 之前先固定本轮 server/listener 的引用：
+	// Stop 会把 s.server 置空，若 goroutine 运行时再读字段就会拿到 nil。
+	server := &http.Server{Handler: handler}
 	s.mu.Lock()
 	s.port = port
-	s.server = &http.Server{Handler: handler}
+	s.server = server
+	s.listener = ln
 	s.mu.Unlock()
 
 	log := logger.New("LaunchServer")
@@ -169,7 +175,7 @@ func (s *LaunchServer) Start() error {
 	log.Info("LaunchServer 已启动", logger.F("port", port))
 
 	go func() {
-		if serveErr := s.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
 			log.Error("LaunchServer 异常退出", logger.F("error", serveErr.Error()))
 		}
 	}()
@@ -222,15 +228,28 @@ func listenerPort(ln net.Listener) (int, error) {
 func (s *LaunchServer) Stop() error {
 	s.mu.Lock()
 	srv := s.server
+	ln := s.listener
+	s.server = nil
+	s.listener = nil
 	s.mu.Unlock()
 
-	if srv == nil {
-		return nil
+	// 先让 http.Server 正常关闭（它自己会关掉已注册的监听器），
+	// 再兜底关闭可能还没被 Serve 接管的本轮监听器。
+	// 不能反过来先关：重复关闭会让 Shutdown 返回 "use of closed network connection"，
+	// 调用方会误判“停止失败”，从而跳过恢复逻辑。
+	var stopErr error
+	if srv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		stopErr = srv.Shutdown(ctx)
+		cancel()
+		if errors.Is(stopErr, net.ErrClosed) {
+			stopErr = nil
+		}
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	return srv.Shutdown(ctx)
+	if ln != nil {
+		_ = ln.Close()
+	}
+	return stopErr
 }
 
 // Port 返回实际绑定的端口
