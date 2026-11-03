@@ -260,6 +260,8 @@ export function BrowserProfileTrashList():Promise<Array<browser.Profile>>;
 
 export function BrowserProfileUpdate(arg1:string,arg2:browser.ProfileInput):Promise<browser.Profile>;
 
+export function BrowserProxyAlignRecords(arg1:string):Promise<Array<config.SourceAlignRecord>>;
+
 export function BrowserProxyBatchCheckIPHealth(arg1:Array<string>,arg2:number):Promise<Array<backend.ProxyIPHealthResult>>;
 
 export function BrowserProxyBatchTestSpeed(arg1:Array<string>,arg2:number):Promise<Array<backend.ProxyTestResult>>;

@@ -50,12 +50,29 @@ browser:
     restore_last_session: false
     start_ready_timeout_ms: 3000
     start_stable_window_ms: 1200
+    cores:
+        - core_id: default
+          core_name: 默认内核
+          core_path: chrome
+          is_default: true
     default_connector_type: xray
 proxy_check:
+    speed_interval_minutes: 30
     bridge_start_timeout_ms: 15000
+    failure_retry_minutes: 5
+    speed_concurrency: 5
     speed_target_id: ""
     ip_health_target_id: ""
     targets: []
+    virtual_group_health_enabled: true
+    virtual_group_probe_interval_minutes: 5
+    degrade_failure_threshold: 2
+    restore_success_threshold: 2
+    runtime_failover_enabled: true
+    runtime_failover_cooldown_minutes: 10
+    runtime_failover_max_attempts: 3
+proxy_source_refresh:
+    enabled: true
 launch_server:
     port: 19876
     auth:
@@ -71,3 +88,11 @@ automation:
     node_source: auto
     node_version: 22.15.1
     playwright_core_version: 1.59.0
+backup:
+    channels:
+        openlist:
+            remote_path: ant-chrome/backups
+            auth_mode: token
+    schedule:
+        enabled: false
+        daily_time: "02:00"

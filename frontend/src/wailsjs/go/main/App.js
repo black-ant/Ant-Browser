@@ -502,6 +502,10 @@ export function BrowserProfileUpdate(arg1, arg2) {
   return window['go']['main']['App']['BrowserProfileUpdate'](arg1, arg2);
 }
 
+export function BrowserProxyAlignRecords(arg1) {
+  return window['go']['main']['App']['BrowserProxyAlignRecords'](arg1);
+}
+
 export function BrowserProxyBatchCheckIPHealth(arg1, arg2) {
   return window['go']['main']['App']['BrowserProxyBatchCheckIPHealth'](arg1, arg2);
 }
