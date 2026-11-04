@@ -65,9 +65,26 @@ func (s *LaunchServer) APIAuthEnabled() bool {
 	return s.apiAuthConfig().Active()
 }
 
+// requiresAPIAuth 判断某个路径是否受 API Key 保护。
+//
+// 除了历史上的 /api/ 前缀，MCP 端点也必须纳入：它暴露的是与 /api/* 同等
+// （甚至更完整）的能力面，漏掉就等于开了一个绕过鉴权的后门。
+// 兜底路由 "/" 上的 CDP 反向代理不在此列——它沿用原有行为，仅靠 localhost 限制。
+func (s *LaunchServer) requiresAPIAuth(path string) bool {
+	if strings.HasPrefix(path, "/api/") {
+		return true
+	}
+
+	mcpPath, handler := s.mcpMount()
+	if handler == nil || mcpPath == "" {
+		return false
+	}
+	return path == mcpPath || strings.HasPrefix(path, mcpPath+"/")
+}
+
 func (s *LaunchServer) apiAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !s.requiresAPIAuth(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

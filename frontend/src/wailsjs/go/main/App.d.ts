@@ -358,6 +358,8 @@ export function GetLaunchServerInfo():Promise<Record<string, any>>;
 
 export function GetLogLevel():Promise<string>;
 
+export function GetMCPServerInfo():Promise<Record<string, any>>;
+
 export function GetMemoryStats():Promise<Record<string, any>>;
 
 export function GetProxyCheckSettings():Promise<config.ProxyCheckConfig>;
@@ -399,6 +401,8 @@ export function SaveBrowserProxyVirtualGroup(arg1:config.BrowserProxyVirtualGrou
 export function SaveBrowserSettings(arg1:browser.Settings):Promise<void>;
 
 export function SaveLaunchServerSettings(arg1:number):Promise<Record<string, any>>;
+
+export function SaveMCPSettings(arg1:boolean):Promise<Record<string, any>>;
 
 export function SaveProxyCheckSettings(arg1:config.ProxyCheckConfig):Promise<void>;
 

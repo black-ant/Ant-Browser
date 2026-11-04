@@ -10,6 +10,8 @@ import (
 )
 
 func (m *Manager) StopAllTasks() {
+	m.closeAllPageSessions()
+
 	m.mu.Lock()
 	tasks := make([]*activeTask, 0, len(m.activeTasks))
 	for _, task := range m.activeTasks {

@@ -68,6 +68,11 @@ func (a *App) restartLaunchServer(port int) error {
 		APIKey:  a.config.LaunchServer.Auth.APIKey,
 		Header:  a.config.LaunchServer.Auth.Header,
 	})
+	// 这里是全新的 server 实例，能力注入和 MCP 挂载都要重做，
+	// 否则改一次端口就会把这些能力弄丢。
+	server.SetProxyProvider(newAppProxyProvider(a))
+	server.SetPageDriver(newAppPageDriver(a))
+	applyMCPConfigTo(server, a.config, a.appVersion())
 	if err := server.Start(); err != nil {
 		if previousServer != nil {
 			if restoreErr := previousServer.Start(); restoreErr != nil {
