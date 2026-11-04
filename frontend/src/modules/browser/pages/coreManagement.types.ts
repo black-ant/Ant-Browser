@@ -7,6 +7,7 @@ export interface CoreDisplayInfo {
   pathMessage: string
   chromeVersion: string
   instanceCount: number
+  coreBackend: string
 }
 
 export interface CoreSettingsForm {
@@ -23,6 +24,8 @@ export interface CoreSettingsForm {
 export interface CoreEditForm {
   coreName: string
   corePath: string
+  coreBackend: string
+  coreEnv: string
 }
 
 export interface CoreDownloadForm {

@@ -55,6 +55,24 @@ export async function validateBrowserCorePath(corePath: string): Promise<Browser
   return { valid: true, message: '路径有效（模拟）' }
 }
 
+// validateBrowserCorePathForBackend 按内核后端校验路径。
+// 后端未暴露该方法时（旧版本绑定）降级到不区分后端的校验。
+export async function validateBrowserCorePathForBackend(corePath: string, coreBackend: string): Promise<BrowserCoreValidateResult> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserCoreValidateForBackend) {
+    return (await bindings.BrowserCoreValidateForBackend(corePath, coreBackend)) || { valid: false, message: '验证失败' }
+  }
+  return validateBrowserCorePath(corePath)
+}
+
+export async function fetchCoreBackendOptions(): Promise<{ value: string; label: string }[]> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserCoreBackendOptions) {
+    return (await bindings.BrowserCoreBackendOptions()) || []
+  }
+  return []
+}
+
 export async function fetchCoreExtendedInfo(): Promise<BrowserCoreExtended[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserCoreExtendedInfo) {

@@ -449,6 +449,20 @@ export namespace backend {
 	        this.failedList = source["failedList"];
 	    }
 	}
+	export class BrowserCoreBackendOption {
+	    value: string;
+	    label: string;
+
+	    static createFrom(source: any = {}) {
+	        return new BrowserCoreBackendOption(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.value = source["value"];
+	        this.label = source["label"];
+	    }
+	}
 	export class BrowserExtensionManualDownloadFile {
 	    fileName: string;
 	    filePath: string;
@@ -529,6 +543,7 @@ export namespace backend {
 	    profileId: string;
 	    coreId: string;
 	    coreName: string;
+	    coreBackend: string;
 	    chromeVersion: string;
 	    chromeMajor: number;
 	    versionStatus: string;
@@ -546,6 +561,7 @@ export namespace backend {
 	        this.profileId = source["profileId"];
 	        this.coreId = source["coreId"];
 	        this.coreName = source["coreName"];
+	        this.coreBackend = source["coreBackend"];
 	        this.chromeVersion = source["chromeVersion"];
 	        this.chromeMajor = source["chromeMajor"];
 	        this.versionStatus = source["versionStatus"];
@@ -1614,6 +1630,7 @@ export namespace browser {
 	    coreId: string;
 	    chromeVersion: string;
 	    instanceCount: number;
+	    coreBackend: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CoreExtendedInfo(source);
@@ -1624,6 +1641,7 @@ export namespace browser {
 	        this.coreId = source["coreId"];
 	        this.chromeVersion = source["chromeVersion"];
 	        this.instanceCount = source["instanceCount"];
+	        this.coreBackend = source["coreBackend"];
 	    }
 	}
 	export class CoreInput {
@@ -1631,6 +1649,8 @@ export namespace browser {
 	    coreName: string;
 	    corePath: string;
 	    isDefault: boolean;
+	    coreBackend: string;
+	    coreEnv: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new CoreInput(source);
@@ -1642,6 +1662,8 @@ export namespace browser {
 	        this.coreName = source["coreName"];
 	        this.corePath = source["corePath"];
 	        this.isDefault = source["isDefault"];
+	        this.coreBackend = source["coreBackend"];
+	        this.coreEnv = source["coreEnv"];
 	    }
 	}
 	export class CoreValidateResult {
@@ -2004,6 +2026,8 @@ export namespace config {
 	    coreName: string;
 	    corePath: string;
 	    isDefault: boolean;
+	    coreBackend?: string;
+	    coreEnv?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new BrowserCore(source);
@@ -2015,6 +2039,8 @@ export namespace config {
 	        this.coreName = source["coreName"];
 	        this.corePath = source["corePath"];
 	        this.isDefault = source["isDefault"];
+	        this.coreBackend = source["coreBackend"];
+	        this.coreEnv = source["coreEnv"];
 	    }
 	}
 	export class BrowserProxy {

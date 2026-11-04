@@ -8,7 +8,8 @@ import (
 func backupBuildMappedCoreMergeSQL(tx *sql.Tx) (string, error) {
 	return backupBuildMappedTableMergeSQL(tx, "browser_cores", []backupSourceColumnSpec{
 		{name: "core_id", fallback: "''"}, {name: "core_name", fallback: "''"}, {name: "core_path", fallback: "''"},
-		{name: "is_default", fallback: "0"}, {name: "sort_order", fallback: "0"}, {name: "created_at", fallback: "CURRENT_TIMESTAMP"},
+		{name: "is_default", fallback: "0"}, {name: "core_backend", fallback: "''"}, {name: "core_env", fallback: "'[]'"},
+		{name: "sort_order", fallback: "0"}, {name: "created_at", fallback: "CURRENT_TIMESTAMP"},
 	}, map[string]string{"core_id": backupImportCoreMapTable}, backupImportMapExistsExpression("s.core_id", backupImportCoreMapTable, true))
 }
 
