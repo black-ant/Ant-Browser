@@ -1,5 +1,10 @@
 # Changelog
 
+## 未发布
+
+- 内核后端：内核管理新增后端类型标记，支持 fingerprint-chromium 与 Cloak（CloakBrowser）两种浏览器内核。可执行文件查找、版本号识别、指纹参数矩阵和自测期望值均按后端分派；未标记的历史内核继续按 fingerprint-chromium 处理，行为不变。
+- 内核环境变量：内核可配置 `CLOAKBROWSER_` 前缀的环境变量（如 license key、缓存目录），启动实例时按所选内核注入，不影响其他内核和全局环境。
+
 ## 1.9.0 - 2026-10-29
 
 - 插件加载方式重构：改为按实例通过启动参数加载未打包目录，不再写入 Chrome 的 `Secure Preferences`。原方式会被 Chrome 启动时判定无效，连带删除插件代码目录，表现为「装了但看不到」。

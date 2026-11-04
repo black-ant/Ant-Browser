@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/fsutil"
 	"ant-chrome/backend/internal/logger"
 	"fmt"
@@ -52,9 +53,11 @@ func (m *Manager) ResolveCoreExecutable(core Core) (string, error) {
 	}
 
 	baseDir := m.ResolveRelativePath(corePath)
-	exePath, _, ok := FindCoreExecutable(baseDir)
+	candidates := CoreExecutableCandidatesForBackend(core.CoreBackend)
+	exePath, _, ok := findCoreExecutableWithCandidates(baseDir, candidates)
 	if !ok {
-		return "", fmt.Errorf("浏览器内核目录无效：未找到可执行文件（候选：%s）。请检查内核目录是否完整或重新下载内核", strings.Join(CoreExecutableCandidates(), ", "))
+		return "", fmt.Errorf("浏览器内核目录无效：未找到 %s 后端的可执行文件（候选：%s）。请检查内核目录是否完整、内核后端是否选对，或重新下载内核",
+			CoreBackendLabel(core.CoreBackend), strings.Join(candidates, ", "))
 	}
 	if err := fsutil.EnsureExecutable(exePath); err != nil {
 		return "", fmt.Errorf("浏览器内核文件不可执行：%s。原因：%w。请检查文件权限或重新解压内核", exePath, err)
@@ -63,8 +66,14 @@ func (m *Manager) ResolveCoreExecutable(core Core) (string, error) {
 	return exePath, nil
 }
 
-// ValidateCorePath 验证内核路径是否有效
+// ValidateCorePath 验证内核路径是否有效（后端未知，接受所有后端候选名）
 func (m *Manager) ValidateCorePath(corePath string) CoreValidateResult {
+	return m.ValidateCorePathForBackend(corePath, "")
+}
+
+// ValidateCorePathForBackend 按指定后端验证内核路径。
+// backend 为空串时接受所有后端的候选名。
+func (m *Manager) ValidateCorePathForBackend(corePath string, backend string) CoreValidateResult {
 	corePath = strings.TrimSpace(corePath)
 	if corePath == "" {
 		return CoreValidateResult{Valid: false, Message: "路径不能为空"}
@@ -75,9 +84,20 @@ func (m *Manager) ValidateCorePath(corePath string) CoreValidateResult {
 	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 		return CoreValidateResult{Valid: false, Message: fmt.Sprintf("目录不存在: %s", baseDir)}
 	}
-	exePath, _, ok := FindCoreExecutable(baseDir)
+
+	candidates := CoreExecutableCandidatesAnyBackend()
+	backendHint := ""
+	if strings.TrimSpace(backend) != "" {
+		candidates = CoreExecutableCandidatesForBackend(backend)
+		backendHint = CoreBackendLabel(backend) + " 后端"
+	}
+
+	exePath, _, ok := findCoreExecutableWithCandidates(baseDir, candidates)
 	if !ok {
-		return CoreValidateResult{Valid: false, Message: fmt.Sprintf("未找到浏览器可执行文件（候选：%s）", strings.Join(CoreExecutableCandidates(), ", "))}
+		if backendHint != "" {
+			return CoreValidateResult{Valid: false, Message: fmt.Sprintf("未找到 %s 的浏览器可执行文件（候选：%s）", backendHint, strings.Join(candidates, ", "))}
+		}
+		return CoreValidateResult{Valid: false, Message: fmt.Sprintf("未找到浏览器可执行文件（候选：%s）", strings.Join(candidates, ", "))}
 	}
 	if err := fsutil.ValidateExecutable(exePath); err != nil {
 		return CoreValidateResult{Valid: false, Message: fmt.Sprintf("浏览器可执行文件不可用：%v", err)}
@@ -86,8 +106,28 @@ func (m *Manager) ValidateCorePath(corePath string) CoreValidateResult {
 	return CoreValidateResult{Valid: true, Message: fmt.Sprintf("路径有效: %s", exePath)}
 }
 
+// ResolveProfileCore 返回实例实际使用的内核配置（显式 CoreId 优先，否则回落默认内核）。
+func (m *Manager) ResolveProfileCore(profile *Profile) (Core, bool) {
+	if profile == nil {
+		return m.GetDefaultCore()
+	}
+	if coreId := normalizeProfileCoreID(profile.CoreId); coreId != "" {
+		if core, ok := m.GetCore(coreId); ok {
+			return core, true
+		}
+	}
+	return m.GetDefaultCore()
+}
+
 // ResolveChromeBinary 解析 Chrome 二进制路径（简化版）
 func (m *Manager) ResolveChromeBinary(profile *Profile) (string, error) {
+	exePath, _, err := m.ResolveChromeBinaryWithCore(profile)
+	return exePath, err
+}
+
+// ResolveChromeBinaryWithCore 解析二进制路径并返回命中的内核配置。
+// 启动流程需要内核信息来注入按后端约定的环境变量。
+func (m *Manager) ResolveChromeBinaryWithCore(profile *Profile) (string, Core, error) {
 	log := logger.New("Browser")
 	coreId := normalizeProfileCoreID(profile.CoreId)
 
@@ -101,15 +141,19 @@ func (m *Manager) ResolveChromeBinary(profile *Profile) (string, error) {
 		core, found = m.GetDefaultCore()
 	}
 	if !found {
-		return "", fmt.Errorf("未配置可用浏览器内核。请先在“内核管理”中添加内核并设置默认内核")
+		return "", Core{}, fmt.Errorf("未配置可用浏览器内核。请先在“内核管理”中添加内核并设置默认内核")
 	}
 
 	exePath, err := m.ResolveCoreExecutable(core)
 	if err != nil {
 		log.Error("内核路径解析失败", logger.F("core_id", core.CoreId), logger.F("error", err.Error()))
-		return "", err
+		return "", Core{}, err
 	}
 
-	log.Debug("使用内核", logger.F("core_id", core.CoreId), logger.F("path", exePath))
-	return exePath, nil
+	log.Debug("使用内核",
+		logger.F("core_id", core.CoreId),
+		logger.F("core_backend", config.NormalizeCoreBackend(core.CoreBackend)),
+		logger.F("path", exePath),
+	)
+	return exePath, core, nil
 }

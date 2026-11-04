@@ -30,28 +30,42 @@ func CoreExecutablePlatform() string {
 }
 
 // FindCoreExecutable 在指定目录查找可执行文件，返回绝对路径和命中的候选名。
+// 后端未知时接受所有后端的候选名，避免漏判。
 func FindCoreExecutable(baseDir string) (string, string, bool) {
-	if directPath, directCandidate, ok := FindCoreExecutableShallow(baseDir); ok {
+	return findCoreExecutableWithCandidates(baseDir, CoreExecutableCandidatesAnyBackend())
+}
+
+func findCoreExecutableWithCandidates(baseDir string, candidates []string) (string, string, bool) {
+	if directPath, directCandidate, ok := findCoreExecutableShallowWithCandidates(baseDir, candidates); ok {
 		return directPath, directCandidate, true
 	}
-	if recursivePath, recursiveCandidate, ok := findNestedCoreExecutable(baseDir); ok {
+	if recursivePath, recursiveCandidate, ok := findNestedCoreExecutable(baseDir, candidates); ok {
 		return recursivePath, recursiveCandidate, true
 	}
 	return "", "", false
 }
 
 func FindCoreExecutableShallow(baseDir string) (string, string, bool) {
+	return findCoreExecutableShallowWithCandidates(baseDir, CoreExecutableCandidatesAnyBackend())
+}
+
+// FindCoreExecutableShallowForBackend 按指定后端的候选名做浅层查找（不递归子目录）。
+func FindCoreExecutableShallowForBackend(baseDir string, backend string) (string, string, bool) {
+	return findCoreExecutableShallowWithCandidates(baseDir, CoreExecutableCandidatesForBackend(backend))
+}
+
+func findCoreExecutableShallowWithCandidates(baseDir string, candidates []string) (string, string, bool) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
 		return "", "", false
 	}
-	if directPath, directCandidate, ok := findDirectCoreExecutable(baseDir); ok {
+	if directPath, directCandidate, ok := findDirectCoreExecutable(baseDir, candidates); ok {
 		return directPath, directCandidate, true
 	}
-	if bundlePath, bundleCandidate, ok := findAppBundleExecutable(baseDir); ok {
+	if bundlePath, bundleCandidate, ok := findAppBundleExecutable(baseDir, candidates); ok {
 		return bundlePath, bundleCandidate, true
 	}
-	for _, candidate := range CoreExecutableCandidates() {
+	for _, candidate := range candidates {
 		p := filepath.Join(baseDir, filepath.FromSlash(candidate))
 		if _, err := os.Stat(p); err == nil {
 			return p, candidate, true
@@ -60,14 +74,14 @@ func FindCoreExecutableShallow(baseDir string) (string, string, bool) {
 	return "", "", false
 }
 
-func findNestedCoreExecutable(baseDir string) (string, string, bool) {
+func findNestedCoreExecutable(baseDir string, candidates []string) (string, string, bool) {
 	info, err := os.Stat(baseDir)
 	if err != nil || !info.IsDir() {
 		return "", "", false
 	}
 	baseDepth := strings.Count(filepath.ToSlash(filepath.Clean(baseDir)), "/")
 	candidateNames := make(map[string]string)
-	for _, candidate := range CoreExecutableCandidates() {
+	for _, candidate := range candidates {
 		candidateNames[strings.ToLower(filepath.Base(candidate))] = candidate
 	}
 
@@ -98,14 +112,14 @@ func findNestedCoreExecutable(baseDir string) (string, string, bool) {
 	return matchedPath, matchedCandidate, true
 }
 
-func findDirectCoreExecutable(path string) (string, string, bool) {
+func findDirectCoreExecutable(path string, candidates []string) (string, string, bool) {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return "", "", false
 	}
 
 	normalized := filepath.ToSlash(filepath.Clean(path))
-	for _, candidate := range CoreExecutableCandidates() {
+	for _, candidate := range candidates {
 		candidatePath := filepath.ToSlash(candidate)
 		if strings.HasSuffix(normalized, candidatePath) || filepath.Base(normalized) == filepath.Base(candidatePath) {
 			return path, candidate, true
@@ -115,7 +129,7 @@ func findDirectCoreExecutable(path string) (string, string, bool) {
 	return "", "", false
 }
 
-func findAppBundleExecutable(path string) (string, string, bool) {
+func findAppBundleExecutable(path string, candidates []string) (string, string, bool) {
 	if goruntime.GOOS != "darwin" {
 		return "", "", false
 	}
@@ -130,7 +144,7 @@ func findAppBundleExecutable(path string) (string, string, bool) {
 		return "", "", false
 	}
 
-	for _, candidate := range CoreExecutableCandidates() {
+	for _, candidate := range candidates {
 		candidatePath := filepath.ToSlash(candidate)
 		appMarker := ".app/"
 		index := strings.Index(strings.ToLower(candidatePath), appMarker)

@@ -387,6 +387,16 @@ var migrations = []migration{
 			`ALTER TABLE browser_proxies ADD COLUMN source_last_refresh_error TEXT NOT NULL DEFAULT ''`,
 		},
 	},
+	{
+		// 18-23 被上游 feature 分支占用，这里取主线下一个号。
+		// 版本号撞车被跳过时，由启动期 Reconcile 按本迁移语句补齐新增列。
+		version: 33,
+		desc:    "内核表添加后端类型与环境变量字段",
+		stmts: []string{
+			`ALTER TABLE browser_cores ADD COLUMN core_backend TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_cores ADD COLUMN core_env TEXT NOT NULL DEFAULT '[]'`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

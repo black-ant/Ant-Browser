@@ -26,6 +26,7 @@ type browserStartInput struct {
 type browserStartPlan struct {
 	profile          *BrowserProfile
 	chromeBinaryPath string
+	processEnv       []string
 	userDataDir      string
 	args             []string
 
@@ -179,9 +180,12 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, extensionPaths, launchTargets, restoreLastSession)
 	extensionWarning := ""
 
+	resolvedCore, _ := a.browserMgr.ResolveProfileCore(profile)
+
 	return &browserStartPlan{
 		profile:              profile,
 		chromeBinaryPath:     chromeBinaryPath,
+		processEnv:           buildBrowserProcessEnv(resolvedCore, input.ProfileID),
 		userDataDir:          userDataDir,
 		args:                 instanceArgs,
 		deferredStartTargets: deferredStartTargets,
