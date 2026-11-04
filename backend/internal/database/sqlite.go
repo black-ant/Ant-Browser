@@ -405,6 +405,16 @@ var migrations = []migration{
 			`ALTER TABLE browser_profiles ADD COLUMN proxy_bind_error TEXT NOT NULL DEFAULT ''`,
 		},
 	},
+	{
+		// 上游主线已用到 34，这里取下一个号。早先按 33/34 落地本迁移的库会跳过上游的 33/34，
+		// 缺的表和列由启动期 Reconcile 按迁移语句补齐；本迁移重跑时列已存在会被忽略。
+		version: 35,
+		desc:    "内核表添加后端类型与环境变量字段",
+		stmts: []string{
+			`ALTER TABLE browser_cores ADD COLUMN core_backend TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_cores ADD COLUMN core_env TEXT NOT NULL DEFAULT '[]'`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

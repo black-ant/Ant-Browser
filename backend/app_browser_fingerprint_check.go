@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"encoding/json"
 	"fmt"
@@ -92,8 +93,20 @@ func (a *App) BrowserProfileFingerprintCheck(profileId string) (*BrowserFingerpr
 	return &BrowserFingerprintCheckResult{
 		ProfileId: profile.ProfileId,
 		Runtime:   runtimeInfo,
-		Expected:  buildBrowserFingerprintExpected(a.fingerprintCheckExpectedArgsFromProfile(profile)),
+		Expected:  buildBrowserFingerprintExpectedForBackend(a.fingerprintCheckExpectedArgsFromProfile(profile), a.profileCoreBackend(profile)),
 	}, nil
+}
+
+// profileCoreBackend 返回实例实际使用内核的后端标记，解析失败时按历史后端处理。
+func (a *App) profileCoreBackend(profile *BrowserProfile) string {
+	if a == nil || a.browserMgr == nil || profile == nil {
+		return config.CoreBackendFingerprintChromium
+	}
+	core, ok := a.browserMgr.ResolveProfileCore(profile)
+	if !ok {
+		return config.CoreBackendFingerprintChromium
+	}
+	return config.NormalizeCoreBackend(core.CoreBackend)
 }
 
 func (a *App) fingerprintCheckRuntimeProfileSnapshot(profileId string, detector func(string) (browserRuntimeDetection, bool), debugPortReady func(int) bool) (*BrowserProfile, error) {
@@ -295,14 +308,43 @@ func evaluateBrowserFingerprintRuntime(debugPort int) (BrowserFingerprintRuntime
 	return runtimeInfo, nil
 }
 
+// buildBrowserFingerprintExpected 按 fingerprint-chromium 语义构建期望值。
 func buildBrowserFingerprintExpected(args []string) BrowserFingerprintExpectedInfo {
+	return buildBrowserFingerprintExpectedForBackend(args, config.CoreBackendFingerprintChromium)
+}
+
+// buildBrowserFingerprintExpectedForBackend 按内核后端构建期望值。
+//
+// 同一个参数在两个后端下的结论可能相反：--fingerprint-device-memory /
+// --fingerprint-gpu-* 在 fingerprint-chromium 上实测无效（不作为期望），
+// 但在 Cloak 上是受支持参数（必须作为期望展示）。因此不能只靠参数名判断。
+func buildBrowserFingerprintExpectedForBackend(args []string, backend string) BrowserFingerprintExpectedInfo {
 	normalizedArgs := normalizeBrowserLanguageArgs(args)
+	isCloak := config.NormalizeCoreBackend(backend) == config.CoreBackendCloak
+
+	deviceMemory := ""
+	webglVendor := ""
+	webglRenderer := ""
+	language := browserArgValue(normalizedArgs, "--lang")
+	timezone := browserArgValue(normalizedArgs, "--timezone")
+	if isCloak {
+		deviceMemory = browserArgValue(normalizedArgs, "--fingerprint-device-memory")
+		webglVendor = browserArgValue(normalizedArgs, "--fingerprint-gpu-vendor")
+		webglRenderer = browserArgValue(normalizedArgs, "--fingerprint-gpu-renderer")
+		if language == "" {
+			language = browserArgValue(normalizedArgs, "--fingerprint-locale")
+		}
+		if timezone == "" {
+			timezone = browserArgValue(normalizedArgs, "--fingerprint-timezone")
+		}
+	}
+
 	return BrowserFingerprintExpectedInfo{
-		Language:            browserArgValue(normalizedArgs, "--lang"),
+		Language:            language,
 		AcceptLanguage:      browserArgValue(normalizedArgs, "--accept-lang"),
-		Timezone:            browserArgValue(normalizedArgs, "--timezone"),
+		Timezone:            timezone,
 		HardwareConcurrency: browserArgValue(normalizedArgs, "--fingerprint-hardware-concurrency"),
-		DeviceMemory:        "",
+		DeviceMemory:        deviceMemory,
 		ColorDepth:          "",
 		TouchPoints:         "",
 		WindowSize:          browserArgValue(normalizedArgs, "--window-size"),
@@ -319,8 +361,8 @@ func buildBrowserFingerprintExpected(args []string) BrowserFingerprintExpectedIn
 		AudioNoise:          "",
 		ClientRectsNoise:    browserFingerprintExpectedSwitch(normalizedArgs, "--fingerprinting-client-rects-noise", "--fingerprint-client-rects-noise"),
 		FontList:            "",
-		WebGLVendor:         "",
-		WebGLRenderer:       "",
+		WebGLVendor:         webglVendor,
+		WebGLRenderer:       webglRenderer,
 	}
 }
 
