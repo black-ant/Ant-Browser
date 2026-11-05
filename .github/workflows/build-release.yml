@@ -1,0 +1,105 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional package version (default: wails.json); branch runs publish a prerelease'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  prepare:
+    name: Validate and build frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare release metadata
+        id: metadata
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: python3 scripts/ci/release.py metadata
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          registry-url: https://registry.npmjs.org
+      - name: Test release tooling
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Build frontend once for all platforms
+        working-directory: frontend
+        env:
+          BROWSERSLIST_IGNORE_OLD_DATA: '1'
+        run: npm run build:clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ant-browser-frontend
+          path: frontend/dist/
+          if-no-files-found: error
+          retention-days: 3
+
+  linux:
+    needs: prepare
+    uses: ./.github/workflows/publish-linux.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+
+  arch:
+    needs: prepare
+    uses: ./.github/workflows/build-arch.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+
+  macos:
+    needs: prepare
+    uses: ./.github/workflows/publish-macos.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+
+  release:
+    name: Publish verified release assets
+    if: github.event_name != 'pull_request'
+    needs: [prepare, linux, arch, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download only distributable packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ant-browser-package-*
+          path: release-artifacts
+          merge-multiple: true
+      - name: Check complete asset set and generate SHA256SUMS
+        run: python3 scripts/ci/release.py assets release-artifacts --version "$RELEASE_VERSION"
+      - name: Publish release
+        run: bash scripts/ci/publish-release.sh

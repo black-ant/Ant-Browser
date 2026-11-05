@@ -8,7 +8,7 @@ The repository currently supports unsigned macOS internal packages:
 - `.app` and `.zip` output from `publish/mac/publish-mac.sh`
 - pinned Darwin `xray` and `sing-box` runtimes with manifest verification
 - writable application state outside the `.app` bundle
-- manual GitHub Actions builds for both architectures
+- automatic GitHub Actions builds and Release uploads for both architectures
 
 Code signing, notarization, DMG generation, and public macOS distribution are not implemented.
 
@@ -41,6 +41,7 @@ bash publish/mac/publish-mac.sh --arch arm64 --version 1.9.0
 
 Available options:
 
+- `--skip-frontend`: reuse existing `frontend/dist` while still building the native app
 - `--skip-build`: reuse the existing Wails app under `build/bin/`
 - `--skip-runtime-verify`: skip runtime manifest verification
 - `--keep-staging`: keep the assembled bundle under `publish/staging/mac/`
@@ -54,12 +55,14 @@ publish/output/AntBrowser-<version>-macos-<arch>.zip
 
 ## GitHub Actions
 
-Use **Actions → Publish macOS Packages → Run workflow**. The workflow builds:
+Use **Actions → Build and Release → Run workflow**, push to `master` / `main`, or push a `v*` release tag. The unified workflow builds:
 
 - `amd64` on `macos-15-intel`
 - `arm64` on `macos-15`
 
-The optional `version` input overrides the package version for that run. CI validates the app executable, bundled proxy runtimes, `Info.plist`, and ZIP extraction. It does not prove Finder launch, browser-core startup, or real proxy connectivity.
+The optional `version` input overrides the package version on branch runs. CI validates the app executable, bundled proxy runtimes, `Info.plist`, and ZIP extraction. Once all platform builds pass, the ZIPs are uploaded to the shared GitHub Release alongside Linux/Arch packages and `SHA256SUMS`. Branch runs publish prereleases; stable version tags publish formal releases.
+
+Only the ZIP is uploaded, preserving the `.app` executable permissions. Packages remain unsigned and not notarized. CI does not prove Finder launch, browser-core startup, or real proxy connectivity.
 
 ## Bundle and User State
 
