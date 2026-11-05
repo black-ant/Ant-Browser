@@ -1,105 +1,69 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useState } from 'react'
 import { toast } from '../../../shared/components'
-import { fetchDashboardStats, redeemCDKey, redeemGithubStar, reloadConfig } from '../../dashboard/api'
-import type { BrowserCore, BrowserCoreInput, BrowserProfile, BrowserProxy, BrowserSettings, BrowserGroupWithCount } from '../types'
-import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal, type BrowserViewMode } from '../components/BrowserListLayout'
+import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfilePackageImportAction, BrowserProfilePackageImportPreview, BrowserProxy } from '../types'
+import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
-import { EMPTY_FILTERS } from '../components/InstanceFilterBar'
-import type { InstanceFilters } from '../components/InstanceFilterBar'
-import { EventsOn, BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
-import { PROJECT_GITHUB_URL } from '../../../config/links'
-import { resolveActionErrorMessage, resolveActionFeedback } from '../utils/actionErrors'
+import { ProxyPickerModal } from '../components/ProxyPickerModal'
+import { ProfileExtensionModal } from '../components/ProfileExtensionModal'
+import { createBrowserProfileCopyOptions, isBrowserProfileCopyOptionsValid } from '../copyOptions'
+import { buildBrowserProfileCopyName } from '../copyName'
+import { resolveActionFeedback } from '../utils/actionErrors'
 import { BrowserListDialogs } from './browserList/BrowserListDialogs'
+import { useBrowserListDerived, useBrowserListViewState } from './browserList/useBrowserListViewState'
+import { useBrowserListSettings } from './browserList/useBrowserListSettings'
+import { useBrowserListData } from './browserList/useBrowserListData'
+import { useBrowserProfileActions } from './browserList/useBrowserProfileActions'
+import { warmupProfileProxyBeforeStart } from '../utils/proxyWarmup'
+import { ProfilePackagePasswordModal } from '../../backup/components/ProfilePackagePasswordModal'
 import {
   copyBrowserProfile,
-  deleteBrowserCore,
   deleteBrowserProfile,
-  fetchBrowserCores,
-  fetchBrowserProfiles,
-  fetchBrowserProxies,
-  fetchBrowserSettings,
-  fetchGroups,
-  restartBrowserInstance,
-  saveBrowserCore,
-  saveBrowserSettings,
-  setDefaultBrowserCore,
+  exportBrowserProfilePackage,
+  fetchBrowserProfileTrash,
+  importBrowserProfilePackageWithOptions,
+  prepareBrowserProfilePackageImport,
+  permanentlyDeleteBrowserProfile,
+  restoreBrowserProfile,
   startBrowserInstance,
-  startBrowserInstanceDirect,
   stopBrowserInstance,
-  validateBrowserCorePath,
-  validateProxyConfig,
+  updateBrowserProfile,
+  openUserDataDir,
 } from '../api'
 
-const resolveProfileStatus = (running: boolean, debugReady: boolean, starting: boolean, stopping: boolean) => {
-  if (starting) {
-    return { variant: 'info' as const, label: '启动中' }
-  }
-  if (stopping) {
-    return { variant: 'default' as const, label: '停止中' }
-  }
-  if (running && !debugReady) {
-    return { variant: 'info' as const, label: '运行中（待就绪）' }
-  }
-  if (running) {
-    return { variant: 'success' as const, label: '运行中' }
-  }
-  return { variant: 'warning' as const, label: '已停止' }
-}
+const directProxyID = '__direct__'
 
 export function BrowserListPage() {
-  const [profiles, setProfiles] = useState<BrowserProfile[]>([])
-  const [loading, setLoading] = useState(true)
-  const [proxies, setProxies] = useState<BrowserProxy[]>([])
-  const [groups, setGroups] = useState<BrowserGroupWithCount[]>([])
+  const {
+    viewMode,
+    setViewMode,
+    filters,
+    setFilters,
+    headerCollapsed,
+    setHeaderCollapsed,
+  } = useBrowserListViewState()
 
-  // 视图模式
-  const [viewMode, setViewMode] = useState<BrowserViewMode>(() => {
-    return (localStorage.getItem('browser:viewMode') as BrowserViewMode) || 'table'
-  })
-
-  // 勾选状态
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
-
-  // 筛选状态（从 localStorage 恢复）
-  const [filters, setFilters] = useState<InstanceFilters>(() => {
-    try {
-      const saved = localStorage.getItem('browser:filters')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        return { ...EMPTY_FILTERS, ...parsed, tags: new Set(parsed.tags || []) }
-      }
-    } catch { /* ignore */ }
-    return EMPTY_FILTERS
-  })
-  const [headerCollapsed, setHeaderCollapsed] = useState(() => {
-    return localStorage.getItem('browser:headerCollapsed') === 'true'
-  })
-
-  // 持久化筛选状态
-  useEffect(() => {
-    const serializable = { ...filters, tags: Array.from(filters.tags) }
-    localStorage.setItem('browser:filters', JSON.stringify(serializable))
-  }, [filters])
-
-  useEffect(() => {
-    localStorage.setItem('browser:viewMode', viewMode)
-  }, [viewMode])
-
-  useEffect(() => {
-    localStorage.setItem('browser:headerCollapsed', String(headerCollapsed))
-  }, [headerCollapsed])
+  const [profilePackageBusy, setProfilePackageBusy] = useState(false)
+  const [profileImportPreview, setProfileImportPreview] = useState<BrowserProfilePackageImportPreview | null>(null)
+  const [pendingProfileExportIds, setPendingProfileExportIds] = useState<string[]>([])
+  const [pendingProfileImport, setPendingProfileImport] = useState<{ zipPath: string; actions: BrowserProfilePackageImportAction[] } | null>(null)
+  const [portableSessionPasswordMode, setPortableSessionPasswordMode] = useState<'export' | 'import' | null>(null)
+  const [portableSessionPasswordError, setPortableSessionPasswordError] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean
+    mode: 'single' | 'batch'
+    profileId?: string
+    profileName?: string
+    count: number
+  }>({ open: false, mode: 'single', count: 0 })
 
   // 代理不支持弹窗
   const [proxyErrorModal, setProxyErrorModal] = useState(false)
   const [proxyErrorMsg, setProxyErrorMsg] = useState('')
   const [opError, setOpError] = useState('')
   const [pendingStartId, setPendingStartId] = useState<string | null>(null)
-  const [startingIds, setStartingIds] = useState<Set<string>>(new Set())
-  const [stoppingIds, setStoppingIds] = useState<Set<string>>(new Set())
-  const profilesRef = useRef<BrowserProfile[]>([])
-  const silentRefreshInFlightRef = useRef(false)
 
   // 关键字弹窗
   const [kwModal, setKwModal] = useState<{ open: boolean; profile: BrowserProfile | null }>({ open: false, profile: null })
@@ -107,386 +71,110 @@ export function BrowserListPage() {
   const openKwModal = (profile: BrowserProfile) => setKwModal({ open: true, profile })
   const closeKwModal = () => setKwModal({ open: false, profile: null })
 
+  const [extensionModal, setExtensionModal] = useState<{ open: boolean; profile: BrowserProfile | null }>({ open: false, profile: null })
+  const openExtensionModal = (profile: BrowserProfile) => setExtensionModal({ open: true, profile })
+  const closeExtensionModal = () => setExtensionModal({ open: false, profile: null })
+
+  const [proxyPickerProfile, setProxyPickerProfile] = useState<BrowserProfile | null>(null)
+
   // 复制弹窗
   const [copyModal, setCopyModal] = useState<{ open: boolean; profile: BrowserProfile | null }>({ open: false, profile: null })
   const [copyName, setCopyName] = useState('')
+  const [copyOptions, setCopyOptions] = useState<BrowserProfileCopyOptions>(() => createBrowserProfileCopyOptions())
   const [copying, setCopying] = useState(false)
+  const [trashModalOpen, setTrashModalOpen] = useState(false)
+  const [trashProfiles, setTrashProfiles] = useState<BrowserProfile[]>([])
+  const [trashLoading, setTrashLoading] = useState(false)
+  const [restoringId, setRestoringId] = useState('')
+  const [permanentlyDeletingId, setPermanentlyDeletingId] = useState('')
+  const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ open: boolean; profile: BrowserProfile | null }>({
+    open: false,
+    profile: null,
+  })
 
   const openCopyModal = (profile: BrowserProfile) => {
-    setCopyName(profile.profileName + ' (副本)')
+    setCopyName(buildBrowserProfileCopyName(profile.profileName))
+    setCopyOptions(createBrowserProfileCopyOptions())
     setCopyModal({ open: true, profile })
   }
   const closeCopyModal = () => {
     setCopyModal({ open: false, profile: null })
     setCopyName('')
+    setCopyOptions(createBrowserProfileCopyOptions())
   }
-
-  // 基础配置弹窗
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
-  const [settings, setSettings] = useState<BrowserSettings>({
-    userDataRoot: 'data',
-    defaultFingerprintArgs: [],
-    defaultLaunchArgs: [],
-    defaultStartUrls: [],
-    restoreLastSession: false,
-    startReadyTimeoutMs: 3000,
-    startStableWindowMs: 1200,
+  const {
+    settingsModalOpen,
+    setSettingsModalOpen,
+    settings,
+    setSettings,
+    fingerprintText,
+    setFingerprintText,
+    launchText,
+    setLaunchText,
+    startUrlsText,
+    setStartUrlsText,
+    savingSettings,
+    cores,
+    coreModalOpen,
+    setCoreModalOpen,
+    coreForm,
+    setCoreForm,
+    coreValidation,
+    setCoreValidation,
+    savingCore,
+    loadCores,
+    handleOpenSettings,
+    handleSaveSettings,
+    handleOpenCoreModal,
+    handleValidateCorePath,
+    handleSaveCore,
+    handleDeleteCore,
+    handleSetDefaultCore,
+  } = useBrowserListSettings()
+  const {
+    profiles,
+    loading,
+    proxies,
+    proxyVirtualGroups,
+    groups,
+    startingIds,
+    stoppingIds,
+    setStartingIds,
+    setStoppingIds,
+    updatePendingIds,
+    updateProfilesState,
+    mergeProfileState,
+    updateProxiesState,
+    loadProfiles,
+  } = useBrowserListData({ loadCores })
+  const {
+    runningCount,
+    allTags,
+    filteredProfiles,
+    resolveProfileCore,
+    getProfileCoreLabel,
+    isProfileStarting,
+    isProfileStopping,
+    isProfileBusy,
+    getProfileStatus,
+  } = useBrowserListDerived(profiles, cores, filters, startingIds, stoppingIds)
+  const {
+    handleStart,
+    handleStartDirect,
+    handleStop,
+    handleRestart,
+  } = useBrowserProfileActions({
+    profiles,
+    setProxyErrorModal,
+    setProxyErrorMsg,
+    setPendingStartId,
+    setOpError,
+    setStartingIds,
+    setStoppingIds,
+    updatePendingIds,
+    mergeProfileState,
+    loadProfiles,
   })
-  const [fingerprintText, setFingerprintText] = useState('')
-  const [launchText, setLaunchText] = useState('')
-  const [startUrlsText, setStartUrlsText] = useState('')
-  const [savingSettings, setSavingSettings] = useState(false)
-
-  // 内核管理
-  const [cores, setCores] = useState<BrowserCore[]>([])
-  const [coreModalOpen, setCoreModalOpen] = useState(false)
-  const [coreForm, setCoreForm] = useState<BrowserCoreInput>({ coreId: '', coreName: '', corePath: '', isDefault: false })
-  const [coreValidation, setCoreValidation] = useState<{ valid: boolean; message: string } | null>(null)
-  const [savingCore, setSavingCore] = useState(false)
-
-  // 扩容管理
-  const [expandModalOpen, setExpandModalOpen] = useState(false)
-  const [cdKey, setCdKey] = useState('')
-  const [redeeming, setRedeeming] = useState(false)
-  const [maxProfileLimit, setMaxProfileLimit] = useState(20)
-
-  const updatePendingIds = (
-    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
-    profileId: string,
-    active: boolean
-  ) => {
-    setter(prev => {
-      const next = new Set(prev)
-      if (active) {
-        next.add(profileId)
-      } else {
-        next.delete(profileId)
-      }
-      return next
-    })
-  }
-
-  const replaceProfilesState = (items: BrowserProfile[]) => {
-    profilesRef.current = items
-    setProfiles(items)
-  }
-
-  const updateProfilesState = (updater: (items: BrowserProfile[]) => BrowserProfile[]) => {
-    const next = updater(profilesRef.current)
-    profilesRef.current = next
-    setProfiles(next)
-  }
-
-  const mergeProfileState = (profile: BrowserProfile | null | undefined) => {
-    if (!profile) return
-    updateProfilesState(prev => prev.map(item => (
-      item.profileId === profile.profileId ? { ...item, ...profile } : item
-    )))
-  }
-
-  const syncProfiles = (items: BrowserProfile[], syncRuntimeState: boolean) => {
-    if (syncRuntimeState) {
-      const previousById = new Map(profilesRef.current.map(item => [item.profileId, item]))
-      const newlyRunning = items.find(item => item.running && !previousById.get(item.profileId)?.running)
-      if (newlyRunning) {
-        updatePendingIds(setStartingIds, newlyRunning.profileId, false)
-        updatePendingIds(setStoppingIds, newlyRunning.profileId, false)
-      }
-      items.forEach(item => {
-        if (!item.running && previousById.get(item.profileId)?.running) {
-          updatePendingIds(setStartingIds, item.profileId, false)
-          updatePendingIds(setStoppingIds, item.profileId, false)
-        }
-      })
-    }
-    replaceProfilesState(items)
-  }
-
-  const loadProfiles = async ({ silent = false, syncRuntimeState = false }: { silent?: boolean; syncRuntimeState?: boolean } = {}) => {
-    if (silent && silentRefreshInFlightRef.current) {
-      return profilesRef.current
-    }
-    if (!silent) {
-      setLoading(true)
-    } else {
-      silentRefreshInFlightRef.current = true
-    }
-    try {
-      const items = await fetchBrowserProfiles()
-      syncProfiles(items, syncRuntimeState)
-      return items
-    } finally {
-      if (silent) {
-        silentRefreshInFlightRef.current = false
-      } else {
-        setLoading(false)
-      }
-    }
-  }
-
-  const loadGroups = async () => {
-    setGroups(await fetchGroups())
-  }
-
-  const loadSettings = async () => {
-    const data = await fetchBrowserSettings()
-    setSettings(data)
-    setFingerprintText((data.defaultFingerprintArgs || []).join('\n'))
-    setLaunchText((data.defaultLaunchArgs || []).join('\n'))
-    setStartUrlsText((data.defaultStartUrls || []).join('\n'))
-  }
-
-  const loadCores = async () => {
-    setCores(await fetchBrowserCores())
-  }
-
-  const loadQuota = async () => {
-    try {
-      await reloadConfig()
-      const stats = await fetchDashboardStats()
-      setMaxProfileLimit(stats.maxProfileLimit || 20)
-    } catch {
-      // ignore
-    }
-  }
-
-  useEffect(() => {
-    void loadProfiles()
-    loadGroups()
-    loadQuota()
-    fetchBrowserProxies().then(setProxies)
-    fetchBrowserCores().then(setCores)
-
-    // 监听浏览器实例生命周期事件，自动更新状态
-    const offStarted = EventsOn('browser:instance:started', (payload: any) => {
-      const profileId = typeof payload === 'string' ? payload : payload?.profileId
-      if (profileId) {
-        updatePendingIds(setStartingIds, profileId, false)
-        updatePendingIds(setStoppingIds, profileId, false)
-      }
-      void loadProfiles({ silent: true, syncRuntimeState: true })
-    })
-    const offUpdated = EventsOn('browser:instance:updated', () => {
-      void loadProfiles({ silent: true, syncRuntimeState: true })
-    })
-    const offStopped = EventsOn('browser:instance:stopped', (payload: any) => {
-      const profileId = typeof payload === 'string' ? payload : payload?.profileId
-      if (profileId) {
-        updatePendingIds(setStartingIds, profileId, false)
-        updatePendingIds(setStoppingIds, profileId, false)
-      }
-      void loadProfiles({ silent: true, syncRuntimeState: true })
-    })
-    const offCrashed = EventsOn('browser:instance:crashed', (payload: any) => {
-      const profileId = typeof payload === 'string' ? payload : payload?.profileId
-      if (profileId) {
-        updatePendingIds(setStartingIds, profileId, false)
-        updatePendingIds(setStoppingIds, profileId, false)
-      }
-      void loadProfiles({ silent: true, syncRuntimeState: true })
-    })
-
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      void loadProfiles({ silent: true, syncRuntimeState: true })
-    }, 2000)
-
-    return () => {
-      window.clearInterval(timer)
-      offStarted?.()
-      offUpdated?.()
-      offStopped?.()
-      offCrashed?.()
-    }
-  }, [])
-
-  const runningCount = useMemo(() => profiles.filter(p => p.running).length, [profiles])
-  const allTags = useMemo(() => {
-    const set = new Set<string>()
-    profiles.forEach(p => p.tags?.forEach(t => set.add(t)))
-    return Array.from(set).sort()
-  }, [profiles])
-
-  const defaultCore = useMemo(() => {
-    return cores.find(core => core.isDefault) || cores[0] || null
-  }, [cores])
-
-  const resolveProfileCore = (profile: BrowserProfile) => {
-    const coreId = (profile.coreId || '').trim()
-    if (coreId && !/^default$/i.test(coreId)) {
-      return cores.find(core => core.coreId === coreId) || null
-    }
-    return defaultCore
-  }
-
-  const getProfileCoreLabel = (profile: BrowserProfile) => {
-    const resolvedCore = resolveProfileCore(profile)
-    if (resolvedCore) {
-      return resolvedCore.coreName
-    }
-
-    const coreId = (profile.coreId || '').trim()
-    if (!coreId || /^default$/i.test(coreId)) {
-      return '使用默认内核'
-    }
-    return coreId
-  }
-
-  const isProfileStarting = (profileId: string) => startingIds.has(profileId)
-  const isProfileStopping = (profileId: string) => stoppingIds.has(profileId)
-  const isProfileBusy = (profileId: string) => isProfileStarting(profileId) || isProfileStopping(profileId)
-
-  const getProfileStatus = (profile: BrowserProfile) => (
-    resolveProfileStatus(profile.running, profile.debugReady, isProfileStarting(profile.profileId), isProfileStopping(profile.profileId))
-  )
-
-  const filteredProfiles = useMemo(() => {
-    const naturalCompare = (a: string, b: string): number => {
-      const re = /(\d+)|(\D+)/g
-      const partsA = a.match(re) || []
-      const partsB = b.match(re) || []
-      for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
-        if (i >= partsA.length) return -1
-        if (i >= partsB.length) return 1
-        const pa = partsA[i], pb = partsB[i]
-        const na = Number(pa), nb = Number(pb)
-        if (!isNaN(na) && !isNaN(nb)) {
-          if (na !== nb) return na - nb
-        } else {
-          const cmp = pa.localeCompare(pb, 'zh-CN')
-          if (cmp !== 0) return cmp
-        }
-      }
-      return 0
-    }
-    return profiles.filter(p => {
-      // 分组筛选
-      if (filters.groupId === '__ungrouped__' && p.groupId) return false
-      if (filters.groupId && filters.groupId !== '__ungrouped__' && p.groupId !== filters.groupId) return false
-
-      if (filters.keyword && !p.profileName.toLowerCase().includes(filters.keyword.toLowerCase())) return false
-      if (filters.status === 'running' && !p.running) return false
-      if (filters.status === 'stopped' && p.running) return false
-      if (filters.proxyId === '__none__' && (p.proxyId || p.proxyConfig)) return false
-      if (filters.proxyId && filters.proxyId !== '__none__' && p.proxyId !== filters.proxyId) return false
-      if (filters.coreId) {
-        const effectiveCore = resolveProfileCore(p)
-        if (!effectiveCore || effectiveCore.coreId !== filters.coreId) return false
-      }
-      if (filters.tags.size > 0 && !p.tags?.some(t => filters.tags.has(t))) return false
-      if (filters.kwSearch) {
-        const q = filters.kwSearch.toLowerCase()
-        const hit = p.keywords?.some(v => v.toLowerCase().includes(q))
-        if (!hit) return false
-      }
-      return true
-    }).sort((a, b) => naturalCompare(a.profileName, b.profileName))
-  }, [profiles, filters, defaultCore, cores])
-
-  const handleStart = async (profileId: string) => {
-    const profile = profiles.find(p => p.profileId === profileId)
-    updatePendingIds(setStartingIds, profileId, true)
-    try {
-      if (profile) {
-        const result = await validateProxyConfig(profile.proxyConfig || '', profile.proxyId || '')
-        if (!result.supported) {
-          setProxyErrorMsg(result.errorMsg)
-          setPendingStartId(profileId)
-          setProxyErrorModal(true)
-          return
-        }
-      }
-
-      const startedProfile = await startBrowserInstance(profileId)
-      mergeProfileState(startedProfile)
-      if (startedProfile?.running && !startedProfile.debugReady && startedProfile.runtimeWarning) {
-        toast.warning(startedProfile.runtimeWarning)
-      } else {
-        toast.success(`实例已启动${startedProfile?.profileName ? `：${startedProfile.profileName}` : ''}`)
-      }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } catch (error: any) {
-      const feedback = resolveActionFeedback(error, '实例启动失败')
-      if (feedback.tone === 'warning') {
-        toast.warning(feedback.message)
-      } else {
-        toast.error(feedback.message)
-      }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
-      updatePendingIds(setStartingIds, profileId, false)
-    }
-  }
-
-  const handleStartDirect = async (profileId: string) => {
-    updatePendingIds(setStartingIds, profileId, true)
-    try {
-      const startedProfile = await startBrowserInstanceDirect(profileId)
-      mergeProfileState(startedProfile)
-      setProxyErrorModal(false)
-      setPendingStartId(null)
-      if (startedProfile?.running && !startedProfile.debugReady && startedProfile.runtimeWarning) {
-        toast.warning(startedProfile.runtimeWarning)
-      } else {
-        toast.success(`实例已直连启动${startedProfile?.profileName ? `：${startedProfile.profileName}` : ''}`)
-      }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } catch (error: any) {
-      setProxyErrorModal(false)
-      setPendingStartId(null)
-      const feedback = resolveActionFeedback(error, '实例直连启动失败')
-      if (feedback.tone === 'warning') {
-        toast.warning(feedback.message)
-      } else {
-        toast.error(feedback.message)
-      }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
-      updatePendingIds(setStartingIds, profileId, false)
-    }
-  }
-
-  const handleStop = async (profileId: string) => {
-    updatePendingIds(setStoppingIds, profileId, true)
-    try {
-      const stoppedProfile = await stopBrowserInstance(profileId)
-      mergeProfileState(stoppedProfile)
-      toast.success('实例已停止')
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } catch (error: any) {
-      toast.error(resolveActionErrorMessage(error, '实例停止失败'))
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
-      updatePendingIds(setStoppingIds, profileId, false)
-    }
-  }
-
-  const handleRestart = async (profileId: string) => {
-    updatePendingIds(setStoppingIds, profileId, true)
-    try {
-      const restartedProfile = await restartBrowserInstance(profileId)
-      mergeProfileState(restartedProfile)
-      toast.success(`实例已重启${restartedProfile?.profileName ? `：${restartedProfile.profileName}` : ''}`)
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } catch (error: any) {
-      const feedback = resolveActionFeedback(error, '实例重启失败')
-      if (feedback.tone === 'warning') {
-        toast.warning(feedback.message)
-      } else {
-        setOpError(feedback.message)
-      }
-      await loadProfiles({ silent: true, syncRuntimeState: true })
-    } finally {
-      updatePendingIds(setStoppingIds, profileId, false)
-    }
-  }
-
-  const handleDelete = async (profileId: string) => {
-    await deleteBrowserProfile(profileId)
-    toast.success('配置已删除')
-    loadProfiles()
-  }
-
   // 批量操作
   const toggleSelect = (profileId: string) => {
     setSelectedIds(prev => {
@@ -510,17 +198,32 @@ export function BrowserListPage() {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
     setBatchLoading(true)
-    let success = 0, pending = 0, failed = 0
+    let success = 0, pending = 0, failed = 0, skipped = 0
     const pendingMessages: string[] = []
     const failureMessages: string[] = []
     for (const id of ids) {
       const profile = profiles.find(p => p.profileId === id)
-      if (!profile || profile.running) continue
+      if (!profile || profile.running) {
+        skipped++
+        continue
+      }
       updatePendingIds(setStartingIds, id, true)
       try {
+        await warmupProfileProxyBeforeStart(profile)
         const startedProfile = await startBrowserInstance(id)
         mergeProfileState(startedProfile)
-        success++
+        if (!startedProfile?.running) {
+          failed++
+          failureMessages.push(`${profile.profileName}：实例未进入运行状态。`)
+        } else if (!startedProfile.debugReady) {
+          pending++
+          pendingMessages.push(`${profile.profileName}：${startedProfile.runtimeWarning || '浏览器已打开，正在后台接管。'}`)
+        } else if (startedProfile.debugPort <= 0) {
+          failed++
+          failureMessages.push(`${profile.profileName}：调试端口无效，实例不可操作。`)
+        } else {
+          success++
+        }
       } catch (error: any) {
         const feedback = resolveActionFeedback(error, '实例启动失败')
         if (feedback.pendingAttach) {
@@ -538,7 +241,16 @@ export function BrowserListPage() {
     const summary = [`成功 ${success}`]
     if (pending > 0) summary.push(`待接管 ${pending}`)
     if (failed > 0) summary.push(`失败 ${failed}`)
-    toast.success(`批量启动完成：${summary.join('，')}`)
+    if (skipped > 0) summary.push(`跳过 ${skipped}`)
+    if (failed > 0 && success === 0 && pending === 0) {
+      toast.error(`批量启动失败：${summary.join('，')}`)
+    } else if (failed > 0 || pending > 0 || skipped > 0) {
+      toast.warning(`批量启动结果：${summary.join('，')}`)
+    } else if (success > 0) {
+      toast.success(`批量启动完成：${summary.join('，')}`)
+    } else {
+      toast.info(`没有可启动的实例${skipped > 0 ? `，跳过 ${skipped}` : ''}`)
+    }
     if (pendingMessages.length > 0) {
       const preview = pendingMessages.slice(0, 3)
       const more = pendingMessages.length > preview.length ? `\n另有 ${pendingMessages.length - preview.length} 个实例已打开窗口，仍在后台接管。` : ''
@@ -556,15 +268,22 @@ export function BrowserListPage() {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
     setBatchLoading(true)
-    let success = 0, failed = 0
+    let success = 0, failed = 0, skipped = 0
     for (const id of ids) {
       const profile = profiles.find(p => p.profileId === id)
-      if (!profile || !profile.running) continue
+      if (!profile || !profile.running) {
+        skipped++
+        continue
+      }
       updatePendingIds(setStoppingIds, id, true)
       try {
         const stoppedProfile = await stopBrowserInstance(id)
         mergeProfileState(stoppedProfile)
-        success++
+        if (stoppedProfile && !stoppedProfile.running) {
+          success++
+        } else {
+          failed++
+        }
       } catch {
         failed++
       } finally {
@@ -572,152 +291,312 @@ export function BrowserListPage() {
       }
     }
     setBatchLoading(false)
-    toast.success(`批量停止完成：成功 ${success}${failed > 0 ? `，失败 ${failed}` : ''}`)
+    const summary = [`成功 ${success}`]
+    if (failed > 0) summary.push(`失败 ${failed}`)
+    if (skipped > 0) summary.push(`跳过 ${skipped}`)
+    if (failed > 0 && success === 0) {
+      toast.error(`批量停止失败：${summary.join('，')}`)
+    } else if (failed > 0 || skipped > 0) {
+      toast.warning(`批量停止结果：${summary.join('，')}`)
+    } else if (success > 0) {
+      toast.success(`批量停止完成：${summary.join('，')}`)
+    } else {
+      toast.info(`没有可停止的实例${skipped > 0 ? `，跳过 ${skipped}` : ''}`)
+    }
     loadProfiles()
   }
 
-  const handleBatchDelete = async () => {
+  const requestProfileExport = (ids: string[]) => {
+    if (ids.length === 0 || profilePackageBusy) return
+    const runningNames = profiles
+      .filter(profile => ids.includes(profile.profileId) && profile.running)
+      .map(profile => profile.profileName)
+    if (runningNames.length > 0) {
+      toast.error(`请先停止实例再导出：${runningNames.slice(0, 3).join('、')}${runningNames.length > 3 ? ' 等' : ''}`)
+      return
+    }
+    setPortableSessionPasswordError('')
+    setPendingProfileExportIds(ids)
+    setPortableSessionPasswordMode('export')
+  }
+
+  const handleBatchExport = async () => {
+    const ids = Array.from(selectedIds)
+    requestProfileExport(ids)
+  }
+
+  const handleExportProfile = async (profile: BrowserProfile) => {
+    requestProfileExport([profile.profileId])
+  }
+
+  const executeProfileExport = async (password: string) => {
+    if (pendingProfileExportIds.length === 0) return
+    setProfilePackageBusy(true)
+    setPortableSessionPasswordError('')
+    try {
+      const result = await exportBrowserProfilePackage(pendingProfileExportIds, password)
+      if (result.cancelled) return
+      setPortableSessionPasswordMode(null)
+      setPendingProfileExportIds([])
+      if (result.portableSessionWarning) {
+        toast.warning(result.portableSessionWarning)
+      } else {
+        toast.success(`已导出 ${result.profileCount} 个实例，并迁移 ${result.portableSessionProfileCount || 0} 个实例的登录态`)
+      }
+    } catch (error: any) {
+      if (password) {
+        setPortableSessionPasswordError(error?.message || '导出实例失败')
+      } else {
+        setPortableSessionPasswordMode(null)
+        setPendingProfileExportIds([])
+        toast.error(error?.message || '导出实例失败')
+      }
+    } finally {
+      setProfilePackageBusy(false)
+    }
+  }
+
+  const skipPortableSessionPassword = () => {
+    if (portableSessionPasswordMode !== 'export' || profilePackageBusy) return
+    setPortableSessionPasswordMode(null)
+    setPortableSessionPasswordError('')
+    void executeProfileExport('')
+  }
+
+  const handleOpenUserDataDir = async (profile: BrowserProfile) => {
+    try {
+      if (!profile.userDataDir.trim()) {
+        toast.warning('该实例没有用户数据目录')
+        return
+      }
+      const opened = await openUserDataDir(profile.userDataDir)
+      if (!opened) {
+        toast.warning('当前环境不支持打开数据目录')
+      }
+    } catch (error: any) {
+      toast.error(error?.message || '打开数据目录失败')
+    }
+  }
+
+  const executeProfileImport = async (zipPath: string, actions: BrowserProfilePackageImportAction[], confirmConflict = false, portableSessionPassword = '') => {
+    if (!zipPath.trim()) {
+      setProfileImportPreview(null)
+      setProfilePackageBusy(false)
+      return
+    }
+    setProfilePackageBusy(true)
+    setProfileImportPreview(null)
+    try {
+      const result = await importBrowserProfilePackageWithOptions(zipPath, 'new', confirmConflict, actions, portableSessionPassword)
+      if (result.cancelled) return
+      setPortableSessionPasswordMode(null)
+      setPendingProfileImport(null)
+      setPortableSessionPasswordError('')
+      const warnings = result.warnings || []
+      const createdCount = result.createdCount ?? Math.max(0, result.importedCount - (result.overwrittenCount || 0))
+      const overwrittenCount = result.overwrittenCount ?? 0
+      const renamedCount = result.renamedCount ?? 0
+      const summary = `已处理：新建 ${createdCount} 个，覆盖 ${overwrittenCount} 个，重命名 ${renamedCount} 个`
+      if (warnings.length > 0) {
+        toast.warning(`${summary}，${warnings.length} 条提示：${warnings[0]}`)
+      } else {
+        toast.success(summary)
+      }
+      setSelectedIds(new Set())
+      await loadProfiles()
+    } catch (error: any) {
+      if (portableSessionPassword) {
+        setPortableSessionPasswordError(error?.message || '导入登录态失败')
+      }
+      toast.error(error?.message || '导入实例失败')
+    } finally {
+      setProfilePackageBusy(false)
+    }
+  }
+
+  const handleImportProfiles = async () => {
+    if (profilePackageBusy) return
+    setProfilePackageBusy(true)
+    try {
+      const preview = await prepareBrowserProfilePackageImport()
+      if (preview.cancelled) {
+        setProfilePackageBusy(false)
+        return
+      }
+      setProfilePackageBusy(false)
+      setProfileImportPreview(preview)
+      return
+    } catch (error: any) {
+      toast.error(error?.message || '导入实例失败')
+      setProfilePackageBusy(false)
+    }
+  }
+
+  const closePortableSessionPasswordModal = () => {
+    if (profilePackageBusy) return
+    setPortableSessionPasswordMode(null)
+    setPortableSessionPasswordError('')
+    setPendingProfileExportIds([])
+    setPendingProfileImport(null)
+    setProfilePackageBusy(false)
+  }
+
+  const confirmPortableSessionPassword = (password: string) => {
+    if (portableSessionPasswordMode === 'export') {
+      void executeProfileExport(password)
+      return
+    }
+    if (portableSessionPasswordMode === 'import' && pendingProfileImport) {
+      void executeProfileImport(pendingProfileImport.zipPath, pendingProfileImport.actions, true, password)
+    }
+  }
+
+  const openDeleteConfirm = (profileId: string) => {
+    const profile = profiles.find(item => item.profileId === profileId)
+    setDeleteConfirm({
+      open: true,
+      mode: 'single',
+      profileId,
+      profileName: profile?.profileName,
+      count: 1,
+    })
+  }
+
+  const loadTrashProfiles = async () => {
+    setTrashLoading(true)
+    try {
+      setTrashProfiles(await fetchBrowserProfileTrash())
+    } catch (error: any) {
+      toast.error(error?.message || '加载回收站失败')
+    } finally {
+      setTrashLoading(false)
+    }
+  }
+
+  const openTrashModal = () => {
+    setTrashModalOpen(true)
+    void loadTrashProfiles()
+  }
+
+  const handleRestoreProfile = async (profileId: string) => {
+    setRestoringId(profileId)
+    try {
+      await restoreBrowserProfile(profileId)
+      toast.success('实例已恢复')
+      await loadTrashProfiles()
+      await loadProfiles()
+    } catch (error: any) {
+      toast.error(error?.message || '恢复失败')
+    } finally {
+      setRestoringId('')
+    }
+  }
+
+  const handleConfirmPermanentDelete = async () => {
+    const profile = permanentDeleteConfirm.profile
+    if (!profile) return
+    setPermanentlyDeletingId(profile.profileId)
+    try {
+      await permanentlyDeleteBrowserProfile(profile.profileId)
+      toast.success('实例已彻底删除')
+      setPermanentDeleteConfirm({ open: false, profile: null })
+      await loadTrashProfiles()
+    } catch (error: any) {
+      toast.error(error?.message || '彻底删除失败')
+    } finally {
+      setPermanentlyDeletingId('')
+    }
+  }
+
+  const openBatchDeleteConfirm = () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    if (!confirm(`确定删除选中的 ${ids.length} 个实例？`)) return
+    setDeleteConfirm({ open: true, mode: 'batch', count: ids.length })
+  }
+
+  const closeDeleteConfirm = () => {
+    if (batchLoading) return
+    setDeleteConfirm({ open: false, mode: 'single', count: 0 })
+  }
+
+  const handleConfirmDelete = async () => {
+    const ids = deleteConfirm.mode === 'batch'
+      ? Array.from(selectedIds)
+      : deleteConfirm.profileId ? [deleteConfirm.profileId] : []
+    if (ids.length === 0) return
     setBatchLoading(true)
-    for (const id of ids) {
-      await deleteBrowserProfile(id)
+    try {
+      for (const id of ids) {
+        await deleteBrowserProfile(id)
+      }
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        ids.forEach(id => next.delete(id))
+        return next
+      })
+      toast.success(ids.length > 1 ? `已删除 ${ids.length} 个实例` : '配置已删除')
+      setDeleteConfirm({ open: false, mode: 'single', count: 0 })
+      loadProfiles()
+    } catch (error: any) {
+      toast.error(error?.message || '删除失败')
+    } finally {
+      setBatchLoading(false)
     }
-    setBatchLoading(false)
-    setSelectedIds(new Set())
-    toast.success(`已删除 ${ids.length} 个实例`)
-    loadProfiles()
   }
 
   const handleCopy = async (profileId: string) => {
     if (!copyModal.profile) return
     setCopying(true)
     try {
-      await copyBrowserProfile(profileId, copyName)
+      await copyBrowserProfile(profileId, copyName.trim(), copyOptions)
       toast.success('实例已复制')
       closeCopyModal()
       loadProfiles()
     } catch (error: any) {
-      closeCopyModal()
       setOpError(typeof error === 'string' ? error : error?.message || '复制失败')
     } finally {
       setCopying(false)
     }
   }
 
-  const handleOpenSettings = async () => {
-    await Promise.all([loadSettings(), loadCores()])
-    setSettingsModalOpen(true)
-  }
+  const copyConfirmDisabled =
+    !copyName.trim() || !isBrowserProfileCopyOptionsValid(copyOptions)
 
-  const handleSaveSettings = async () => {
-    setSavingSettings(true)
+  const saveProfileProxy = async (profile: BrowserProfile, proxy: BrowserProxy) => {
     try {
-      await saveBrowserSettings({
-        ...settings,
-        defaultFingerprintArgs: fingerprintText.split('\n').map(s => s.trim()).filter(Boolean),
-        defaultLaunchArgs: launchText.split('\n').map(s => s.trim()).filter(Boolean),
-        defaultStartUrls: startUrlsText.split('\n').map(s => s.trim()).filter(Boolean),
+      const updated = await updateBrowserProfile(profile.profileId, {
+        profileName: profile.profileName,
+        userDataDir: profile.userDataDir,
+        coreId: profile.coreId,
+        fingerprintArgs: profile.fingerprintArgs,
+        // 仅动态实例需要保留模式,避免快速切换被解析为固定代理;固定/本地实例沿用原有推断(选择池代理即转为固定)。
+        proxyMode: profile.proxyMode === 'dynamic' ? profile.proxyMode : undefined,
+        proxyGroupName: profile.proxyMode === 'dynamic' ? profile.proxyGroupName : undefined,
+        proxyId: proxy.proxyId,
+        proxyConfig: '',
+        memoryLimitMb: profile.memoryLimitMb || 0,
+        launchArgs: profile.launchArgs,
+        tags: profile.tags,
+        keywords: profile.keywords || [],
+        groupId: profile.groupId || '',
       })
-      toast.success('配置已保存')
-      setSettingsModalOpen(false)
+      mergeProfileState(updated || { ...profile, proxyId: proxy.proxyId, proxyConfig: '' })
+      toast.success('代理已切换')
     } catch (error: any) {
-      toast.error(error?.message || '保存失败')
-    } finally {
-      setSavingSettings(false)
+      toast.error(error?.message || '切换代理失败')
     }
   }
 
-  // 内核管理
-  const handleOpenCoreModal = (core?: BrowserCore) => {
-    setCoreForm(core ? { ...core } : { coreId: '', coreName: '', corePath: '', isDefault: false })
-    setCoreValidation(null)
-    setCoreModalOpen(true)
-  }
-
-  const handleValidateCorePath = async () => {
-    if (!coreForm.corePath.trim()) {
-      setCoreValidation({ valid: false, message: '请输入路径' })
-      return
-    }
-    const result = await validateBrowserCorePath(coreForm.corePath)
-    setCoreValidation(result)
-  }
-
-  const handleSaveCore = async () => {
-    if (!coreForm.coreName.trim()) {
-      toast.error('请输入内核名称')
-      return
-    }
-    if (!coreForm.corePath.trim()) {
-      toast.error('请输入内核路径')
-      return
-    }
-    setSavingCore(true)
-    try {
-      await saveBrowserCore(coreForm)
-      toast.success('内核已保存')
-      setCoreModalOpen(false)
-      loadCores()
-    } catch (error: any) {
-      toast.error(error?.message || '保存失败')
-    } finally {
-      setSavingCore(false)
-    }
-  }
-
-  const handleDeleteCore = async (coreId: string) => {
-    if (cores.length <= 1) {
-      toast.error('至少保留一个内核')
-      return
-    }
-    await deleteBrowserCore(coreId)
-    toast.success('内核已删除')
-    loadCores()
-  }
-
-  const handleSetDefaultCore = async (coreId: string) => {
-    await setDefaultBrowserCore(coreId)
-    toast.success('已设为默认')
-    loadCores()
-  }
-
-  const handleRedeem = async () => {
-    if (!cdKey.trim()) return
-    setRedeeming(true)
-    const result = await redeemCDKey(cdKey.trim())
-    setRedeeming(false)
-    if (result.success) {
-      toast.success('兑换成功！此名额已到账')
-      setCdKey('')
-      loadQuota()
-    } else {
-      toast.error(result.message || '兑换失败')
-    }
-  }
-
-  const handleClaimStarGift = async () => {
-    setRedeeming(true)
-    const starRes = await redeemGithubStar()
-    setRedeeming(false)
-    if (starRes.success) {
-      toast.success('感谢您的支持！已额外赠送 50 个永久额度！')
-      setCdKey('')
-      loadQuota()
-    } else {
-      toast.error(starRes.message || '领取失败')
-    }
-  }
-
-  const handleOpenGithubStarGift = async () => {
-    BrowserOpenURL(PROJECT_GITHUB_URL)
-    await handleClaimStarGift()
+  const handleProxyDeletedFromPicker = (deletedProxyId: string, nextProxies: BrowserProxy[]) => {
+    updateProxiesState(nextProxies)
+    if (!proxyPickerProfile || proxyPickerProfile.proxyId !== deletedProxyId) return
+    // 不再自动回退直连：直连会暴露真实 IP。保留绑定，由用户显式重新选择代理。
+    toast.error('该实例绑定的代理已被删除，请重新选择代理（不会自动改为直连）')
   }
 
 
   return (
-    <div className="overflow-auto p-5 space-y-5 animate-fade-in h-full">
+    <div className="min-h-full space-y-3 animate-fade-in">
       <BrowserListHeader
         profileCount={profiles.length}
         filteredProfileCount={filteredProfiles.length}
@@ -733,11 +612,9 @@ export function BrowserListPage() {
         onToggleHeaderCollapsed={() => setHeaderCollapsed((prev) => !prev)}
         onRefresh={() => { void loadProfiles() }}
         onOpenSettings={handleOpenSettings}
-        onOpenExpandModal={() => {
-          setCdKey('')
-          setExpandModalOpen(true)
-          loadQuota()
-        }}
+        onOpenTrash={openTrashModal}
+        onImportProfiles={handleImportProfiles}
+        importingProfiles={profilePackageBusy}
         onViewModeChange={setViewMode}
       />
 
@@ -749,8 +626,10 @@ export function BrowserListPage() {
         onDeselectAll={handleDeselectAll}
         onBatchStart={handleBatchStart}
         onBatchStop={handleBatchStop}
-        onBatchDelete={handleBatchDelete}
+        onBatchExport={handleBatchExport}
+        onBatchDelete={openBatchDeleteConfirm}
         batchLoading={batchLoading}
+        exporting={profilePackageBusy}
       />
 
       <BrowserProfilesPanel
@@ -758,6 +637,7 @@ export function BrowserListPage() {
         viewMode={viewMode}
         profiles={filteredProfiles}
         proxies={proxies}
+        virtualGroups={proxyVirtualGroups}
         selectedIds={selectedIds}
         resolveProfileCore={resolveProfileCore}
         getProfileCoreLabel={getProfileCoreLabel}
@@ -773,8 +653,33 @@ export function BrowserListPage() {
         onStop={(profileId) => { void handleStop(profileId) }}
         onRestart={(profileId) => { void handleRestart(profileId) }}
         onOpenKeywords={openKwModal}
+        onOpenExtensions={openExtensionModal}
+        onOpenDataDir={(profile) => { void handleOpenUserDataDir(profile) }}
+        onExport={(profile) => { void handleExportProfile(profile) }}
         onOpenCopy={openCopyModal}
-        onDelete={(profileId) => { void handleDelete(profileId) }}
+        onOpenProxyPicker={setProxyPickerProfile}
+        onDelete={openDeleteConfirm}
+      />
+
+      <ProxyPickerModal
+        open={!!proxyPickerProfile}
+        currentProxyId={proxyPickerProfile?.proxyId || directProxyID}
+        title={proxyPickerProfile ? `切换代理：${proxyPickerProfile.profileName}` : '切换代理'}
+        showVirtualGroups
+        onSelect={(proxy) => {
+          if (proxyPickerProfile) {
+            void saveProfileProxy(proxyPickerProfile, proxy)
+          }
+        }}
+        onProxyListUpdated={updateProxiesState}
+        onProxyDeleted={handleProxyDeletedFromPicker}
+        onClose={() => setProxyPickerProfile(null)}
+      />
+
+      <ProfileExtensionModal
+        open={extensionModal.open}
+        profile={extensionModal.profile}
+        onClose={closeExtensionModal}
       />
 
       <BrowserListSettingsModal
@@ -834,23 +739,59 @@ export function BrowserListPage() {
             p.profileId === kwModal.profile!.profileId ? { ...p, keywords } : p
           ))
         }}
-        expandModalOpen={expandModalOpen}
-        onCloseExpand={() => setExpandModalOpen(false)}
-        profilesCount={profiles.length}
-        maxProfileLimit={maxProfileLimit}
-        cdKey={cdKey}
-        onCdKeyChange={setCdKey}
-        onRedeem={handleRedeem}
-        redeeming={redeeming}
-        onOpenGithubStarGift={handleOpenGithubStarGift}
         copyModal={copyModal}
         copyName={copyName}
+        copyOptions={copyOptions}
         onCopyNameChange={setCopyName}
+        onCopyOptionsChange={setCopyOptions}
         onCloseCopy={closeCopyModal}
         onConfirmCopy={() => copyModal.profile && handleCopy(copyModal.profile.profileId)}
+        copyConfirmDisabled={copyConfirmDisabled}
         copying={copying}
+        deleteConfirm={deleteConfirm}
+        deleting={batchLoading}
+        onCloseDeleteConfirm={closeDeleteConfirm}
+        onConfirmDelete={() => { void handleConfirmDelete() }}
+        trashModalOpen={trashModalOpen}
+        trashProfiles={trashProfiles}
+        trashLoading={trashLoading}
+        restoringId={restoringId}
+        permanentlyDeletingId={permanentlyDeletingId}
+        permanentDeleteConfirm={permanentDeleteConfirm}
+        onCloseTrash={() => setTrashModalOpen(false)}
+        onRestoreProfile={(profileId) => { void handleRestoreProfile(profileId) }}
+        onOpenPermanentDelete={(profile) => setPermanentDeleteConfirm({ open: true, profile })}
+        onClosePermanentDelete={() => setPermanentDeleteConfirm({ open: false, profile: null })}
+        onConfirmPermanentDelete={() => { void handleConfirmPermanentDelete() }}
         opError={opError}
         onCloseOpError={() => setOpError('')}
+        profileImportPreview={profileImportPreview}
+        profileImportBusy={profilePackageBusy}
+        onCloseProfileImport={() => {
+          setProfileImportPreview(null)
+          setProfilePackageBusy(false)
+        }}
+        onConfirmProfileImport={(actions) => {
+          if (profileImportPreview) {
+            if (profileImportPreview.portableSessionAvailable) {
+              setPendingProfileImport({ zipPath: profileImportPreview.zipPath, actions })
+              setPortableSessionPasswordError('')
+              setProfileImportPreview(null)
+              setPortableSessionPasswordMode('import')
+              return
+            }
+            void executeProfileImport(profileImportPreview.zipPath, actions, true)
+          }
+        }}
+      />
+      <ProfilePackagePasswordModal
+        open={portableSessionPasswordMode !== null}
+        mode={portableSessionPasswordMode || 'export'}
+        busy={profilePackageBusy}
+        error={portableSessionPasswordError}
+        onClose={closePortableSessionPasswordModal}
+        onConfirm={confirmPortableSessionPassword}
+        onSkip={portableSessionPasswordMode === 'export' ? skipPortableSessionPassword : undefined}
       />
     </div>
   )

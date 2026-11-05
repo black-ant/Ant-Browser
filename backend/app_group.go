@@ -21,7 +21,7 @@ type BrowserGroupWithCount = browser.GroupWithCount
 // ListGroups 获取所有分组（带实例计数）
 func (a *App) ListGroups() []BrowserGroupWithCount {
 	log := logger.New("Group")
-	if a.browserMgr.GroupDAO == nil {
+	if a == nil || a.browserMgr == nil || a.browserMgr.GroupDAO == nil {
 		log.Error("GroupDAO 未初始化")
 		return []BrowserGroupWithCount{}
 	}

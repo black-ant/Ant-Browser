@@ -1,0 +1,709 @@
+package backend
+
+import (
+	"archive/zip"
+	"database/sql"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/config"
+	"ant-chrome/backend/internal/database"
+)
+
+func TestProfilePackageDatabaseRoundTripSelectedProfile(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceCfg := config.DefaultConfig()
+	sourceCfg.Browser.UserDataRoot = filepath.Join(sourceRoot, "user-data")
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.config = sourceCfg
+	sourceApp.db = sourceDB
+	sourceApp.browserMgr = browser.NewManager(sourceCfg, sourceRoot)
+
+	profileID := "source-profile"
+	groupID := "source-group"
+	parentGroupID := "source-parent-group"
+	coreID := "source-core"
+	proxyID := "source-proxy"
+	extensionID := "source-extension"
+	profile := browser.Profile{
+		ProfileId:       profileID,
+		ProfileName:     "源实例",
+		UserDataDir:     profileID,
+		CoreId:          coreID,
+		ProxyId:         proxyID,
+		ProxyConfig:     "http://source-proxy:8080",
+		ProxyBindName:   "源代理",
+		GroupId:         groupID,
+		FingerprintArgs: []string{"--fingerprint-platform=Windows"},
+		LaunchArgs:      []string{"--start-maximized"},
+		Tags:            []string{"测试"},
+		Keywords:        []string{"源实例"},
+		CreatedAt:       "2026-08-31T00:00:00Z",
+		UpdatedAt:       "2026-08-31T00:00:00Z",
+	}
+	insertProfilePackageDatabaseFixtures(t, sourceDB.GetConn(), profile, parentGroupID, extensionID)
+	userDataDir := filepath.Join(sourceCfg.Browser.UserDataRoot, profileID)
+	if err := os.MkdirAll(userDataDir, 0o755); err != nil {
+		t.Fatalf("create source user data failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(userDataDir, "Preferences"), []byte(`{"selected":true}`), 0o644); err != nil {
+		t.Fatalf("write source user data failed: %v", err)
+	}
+
+	zipPath := filepath.Join(sourceRoot, "selected-profile.zip")
+	if _, err := sourceApp.writeProfilePackage(zipPath, []browser.Profile{profile}); err != nil {
+		t.Fatalf("writeProfilePackage returned error: %v", err)
+	}
+	assertProfilePackageDatabaseContents(t, zipPath, profileID, groupID, parentGroupID, coreID, proxyID, extensionID)
+	_ = sourceDB.Close()
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	targetCfg := config.DefaultConfig()
+	targetCfg.Browser.UserDataRoot = filepath.Join(targetRoot, "user-data")
+	targetApp := NewApp(targetRoot)
+	targetApp.config = targetCfg
+	targetApp.db = targetDB
+	targetApp.browserMgr = browser.NewManager(targetCfg, targetRoot)
+	targetApp.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(targetDB.GetConn())
+	targetApp.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(targetDB.GetConn())
+	targetApp.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(targetDB.GetConn())
+	targetApp.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(targetDB.GetConn())
+	targetApp.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(targetDB.GetConn())
+	if _, err := targetDB.GetConn().Exec(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES ('other-profile', '其他实例', 'other-profile', '2026-08-31T00:00:00Z', '2026-08-31T00:00:00Z')`); err != nil {
+		t.Fatalf("insert target profile failed: %v", err)
+	}
+
+	result, err := targetApp.importProfilePackageFromPath(zipPath)
+	if err != nil {
+		t.Fatalf("importProfilePackageFromPath returned error: %v", err)
+	}
+	if result.ImportedCount != 1 {
+		t.Fatalf("imported count = %d, want 1", result.ImportedCount)
+	}
+	newProfileID := result.ProfileMappings[profileID]
+	if newProfileID == "" || newProfileID == profileID {
+		t.Fatalf("unexpected profile mapping: %#v", result.ProfileMappings)
+	}
+
+	stored, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(newProfileID)
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if stored.GroupId == "" || stored.CoreId == "" || stored.ProxyId == "" {
+		t.Fatalf("profile references were lost: %#v", stored)
+	}
+	if stored.ProfileName != "源实例" || stored.ProxyConfig != "http://source-proxy:8080" {
+		t.Fatalf("imported profile fields lost: %#v", stored)
+	}
+	if _, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById("other-profile"); err != nil {
+		t.Fatalf("target existing profile was not preserved: %v", err)
+	}
+
+	var groupCount, coreCount, proxyCount, extensionCount, bindingCount, runtimeCount int
+	for _, query := range []struct {
+		name  string
+		query string
+		count *int
+	}{
+		{"group", `SELECT COUNT(*) FROM browser_groups WHERE group_name IN ('源分组', '源父分组')`, &groupCount},
+		{"core", `SELECT COUNT(*) FROM browser_cores WHERE core_name = '源内核'`, &coreCount},
+		{"proxy", `SELECT COUNT(*) FROM browser_proxies WHERE proxy_name = '源代理'`, &proxyCount},
+		{"extension", `SELECT COUNT(*) FROM browser_extensions WHERE extension_id = ?`, &extensionCount},
+		{"binding", `SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?`, &bindingCount},
+		{"runtime", `SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?`, &runtimeCount},
+	} {
+		var err error
+		if query.name == "extension" {
+			err = targetDB.GetConn().QueryRow(query.query, extensionID).Scan(query.count)
+		} else if query.name == "binding" || query.name == "runtime" {
+			err = targetDB.GetConn().QueryRow(query.query, newProfileID).Scan(query.count)
+		} else {
+			err = targetDB.GetConn().QueryRow(query.query).Scan(query.count)
+		}
+		if err != nil {
+			t.Fatalf("count imported %s rows failed: %v", query.name, err)
+		}
+	}
+	if groupCount != 2 || coreCount != 1 || proxyCount != 1 || extensionCount != 1 || bindingCount != 1 || runtimeCount != 1 {
+		t.Fatalf("unexpected imported related row counts: groups=%d cores=%d proxies=%d extensions=%d bindings=%d runtime=%d", groupCount, coreCount, proxyCount, extensionCount, bindingCount, runtimeCount)
+	}
+	if _, err := os.Stat(filepath.Join(targetCfg.Browser.UserDataRoot, newProfileID, "Preferences")); err != nil {
+		t.Fatalf("imported user data missing: %v", err)
+	}
+}
+
+func TestProfilePackageDatabaseRoundTripsDynamicProxySelection(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceProfile := &browser.Profile{
+		ProfileId:      "source-dynamic-profile",
+		ProfileName:    "动态代理实例",
+		ProxyMode:      browser.ProxyModeDynamic,
+		ProxyGroupName: "mobile",
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, sort_order, created_at)
+VALUES ('source-dynamic-proxy', '动态代理节点', 'socks5://source:1080', 0, '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source proxy failed: %v", err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxy_virtual_groups (
+	group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+) VALUES ('source-dynamic-group', 'mobile', 'round_robin', 'source-dynamic-proxy', '["source-dynamic-proxy"]', '[]', 0, '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source virtual group failed: %v", err)
+	}
+	sourceDAO := browser.NewSQLiteProfileDAO(sourceDB.GetConn())
+	if err := sourceDAO.Upsert(sourceProfile); err != nil {
+		t.Fatalf("save source profile failed: %v", err)
+	}
+	storedSource, err := sourceDAO.GetById(sourceProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read source profile failed: %v", err)
+	}
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.db = sourceDB
+	snapshot, err := sourceApp.collectProfilePackageDatabase([]browser.Profile{*storedSource})
+	if err != nil {
+		t.Fatalf("collect profile package database failed: %v", err)
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("encode profile package database failed: %v", err)
+	}
+	if err := json.Unmarshal(encoded, &snapshot); err != nil {
+		t.Fatalf("decode profile package database failed: %v", err)
+	}
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	targetApp := NewApp(targetRoot)
+	targetApp.db = targetDB
+	preparedProfile := snapshot.Profiles[0]
+	preparedProfile.ProfileId = "target-dynamic-profile"
+	prepared := []preparedProfilePackageImport{{
+		Profile:      preparedProfile,
+		OldProfileID: sourceProfile.ProfileId,
+	}}
+	if err := targetApp.restoreProfilePackageDatabase(snapshot, prepared, nil); err != nil {
+		t.Fatalf("restore profile package database failed: %v", err)
+	}
+	storedTarget, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(preparedProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if storedTarget.ProxyMode != browser.ProxyModeDynamic || storedTarget.ProxyGroupName != "mobile" {
+		t.Fatalf("dynamic proxy selection = (%q, %q), want (%q, %q)", storedTarget.ProxyMode, storedTarget.ProxyGroupName, browser.ProxyModeDynamic, "mobile")
+	}
+}
+
+func TestProfilePackageDatabaseMaterializesDynamicVirtualGroupMembers(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceProfile := &browser.Profile{
+		ProfileId:      "source-dynamic-members-profile",
+		ProfileName:    "动态代理实例",
+		ProxyMode:      browser.ProxyModeDynamic,
+		ProxyGroupName: "mobile-pool",
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, group_name, sort_order, created_at)
+VALUES ('mobile-1', '移动节点 1', 'socks5://source-1:1080', 'mobile', 0, '2026-08-30T00:00:00Z'),
+       ('mobile-2', '移动节点 2', 'socks5://source-2:1080', 'mobile', 1, '2026-08-30T00:00:00Z'),
+       ('desktop-1', '桌面节点', 'socks5://source-3:1080', 'desktop', 2, '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source proxies failed: %v", err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxy_virtual_groups (
+	group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+) VALUES ('source-dynamic-members-group', 'mobile-pool', 'round_robin', '', '["mobile-1"]', '["mobile"]', 0, '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source virtual group failed: %v", err)
+	}
+	sourceDAO := browser.NewSQLiteProfileDAO(sourceDB.GetConn())
+	if err := sourceDAO.Upsert(sourceProfile); err != nil {
+		t.Fatalf("save source profile failed: %v", err)
+	}
+	storedSource, err := sourceDAO.GetById(sourceProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read source profile failed: %v", err)
+	}
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.db = sourceDB
+	snapshot, err := sourceApp.collectProfilePackageDatabase([]browser.Profile{*storedSource})
+	if err != nil {
+		t.Fatalf("collect profile package database failed: %v", err)
+	}
+	if len(snapshot.ProxyVirtualGroups) != 1 {
+		t.Fatalf("snapshot virtual groups = %#v, want one group", snapshot.ProxyVirtualGroups)
+	}
+	group := snapshot.ProxyVirtualGroups[0]
+	if len(group.MemberGroupNames) != 0 {
+		t.Fatalf("snapshot dynamic member group names = %#v, want materialized members", group.MemberGroupNames)
+	}
+	if len(group.MemberProxyIds) != 2 || group.MemberProxyIds[0] != "mobile-1" || group.MemberProxyIds[1] != "mobile-2" {
+		t.Fatalf("snapshot virtual group members = %#v, want [mobile-1 mobile-2]", group.MemberProxyIds)
+	}
+	if len(snapshot.Proxies) != 2 {
+		t.Fatalf("snapshot proxies = %d, want two materialized members", len(snapshot.Proxies))
+	}
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	targetApp := NewApp(targetRoot)
+	targetApp.db = targetDB
+	preparedProfile := snapshot.Profiles[0]
+	preparedProfile.ProfileId = "target-dynamic-members-profile"
+	prepared := []preparedProfilePackageImport{{
+		Profile:      preparedProfile,
+		OldProfileID: sourceProfile.ProfileId,
+	}}
+	if err := targetApp.restoreProfilePackageDatabase(snapshot, prepared, nil); err != nil {
+		t.Fatalf("restore profile package database failed: %v", err)
+	}
+
+	var memberProxyIDsJSON, memberGroupNamesJSON string
+	if err := targetDB.GetConn().QueryRow(`SELECT member_proxy_ids, member_group_names FROM browser_proxy_virtual_groups WHERE group_name = 'mobile-pool'`).Scan(&memberProxyIDsJSON, &memberGroupNamesJSON); err != nil {
+		t.Fatalf("read imported virtual group failed: %v", err)
+	}
+	var memberProxyIDs []string
+	if err := json.Unmarshal([]byte(memberProxyIDsJSON), &memberProxyIDs); err != nil {
+		t.Fatalf("decode imported virtual group members failed: %v", err)
+	}
+	if len(memberProxyIDs) != 2 || memberProxyIDs[0] == "" || memberProxyIDs[1] == "" || memberGroupNamesJSON != "[]" {
+		t.Fatalf("imported virtual group members = %v, dynamic names = %s", memberProxyIDs, memberGroupNamesJSON)
+	}
+}
+
+func TestProfilePackageImportPreservesLocalVirtualGroupOnNameConflict(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceProfile := &browser.Profile{
+		ProfileId:      "source-conflict-profile",
+		ProfileName:    "导入实例",
+		ProxyMode:      browser.ProxyModeDynamic,
+		ProxyGroupName: "mobile",
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, sort_order, created_at)
+VALUES ('shared-proxy-id', '源代理', 'socks5://source:1080', 0, '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source proxy failed: %v", err)
+	}
+	if _, err := sourceDB.GetConn().Exec(`INSERT INTO browser_proxy_virtual_groups (
+	group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+) VALUES ('source-conflict-group', 'mobile', 'sticky', 'shared-proxy-id', '["shared-proxy-id"]', '[]', 0, '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert source virtual group failed: %v", err)
+	}
+	if err := browser.NewSQLiteProfileDAO(sourceDB.GetConn()).Upsert(sourceProfile); err != nil {
+		t.Fatalf("save source profile failed: %v", err)
+	}
+	storedSource, err := browser.NewSQLiteProfileDAO(sourceDB.GetConn()).GetById(sourceProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read source profile failed: %v", err)
+	}
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.db = sourceDB
+	snapshot, err := sourceApp.collectProfilePackageDatabase([]browser.Profile{*storedSource})
+	if err != nil {
+		t.Fatalf("collect profile package database failed: %v", err)
+	}
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	if _, err := targetDB.GetConn().Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, sort_order, created_at)
+VALUES ('shared-proxy-id', '本地代理', 'socks5://local:1080', 0, '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert target proxy failed: %v", err)
+	}
+	if _, err := targetDB.GetConn().Exec(`INSERT INTO browser_proxy_virtual_groups (
+	group_id, group_name, strategy, selected_proxy_id, member_proxy_ids, member_group_names, sort_order, created_at, updated_at
+) VALUES ('target-local-group', 'mobile', 'round_robin', '', '["local-proxy"]', '[]', 0, '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')`); err != nil {
+		t.Fatalf("insert target virtual group failed: %v", err)
+	}
+	targetApp := NewApp(targetRoot)
+	targetApp.db = targetDB
+	preparedProfile := snapshot.Profiles[0]
+	preparedProfile.ProfileId = "target-conflict-profile"
+	warnings := make([]string, 0)
+	if err := targetApp.restoreProfilePackageDatabase(snapshot, []preparedProfilePackageImport{{
+		Profile: preparedProfile, OldProfileID: sourceProfile.ProfileId,
+	}}, &warnings); err != nil {
+		t.Fatalf("restore profile package database failed: %v", err)
+	}
+
+	var localMembers string
+	if err := targetDB.GetConn().QueryRow(`SELECT member_proxy_ids FROM browser_proxy_virtual_groups WHERE group_name = 'mobile'`).Scan(&localMembers); err != nil {
+		t.Fatalf("read local virtual group failed: %v", err)
+	}
+	if localMembers != `["local-proxy"]` {
+		t.Fatalf("local virtual group was modified: %s", localMembers)
+	}
+	var importedGroupName, importedMembers, importedSelectedProxyID string
+	if err := targetDB.GetConn().QueryRow(`SELECT group_name, member_proxy_ids, selected_proxy_id FROM browser_proxy_virtual_groups WHERE group_name = 'mobile (导入)'`).Scan(&importedGroupName, &importedMembers, &importedSelectedProxyID); err != nil {
+		t.Fatalf("read imported virtual group failed: %v", err)
+	}
+	var importedProxyIDs []string
+	if err := json.Unmarshal([]byte(importedMembers), &importedProxyIDs); err != nil {
+		t.Fatalf("decode imported virtual group members failed: %v", err)
+	}
+	if len(importedProxyIDs) != 1 || importedProxyIDs[0] == "shared-proxy-id" || importedSelectedProxyID != importedProxyIDs[0] {
+		t.Fatalf("imported virtual group proxy mapping = members %v, selected %q", importedProxyIDs, importedSelectedProxyID)
+	}
+	storedTarget, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(preparedProfile.ProfileId)
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if storedTarget.ProxyGroupName != importedGroupName {
+		t.Fatalf("imported profile group = %q, want %q", storedTarget.ProxyGroupName, importedGroupName)
+	}
+	if len(warnings) == 0 {
+		t.Fatal("expected a warning for the virtual group name conflict")
+	}
+}
+
+func TestProfilePackageDatabaseOverwriteMovesTargetToTrash(t *testing.T) {
+	profileID := "target-profile"
+	groupID := "source-group"
+	parentGroupID := "source-parent-group"
+	coreID := "source-core"
+	proxyID := "source-proxy"
+	sourceExtensionID := "source-extension"
+
+	sourceRoot := t.TempDir()
+	sourceDB := newProfilePackageDatabase(t, sourceRoot)
+	sourceCfg := config.DefaultConfig()
+	sourceCfg.Browser.UserDataRoot = filepath.Join(sourceRoot, "user-data")
+	sourceApp := NewApp(sourceRoot)
+	sourceApp.config = sourceCfg
+	sourceApp.db = sourceDB
+	sourceApp.browserMgr = browser.NewManager(sourceCfg, sourceRoot)
+	sourceProfile := browser.Profile{
+		ProfileId:     profileID,
+		ProfileName:   "源实例",
+		UserDataDir:   profileID,
+		CoreId:        coreID,
+		ProxyId:       proxyID,
+		ProxyConfig:   "http://source-proxy:8080",
+		ProxyBindName: "源代理",
+		GroupId:       groupID,
+		CreatedAt:     "2026-08-31T00:00:00Z",
+		UpdatedAt:     "2026-08-31T00:00:00Z",
+	}
+	insertProfilePackageDatabaseFixtures(t, sourceDB.GetConn(), sourceProfile, parentGroupID, sourceExtensionID)
+	sourceUserDataDir := filepath.Join(sourceCfg.Browser.UserDataRoot, profileID)
+	if err := os.MkdirAll(sourceUserDataDir, 0o755); err != nil {
+		t.Fatalf("create source user data failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceUserDataDir, "Preferences"), []byte("source-data"), 0o644); err != nil {
+		t.Fatalf("write source user data failed: %v", err)
+	}
+	zipPath := filepath.Join(sourceRoot, "overwrite-profile.zip")
+	if _, err := sourceApp.writeProfilePackage(zipPath, []browser.Profile{sourceProfile}); err != nil {
+		t.Fatalf("writeProfilePackage returned error: %v", err)
+	}
+	_ = sourceDB.Close()
+
+	targetRoot := t.TempDir()
+	targetDB := newProfilePackageDatabase(t, targetRoot)
+	targetCfg := config.DefaultConfig()
+	targetCfg.Browser.UserDataRoot = filepath.Join(targetRoot, "user-data")
+	targetApp := NewApp(targetRoot)
+	targetApp.config = targetCfg
+	targetApp.db = targetDB
+	targetApp.browserMgr = browser.NewManager(targetCfg, targetRoot)
+	targetApp.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(targetDB.GetConn())
+	targetApp.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(targetDB.GetConn())
+	targetApp.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(targetDB.GetConn())
+	targetApp.browserMgr.GroupDAO = browser.NewSQLiteGroupDAO(targetDB.GetConn())
+	targetApp.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(targetDB.GetConn())
+	if _, err := targetDB.GetConn().Exec("INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", profileID, "旧实例", "target-data", "2026-08-30T00:00:00Z", "2026-08-30T00:00:00Z"); err != nil {
+		t.Fatalf("insert target profile failed: %v", err)
+	}
+	targetExtensionDAO := browser.NewSQLiteExtensionDAO(targetDB.GetConn())
+	if err := targetExtensionDAO.Upsert(browser.Extension{ExtensionID: "stale-extension", Name: "旧插件", Version: "1.0.0", ManifestJSON: "{}", InstallDir: "data/extensions/stale-extension", Enabled: true, InstalledAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension failed: %v", err)
+	}
+	if _, err := targetExtensionDAO.SetProfileSettings(profileID, []string{"stale-extension"}, true); err != nil {
+		t.Fatalf("insert stale extension settings failed: %v", err)
+	}
+	if err := targetExtensionDAO.UpsertProfileExtensionRuntime(browser.ProfileExtensionRuntime{ProfileID: profileID, ExtensionID: "stale-extension", RuntimeExtensionID: "runtime-stale-extension", Status: browser.ExtensionRuntimeStatusInstalled, CreatedAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension runtime failed: %v", err)
+	}
+	targetUserDataDir := filepath.Join(targetCfg.Browser.UserDataRoot, "target-data")
+	if err := os.MkdirAll(targetUserDataDir, 0o755); err != nil {
+		t.Fatalf("create target user data failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetUserDataDir, "old.txt"), []byte("old-data"), 0o644); err != nil {
+		t.Fatalf("write target user data failed: %v", err)
+	}
+
+	result, err := targetApp.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite)
+	if err != nil {
+		t.Fatalf("overwrite import returned error: %v", err)
+	}
+	newProfileID := result.ProfileMappings[profileID]
+	if newProfileID == "" || newProfileID == profileID || result.OverwrittenCount != 1 {
+		t.Fatalf("unexpected overwrite result: %#v", result)
+	}
+	var oldSettingsCount, oldBindingCount, oldRuntimeCount int
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?", profileID).Scan(&oldSettingsCount); err != nil {
+		t.Fatalf("count old profile extension settings failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&oldBindingCount); err != nil {
+		t.Fatalf("count old profile extensions failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?", profileID).Scan(&oldRuntimeCount); err != nil {
+		t.Fatalf("count old profile extension runtime failed: %v", err)
+	}
+	var newSettingsCount, newBindingCount, newRuntimeCount int
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?", newProfileID).Scan(&newSettingsCount); err != nil {
+		t.Fatalf("count new profile extension settings failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?", newProfileID).Scan(&newBindingCount); err != nil {
+		t.Fatalf("count new profile extensions failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?", newProfileID).Scan(&newRuntimeCount); err != nil {
+		t.Fatalf("count new profile extension runtime failed: %v", err)
+	}
+	if oldSettingsCount != 1 || oldBindingCount != 1 || oldRuntimeCount != 1 || newSettingsCount != 1 || newBindingCount != 1 || newRuntimeCount != 1 {
+		t.Fatalf("unexpected profile extension relation counts: old=(%d,%d,%d) new=(%d,%d,%d)", oldSettingsCount, oldBindingCount, oldRuntimeCount, newSettingsCount, newBindingCount, newRuntimeCount)
+	}
+	var oldExtensionID, newExtensionID string
+	if err := targetDB.GetConn().QueryRow("SELECT extension_id FROM browser_profile_extensions WHERE profile_id = ?", profileID).Scan(&oldExtensionID); err != nil {
+		t.Fatalf("read old extension binding failed: %v", err)
+	}
+	if err := targetDB.GetConn().QueryRow("SELECT extension_id FROM browser_profile_extensions WHERE profile_id = ?", newProfileID).Scan(&newExtensionID); err != nil {
+		t.Fatalf("read new extension binding failed: %v", err)
+	}
+	if oldExtensionID != "stale-extension" || newExtensionID != sourceExtensionID {
+		t.Fatalf("profile extension bindings were not separated: old=%s new=%s", oldExtensionID, newExtensionID)
+	}
+	deleted, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(profileID)
+	if err != nil {
+		t.Fatalf("read trashed profile failed: %v", err)
+	}
+	if deleted.DeletedAt == "" || deleted.UserDataDir != "target-data" {
+		t.Fatalf("old profile was not preserved in trash: %#v", deleted)
+	}
+	stored, err := browser.NewSQLiteProfileDAO(targetDB.GetConn()).GetById(newProfileID)
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if stored.DeletedAt != "" || stored.ProfileName != "源实例" || stored.UserDataDir != newProfileID {
+		t.Fatalf("new active profile fields are incorrect: %#v", stored)
+	}
+	if content, err := os.ReadFile(filepath.Join(targetUserDataDir, "old.txt")); err != nil || string(content) != "old-data" {
+		t.Fatalf("old user data backup was not preserved: content=%q err=%v", content, err)
+	}
+	if content, err := os.ReadFile(filepath.Join(targetCfg.Browser.UserDataRoot, newProfileID, "Preferences")); err != nil || string(content) != "source-data" {
+		t.Fatalf("new user data missing or incorrect: content=%q err=%v", content, err)
+	}
+}
+
+func TestProfilePackageV1OverwriteMovesTargetToTrash(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	cfg.Browser.UserDataRoot = filepath.Join(root, "user-data")
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+	app.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(db.GetConn())
+	app.browserMgr.ExtensionDAO = browser.NewSQLiteExtensionDAO(db.GetConn())
+
+	profileID := "legacy-profile"
+	if _, err := db.GetConn().Exec(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, profileID, "旧实例", "target-data", "2026-08-30T00:00:00Z", "2026-08-30T00:00:00Z"); err != nil {
+		t.Fatalf("insert target profile failed: %v", err)
+	}
+	extensionDAO := browser.NewSQLiteExtensionDAO(db.GetConn())
+	if err := extensionDAO.Upsert(browser.Extension{ExtensionID: "stale-extension", Name: "旧插件", Version: "1.0.0", ManifestJSON: "{}", InstallDir: "data/extensions/stale-extension", Enabled: true, InstalledAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension failed: %v", err)
+	}
+	if _, err := extensionDAO.SetProfileSettings(profileID, []string{"stale-extension"}, true); err != nil {
+		t.Fatalf("insert stale extension settings failed: %v", err)
+	}
+	if err := extensionDAO.UpsertProfileExtensionRuntime(browser.ProfileExtensionRuntime{ProfileID: profileID, ExtensionID: "stale-extension", RuntimeExtensionID: "runtime-stale-extension", Status: browser.ExtensionRuntimeStatusInstalled, CreatedAt: "2026-08-30T00:00:00Z", UpdatedAt: "2026-08-30T00:00:00Z"}); err != nil {
+		t.Fatalf("insert stale extension runtime failed: %v", err)
+	}
+
+	zipPath := filepath.Join(root, "legacy-profile.zip")
+	writeTestProfilePackage(t, zipPath, []browser.Profile{{
+		ProfileId:   profileID,
+		ProfileName: "新实例",
+		UserDataDir: profileID,
+	}}, nil)
+
+	result, err := app.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeOverwrite)
+	if err != nil {
+		t.Fatalf("legacy overwrite import returned error: %v", err)
+	}
+	newProfileID := result.ProfileMappings[profileID]
+	if newProfileID == "" || newProfileID == profileID || result.OverwrittenCount != 1 {
+		t.Fatalf("unexpected overwrite result: %#v", result)
+	}
+
+	var oldSettingsCount, oldBindingCount, oldRuntimeCount int
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?`, profileID).Scan(&oldSettingsCount); err != nil {
+		t.Fatalf("count old profile extension settings failed: %v", err)
+	}
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?`, profileID).Scan(&oldBindingCount); err != nil {
+		t.Fatalf("count old profile extensions failed: %v", err)
+	}
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?`, profileID).Scan(&oldRuntimeCount); err != nil {
+		t.Fatalf("count old profile extension runtime failed: %v", err)
+	}
+	var newSettingsCount, newBindingCount, newRuntimeCount int
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_settings WHERE profile_id = ?`, newProfileID).Scan(&newSettingsCount); err != nil {
+		t.Fatalf("count new profile extension settings failed: %v", err)
+	}
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extensions WHERE profile_id = ?`, newProfileID).Scan(&newBindingCount); err != nil {
+		t.Fatalf("count new profile extensions failed: %v", err)
+	}
+	if err := db.GetConn().QueryRow(`SELECT COUNT(*) FROM browser_profile_extension_runtime WHERE profile_id = ?`, newProfileID).Scan(&newRuntimeCount); err != nil {
+		t.Fatalf("count new profile extension runtime failed: %v", err)
+	}
+	if oldSettingsCount != 1 || oldBindingCount != 1 || oldRuntimeCount != 1 || newSettingsCount != 0 || newBindingCount != 0 || newRuntimeCount != 0 {
+		t.Fatalf("unexpected legacy profile extension relation counts: old=(%d,%d,%d) new=(%d,%d,%d)", oldSettingsCount, oldBindingCount, oldRuntimeCount, newSettingsCount, newBindingCount, newRuntimeCount)
+	}
+	deleted, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById(profileID)
+	if err != nil {
+		t.Fatalf("read trashed legacy profile failed: %v", err)
+	}
+	if deleted.DeletedAt == "" || deleted.UserDataDir != "target-data" {
+		t.Fatalf("old legacy profile was not preserved in trash: %#v", deleted)
+	}
+	stored, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById(newProfileID)
+	if err != nil {
+		t.Fatalf("read imported legacy profile failed: %v", err)
+	}
+	if stored.DeletedAt != "" || stored.ProfileName != "新实例" || stored.UserDataDir != newProfileID {
+		t.Fatalf("new legacy profile fields are incorrect: %#v", stored)
+	}
+}
+
+func newProfilePackageDatabase(t *testing.T, root string) *database.DB {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, "data"), 0o755); err != nil {
+		t.Fatalf("create database directory failed: %v", err)
+	}
+	db, err := database.NewDB(filepath.Join(root, "data", "app.db"))
+	if err != nil {
+		t.Fatalf("create database failed: %v", err)
+	}
+	if err := db.Migrate(); err != nil {
+		_ = db.Close()
+		t.Fatalf("migrate database failed: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func insertProfilePackageDatabaseFixtures(t *testing.T, conn *sql.DB, profile browser.Profile, parentGroupID, extensionID string) {
+	t.Helper()
+	if _, err := conn.Exec(`INSERT INTO browser_groups (group_id, group_name, parent_id, sort_order, created_at, updated_at) VALUES (?, ?, '', 0, ?, ?)`, parentGroupID, "源父分组", profile.CreatedAt, profile.UpdatedAt); err != nil {
+		t.Fatalf("insert parent group failed: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO browser_groups (group_id, group_name, parent_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)`, profile.GroupId, "源分组", parentGroupID, profile.CreatedAt, profile.UpdatedAt); err != nil {
+		t.Fatalf("insert group failed: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO browser_cores (core_id, core_name, core_path, is_default, sort_order, created_at) VALUES (?, ?, ?, 0, 0, ?)`, profile.CoreId, "源内核", "chrome/source", profile.CreatedAt); err != nil {
+		t.Fatalf("insert core failed: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO browser_proxies (proxy_id, proxy_name, proxy_config, sort_order, created_at) VALUES (?, ?, ?, 0, ?)`, profile.ProxyId, profile.ProxyBindName, profile.ProxyConfig, profile.CreatedAt); err != nil {
+		t.Fatalf("insert proxy failed: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO browser_profiles (profile_id, profile_name, user_data_dir, core_id, fingerprint_args, proxy_id, proxy_config, proxy_bind_name, launch_args, tags, keywords, group_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, profile.ProfileId, profile.ProfileName, profile.UserDataDir, profile.CoreId, `[
+"--fingerprint-platform=Windows"
+]`, profile.ProxyId, profile.ProxyConfig, profile.ProxyBindName, `["--start-maximized"]`, `["测试"]`, `["源实例"]`, profile.GroupId, profile.CreatedAt, profile.UpdatedAt); err != nil {
+		t.Fatalf("insert profile failed: %v", err)
+	}
+	extensionDAO := browser.NewSQLiteExtensionDAO(conn)
+	if err := extensionDAO.Upsert(browser.Extension{ExtensionID: extensionID, Name: "源插件", Version: "1.0.0", ManifestJSON: `{}`, InstallDir: "data/extensions/source-extension", Enabled: true, InstalledAt: profile.CreatedAt, UpdatedAt: profile.UpdatedAt}); err != nil {
+		t.Fatalf("insert extension failed: %v", err)
+	}
+	if _, err := extensionDAO.SetProfileSettings(profile.ProfileId, []string{extensionID}, true); err != nil {
+		t.Fatalf("insert extension settings failed: %v", err)
+	}
+	if err := extensionDAO.UpsertProfileExtensionRuntime(browser.ProfileExtensionRuntime{ProfileID: profile.ProfileId, ExtensionID: extensionID, RuntimeExtensionID: "runtime-source-extension", Status: browser.ExtensionRuntimeStatusInstalled, CreatedAt: profile.CreatedAt, UpdatedAt: profile.UpdatedAt}); err != nil {
+		t.Fatalf("insert extension runtime failed: %v", err)
+	}
+}
+
+// 导入包缺少代理记录时必须保留原代理绑定：清空后会变成「ID 与配置双空」实例，
+// 早期版本还会在启动时直接落到直连（暴露真实 IP）。
+func TestProfilePackageImportKeepsProxyBindingWhenProxyMissing(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	cfg := config.DefaultConfig()
+	app := NewApp(root)
+	app.config = cfg
+	app.db = db
+	app.browserMgr = browser.NewManager(cfg, root)
+
+	snapshot := ProfilePackageDatabase{
+		Format:  profilePackageDatabaseFormat,
+		Version: profilePackageDatabaseVersion,
+		Profiles: []browser.Profile{{
+			ProfileId:   "old-profile",
+			ProfileName: "缺代理实例",
+			ProxyId:     "missing-proxy",
+			ProxyConfig: "http://missing-proxy:8080",
+		}},
+	}
+	prepared := []preparedProfilePackageImport{{
+		OldProfileID: "old-profile",
+		Profile: browser.Profile{
+			ProfileId:   "new-profile",
+			ProfileName: "缺代理实例",
+			UserDataDir: "new-profile",
+			ProxyId:     "missing-proxy",
+			ProxyConfig: "http://missing-proxy:8080",
+			CreatedAt:   "2026-08-31T00:00:00Z",
+			UpdatedAt:   "2026-08-31T00:00:00Z",
+		},
+	}}
+	warnings := make([]string, 0, 1)
+	if err := app.restoreProfilePackageDatabase(snapshot, prepared, &warnings); err != nil {
+		t.Fatalf("restoreProfilePackageDatabase returned error: %v", err)
+	}
+
+	stored, err := browser.NewSQLiteProfileDAO(db.GetConn()).GetById("new-profile")
+	if err != nil {
+		t.Fatalf("read imported profile failed: %v", err)
+	}
+	if stored.ProxyId != "missing-proxy" || stored.ProxyConfig != "http://missing-proxy:8080" {
+		t.Fatalf("导入时清空了代理绑定: proxyId=%q proxyConfig=%q", stored.ProxyId, stored.ProxyConfig)
+	}
+	if joined := strings.Join(warnings, "；"); !strings.Contains(joined, "保留原代理绑定") {
+		t.Fatalf("缺少保留绑定的告警: %v", warnings)
+	}
+}
+
+func assertProfilePackageDatabaseContents(t *testing.T, zipPath, profileID, groupID, parentGroupID, coreID, proxyID, extensionID string) {
+	t.Helper()
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open profile package failed: %v", err)
+	}
+	defer reader.Close()
+	var snapshot ProfilePackageDatabase
+	for _, entry := range reader.File {
+		if entry.Name != profilePackageDatabasePath {
+			continue
+		}
+		file, err := entry.Open()
+		if err != nil {
+			t.Fatalf("open database snapshot failed: %v", err)
+		}
+		if err := json.NewDecoder(file).Decode(&snapshot); err != nil {
+			_ = file.Close()
+			t.Fatalf("decode database snapshot failed: %v", err)
+		}
+		_ = file.Close()
+	}
+	if snapshot.Format != profilePackageDatabaseFormat || len(snapshot.Profiles) != 1 || len(snapshot.Groups) != 2 || len(snapshot.Cores) != 1 || len(snapshot.Proxies) != 1 || len(snapshot.Extensions) != 1 || len(snapshot.ProfileExtensions) != 1 || len(snapshot.ProfileExtensionRuntime) != 1 {
+		t.Fatalf("unexpected database snapshot: %#v", snapshot)
+	}
+	if snapshot.Profiles[0].ProfileId != profileID || snapshot.Groups[0].GroupId == "" || snapshot.Groups[1].GroupId == "" || snapshot.Cores[0].CoreId != coreID || snapshot.Proxies[0].ProxyId != proxyID || snapshot.ProfileExtensions[0].ExtensionID != extensionID || snapshot.Groups[0].GroupId != groupID && snapshot.Groups[1].GroupId != parentGroupID {
+		t.Fatalf("database snapshot references are incomplete: %#v", snapshot)
+	}
+}

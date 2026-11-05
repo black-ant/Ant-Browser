@@ -21,6 +21,8 @@ const (
 func (a *App) loadAutomationBundleFromSource(source automation.ScriptSource) (automation.ImportedBundle, error) {
 	sourceType := strings.TrimSpace(source.Type)
 	switch sourceType {
+	case "builtin":
+		return automation.ImportBuiltinBundleFromSource(source)
 	case "local-file":
 		path := firstNonBlank(source.URI, source.Path)
 		if path == "" {

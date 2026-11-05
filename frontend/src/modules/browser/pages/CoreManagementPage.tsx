@@ -1,44 +1,45 @@
 ﻿import { useEffect, useState, useCallback } from 'react'
-import { FolderOpen, Settings, Edit2 } from 'lucide-react'
-import { Badge, Button, Card, ConfirmModal, FormItem, Input, Modal, Switch, Table, Textarea, toast } from '../../../shared/components'
+import { FolderOpen } from 'lucide-react'
+import { Badge, Button, Card, ConfirmModal, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserCore, BrowserCoreInput, BrowserCoreValidateResult, BrowserSettings, BrowserCoreExtended, BrowserProxy } from '../types'
-import { fetchBrowserCores, saveBrowserCore, deleteBrowserCore, setDefaultBrowserCore, validateBrowserCorePath, openCorePath, fetchBrowserSettings, saveBrowserSettings, fetchCoreExtendedInfo, scanBrowserCores, BrowserCoreDownload, fetchBrowserProxies } from '../api'
-import { EventsOn, EventsOff, BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
-
-interface CoreDisplayInfo {
-  coreId: string
-  coreName: string
-  corePath: string
-  isDefault: boolean
-  pathValid: boolean
-  pathMessage: string
-  chromeVersion: string
-  instanceCount: number
-}
+import { fetchBrowserCores, saveBrowserCore, deleteBrowserCore, setDefaultBrowserCore, validateBrowserCorePath, openCorePath, fetchBrowserSettings, saveBrowserSettings, fetchCoreExtendedInfo, scanBrowserCores, importLocalBrowserCore, BrowserCoreDownload, fetchBrowserProxies, redownloadBrowserCore } from '../api'
+import { Environment, EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime'
+import { CoreDownloadModal } from './coreManagement/CoreDownloadModal'
+import { CoreEditModal } from './coreManagement/CoreEditModal'
+import { CoreSettingsCard } from './coreManagement/CoreSettingsCard'
+import { CoreSettingsModal } from './coreManagement/CoreSettingsModal'
+import { fetchCoreDownloadRecommendation } from './coreManagement/coreDownloadRecommendation'
+import type { CoreDownloadRecommendation } from './coreManagement/coreDownloadRecommendation'
+import type { CoreDisplayInfo, CoreDownloadForm, CoreDownloadProgress, CoreEditForm, CoreSettingsForm } from './coreManagement.types'
 
 export function CoreManagementPage() {
   const [cores, setCores] = useState<BrowserCore[]>([])
   const [displayList, setDisplayList] = useState<CoreDisplayInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   // 全局设置状态
   const [settings, setSettings] = useState<BrowserSettings>({
+    maxConcurrentInstances: 0,
     userDataRoot: '',
     defaultFingerprintArgs: [],
     defaultLaunchArgs: [],
     defaultStartUrls: [],
+    lightStartEnabled: true,
     restoreLastSession: false,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
+    defaultConnectorType: 'xray',
   })
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
-  const [settingsForm, setSettingsForm] = useState({
+  const [settingsForm, setSettingsForm] = useState<CoreSettingsForm>({
     userDataRoot: '',
     defaultFingerprintArgs: '',
     defaultLaunchArgs: '',
     defaultStartUrls: '',
+    lightStartEnabled: true,
     restoreLastSession: false,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
@@ -48,7 +49,7 @@ export function CoreManagementPage() {
   // 编辑弹窗状态
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editingCore, setEditingCore] = useState<BrowserCore | null>(null)
-  const [editForm, setEditForm] = useState({ coreName: '', corePath: '' })
+  const [editForm, setEditForm] = useState<CoreEditForm>({ coreName: '', corePath: '' })
   const [saving, setSaving] = useState(false)
   const [pathValidating, setPathValidating] = useState(false)
   const [pathValidResult, setPathValidResult] = useState<BrowserCoreValidateResult | null>(null)
@@ -59,8 +60,12 @@ export function CoreManagementPage() {
 
   // 内核下载
   const [downloadModalOpen, setDownloadModalOpen] = useState(false)
-  const [downloadForm, setDownloadForm] = useState({ name: '', url: '', proxyMode: 'system', proxyId: '' })
-  const [downloadProgress, setDownloadProgress] = useState<{ phase: string; progress: number; message: string } | null>(null)
+  const [downloadForm, setDownloadForm] = useState<CoreDownloadForm>({ name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
+  const [downloadProgress, setDownloadProgress] = useState<CoreDownloadProgress | null>(null)
+  const [downloadRecommendation, setDownloadRecommendation] = useState<CoreDownloadRecommendation | null>(null)
+  const [downloadRecommendationLoading, setDownloadRecommendationLoading] = useState(false)
+  const [downloadRecommendationError, setDownloadRecommendationError] = useState('')
+  const [importProgress, setImportProgress] = useState<CoreDownloadProgress | null>(null)
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
 
   useEffect(() => {
@@ -83,8 +88,17 @@ export function CoreManagementPage() {
     }
     EventsOn('download:progress', onDownloadProgress)
 
+    const onImportProgress = (data: { phase: string; progress: number; message: string }) => {
+      setImportProgress(data)
+      if (data.phase === 'done' || data.phase === 'error') {
+        setTimeout(() => setImportProgress(null), 1200)
+      }
+    }
+    EventsOn('core-import:progress', onImportProgress)
+
     return () => {
       EventsOff('download:progress')
+      EventsOff('core-import:progress')
     }
   }, [])
 
@@ -198,6 +212,9 @@ export function CoreManagementPage() {
           <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleEdit(record) }}>
             编辑
           </Button>
+          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleRedownload(record) }}>
+            重新下载
+          </Button>
           {!record.isDefault && (
             <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleSetDefault(record.coreId) }}>
               设为默认
@@ -234,6 +251,24 @@ export function CoreManagementPage() {
     }
   }
 
+  const handleImportLocal = async () => {
+    setImporting(true)
+    setImportProgress({ phase: 'selecting', progress: 0, message: '请选择本地内核包...' })
+    try {
+      const imported = await importLocalBrowserCore()
+      if (!imported) {
+        setImportProgress(null)
+        return
+      }
+      await loadData()
+      toast.success(`已导入：${imported.coreName}`)
+    } catch (error: any) {
+      toast.error(error?.message || '导入失败')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   // 新增内核
   const handleAdd = () => {
     setEditingCore(null)
@@ -251,6 +286,52 @@ export function CoreManagementPage() {
       setPathValidResult({ valid: record.pathValid, message: record.pathMessage })
       setEditModalOpen(true)
     }
+  }
+
+  const loadCoreDownloadRecommendation = async () => {
+    setDownloadRecommendationLoading(true)
+    setDownloadRecommendationError('')
+    try {
+      let runtimeEnv: { platform?: string; arch?: string } | null = null
+      try {
+        runtimeEnv = await Environment()
+      } catch {
+        runtimeEnv = null
+      }
+      const recommendation = await fetchCoreDownloadRecommendation(runtimeEnv)
+      setDownloadRecommendation(recommendation)
+      if (!recommendation) {
+        setDownloadRecommendationError('当前环境没有可自动解压的 Release 压缩包')
+        return
+      }
+      setDownloadForm(prev => ({
+        ...prev,
+        url: prev.url.trim() ? prev.url : recommendation.downloadUrl,
+      }))
+    } catch (error: any) {
+      setDownloadRecommendation(null)
+      setDownloadRecommendationError(error?.message || '获取推荐地址失败')
+    } finally {
+      setDownloadRecommendationLoading(false)
+    }
+  }
+
+  const handleOpenDownload = () => {
+    setDownloadForm({ name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
+    setDownloadProgress(null)
+    setDownloadRecommendation(null)
+    setDownloadRecommendationError('')
+    setDownloadModalOpen(true)
+    void loadCoreDownloadRecommendation()
+  }
+
+  const handleRedownload = (record: CoreDisplayInfo) => {
+    setDownloadForm({ coreId: record.coreId, name: record.coreName, url: '', proxyMode: 'system', proxyId: '', mode: 'redownload' })
+    setDownloadProgress(null)
+    setDownloadRecommendation(null)
+    setDownloadRecommendationError('')
+    setDownloadModalOpen(true)
+    void loadCoreDownloadRecommendation()
   }
 
   // 保存内核
@@ -322,8 +403,8 @@ export function CoreManagementPage() {
       toast.error('请输入名称和下载地址')
       return
     }
-    if (cores.some(c => c.coreName.toLowerCase() === downloadForm.name.trim().toLowerCase())) {
-      toast.error('该内核名称已存在')
+    if (downloadForm.mode === 'redownload' && !downloadForm.coreId) {
+      toast.error('缺少内核ID')
       return
     }
     setDownloadProgress({ phase: 'starting', progress: 0, message: '准备下载...' })
@@ -342,7 +423,11 @@ export function CoreManagementPage() {
         }
       }
 
-      await BrowserCoreDownload(downloadForm.name.trim(), downloadForm.url.trim(), targetProxy)
+      if (downloadForm.mode === 'redownload') {
+        await redownloadBrowserCore(downloadForm.coreId || '', downloadForm.url.trim(), targetProxy)
+      } else {
+        await BrowserCoreDownload(downloadForm.name.trim(), downloadForm.url.trim(), targetProxy)
+      }
     } catch (err: any) {
       toast.error(err.message || '内部启动下载失败')
       setDownloadProgress(null)
@@ -356,6 +441,7 @@ export function CoreManagementPage() {
       defaultFingerprintArgs: settings.defaultFingerprintArgs.join('\n'),
       defaultLaunchArgs: settings.defaultLaunchArgs.join('\n'),
       defaultStartUrls: settings.defaultStartUrls.join('\n'),
+      lightStartEnabled: settings.lightStartEnabled,
       restoreLastSession: settings.restoreLastSession,
       startReadyTimeoutMs: settings.startReadyTimeoutMs,
       startStableWindowMs: settings.startStableWindowMs,
@@ -368,13 +454,16 @@ export function CoreManagementPage() {
     setSavingSettings(true)
     try {
       const newSettings: BrowserSettings = {
+        maxConcurrentInstances: 0,
         userDataRoot: settingsForm.userDataRoot.trim(),
         defaultFingerprintArgs: settingsForm.defaultFingerprintArgs.split('\n').map(s => s.trim()).filter(Boolean),
         defaultLaunchArgs: settingsForm.defaultLaunchArgs.split('\n').map(s => s.trim()).filter(Boolean),
         defaultStartUrls: settingsForm.defaultStartUrls.split('\n').map(s => s.trim()).filter(Boolean),
+        lightStartEnabled: settingsForm.lightStartEnabled,
         restoreLastSession: settingsForm.restoreLastSession,
         startReadyTimeoutMs: Math.max(1000, Number(settingsForm.startReadyTimeoutMs) || 3000),
         startStableWindowMs: Math.max(0, Number(settingsForm.startStableWindowMs) || 1200),
+        defaultConnectorType: settings.defaultConnectorType || 'xray',
       }
       await saveBrowserSettings(newSettings)
       setSettings(newSettings)
@@ -389,83 +478,32 @@ export function CoreManagementPage() {
 
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="space-y-4 animate-fade-in">
+      <Card padding="none" className="shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">内核管理</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">管理 Chrome 内核版本和全局设置</p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setDownloadModalOpen(true)}>下载内核</Button>
-          <Button size="sm" variant="secondary" onClick={handleScan} loading={scanning}>扫描内核</Button>
-          <Button size="sm" onClick={handleAdd}>新增内核</Button>
-        </div>
-      </div>
-
-      {/* 全局设置卡片 */}
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-[var(--color-text-muted)]" />
-            <h3 className="text-base font-medium text-[var(--color-text-primary)]">全局设置</h3>
-          </div>
-          <Button size="sm" variant="ghost" onClick={handleEditSettings}>
-            <Edit2 className="w-4 h-4 mr-1" />
-            编辑
-          </Button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">用户数据根目录</p>
-            <p className="text-sm text-[var(--color-text-primary)]">{settings.userDataRoot || '-'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">默认指纹参数</p>
-            {settings.defaultFingerprintArgs.length > 0 ? (
-              <pre className="text-xs text-[var(--color-text-secondary)] bg-[var(--color-bg-subtle)] p-2 rounded max-h-20 overflow-auto">
-                {settings.defaultFingerprintArgs.join('\n')}
-              </pre>
-            ) : (
-              <p className="text-sm text-[var(--color-text-primary)]">-</p>
-            )}
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">默认启动参数</p>
-            {settings.defaultLaunchArgs.length > 0 ? (
-              <pre className="text-xs text-[var(--color-text-secondary)] bg-[var(--color-bg-subtle)] p-2 rounded max-h-20 overflow-auto">
-                {settings.defaultLaunchArgs.join('\n')}
-              </pre>
-            ) : (
-              <p className="text-sm text-[var(--color-text-primary)]">-</p>
-            )}
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">默认启动页面</p>
-            {settings.defaultStartUrls.length > 0 ? (
-              <pre className="text-xs text-[var(--color-text-secondary)] bg-[var(--color-bg-subtle)] p-2 rounded max-h-20 overflow-auto">
-                {settings.defaultStartUrls.join('\n')}
-              </pre>
-            ) : (
-              <p className="text-sm text-[var(--color-text-primary)]">-</p>
-            )}
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">恢复上次标签页</p>
-            <p className="text-sm text-[var(--color-text-primary)]">{settings.restoreLastSession ? '开启' : '关闭'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">启动就绪超时</p>
-            <p className="text-sm text-[var(--color-text-primary)]">{settings.startReadyTimeoutMs} ms</p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">启动稳定窗口</p>
-            <p className="text-sm text-[var(--color-text-primary)]">{settings.startStableWindowMs} ms</p>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Button size="sm" variant="secondary" onClick={handleOpenDownload}>下载内核</Button>
+            <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
+            <Button size="sm" variant="secondary" onClick={handleImportLocal} loading={importing}>导入本地</Button>
+            <Button size="sm" variant="secondary" onClick={handleScan} loading={scanning}>扫描内核</Button>
+            <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
+            <Button size="sm" onClick={handleAdd}>新增内核</Button>
           </div>
         </div>
       </Card>
 
+      {importProgress && (
+        <div className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-secondary)] px-3 py-2 text-sm">
+          <span className="text-[var(--color-text-secondary)]">{importProgress.message}</span>
+          <span className="text-[var(--color-text-muted)]">{Math.max(0, Math.min(100, importProgress.progress))}%</span>
+        </div>
+      )}
+
+      <CoreSettingsCard settings={settings} onEdit={handleEditSettings} />
+
       {/* 内核列表卡片 */}
-      <Card title="内核列表" subtitle="已配置的 Chrome 内核">
+      <Card title="内核列表">
         <Table
           columns={columns}
           data={displayList}
@@ -475,126 +513,26 @@ export function CoreManagementPage() {
         />
       </Card>
 
-      {/* 全局设置编辑弹窗 */}
-      <Modal
+      <CoreSettingsModal
         open={settingsModalOpen}
+        form={settingsForm}
+        saving={savingSettings}
+        setForm={setSettingsForm}
         onClose={() => setSettingsModalOpen(false)}
-        title="编辑全局设置"
-        width="550px"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setSettingsModalOpen(false)}>取消</Button>
-            <Button onClick={handleSaveSettings} loading={savingSettings}>保存</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <FormItem label="用户数据根目录">
-            <Input
-              value={settingsForm.userDataRoot}
-              onChange={e => setSettingsForm(prev => ({ ...prev, userDataRoot: e.target.value }))}
-              placeholder="例如：data"
-            />
-          </FormItem>
-          <FormItem label="默认指纹参数">
-            <Textarea
-              value={settingsForm.defaultFingerprintArgs}
-              onChange={e => setSettingsForm(prev => ({ ...prev, defaultFingerprintArgs: e.target.value }))}
-              rows={4}
-              placeholder="每行一个参数，如 --fingerprint-brand=Chrome"
-            />
-          </FormItem>
-          <FormItem label="默认启动参数">
-            <Textarea
-              value={settingsForm.defaultLaunchArgs}
-              onChange={e => setSettingsForm(prev => ({ ...prev, defaultLaunchArgs: e.target.value }))}
-              rows={4}
-              placeholder="每行一个参数，如 --disable-sync"
-            />
-          </FormItem>
-          <FormItem label="默认启动页面" hint="每行一个 URL，留空则启动时不自动打开页面">
-            <Textarea
-              value={settingsForm.defaultStartUrls}
-              onChange={e => setSettingsForm(prev => ({ ...prev, defaultStartUrls: e.target.value }))}
-              rows={4}
-              placeholder="启动 URL"
-            />
-          </FormItem>
-          <FormItem label="恢复上次关闭的标签页" hint="关闭后只打开默认启动页或空白页">
-            <div className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] px-3 py-2">
-              <div>
-                <p className="text-sm text-[var(--color-text-primary)]">允许恢复旧 tab</p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">关闭后，下次启动会继续恢复之前的标签页和窗口。</p>
-              </div>
-              <Switch
-                checked={settingsForm.restoreLastSession}
-                onChange={checked => setSettingsForm(prev => ({ ...prev, restoreLastSession: checked }))}
-              />
-            </div>
-          </FormItem>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormItem label="启动就绪超时（毫秒）" hint="默认 3000，慢机器可调到 5000-10000">
-              <Input
-                type="number"
-                min={1000}
-                step={500}
-                value={settingsForm.startReadyTimeoutMs}
-                onChange={e => setSettingsForm(prev => ({ ...prev, startReadyTimeoutMs: Math.max(1000, Number(e.target.value) || 3000) }))}
-                placeholder="3000"
-              />
-            </FormItem>
-            <FormItem label="启动稳定窗口（毫秒）" hint="建议 1200-3000">
-              <Input
-                type="number"
-                min={0}
-                step={100}
-                value={settingsForm.startStableWindowMs}
-                onChange={e => setSettingsForm(prev => ({ ...prev, startStableWindowMs: Math.max(0, Number(e.target.value) || 1200) }))}
-                placeholder="1200"
-              />
-            </FormItem>
-          </div>
-        </div>
-      </Modal>
+        onSave={handleSaveSettings}
+      />
 
-      {/* 新增/编辑内核弹窗 */}
-      <Modal
+      <CoreEditModal
         open={editModalOpen}
+        isEditing={Boolean(editingCore)}
+        form={editForm}
+        saving={saving}
+        pathValidating={pathValidating}
+        pathValidResult={pathValidResult}
+        setForm={setEditForm}
         onClose={() => setEditModalOpen(false)}
-        title={editingCore ? '编辑内核' : '新增内核'}
-        width="500px"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setEditModalOpen(false)}>取消</Button>
-            <Button onClick={handleSaveCore} loading={saving}>保存</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <FormItem label="内核名称" required>
-            <Input
-              value={editForm.coreName}
-              onChange={e => setEditForm(prev => ({ ...prev, coreName: e.target.value }))}
-              placeholder="例如：Chrome 142"
-            />
-          </FormItem>
-          <FormItem label="内核路径" required>
-            <Input
-              value={editForm.corePath}
-              onChange={e => setEditForm(prev => ({ ...prev, corePath: e.target.value }))}
-              placeholder="相对路径（如 chrome）或绝对路径"
-            />
-            {pathValidating && (
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">验证中...</p>
-            )}
-            {!pathValidating && pathValidResult && (
-              <p className={`text-xs mt-1 ${pathValidResult.valid ? 'text-green-600' : 'text-red-500'}`}>
-                {pathValidResult.message}
-              </p>
-            )}
-          </FormItem>
-        </div>
-      </Modal>
+        onSave={handleSaveCore}
+      />
 
       {/* 删除确认弹窗 */}
       <ConfirmModal
@@ -607,107 +545,20 @@ export function CoreManagementPage() {
         danger
       />
 
-      {/* 内核下载弹窗 */}
-      <Modal open={downloadModalOpen} onClose={() => {
-        if (downloadProgress && downloadProgress.phase !== 'done' && downloadProgress.phase !== 'error') {
-          toast.warning('正在下载中，请稍候...')
-          return
-        }
-        setDownloadModalOpen(false)
-        setDownloadProgress(null)
-      }} title="下载内核" width="480px"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => {
-              if (downloadProgress && downloadProgress.phase !== 'done' && downloadProgress.phase !== 'error') return;
-              setDownloadModalOpen(false)
-            }} disabled={downloadProgress !== null && downloadProgress.phase !== 'error'}>取消</Button>
-            <Button onClick={handleStartDownloadCore} loading={downloadProgress !== null && downloadProgress.phase !== 'error'}>开始下载</Button>
-          </>
-        }>
-        <div className="space-y-4">
-          <FormItem label="内核名称" required>
-            <Input
-              value={downloadForm.name}
-              onChange={e => setDownloadForm(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="例如: chrome-139"
-              disabled={downloadProgress !== null}
-            />
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">该名称将同时作为数据存放的子文件夹名。</p>
-          </FormItem>
-          <FormItem label="下载地址 (ZIP)" required>
-            <Input
-              value={downloadForm.url}
-              onChange={e => setDownloadForm(prev => ({ ...prev, url: e.target.value }))}
-              placeholder="https://github.com/.../release.zip"
-              disabled={downloadProgress !== null}
-            />
-            <div className="text-xs text-[var(--color-text-muted)] mt-2 flex items-center justify-between bg-[var(--color-bg-muted)] p-2 rounded">
-              <span>推荐指纹内核: fingerprint-chromium</span>
-              <button
-                type="button"
-                onClick={() => BrowserOpenURL('https://github.com/adryfish/fingerprint-chromium/releases')}
-                className="text-[var(--color-accent)] hover:underline cursor-pointer font-medium"
-              >
-                前往 Releases 页面获取链接
-              </button>
-            </div>
-          </FormItem>
-
-          <FormItem label="下载代理设置">
-            <select
-              value={downloadForm.proxyMode}
-              onChange={e => {
-                const mode = e.target.value
-                setDownloadForm(prev => ({
-                  ...prev,
-                  proxyMode: mode,
-                  proxyId: mode === 'custom' && proxies.length > 0 ? proxies[0].proxyId : ''
-                }))
-              }}
-              className="w-full h-9 px-3 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
-              disabled={downloadProgress !== null}
-            >
-              <option value="system">跟随系统全局代理</option>
-              <option value="direct">直连模式 (不使用代理)</option>
-              {proxies.length > 0 && <option value="custom">指定应用代理配置...</option>}
-            </select>
-          </FormItem>
-
-          {downloadForm.proxyMode === 'custom' && (
-            <FormItem label="选择代理池节点" required>
-              <select
-                value={downloadForm.proxyId}
-                onChange={e => setDownloadForm(prev => ({ ...prev, proxyId: e.target.value }))}
-                className="w-full h-9 px-3 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
-                disabled={downloadProgress !== null}
-              >
-                {proxies.map(p => (
-                  <option key={p.proxyId} value={p.proxyId}>
-                    {p.proxyName} ({p.proxyConfig})
-                  </option>
-                ))}
-              </select>
-            </FormItem>
-          )}
-
-          {downloadProgress && (
-            <div className="mt-4 p-4 border border-[var(--color-border-default)] rounded-lg bg-[var(--color-bg-secondary)]">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="font-medium text-[var(--color-text-primary)]">{downloadProgress.message}</span>
-                <span className="text-[var(--color-text-muted)]">{downloadProgress.progress}%</span>
-              </div>
-              <div className="w-full bg-[var(--color-bg-surface)] rounded-full h-2 overflow-hidden border border-[var(--color-border-muted)]">
-                <div
-                  className="bg-[var(--color-accent)] h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.max(0, Math.min(100, downloadProgress.progress))}%` }}
-                ></div>
-              </div>
-            </div>
-          )}
-        </div>
-      </Modal>
-
+      <CoreDownloadModal
+        open={downloadModalOpen}
+        form={downloadForm}
+        progress={downloadProgress}
+        recommendation={downloadRecommendation}
+        recommendationLoading={downloadRecommendationLoading}
+        recommendationError={downloadRecommendationError}
+        proxies={proxies}
+        setForm={setDownloadForm}
+        setProgress={setDownloadProgress}
+        onRefreshRecommendation={loadCoreDownloadRecommendation}
+        onClose={() => setDownloadModalOpen(false)}
+        onStart={handleStartDownloadCore}
+      />
     </div>
   )
 }

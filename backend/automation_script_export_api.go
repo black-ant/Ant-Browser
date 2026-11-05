@@ -105,6 +105,72 @@ func (a *App) AutomationScriptExportZip(scriptID string) (map[string]any, error)
 	}, nil
 }
 
+func (a *App) AutomationScriptExportBatchZip(scriptIDs []string) (map[string]any, error) {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+
+	if a.ctx == nil {
+		return nil, fmt.Errorf("应用上下文未初始化")
+	}
+
+	normalizedIDs := make([]string, 0, len(scriptIDs))
+	seen := map[string]bool{}
+	for _, scriptID := range scriptIDs {
+		normalizedID := strings.TrimSpace(scriptID)
+		if normalizedID == "" || seen[normalizedID] {
+			continue
+		}
+		seen[normalizedID] = true
+		normalizedIDs = append(normalizedIDs, normalizedID)
+	}
+	if len(normalizedIDs) == 0 {
+		return nil, fmt.Errorf("请先勾选要导出的脚本")
+	}
+
+	store := a.automationScriptStore()
+	bundles := make([]automation.ImportedBundle, 0, len(normalizedIDs))
+	fileCount := 0
+	for _, scriptID := range normalizedIDs {
+		bundle, err := store.ExportBundle(scriptID)
+		if err != nil {
+			return nil, err
+		}
+		fileCount += len(bundle.Files)
+		bundles = append(bundles, bundle)
+	}
+
+	savePath, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           "导出脚本 ZIP",
+		DefaultFilename: buildAutomationScriptBatchZipFilename(len(bundles)),
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "ZIP 脚本包 (*.zip)", Pattern: "*.zip"},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("打开保存对话框失败: %w", err)
+	}
+	if strings.TrimSpace(savePath) == "" {
+		return map[string]any{
+			"cancelled": true,
+			"message":   "已取消导出",
+		}, nil
+	}
+
+	savePath = ensureAutomationScriptZipSuffix(savePath)
+	if err := automation.WriteScriptPackagesZip(savePath, bundles); err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"cancelled":   false,
+		"format":      "zip",
+		"path":        savePath,
+		"fileCount":   fileCount,
+		"scriptCount": len(bundles),
+		"message":     "脚本包已导出",
+	}, nil
+}
+
 func (a *App) AutomationScriptExportDirectory(scriptID string) (map[string]any, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
@@ -173,6 +239,13 @@ func buildAutomationScriptPackageZipFilename(scriptName string) string {
 		name = "automation-script"
 	}
 	return fmt.Sprintf("%s-package-%s.zip", name, time.Now().Format("20060102-150405"))
+}
+
+func buildAutomationScriptBatchZipFilename(scriptCount int) string {
+	if scriptCount <= 1 {
+		return buildAutomationScriptPackageZipFilename("automation-script")
+	}
+	return fmt.Sprintf("automation-scripts-%d-package-%s.zip", scriptCount, time.Now().Format("20060102-150405"))
 }
 
 func ensureAutomationScriptZipSuffix(path string) string {

@@ -6,17 +6,19 @@ import (
 	"os/exec"
 	goruntime "runtime"
 	"strings"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) shutdown(ctx context.Context) {
 	log := logger.New("App")
+	a.stopRuntimeEvents()
+	a.stopBackupScheduler()
+	a.stopProxySourceRefreshScheduler()
 	if a.shouldStopRuntimeServicesOnShutdown() {
 		log.Info("应用正在关闭...")
 		a.stopRuntimeServices()
 	} else {
 		log.Info("应用正在关闭（保留当前已打开的浏览器实例）...")
+		a.stopAppOnlyRuntimeServices()
 	}
 	a.finalizeShutdown()
 }
@@ -28,18 +30,16 @@ func (a *App) GetInterceptor() *logger.MethodInterceptor {
 // ForceQuit 设置强制退出标志并调用 runtime.Quit
 func (a *App) ForceQuit() {
 	a.setQuitMode(quitModeFull)
+	a.stopRuntimeEvents()
 	a.stopRuntimeServices()
-	if a.ctx != nil {
-		runtime.Quit(a.ctx)
-	}
+	a.runtimeQuit()
 }
 
 // QuitAppOnly 仅退出应用本身，保留当前已打开的浏览器实例。
 func (a *App) QuitAppOnly() {
 	a.setQuitMode(quitModeAppOnly)
-	if a.ctx != nil {
-		runtime.Quit(a.ctx)
-	}
+	a.stopRuntimeEvents()
+	a.runtimeQuit()
 }
 
 func Start(a *App, ctx context.Context) {
@@ -59,26 +59,38 @@ func platformSupportsTrayCloseFlowForOS(goos string) bool {
 }
 
 func (a *App) setQuitMode(mode quitMode) {
+	a.quitMu.Lock()
+	defer a.quitMu.Unlock()
 	a.forceQuit = true
 	a.quitMode = mode
 }
 
+func (a *App) isQuitRequested() bool {
+	a.quitMu.RLock()
+	defer a.quitMu.RUnlock()
+	return a.forceQuit
+}
+
 func (a *App) shouldStopRuntimeServicesOnShutdown() bool {
+	a.quitMu.RLock()
+	defer a.quitMu.RUnlock()
 	return a.quitMode != quitModeAppOnly
 }
 
 func ShouldBlockClose(a *App, ctx context.Context) bool {
-	if a.forceQuit {
+	if a.isQuitRequested() {
 		return false
 	}
 	if !platformSupportsTrayCloseFlow() {
 		return false
 	}
-	runtime.EventsEmit(ctx, "app:request-close")
+	a.emitRuntimeEventWithContext(ctx, "app:request-close")
 	return true
 }
 
 func (a *App) stopRuntimeServices() {
+	a.stopRuntimeEvents()
+	a.waitBackgroundTasks()
 	a.stopServicesOnce.Do(func() {
 		if a.automationMgr != nil {
 			a.automationMgr.StopAllTasks()
@@ -91,7 +103,7 @@ func (a *App) stopRuntimeServices() {
 		if a.xrayMgr != nil {
 			a.xrayMgr.StopAll()
 		}
-		a.clearProfileXrayBridges()
+		a.clearProfileProxyBridges()
 		if a.clashMgr != nil {
 			a.clashMgr.StopAll()
 		}
@@ -99,6 +111,18 @@ func (a *App) stopRuntimeServices() {
 			a.singboxMgr.StopAll()
 		}
 	})
+}
+
+func (a *App) stopAppOnlyRuntimeServices() {
+	a.stopRuntimeEvents()
+	a.waitBackgroundTasks()
+	if a.automationMgr != nil {
+		a.automationMgr.StopAllTasks()
+	}
+	if a.speedScheduler != nil {
+		a.speedScheduler.Stop()
+		a.speedScheduler = nil
+	}
 }
 
 func (a *App) stopTrackedBrowserProcesses() {

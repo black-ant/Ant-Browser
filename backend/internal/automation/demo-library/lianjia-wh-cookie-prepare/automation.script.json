@@ -1,0 +1,34 @@
+{
+  "format": "ant-automation-script",
+  "packageFormat": "ant-automation-script",
+  "manifestVersion": 1,
+  "id": "lianjia-wh-cookie-prepare",
+  "name": "链家武汉 Cookie 准备",
+  "description": "打开链家武汉首页，检测验证状态并导出当前 Cookie 供后续链家成交脚本使用。",
+  "type": "playwright-cdp",
+  "status": "ready",
+  "entryFile": "index.cjs",
+  "tags": [
+    "Playwright",
+    "链家",
+    "武汉",
+    "Cookie"
+  ],
+  "selector": {
+    "code": ""
+  },
+  "params": {
+    "targetUrl": "https://wh.lianjia.com/",
+    "timeoutMs": 60000,
+    "waitAfterLoadMs": 2500,
+    "captureScreenshot": true,
+    "keepOpen": true
+  },
+  "notes": "脚本只做 Cookie 准备，不绕过验证码，不抓取成交数据。若检测到 CAPTCHA，请在打开的浏览器实例里人工完成验证，再执行后续脚本或复制导出的 Cookie。",
+  "source": {
+    "type": "builtin",
+    "uri": "repo://backend/internal/automation/demo-library/lianjia-wh-cookie-prepare",
+    "ref": "HEAD",
+    "path": "lianjia-wh-cookie-prepare"
+  }
+}

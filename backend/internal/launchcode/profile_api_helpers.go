@@ -28,16 +28,20 @@ func decodeProfileWriteRequest(r *http.Request) (ProfileWriteRequest, int, strin
 
 func normalizeProfileInput(input browser.ProfileInput) browser.ProfileInput {
 	return browser.ProfileInput{
-		ProfileName:     strings.TrimSpace(input.ProfileName),
-		UserDataDir:     strings.TrimSpace(input.UserDataDir),
-		CoreId:          strings.TrimSpace(input.CoreId),
-		FingerprintArgs: normalizeStringSlice(input.FingerprintArgs),
-		ProxyId:         strings.TrimSpace(input.ProxyId),
-		ProxyConfig:     strings.TrimSpace(input.ProxyConfig),
-		LaunchArgs:      normalizeStringSlice(input.LaunchArgs),
-		Tags:            normalizeStringSlice(input.Tags),
-		Keywords:        normalizeStringSlice(input.Keywords),
-		GroupId:         strings.TrimSpace(input.GroupId),
+		ProfileName:        strings.TrimSpace(input.ProfileName),
+		UserDataDir:        strings.TrimSpace(input.UserDataDir),
+		CoreId:             strings.TrimSpace(input.CoreId),
+		RestoreLastSession: browser.NormalizeRestoreLastSessionMode(input.RestoreLastSession),
+		FingerprintArgs:    normalizeStringSlice(input.FingerprintArgs),
+		ProxyMode:          strings.TrimSpace(input.ProxyMode),
+		ProxyId:            strings.TrimSpace(input.ProxyId),
+		ProxyConfig:        strings.TrimSpace(input.ProxyConfig),
+		ProxyGroupName:     browser.NormalizeProxyGroupName(input.ProxyGroupName),
+		MemoryLimitMB:      input.MemoryLimitMB,
+		LaunchArgs:         normalizeStringSlice(input.LaunchArgs),
+		Tags:               normalizeStringSlice(input.Tags),
+		Keywords:           normalizeStringSlice(input.Keywords),
+		GroupId:            strings.TrimSpace(input.GroupId),
 	}
 }
 
@@ -46,16 +50,20 @@ func profileToInput(profile *browser.Profile) browser.ProfileInput {
 		return browser.ProfileInput{}
 	}
 	return browser.ProfileInput{
-		ProfileName:     strings.TrimSpace(profile.ProfileName),
-		UserDataDir:     strings.TrimSpace(profile.UserDataDir),
-		CoreId:          strings.TrimSpace(profile.CoreId),
-		FingerprintArgs: append([]string{}, profile.FingerprintArgs...),
-		ProxyId:         strings.TrimSpace(profile.ProxyId),
-		ProxyConfig:     strings.TrimSpace(profile.ProxyConfig),
-		LaunchArgs:      append([]string{}, profile.LaunchArgs...),
-		Tags:            append([]string{}, profile.Tags...),
-		Keywords:        append([]string{}, profile.Keywords...),
-		GroupId:         strings.TrimSpace(profile.GroupId),
+		ProfileName:        strings.TrimSpace(profile.ProfileName),
+		UserDataDir:        strings.TrimSpace(profile.UserDataDir),
+		CoreId:             strings.TrimSpace(profile.CoreId),
+		RestoreLastSession: browser.NormalizeRestoreLastSessionMode(profile.RestoreLastSession),
+		FingerprintArgs:    append([]string{}, profile.FingerprintArgs...),
+		ProxyMode:          strings.TrimSpace(profile.ProxyMode),
+		ProxyId:            strings.TrimSpace(profile.ProxyId),
+		ProxyConfig:        strings.TrimSpace(profile.ProxyConfig),
+		ProxyGroupName:     browser.NormalizeProxyGroupName(profile.ProxyGroupName),
+		MemoryLimitMB:      profile.MemoryLimitMB,
+		LaunchArgs:         append([]string{}, profile.LaunchArgs...),
+		Tags:               append([]string{}, profile.Tags...),
+		Keywords:           append([]string{}, profile.Keywords...),
+		GroupId:            strings.TrimSpace(profile.GroupId),
 	}
 }
 

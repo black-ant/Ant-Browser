@@ -11,20 +11,34 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	cdpHTTPTimeout               = 3 * time.Second
+	cdpWebSocketHandshakeTimeout = 3 * time.Second
+	cdpWebSocketReadTimeout      = 5 * time.Second
+)
+
 // ============================================================================
 // Cookie 管理 API（通过 CDP）
 // ============================================================================
 
 // CookieInfo 表示单条浏览器 Cookie
 type CookieInfo struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Expires  float64 `json:"expires"`
-	HttpOnly bool    `json:"httpOnly"`
-	Secure   bool    `json:"secure"`
-	SameSite string  `json:"sameSite"`
+	Name         string          `json:"name"`
+	Value        string          `json:"value"`
+	Domain       string          `json:"domain"`
+	Path         string          `json:"path"`
+	URL          string          `json:"url,omitempty"`
+	Expires      float64         `json:"expires"`
+	HttpOnly     bool            `json:"httpOnly"`
+	Secure       bool            `json:"secure"`
+	SameSite     string          `json:"sameSite"`
+	Priority     string          `json:"priority,omitempty"`
+	SameParty    bool            `json:"sameParty,omitempty"`
+	SourceScheme string          `json:"sourceScheme,omitempty"`
+	SourcePort   int             `json:"sourcePort,omitempty"`
+	HostOnly     bool            `json:"hostOnly,omitempty"`
+	Session      bool            `json:"session,omitempty"`
+	PartitionKey json.RawMessage `json:"partitionKey,omitempty"`
 }
 
 // cdpTarget 表示 /json 接口返回的调试目标
@@ -53,15 +67,41 @@ type cdpResponse struct {
 	} `json:"error,omitempty"`
 }
 
+func cdpGetEndpointBody(debugPort int, endpoint string) ([]byte, error) {
+	client := &http.Client{Timeout: cdpHTTPTimeout}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d%s", debugPort, endpoint))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+	return body, nil
+}
+
+func cdpDialWebSocket(wsURL string) (*websocket.Conn, error) {
+	dialer := *websocket.DefaultDialer
+	dialer.HandshakeTimeout = cdpWebSocketHandshakeTimeout
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
 // cdpCall 向指定 debugPort 发送单次 CDP 命令并返回 result 字段
 func cdpCall(debugPort int, method string, params map[string]any) (map[string]any, error) {
 	// 1. 获取 WebSocket 调试地址
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json", debugPort))
+	body, err := cdpGetEndpointBody(debugPort, "/json")
 	if err != nil {
 		return nil, fmt.Errorf("CDP /json 请求失败: %w", err)
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
 
 	var targets []cdpTarget
 	if err := json.Unmarshal(body, &targets); err != nil || len(targets) == 0 {
@@ -83,12 +123,12 @@ func cdpCall(debugPort int, method string, params map[string]any) (map[string]an
 	}
 
 	// 2. 建立 WebSocket 连接
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, err := cdpDialWebSocket(wsURL)
 	if err != nil {
 		return nil, fmt.Errorf("WebSocket 连接失败: %w", err)
 	}
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(cdpWebSocketReadTimeout))
 
 	// 3. 发送 CDP 命令
 	msg := cdpMessage{Id: 1, Method: method, Params: params}
@@ -108,13 +148,10 @@ func cdpCall(debugPort int, method string, params map[string]any) (map[string]an
 }
 
 func cdpBrowserCall(debugPort int, method string, params map[string]any) error {
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", debugPort))
+	body, err := cdpGetEndpointBody(debugPort, "/json/version")
 	if err != nil {
 		return fmt.Errorf("CDP /json/version 请求失败: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
 	var version cdpBrowserVersion
 	if err := json.Unmarshal(body, &version); err != nil {
 		return fmt.Errorf("CDP browser target 解析失败: %w", err)
@@ -124,12 +161,12 @@ func cdpBrowserCall(debugPort int, method string, params map[string]any) error {
 		return fmt.Errorf("未找到浏览器级 WebSocket 调试地址")
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, err := cdpDialWebSocket(wsURL)
 	if err != nil {
 		return fmt.Errorf("浏览器级 WebSocket 连接失败: %w", err)
 	}
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(cdpWebSocketReadTimeout))
 
 	msg := cdpMessage{Id: 1, Method: method, Params: params}
 	if err := conn.WriteJSON(msg); err != nil {
@@ -191,6 +228,61 @@ func (a *App) BrowserGetCookies(profileId string) ([]CookieInfo, error) {
 		return nil, fmt.Errorf("Cookie 解析失败: %w", err)
 	}
 	return cookies, nil
+}
+
+// BrowserSetCookies 通过 CDP 写入实例所有 Cookie。
+// 该接口只接受已由应用侧校验过的数据，用于跨设备实例迁移。
+func (a *App) BrowserSetCookies(profileId string, cookies []CookieInfo) error {
+	debugPort, err := a.getDebugPort(profileId)
+	if err != nil {
+		return err
+	}
+
+	params := map[string]any{
+		"cookies": buildCDPCookieParams(cookies),
+	}
+	_, err = cdpCall(debugPort, "Network.setCookies", params)
+	return err
+}
+
+func buildCDPCookieParams(cookies []CookieInfo) []map[string]any {
+	params := make([]map[string]any, 0, len(cookies))
+	for _, cookie := range cookies {
+		item := map[string]any{
+			"name":     cookie.Name,
+			"value":    cookie.Value,
+			"domain":   cookie.Domain,
+			"path":     cookie.Path,
+			"httpOnly": cookie.HttpOnly,
+			"secure":   cookie.Secure,
+		}
+		if cookie.URL != "" {
+			item["url"] = cookie.URL
+		}
+		if cookie.Expires > 0 {
+			item["expires"] = cookie.Expires
+		}
+		if cookie.SameSite != "" {
+			item["sameSite"] = cookie.SameSite
+		}
+		if cookie.Priority != "" {
+			item["priority"] = cookie.Priority
+		}
+		if cookie.SameParty {
+			item["sameParty"] = true
+		}
+		if cookie.SourceScheme != "" {
+			item["sourceScheme"] = cookie.SourceScheme
+		}
+		if cookie.SourcePort != 0 {
+			item["sourcePort"] = cookie.SourcePort
+		}
+		if len(cookie.PartitionKey) > 0 {
+			item["partitionKey"] = cookie.PartitionKey
+		}
+		params = append(params, item)
+	}
+	return params
 }
 
 // BrowserClearCookies 通过 CDP 清除实例所有 Cookie

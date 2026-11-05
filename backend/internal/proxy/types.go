@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,14 @@ type XrayBridge struct {
 	RefCount   int
 	LastUsedAt time.Time
 	Stopping   bool
+	Restarting bool
+	Outbounds  []interface{}
+	Routes     []interface{}
+	DNSServers string
+	ExitDone   chan struct{}
+	ExitErr    error
+	exitMu     sync.Mutex
+	waitOnce   sync.Once
 }
 
 // ProxyResult 代理解析结果

@@ -44,12 +44,26 @@ function Get-AntChromeResidualProcesses {
     }
   )
 }
-$targets = @(Get-AntChromeResidualProcesses | Sort-Object ProcessId -Descending)
+$browserProcesses = @(
+  Get-CimInstance Win32_Process | Where-Object {
+    $_.CommandLine -and
+    (
+      ($_.ExecutablePath -and $_.ExecutablePath.StartsWith(($root + 'chrome\'), [System.StringComparison]::OrdinalIgnoreCase)) -or
+      ($_.CommandLine -match '(?i)--user-data-dir(?:=|\s)' -and $_.CommandLine -match [regex]::Escape($root))
+    )
+  }
+)
+$targets = @(Get-AntChromeResidualProcesses | Where-Object {
+  $_.ExecutablePath.StartsWith(($root + 'bin\'), [System.StringComparison]::OrdinalIgnoreCase)
+} | Sort-Object ProcessId -Descending)
+if ($browserProcesses.Count -gt 0 -or $targets.Count -eq 0) { exit 0 }
 foreach ($p in $targets) {
   try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {}
 }
 Start-Sleep -Milliseconds 400
-$left = @(Get-AntChromeResidualProcesses)
+$left = @(Get-AntChromeResidualProcesses | Where-Object {
+  $_.ExecutablePath.StartsWith(($root + 'bin\'), [System.StringComparison]::OrdinalIgnoreCase)
+})
 if ($left.Count -gt 0) {
   $names = ($left | ForEach-Object { $_.Name + '#' + $_.ProcessId }) -join ', '
   Write-Host ('still running: ' + $names)

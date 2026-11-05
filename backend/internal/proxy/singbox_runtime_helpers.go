@@ -87,10 +87,11 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 
 	cfg := map[string]interface{}{
 		"log": map[string]interface{}{
-			"level":     "info",
+			"level":     "warn",
 			"output":    filepath.Join(baseDir, "singbox.log"),
 			"timestamp": true,
 		},
+		"dns": defaultSingBoxDNSConfig(),
 		"inbounds": []interface{}{
 			map[string]interface{}{
 				"type":        "socks",
@@ -107,7 +108,12 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 			},
 		},
 		"route": map[string]interface{}{
+			"default_domain_resolver": "public-dns",
 			"rules": []interface{}{
+				map[string]interface{}{
+					"protocol": "dns",
+					"outbound": "direct",
+				},
 				map[string]interface{}{
 					"inbound":  []string{"socks-in"},
 					"outbound": "proxy-out",
@@ -126,6 +132,25 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 		return "", err
 	}
 	return cfgPath, nil
+}
+
+func defaultSingBoxDNSConfig() map[string]interface{} {
+	return map[string]interface{}{
+		"servers": []interface{}{
+			map[string]interface{}{
+				"type":   "udp",
+				"tag":    "public-dns",
+				"server": "223.5.5.5",
+			},
+			map[string]interface{}{
+				"type":   "udp",
+				"tag":    "backup-dns",
+				"server": "119.29.29.29",
+			},
+		},
+		"final":    "public-dns",
+		"strategy": "ipv4_only",
+	}
 }
 
 func (m *SingBoxManager) resolveWorkdir(key string) string {

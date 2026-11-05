@@ -11,48 +11,33 @@ func buildOutboundFromClashTrojan(node map[string]interface{}) (map[string]inter
 		sni = getMapString(node, "servername")
 	}
 	network := getMapString(node, "network")
-	skipVerify := getMapBool(node, "skip-cert-verify")
-
 	out := map[string]interface{}{
 		"protocol": "trojan",
 		"tag":      "proxy-out",
 		"settings": map[string]interface{}{
-			"address":  host,
-			"port":     port,
-			"password": password,
+			"servers": []interface{}{
+				map[string]interface{}{
+					"address":  host,
+					"port":     port,
+					"password": password,
+				},
+			},
 		},
 	}
 	stream := map[string]interface{}{
 		"security": "tls",
 		"tlsSettings": map[string]interface{}{
-			"serverName":    sni,
-			"allowInsecure": skipVerify,
+			"serverName": sni,
 		},
 	}
+	applyClashTLSClientOptions(node, stream["tlsSettings"].(map[string]interface{}))
 	if network == "ws" {
 		stream["network"] = "ws"
-		ws := map[string]interface{}{}
-		if wsOpts, ok := node["ws-opts"]; ok {
-			if wsMap := toStringMap(wsOpts); wsMap != nil {
-				if path := getMapString(wsMap, "path"); path != "" {
-					ws["path"] = path
-				}
-				if headers := toStringMap(wsMap["headers"]); headers != nil {
-					if h := getMapString(headers, "Host"); h != "" {
-						ws["headers"] = map[string]interface{}{"Host": h}
-					}
-				}
-			}
-		}
-		stream["wsSettings"] = ws
+		stream["wsSettings"] = buildClashWSSettings(node)
 	} else if network == "grpc" {
 		stream["network"] = "grpc"
-		if grpcOpts, ok := node["grpc-opts"]; ok {
-			if grpcMap := toStringMap(grpcOpts); grpcMap != nil {
-				if svcName := getMapString(grpcMap, "grpc-service-name"); svcName != "" {
-					stream["grpcSettings"] = map[string]interface{}{"serviceName": svcName}
-				}
-			}
+		if grpc := buildClashGRPCSettings(node); len(grpc) > 0 {
+			stream["grpcSettings"] = grpc
 		}
 	}
 	out["streamSettings"] = stream
@@ -79,15 +64,18 @@ func buildOutboundFromClashSS(node map[string]interface{}) (map[string]interface
 		"protocol": "shadowsocks",
 		"tag":      "proxy-out",
 		"settings": map[string]interface{}{
-			"address":  host,
-			"port":     port,
-			"method":   cipher,
-			"password": password,
+			"servers": []interface{}{
+				map[string]interface{}{
+					"address":  host,
+					"port":     port,
+					"method":   cipher,
+					"password": password,
+				},
+			},
 		},
 	}
 	if plugin := getMapString(node, "plugin"); plugin != "" {
-		pluginOpts := getMapString(node, "plugin-opts")
-		_ = pluginOpts
+		return nil, "", fmt.Errorf("Shadowsocks plugin=%s 需要使用 Mihomo 内核，不能按裸 SS 走 Xray", plugin)
 	}
 	return out, "", nil
 }

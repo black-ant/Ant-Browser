@@ -55,7 +55,11 @@ func (a *App) BrowserProfileGetCode(profileId string) (string, error) {
 	if a.launchCodeSvc == nil {
 		return "", nil
 	}
-	return a.launchCodeSvc.EnsureCode(profileId)
+	code, err := a.launchCodeSvc.EnsureCode(profileId)
+	if err == nil {
+		a.setManagedProfileLaunchCode(profileId, code)
+	}
+	return code, err
 }
 
 // BrowserProfileRegenerateCode 重新生成实例的 LaunchCode（Wails 绑定）
@@ -63,7 +67,11 @@ func (a *App) BrowserProfileRegenerateCode(profileId string) (string, error) {
 	if a.launchCodeSvc == nil {
 		return "", nil
 	}
-	return a.launchCodeSvc.RegenerateCode(profileId)
+	code, err := a.launchCodeSvc.RegenerateCode(profileId)
+	if err == nil {
+		a.setManagedProfileLaunchCode(profileId, code)
+	}
+	return code, err
 }
 
 // BrowserProfileSetCode 自定义设置实例 LaunchCode（Wails 绑定）
@@ -71,7 +79,11 @@ func (a *App) BrowserProfileSetCode(profileId string, code string) (string, erro
 	if a.launchCodeSvc == nil {
 		return "", nil
 	}
-	return a.launchCodeSvc.SetCode(profileId, code)
+	updated, err := a.launchCodeSvc.SetCode(profileId, code)
+	if err == nil {
+		a.setManagedProfileLaunchCode(profileId, updated)
+	}
+	return updated, err
 }
 
 // BrowserInstanceStartByCode 通过 LaunchCode 启动实例（Wails 绑定）

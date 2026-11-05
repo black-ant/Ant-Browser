@@ -2,9 +2,25 @@ name: Publish Linux Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Optional package version override, for example 1.9.0
+        required: false
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-linux-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    name: Build Linux ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
@@ -34,22 +50,42 @@ jobs:
 
       - name: Install Linux build dependencies
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            curl \
+            dpkg-dev \
+            git \
+            libayatana-appindicator3-dev \
             libgtk-3-dev \
             libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            dpkg-dev \
-            fakeroot
+            patchelf \
+            pkg-config \
+            python3 \
+            tar
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Add Go bin to PATH
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      - name: Verify runtime files
+        run: bash tools/runtime/verify-runtime.sh linux-${{ matrix.arch }}
+
       - name: Build Linux packages
-        run: bash publish/linux/publish-linux.sh --arch ${{ matrix.arch }}
+        env:
+          VERSION: ${{ inputs.version }}
+          BROWSERSLIST_IGNORE_OLD_DATA: "1"
+        run: |
+          set -euo pipefail
+          args=(--arch "${{ matrix.arch }}")
+          if [[ -n "${VERSION:-}" ]]; then
+            args+=(--version "$VERSION")
+          fi
+          bash publish/linux/publish-linux.sh "${args[@]}"
 
       - name: Validate deb package metadata
         run: |
@@ -59,6 +95,18 @@ jobs:
           dpkg-deb -I "$deb_file"
           dpkg-deb -c "$deb_file" >/dev/null
 
+      - name: Validate tar package layout
+        run: |
+          set -euo pipefail
+          tar_file="$(ls -1 publish/output/AntBrowser-*-linux-${{ matrix.arch }}.tar.gz | head -n 1)"
+          validate_dir="$(mktemp -d)"
+          echo "Validating: $tar_file"
+          tar -xzf "$tar_file" -C "$validate_dir"
+          test -x "$validate_dir/ant-chrome"
+          test -x "$validate_dir/bin/xray"
+          test -x "$validate_dir/bin/sing-box"
+          test -f "$validate_dir/config.yaml"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -66,3 +114,26 @@ jobs:
           path: |
             publish/output/*_${{ matrix.arch }}.deb
             publish/output/*-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || gh release create "$TAG_NAME" --generate-notes
+          gh release upload "$TAG_NAME" release-artifacts/* --clobber

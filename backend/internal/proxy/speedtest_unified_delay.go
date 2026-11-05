@@ -12,11 +12,8 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 )
 
-// unifiedDelayTest 模拟 Clash unified-delay 模式：
-// 1. 通过代理建立到目标的 TCP 连接（预热，不计入延迟）
-// 2. 发送第一次 HTTP 请求预热连接（不计入延迟）
-// 3. 在已建立的连接上发送第二次 HTTP 请求，只计这次的 RTT
-// 这样测出的延迟 = 纯 HTTP 往返时间，和 Clash unified-delay: true 一致。
+// unifiedDelayTest 通过代理访问测速 URL，记录从代理拨号到首个 HTTP 响应完成的端到端耗时。
+// master 版本只统计第二次复用连接 HEAD 的 RTT，会漏掉代理拨号/握手耗时，导致显示延迟偏低。
 func unifiedDelayTest(proxyId string, px C.Proxy, testURL string, timeout time.Duration) TestResult {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -26,6 +23,7 @@ func unifiedDelayTest(proxyId string, px C.Proxy, testURL string, timeout time.D
 		return TestResult{ProxyId: proxyId, Ok: false, Error: fmt.Sprintf("URL 解析失败: %v", err)}
 	}
 
+	start := time.Now()
 	conn, err := px.DialContext(ctx, &addr)
 	if err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, Error: fmt.Sprintf("代理连接失败: %v", err)}
@@ -47,29 +45,20 @@ func unifiedDelayTest(proxyId string, px C.Proxy, testURL string, timeout time.D
 	}
 	defer client.CloseIdleConnections()
 
-	req1, _ := http.NewRequestWithContext(ctx, http.MethodHead, testURL, nil)
-	resp1, err := client.Do(req1)
-	if err != nil {
-		return TestResult{ProxyId: proxyId, Ok: false, Error: err.Error()}
-	}
-	resp1.Body.Close()
-
-	start := time.Now()
-	req2, _ := http.NewRequestWithContext(ctx, http.MethodHead, testURL, nil)
-	resp2, err := client.Do(req2)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodHead, testURL, nil)
+	resp, err := client.Do(req)
 	latency := time.Since(start).Milliseconds()
-
 	if err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, LatencyMs: latency, Error: err.Error()}
 	}
-	resp2.Body.Close()
+	resp.Body.Close()
 
-	if resp2.StatusCode != http.StatusOK && resp2.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return TestResult{
 			ProxyId:   proxyId,
 			Ok:        false,
 			LatencyMs: latency,
-			Error:     fmt.Sprintf("HTTP %d", resp2.StatusCode),
+			Error:     fmt.Sprintf("HTTP %d", resp.StatusCode),
 		}
 	}
 

@@ -179,6 +179,63 @@ func mapScriptTargetConfigValue(value any) ScriptTargetConfig {
 	}
 }
 
+func mapScriptPublicAPIValue(value any) ScriptPublicAPIConfig {
+	object, ok := value.(map[string]any)
+	if !ok || object == nil {
+		return ScriptPublicAPIConfig{}
+	}
+
+	return ScriptPublicAPIConfig{
+		Enabled:          mapBoolValueAny(object, "enabled"),
+		Method:           mapStringValueAny(object, "method"),
+		Path:             firstNonEmpty(mapStringValueAny(object, "path"), mapStringValueAny(object, "route")),
+		RequestMode:      mapStringValueAny(object, "requestMode"),
+		ResponseMode:     mapStringValueAny(object, "responseMode"),
+		TimeoutMs:        mapIntValueAny(object, "timeoutMs"),
+		RequestBodyText:  stringifyImportJSONValue(firstNonNil(object["requestBodyText"], object["requestBody"], object["requestExample"])),
+		ResponseBodyText: stringifyImportJSONValue(firstNonNil(object["responseBodyText"], object["responseBody"], object["responseExample"])),
+		Variables:        mapScriptPublicAPIVariablesValue(object["variables"]),
+	}
+}
+
+func mapScriptPublicAPIVariablesValue(value any) []ScriptPublicAPIVariable {
+	switch typed := value.(type) {
+	case []ScriptPublicAPIVariable:
+		return normalizeScriptPublicAPIVariables(typed)
+	case []any:
+		variables := make([]ScriptPublicAPIVariable, 0, len(typed))
+		for _, item := range typed {
+			object, ok := item.(map[string]any)
+			if !ok || object == nil {
+				continue
+			}
+			variables = append(variables, ScriptPublicAPIVariable{
+				Name:         firstNonEmpty(mapStringValueAny(object, "name"), mapStringValueAny(object, "key")),
+				DefaultValue: firstNonEmpty(mapStringValueAny(object, "defaultValue"), mapStringValueAny(object, "default"), mapStringValueAny(object, "value")),
+				Description:  firstNonEmpty(mapStringValueAny(object, "description"), mapStringValueAny(object, "label"), mapStringValueAny(object, "note")),
+				Required:     mapBoolValueAny(object, "required"),
+			})
+		}
+		return normalizeScriptPublicAPIVariables(variables)
+	case map[string]any:
+		variables := make([]ScriptPublicAPIVariable, 0, len(typed))
+		for key, rawValue := range typed {
+			variable := ScriptPublicAPIVariable{Name: key}
+			if object, ok := rawValue.(map[string]any); ok && object != nil {
+				variable.DefaultValue = firstNonEmpty(mapStringValueAny(object, "defaultValue"), mapStringValueAny(object, "default"), mapStringValueAny(object, "value"))
+				variable.Description = firstNonEmpty(mapStringValueAny(object, "description"), mapStringValueAny(object, "label"), mapStringValueAny(object, "note"))
+				variable.Required = mapBoolValueAny(object, "required")
+			} else if rawValue != nil {
+				variable.DefaultValue = strings.TrimSpace(fmt.Sprint(rawValue))
+			}
+			variables = append(variables, variable)
+		}
+		return normalizeScriptPublicAPIVariables(variables)
+	default:
+		return nil
+	}
+}
+
 func mapScriptTargetSelectorValue(value any) ScriptTargetSelector {
 	object, ok := value.(map[string]any)
 	if !ok || object == nil {
@@ -193,6 +250,32 @@ func mapScriptTargetSelectorValue(value any) ScriptTargetSelector {
 		Keywords:    mapStringSliceValue(object, "keywords"),
 		Tags:        mapStringSliceValue(object, "tags"),
 	}
+}
+
+func mapBoolValueAny(payload map[string]any, key string) bool {
+	if payload == nil {
+		return false
+	}
+	value, exists := payload[key]
+	if !exists || value == nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "true", "1", "yes", "enabled", "on":
+			return true
+		}
+	case float64:
+		return typed != 0
+	case int:
+		return typed != 0
+	case int64:
+		return typed != 0
+	}
+	return false
 }
 
 func firstNonNil(values ...any) any {

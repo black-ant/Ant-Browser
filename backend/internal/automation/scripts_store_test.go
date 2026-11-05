@@ -179,6 +179,95 @@ func TestScriptStorePersistsTargetConfig(t *testing.T) {
 	}
 }
 
+func TestScriptStorePersistsPublicAPIConfig(t *testing.T) {
+	store := NewScriptStore(filepath.Join(t.TempDir(), "data", "automation", "scripts"))
+
+	saved, err := store.Save(ScriptRecord{
+		ID:         "public-api-script",
+		Name:       "对外接口脚本",
+		EntryFile:  "index.cjs",
+		ScriptText: "module.exports.run = async () => ({ ok: true })",
+		PublicAPI: ScriptPublicAPIConfig{
+			Enabled:          true,
+			Method:           "post",
+			Path:             "/API/Automation/Hooks/Mail/Proton First Message",
+			RequestMode:      "params-only",
+			ResponseMode:     "result-only",
+			TimeoutMs:        999,
+			RequestBodyText:  "{\n  \"recipientQuery\": \"target@example.com\"\n}",
+			ResponseBodyText: "{\n  \"verificationCode\": \"429792\"\n}",
+			Variables: []ScriptPublicAPIVariable{
+				{Name: "recipientQuery", DefaultValue: "target@example.com", Description: "收件人", Required: true},
+				{Name: "recipientQuery", DefaultValue: "duplicate"},
+				{Name: "senderEmail", DefaultValue: "otp@tm1.openai.com, noreply@tm.openai.com"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	if !saved.PublicAPI.Enabled {
+		t.Fatalf("expected public api to be enabled")
+	}
+	if saved.PublicAPI.Method != "POST" {
+		t.Fatalf("expected public api method POST, got %+v", saved.PublicAPI)
+	}
+	if saved.PublicAPI.Path != "mail/proton-first-message" {
+		t.Fatalf("expected normalized public api path, got %+v", saved.PublicAPI)
+	}
+	if saved.PublicAPI.TimeoutMs != 1000 {
+		t.Fatalf("expected normalized public api timeout 1000, got %+v", saved.PublicAPI)
+	}
+	if len(saved.PublicAPI.Variables) != 2 || saved.PublicAPI.Variables[0].Name != "recipientQuery" || !saved.PublicAPI.Variables[0].Required {
+		t.Fatalf("expected normalized public api variables, got %+v", saved.PublicAPI.Variables)
+	}
+
+	loaded, err := store.Get(saved.ID)
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if loaded.PublicAPI.Path != "mail/proton-first-message" {
+		t.Fatalf("unexpected persisted public api path: %+v", loaded.PublicAPI)
+	}
+	if loaded.PublicAPI.RequestMode != "params-only" || loaded.PublicAPI.ResponseMode != "result-only" {
+		t.Fatalf("unexpected persisted public api modes: %+v", loaded.PublicAPI)
+	}
+	if len(loaded.PublicAPI.Variables) != 2 || loaded.PublicAPI.Variables[1].Name != "senderEmail" {
+		t.Fatalf("unexpected persisted public api variables: %+v", loaded.PublicAPI.Variables)
+	}
+}
+
+func TestScriptStoreRejectsDuplicatePublicAPIPath(t *testing.T) {
+	store := NewScriptStore(filepath.Join(t.TempDir(), "data", "automation", "scripts"))
+
+	if _, err := store.Save(ScriptRecord{
+		ID:         "hook-a",
+		Name:       "Hook A",
+		EntryFile:  "index.cjs",
+		ScriptText: "module.exports.run = async () => ({ ok: true })",
+		PublicAPI: ScriptPublicAPIConfig{
+			Enabled: true,
+			Path:    "mail/proton-first-message",
+		},
+	}); err != nil {
+		t.Fatalf("initial Save returned error: %v", err)
+	}
+
+	if _, err := store.Save(ScriptRecord{
+		ID:         "hook-b",
+		Name:       "Hook B",
+		EntryFile:  "index.cjs",
+		ScriptText: "module.exports.run = async () => ({ ok: true })",
+		PublicAPI: ScriptPublicAPIConfig{
+			Enabled: false,
+			Path:    "/api/automation/hooks/mail/proton-first-message",
+		},
+	}); err == nil {
+		t.Fatalf("expected duplicate public api path to fail")
+	}
+}
+
 func TestScriptStoreReadsLegacyManifestAndMigratesOnSave(t *testing.T) {
 	store := NewScriptStore(filepath.Join(t.TempDir(), "data", "automation", "scripts"))
 	scriptDir := filepath.Join(store.rootDir, "legacy-script")

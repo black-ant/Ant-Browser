@@ -20,7 +20,42 @@ func (a *App) BrowserInstanceStartWithParams(profileId string, extraLaunchArgs [
 }
 
 func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []string, startURLs []string, skipDefaultStartURLs bool, preferVisibleWindow bool, forceDirectProxy bool, proxyId string, proxyConfig string) (*BrowserProfile, error) {
+	release, _ := a.acquireInstanceLaunchSlot(profileId)
+	admissionKept := false
+	defer func() {
+		if !admissionKept {
+			release()
+		}
+	}()
 	input := newBrowserStartInput(profileId, extraLaunchArgs, startURLs, skipDefaultStartURLs, preferVisibleWindow, forceDirectProxy, proxyId, proxyConfig)
+	profile, err := a.startBrowserInstanceWithInput(input)
+	if err != nil {
+		return profile, err
+	}
+	// 启动成功（含"已在运行被复用"）：名额保持占用，直到实例停止时释放。
+	admissionKept = true
+	return profile, nil
+}
+
+func (a *App) browserInstanceStartFreshInternal(profileId string, extraLaunchArgs []string, startURLs []string, skipDefaultStartURLs bool, preferVisibleWindow bool, forceDirectProxy bool, proxyId string, proxyConfig string) (*BrowserProfile, error) {
+	release, _ := a.acquireInstanceLaunchSlot(profileId)
+	admissionKept := false
+	defer func() {
+		if !admissionKept {
+			release()
+		}
+	}()
+	input := newBrowserStartInput(profileId, extraLaunchArgs, startURLs, skipDefaultStartURLs, preferVisibleWindow, forceDirectProxy, proxyId, proxyConfig)
+	input.RejectExistingRuntime = true
+	profile, err := a.startBrowserInstanceWithInput(input)
+	if err != nil {
+		return profile, err
+	}
+	admissionKept = true
+	return profile, nil
+}
+
+func (a *App) startBrowserInstanceWithInput(input browserStartInput) (*BrowserProfile, error) {
 	a.browserMgr.Mutex.Lock()
 	defer a.browserMgr.Mutex.Unlock()
 
@@ -30,6 +65,10 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 	}
 
 	plan, err := a.prepareBrowserStartPlan(input, profile)
+	if err == errBrowserStartHandledByRecoveredRuntime {
+		a.emitBrowserInstanceStarted(profile, true)
+		return profile, nil
+	}
 	if err != nil {
 		return profile, err
 	}

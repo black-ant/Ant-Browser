@@ -46,6 +46,14 @@ export async function startBrowserInstanceByCode(code: string): Promise<BrowserP
   return startBrowserInstance(profile.profileId)
 }
 
+export async function openBrowserFingerprintCheck(profileId: string): Promise<BrowserProfile | null> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserInstanceOpenFingerprintCheck) {
+    return (await bindings.BrowserInstanceOpenFingerprintCheck(profileId)) || null
+  }
+  return startBrowserInstance(profileId)
+}
+
 export async function stopBrowserInstance(profileId: string): Promise<BrowserProfile | null> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserInstanceStop) {
@@ -93,6 +101,15 @@ export async function openUserDataDir(userDataDir: string): Promise<boolean> {
   const bindings: any = await getBindings()
   if (bindings?.OpenUserDataDir) {
     await bindings.OpenUserDataDir(userDataDir)
+    return true
+  }
+  return false
+}
+
+export async function openUserDataRoot(): Promise<boolean> {
+  const bindings: any = await getBindings()
+  if (bindings?.OpenUserDataRoot) {
+    await bindings.OpenUserDataRoot()
     return true
   }
   return false

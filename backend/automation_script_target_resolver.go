@@ -3,7 +3,6 @@ package backend
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -14,19 +13,127 @@ import (
 const defaultAutomationCreateNameTemplate = "${templateName}-${timestamp}"
 
 func (a *App) resolveAutomationEffectiveSelector(script automation.ScriptRecord, input automation.ScriptRunRequest, required bool) (map[string]any, string, error) {
+	if mode := automationScriptRunTargetMode(script, input); mode != automationScriptTargetMode(script) {
+		script.TargetConfig.Mode = mode
+	}
 	overrideSelectorText := strings.TrimSpace(input.SelectorText)
-	if !input.UseScriptSelector && overrideSelectorText != "" {
+	if automationScriptTargetMode(script) == "manual" && !input.UseScriptSelector && overrideSelectorText != "" {
 		selector, err := parseAutomationJSONObject(overrideSelectorText, required)
 		return selector, "", err
 	}
 
-	if strings.TrimSpace(script.TargetConfig.Mode) != "" && !strings.EqualFold(script.TargetConfig.Mode, "manual") {
-		return a.resolveAutomationScriptTarget(script)
+	if automationScriptTargetMode(script) != "manual" {
+		targetInput := input.TargetInput
+		if targetInput == nil && !input.UseScriptSelector && overrideSelectorText != "" {
+			selector, err := parseAutomationJSONObject(overrideSelectorText, false)
+			if err != nil {
+				return nil, "", err
+			}
+			targetInput = selector
+		}
+		input.TargetInput = targetInput
+		effectiveScript, err := applyAutomationRunTargetInput(script, input.TargetInput)
+		if err != nil {
+			return nil, "", err
+		}
+		return a.resolveAutomationScriptTarget(effectiveScript)
 	}
 
 	selectorText := resolveAutomationRunJSONText(input.SelectorText, script.SelectorText, input.UseScriptSelector)
 	selector, err := parseAutomationJSONObject(selectorText, required)
 	return selector, "", err
+}
+
+func automationScriptTargetMode(script automation.ScriptRecord) string {
+	mode := strings.ToLower(strings.TrimSpace(script.TargetConfig.Mode))
+	switch mode {
+	case "existing", "create", "rotate":
+		return mode
+	default:
+		return "manual"
+	}
+}
+
+func automationScriptRunTargetMode(script automation.ScriptRecord, input automation.ScriptRunRequest) string {
+	mode := strings.ToLower(strings.TrimSpace(input.TargetMode))
+	switch mode {
+	case "manual", "existing", "create", "rotate":
+		return mode
+	default:
+		return automationScriptTargetMode(script)
+	}
+}
+
+func applyAutomationRunTargetInput(script automation.ScriptRecord, value any) (automation.ScriptRecord, error) {
+	if value == nil {
+		return script, nil
+	}
+	payload, err := marshalAutomationRunTargetInput(value)
+	if err != nil {
+		return script, err
+	}
+	if len(payload) == 0 {
+		return script, nil
+	}
+
+	switch automationScriptTargetMode(script) {
+	case "existing":
+		selector, err := decodeAutomationRunTargetSelector(payload)
+		if err != nil {
+			return script, fmt.Errorf("已有实例配置无效: %w", err)
+		}
+		script.TargetConfig.Selector = selector
+	case "rotate":
+		selector, err := decodeAutomationRunTargetSelector(payload)
+		if err != nil {
+			return script, fmt.Errorf("条件轮询配置无效: %w", err)
+		}
+		script.TargetConfig.Selector = selector
+	case "create":
+		var input struct {
+			TemplateSelector   automation.ScriptTargetSelector `json:"templateSelector"`
+			Selector           automation.ScriptTargetSelector `json:"selector"`
+			CreateNameTemplate string                          `json:"createNameTemplate"`
+			ProfileName        string                          `json:"profileName"`
+		}
+		if err := json.Unmarshal(payload, &input); err != nil {
+			return script, fmt.Errorf("targetInput must be a JSON object")
+		}
+		selector := input.TemplateSelector
+		if automationTargetSelectorEmpty(normalizeAutomationTargetSelector(selector)) {
+			selector = input.Selector
+		}
+		script.TargetConfig.TemplateSelector = selector
+		if name := strings.TrimSpace(input.CreateNameTemplate); name != "" {
+			script.TargetConfig.CreateNameTemplate = name
+		} else if name := strings.TrimSpace(input.ProfileName); name != "" {
+			script.TargetConfig.CreateNameTemplate = name
+		}
+	}
+	return script, nil
+}
+
+func marshalAutomationRunTargetInput(value any) ([]byte, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("targetInput must be a JSON object")
+	}
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil || object == nil {
+		return nil, fmt.Errorf("targetInput must be a JSON object")
+	}
+	if len(object) == 0 {
+		return nil, nil
+	}
+	return data, nil
+}
+
+func decodeAutomationRunTargetSelector(payload []byte) (automation.ScriptTargetSelector, error) {
+	var selector automation.ScriptTargetSelector
+	if err := json.Unmarshal(payload, &selector); err != nil {
+		return selector, fmt.Errorf("targetInput must be a JSON object")
+	}
+	return selector, nil
 }
 
 func (a *App) resolveAutomationScriptTarget(script automation.ScriptRecord) (map[string]any, string, error) {
@@ -225,98 +332,6 @@ func automationTargetSelectorEmpty(selector automation.ScriptTargetSelector) boo
 		len(selector.Tags) == 0
 }
 
-func filterAutomationProfiles(items []browser.Profile, keep func(browser.Profile) bool) []browser.Profile {
-	filtered := make([]browser.Profile, 0, len(items))
-	for _, item := range items {
-		if keep(item) {
-			filtered = append(filtered, item)
-		}
-	}
-	return filtered
-}
-
-func automationProfileHasAllTags(profile browser.Profile, required []string) bool {
-	if len(required) == 0 {
-		return true
-	}
-	if len(profile.Tags) == 0 {
-		return false
-	}
-
-	for _, want := range required {
-		found := false
-		for _, tag := range profile.Tags {
-			if strings.EqualFold(strings.TrimSpace(tag), want) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
-}
-
-func automationProfileMatchesAllKeywordQueries(profile browser.Profile, queries []string) bool {
-	if len(queries) == 0 {
-		return true
-	}
-	if len(profile.Keywords) == 0 {
-		return false
-	}
-
-	for _, query := range queries {
-		queryLower := strings.ToLower(strings.TrimSpace(query))
-		found := false
-		for _, keyword := range profile.Keywords {
-			if strings.Contains(strings.ToLower(strings.TrimSpace(keyword)), queryLower) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
-}
-
-func sortAutomationProfilesForTarget(items []browser.Profile) {
-	sort.Slice(items, func(i, j int) bool {
-		leftName := strings.ToLower(strings.TrimSpace(items[i].ProfileName))
-		rightName := strings.ToLower(strings.TrimSpace(items[j].ProfileName))
-		if leftName != rightName {
-			return leftName < rightName
-		}
-		return items[i].ProfileId < items[j].ProfileId
-	})
-}
-
-func buildAutomationTargetAmbiguousError(items []browser.Profile) string {
-	const maxPreview = 5
-	parts := make([]string, 0, minAutomationInt(len(items), maxPreview))
-	for i := 0; i < len(items) && i < maxPreview; i++ {
-		parts = append(parts, automationProfileLabel(items[i]))
-	}
-	suffix := ""
-	if len(items) > maxPreview {
-		suffix = fmt.Sprintf(" 等 %d 个实例", len(items))
-	}
-	return fmt.Sprintf("命中了多个实例：%s%s。请改用 code/profileId，或继续加分组、标签、关键字缩小范围", strings.Join(parts, "，"), suffix)
-}
-
-func automationProfileLabel(profile browser.Profile) string {
-	label := strings.TrimSpace(profile.ProfileName)
-	if label == "" {
-		label = strings.TrimSpace(profile.ProfileId)
-	}
-	if code := strings.TrimSpace(profile.LaunchCode); code != "" {
-		return fmt.Sprintf("%s[id=%s, code=%s]", label, profile.ProfileId, code)
-	}
-	return fmt.Sprintf("%s[id=%s]", label, profile.ProfileId)
-}
-
 func automationProfileSelector(profileID string) map[string]any {
 	return map[string]any{
 		"profileId": strings.TrimSpace(profileID),
@@ -381,23 +396,4 @@ func buildAutomationCreatedProfileName(template string, script automation.Script
 		templateName = "自动化实例"
 	}
 	return fmt.Sprintf("%s-%s", templateName, now.Format("20060102-150405"))
-}
-
-func appendAutomationRunSummary(summary string, targetSummary string) string {
-	summary = strings.TrimSpace(summary)
-	targetSummary = strings.TrimSpace(targetSummary)
-	if targetSummary == "" {
-		return summary
-	}
-	if summary == "" {
-		return targetSummary
-	}
-	return summary + " · " + targetSummary
-}
-
-func minAutomationInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

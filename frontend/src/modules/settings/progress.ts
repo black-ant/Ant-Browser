@@ -2,6 +2,9 @@ export interface BackupExportProgress {
   phase: string
   progress: number
   message: string
+  bytesTransferred?: number
+  totalBytes?: number
+  bytesPerSecond?: number
   componentId?: string
   componentName?: string
   entryIndex?: number

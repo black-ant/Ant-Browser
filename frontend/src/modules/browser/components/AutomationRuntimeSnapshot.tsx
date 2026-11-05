@@ -23,7 +23,6 @@ interface AutomationRuntimeProgress {
 
 interface AutomationRuntimeSnapshotProps {
   title?: string
-  subtitle?: string
   className?: string
   showSettingsAction?: boolean
 }
@@ -48,7 +47,6 @@ function normalizeRuntimeProgress(payload: unknown): AutomationRuntimeProgress |
 
 export function AutomationRuntimeSnapshot({
   title = '自动化运行时',
-  subtitle = '这里直接展示当前 Node 来源、版本和异常信息，避免排查时还要跳到设置页。',
   className,
   showSettingsAction = true,
 }: AutomationRuntimeSnapshotProps) {
@@ -126,7 +124,6 @@ export function AutomationRuntimeSnapshot({
   return (
     <Card
       title={title}
-      subtitle={subtitle}
       className={className}
       actions={(
         <>

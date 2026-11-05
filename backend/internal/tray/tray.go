@@ -17,6 +17,7 @@ type Callbacks struct {
 	OnShow        func()
 	OnQuitAppOnly func()
 	OnQuit        func()
+	OnExit        func()
 }
 
 // Run 启动系统托盘（阻塞，需在独立 goroutine 中调用）。
@@ -73,7 +74,9 @@ func Run(cb Callbacks) {
 			}
 		})
 	}, func() {
-		// onExit: 托盘退出时什么都不做，由 OnQuit 回调处理
+		if cb.OnExit != nil {
+			cb.OnExit()
+		}
 	})
 }
 

@@ -3,12 +3,14 @@ package browser
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
 // ProxyDAO 代理列表持久化接口
 type ProxyDAO interface {
 	List() ([]Proxy, error)
+	ReplaceAll(proxies []Proxy) error
 	ListByGroup(groupName string) ([]Proxy, error)
 	ListGroups() ([]string, error)
 	Upsert(proxy Proxy) error
@@ -31,10 +33,13 @@ func NewSQLiteProxyDAO(db *sql.DB) *SQLiteProxyDAO {
 // List 查询所有代理，按 sort_order 升序
 func (d *SQLiteProxyDAO) List() ([]Proxy, error) {
 	rows, err := d.db.Query(`
-		SELECT proxy_id, proxy_name, proxy_config, dns_servers, COALESCE(group_name, ''),
+		SELECT proxy_id, proxy_name, proxy_config, COALESCE(preferred_kernel, ''), dns_servers, COALESCE(group_name, ''),
 		       COALESCE(source_id, ''), COALESCE(source_url, ''), COALESCE(source_name_prefix, ''),
 		       COALESCE(source_auto_refresh, 0), COALESCE(source_refresh_interval_m, 0), COALESCE(source_last_refresh_at, ''),
+		       COALESCE(source_fetch_proxy_id, ''), COALESCE(source_last_refresh_error, ''),
+		       COALESCE(source_missing, 0), COALESCE(source_missing_since, ''),
 		       COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
+		       COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
 		       COALESCE(last_ip_health_json, ''),
 		       sort_order
 		FROM browser_proxies ORDER BY sort_order ASC, created_at ASC`)
@@ -48,10 +53,13 @@ func (d *SQLiteProxyDAO) List() ([]Proxy, error) {
 // ListByGroup 按分组名称查询代理
 func (d *SQLiteProxyDAO) ListByGroup(groupName string) ([]Proxy, error) {
 	rows, err := d.db.Query(`
-		SELECT proxy_id, proxy_name, proxy_config, dns_servers, COALESCE(group_name, ''),
+		SELECT proxy_id, proxy_name, proxy_config, COALESCE(preferred_kernel, ''), dns_servers, COALESCE(group_name, ''),
 		       COALESCE(source_id, ''), COALESCE(source_url, ''), COALESCE(source_name_prefix, ''),
 		       COALESCE(source_auto_refresh, 0), COALESCE(source_refresh_interval_m, 0), COALESCE(source_last_refresh_at, ''),
+		       COALESCE(source_fetch_proxy_id, ''), COALESCE(source_last_refresh_error, ''),
+		       COALESCE(source_missing, 0), COALESCE(source_missing_since, ''),
 		       COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
+		       COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
 		       COALESCE(last_ip_health_json, ''),
 		       sort_order
 		FROM browser_proxies WHERE group_name = ?
@@ -86,21 +94,92 @@ func (d *SQLiteProxyDAO) ListGroups() ([]string, error) {
 
 // Upsert 新增或更新代理
 func (d *SQLiteProxyDAO) Upsert(proxy Proxy) error {
+	if err := upsertProxy(d.db, proxy); err != nil {
+		return err
+	}
+	return nil
+}
+
+type proxySQLExecutor interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+type proxySQLQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+type proxySpeedResultSnapshot struct {
+	latencyMs   int64
+	ok          bool
+	testedAt    string
+	engine      string
+	connector   string
+	fingerprint string
+	ipHealth    string
+}
+
+// readProxySpeedResultSnapshot 读取现有代理行的测速与 IP 健康结果，用于整表替换后回填，
+// 保证保存代理列表不会丢失已有测速结果。
+func readProxySpeedResultSnapshot(q proxySQLQuerier) (map[string]proxySpeedResultSnapshot, error) {
+	rows, err := q.Query(`SELECT proxy_id, COALESCE(last_latency_ms, -1), COALESCE(last_test_ok, 0), COALESCE(last_tested_at, ''),
+		COALESCE(last_test_engine, ''), COALESCE(last_test_connector_type, ''), COALESCE(last_test_fingerprint, ''),
+		COALESCE(last_ip_health_json, '') FROM browser_proxies`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make(map[string]proxySpeedResultSnapshot)
+	for rows.Next() {
+		var proxyID string
+		var snapshot proxySpeedResultSnapshot
+		var okInt int
+		if err := rows.Scan(&proxyID, &snapshot.latencyMs, &okInt, &snapshot.testedAt, &snapshot.engine, &snapshot.connector, &snapshot.fingerprint, &snapshot.ipHealth); err != nil {
+			return nil, err
+		}
+		snapshot.ok = okInt == 1
+		results[strings.ToLower(strings.TrimSpace(proxyID))] = snapshot
+	}
+	return results, rows.Err()
+}
+
+func restoreProxySpeedResult(exec proxySQLExecutor, proxyID string, snapshot proxySpeedResultSnapshot) error {
+	okInt := 0
+	if snapshot.ok {
+		okInt = 1
+	}
+	_, err := exec.Exec(`UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?,
+		last_test_engine=?, last_test_connector_type=?, last_test_fingerprint=?, last_ip_health_json=?
+		WHERE proxy_id=?`,
+		snapshot.latencyMs, okInt, snapshot.testedAt, snapshot.engine, snapshot.connector, snapshot.fingerprint, snapshot.ipHealth, proxyID)
+	if err != nil {
+		return fmt.Errorf("回填代理测速结果失败: %w", err)
+	}
+	return nil
+}
+
+func upsertProxy(exec proxySQLExecutor, proxy Proxy) error {
 	now := time.Now().Format(time.RFC3339)
 	autoRefreshInt := 0
 	if proxy.SourceAutoRefresh {
 		autoRefreshInt = 1
 	}
-	_, err := d.db.Exec(`
+	sourceMissingInt := 0
+	if proxy.SourceMissing {
+		sourceMissingInt = 1
+	}
+	_, err := exec.Exec(`
 		INSERT INTO browser_proxies (
-		  proxy_id, proxy_name, proxy_config, dns_servers, group_name,
+		  proxy_id, proxy_name, proxy_config, preferred_kernel, dns_servers, group_name,
 		  source_id, source_url, source_name_prefix, source_auto_refresh, source_refresh_interval_m, source_last_refresh_at,
+		  source_fetch_proxy_id, source_last_refresh_error,
+		  source_missing, source_missing_since,
 		  sort_order, created_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(proxy_id) DO UPDATE SET
 		  proxy_name   = excluded.proxy_name,
 		  proxy_config = excluded.proxy_config,
+		  preferred_kernel = excluded.preferred_kernel,
 		  dns_servers  = excluded.dns_servers,
 		  group_name   = excluded.group_name,
 		  source_id    = excluded.source_id,
@@ -109,13 +188,49 @@ func (d *SQLiteProxyDAO) Upsert(proxy Proxy) error {
 		  source_auto_refresh = excluded.source_auto_refresh,
 		  source_refresh_interval_m = excluded.source_refresh_interval_m,
 		  source_last_refresh_at = excluded.source_last_refresh_at,
+		  source_fetch_proxy_id = excluded.source_fetch_proxy_id,
+		  source_last_refresh_error = excluded.source_last_refresh_error,
+		  source_missing = excluded.source_missing,
+		  source_missing_since = excluded.source_missing_since,
 		  sort_order   = excluded.sort_order`,
-		proxy.ProxyId, proxy.ProxyName, proxy.ProxyConfig, proxy.DnsServers, proxy.GroupName,
+		proxy.ProxyId, proxy.ProxyName, proxy.ProxyConfig, proxy.PreferredKernel, proxy.DnsServers, proxy.GroupName,
 		proxy.SourceID, proxy.SourceURL, proxy.SourceNamePrefix, autoRefreshInt, proxy.SourceRefreshIntervalM, proxy.SourceLastRefreshAt,
+		proxy.SourceFetchProxyID, proxy.SourceLastRefreshError,
+		sourceMissingInt, proxy.SourceMissingSince,
 		proxy.SortOrder, now,
 	)
 	if err != nil {
 		return fmt.Errorf("保存代理失败: %w", err)
+	}
+	return nil
+}
+
+func (d *SQLiteProxyDAO) ReplaceAll(proxies []Proxy) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	previousResults, err := readProxySpeedResultSnapshot(tx)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM browser_proxies`); err != nil {
+		return err
+	}
+	for _, proxy := range proxies {
+		if err := upsertProxy(tx, proxy); err != nil {
+			return err
+		}
+		if previous, ok := previousResults[strings.ToLower(strings.TrimSpace(proxy.ProxyId))]; ok {
+			if err := restoreProxySpeedResult(tx, proxy.ProxyId, previous); err != nil {
+				return err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -145,10 +260,37 @@ func (d *SQLiteProxyDAO) UpdateSpeedResult(proxyId string, ok bool, latencyMs in
 		okInt = 1
 	}
 	_, err := d.db.Exec(`
-		UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?
+		UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?,
+		last_test_engine='', last_test_connector_type='', last_test_fingerprint=''
 		WHERE proxy_id=?`, latencyMs, okInt, testedAt, proxyId)
 	if err != nil {
 		return fmt.Errorf("更新测速结果失败: %w", err)
+	}
+	return nil
+}
+
+func (d *SQLiteProxyDAO) UpdateSpeedResultWithProvenance(proxyId string, ok bool, latencyMs int64, testedAt string, engine string, connectorType string, fingerprint string) error {
+	okInt := 0
+	if ok {
+		okInt = 1
+	}
+	_, err := d.db.Exec(`
+		UPDATE browser_proxies SET last_latency_ms=?, last_test_ok=?, last_tested_at=?,
+		last_test_engine=?, last_test_connector_type=?, last_test_fingerprint=?
+		WHERE proxy_id=?`, latencyMs, okInt, testedAt, engine, connectorType, fingerprint, proxyId)
+	if err != nil {
+		return fmt.Errorf("更新测速结果来源失败: %w", err)
+	}
+	return nil
+}
+
+func (d *SQLiteProxyDAO) InvalidateSpeedResult(proxyId string) error {
+	_, err := d.db.Exec(`
+		UPDATE browser_proxies SET last_latency_ms=-1, last_test_ok=0, last_tested_at='',
+		last_test_engine='', last_test_connector_type='', last_test_fingerprint=''
+		WHERE proxy_id=?`, proxyId)
+	if err != nil {
+		return fmt.Errorf("使代理测速结果失效失败: %w", err)
 	}
 	return nil
 }
@@ -170,15 +312,20 @@ func scanProxies(rows *sql.Rows) ([]Proxy, error) {
 		var p Proxy
 		var okInt int
 		var autoRefreshInt int
+		var sourceMissingInt int
 		if err := rows.Scan(
-			&p.ProxyId, &p.ProxyName, &p.ProxyConfig, &p.DnsServers, &p.GroupName,
+			&p.ProxyId, &p.ProxyName, &p.ProxyConfig, &p.PreferredKernel, &p.DnsServers, &p.GroupName,
 			&p.SourceID, &p.SourceURL, &p.SourceNamePrefix, &autoRefreshInt, &p.SourceRefreshIntervalM, &p.SourceLastRefreshAt,
-			&p.LastLatencyMs, &okInt, &p.LastTestedAt, &p.LastIPHealthJSON, &p.SortOrder,
+			&p.SourceFetchProxyID, &p.SourceLastRefreshError,
+			&sourceMissingInt, &p.SourceMissingSince,
+			&p.LastLatencyMs, &okInt, &p.LastTestedAt, &p.LastTestEngine, &p.LastTestConnectorType, &p.LastTestFingerprint,
+			&p.LastIPHealthJSON, &p.SortOrder,
 		); err != nil {
 			return nil, fmt.Errorf("读取代理行失败: %w", err)
 		}
 		p.LastTestOk = okInt == 1
 		p.SourceAutoRefresh = autoRefreshInt == 1
+		p.SourceMissing = sourceMissingInt == 1
 		list = append(list, p)
 	}
 	return list, rows.Err()

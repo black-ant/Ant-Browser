@@ -13,7 +13,7 @@ func CoreExecutableCandidates() []string {
 	case "windows":
 		return []string{"chrome.exe"}
 	case "linux":
-		return []string{"chrome", "chrome-bin", "chrome.exe"}
+		return []string{"chrome", "chrome-bin", "chromium", "chromium-browser", "ungoogled-chromium", "chrome.exe"}
 	case "darwin":
 		return []string{
 			"Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -25,8 +25,22 @@ func CoreExecutableCandidates() []string {
 	}
 }
 
+func CoreExecutablePlatform() string {
+	return goruntime.GOOS + "/" + goruntime.GOARCH
+}
+
 // FindCoreExecutable 在指定目录查找可执行文件，返回绝对路径和命中的候选名。
 func FindCoreExecutable(baseDir string) (string, string, bool) {
+	if directPath, directCandidate, ok := FindCoreExecutableShallow(baseDir); ok {
+		return directPath, directCandidate, true
+	}
+	if recursivePath, recursiveCandidate, ok := findNestedCoreExecutable(baseDir); ok {
+		return recursivePath, recursiveCandidate, true
+	}
+	return "", "", false
+}
+
+func FindCoreExecutableShallow(baseDir string) (string, string, bool) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
 		return "", "", false
@@ -44,6 +58,44 @@ func FindCoreExecutable(baseDir string) (string, string, bool) {
 		}
 	}
 	return "", "", false
+}
+
+func findNestedCoreExecutable(baseDir string) (string, string, bool) {
+	info, err := os.Stat(baseDir)
+	if err != nil || !info.IsDir() {
+		return "", "", false
+	}
+	baseDepth := strings.Count(filepath.ToSlash(filepath.Clean(baseDir)), "/")
+	candidateNames := make(map[string]string)
+	for _, candidate := range CoreExecutableCandidates() {
+		candidateNames[strings.ToLower(filepath.Base(candidate))] = candidate
+	}
+
+	var matchedPath string
+	var matchedCandidate string
+	_ = filepath.WalkDir(baseDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || path == baseDir || matchedPath != "" {
+			return nil
+		}
+		if entry.IsDir() {
+			depth := strings.Count(filepath.ToSlash(filepath.Clean(path)), "/") - baseDepth
+			if depth > 5 {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		candidate, ok := candidateNames[strings.ToLower(entry.Name())]
+		if !ok {
+			return nil
+		}
+		matchedPath = path
+		matchedCandidate = candidate
+		return nil
+	})
+	if matchedPath == "" {
+		return "", "", false
+	}
+	return matchedPath, matchedCandidate, true
 }
 
 func findDirectCoreExecutable(path string) (string, string, bool) {

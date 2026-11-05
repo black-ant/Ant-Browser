@@ -40,7 +40,7 @@ function MethodBadge({ method }: { method: StructuredApiMethod }) {
 function FieldTable({ fields }: { fields: StructuredApiField[] }) {
   if (!fields.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-5 py-4 text-sm text-[var(--color-text-muted)]">
+      <div className="rounded-2xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-3 text-sm text-[var(--color-text-muted)]">
         无参数
       </div>
     )
@@ -119,8 +119,8 @@ function StructuredApiSectionPage({
   const endpoints = getStructuredApiSectionEndpoints(docId)
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-6 shadow-[var(--shadow-md)]">
+    <div className="space-y-4">
+      <section className="rounded-[28px] border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-4 shadow-[var(--shadow-md)]">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">
             {section.title}
@@ -130,7 +130,7 @@ function StructuredApiSectionPage({
 
       <section className="space-y-4">
         <SectionTitle title="功能介绍" />
-        <div className="rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-5 shadow-[var(--shadow-sm)]">
+        <div className="rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <ul className="space-y-3 text-sm leading-7 text-[var(--color-text-secondary)]">
             {section.highlights.map((item) => (
               <li key={item}>{item}</li>
@@ -186,7 +186,7 @@ function StructuredApiDetailPage({
   const endpoint = STRUCTURED_API_ENDPOINT_DOC_MAP[docId]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <Button variant="secondary" size="sm" onClick={() => onOpenDoc(endpoint.parentId)}>
           <ArrowLeft className="h-4 w-4" />
@@ -194,7 +194,7 @@ function StructuredApiDetailPage({
         </Button>
       </div>
 
-      <section className="rounded-[24px] border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-5 shadow-[var(--shadow-sm)]">
+      <section className="rounded-[24px] border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-4 shadow-[var(--shadow-sm)]">
         <div className="space-y-2">
           <div className="flex items-center gap-3 flex-wrap">
             <MethodBadge method={endpoint.method} />
@@ -231,7 +231,7 @@ function StructuredApiDetailPage({
       )}
 
       {endpoint.notes.length > 0 ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 px-5 py-4 shadow-[var(--shadow-sm)]">
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 shadow-[var(--shadow-sm)]">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-700">注意</p>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-[var(--color-text-secondary)]">
             {endpoint.notes.map((note) => (

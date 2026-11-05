@@ -6,14 +6,6 @@ import (
 	"strings"
 )
 
-func backupPathInSet(path string, set map[string]struct{}) bool {
-	if len(set) == 0 {
-		return false
-	}
-	_, ok := set[backupNormalizePath(path)]
-	return ok
-}
-
 func backupNormalizePath(path string) string {
 	return strings.ToLower(filepath.Clean(strings.TrimSpace(path)))
 }

@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/backup"
 	"ant-chrome/backend/internal/config"
+	"ant-chrome/backend/internal/snapshot"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,12 +11,19 @@ import (
 	"strings"
 )
 
+var backupImportUnzipLimits = snapshot.UnzipLimits{
+	MaxEntries:           200000,
+	MaxUncompressedBytes: 64 * 1024 * 1024 * 1024,
+	MaxSingleFileBytes:   16 * 1024 * 1024 * 1024,
+	MaxCompressedBytes:   64 * 1024 * 1024 * 1024,
+}
+
 func backupExtractAndValidate(zipPath string) (string, backup.Manifest, error) {
 	tmpDir, err := os.MkdirTemp("", "ant-chrome-import-*")
 	if err != nil {
 		return "", backup.Manifest{}, err
 	}
-	if err := unzipTo(zipPath, tmpDir); err != nil {
+	if err := snapshot.UnzipToWithLimits(zipPath, tmpDir, backupImportUnzipLimits); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", backup.Manifest{}, fmt.Errorf("解压备份包失败: %w", err)
 	}
@@ -39,9 +47,9 @@ func backupExtractAndValidate(zipPath string) (string, backup.Manifest, error) {
 		_ = os.RemoveAll(tmpDir)
 		return "", backup.Manifest{}, fmt.Errorf("不支持的 manifest 版本: %d", manifest.ManifestVersion)
 	}
-	if _, err := os.Stat(filepath.Join(tmpDir, "payload")); err != nil {
+	if err := backupValidateManifest(tmpDir, manifest); err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", backup.Manifest{}, fmt.Errorf("备份包缺少 payload 目录")
+		return "", backup.Manifest{}, err
 	}
 	return tmpDir, manifest, nil
 }

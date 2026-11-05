@@ -7,6 +7,7 @@ export async function fetchBookmarks(): Promise<BrowserBookmark[]> {
     return (await bindings.BookmarkList()) || []
   }
   return [
+    { name: '指纹检测', url: 'ant://fingerprint-check', openOnStart: false },
     { name: 'Google', url: 'https://www.google.com/', openOnStart: false },
     { name: 'Gmail', url: 'https://mail.google.com/', openOnStart: false },
     { name: 'Claude', url: 'https://claude.ai/', openOnStart: false },

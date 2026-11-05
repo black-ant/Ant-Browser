@@ -4,7 +4,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, RefreshCw } from "lucide-react";
 import {
   Badge,
   Button,
@@ -117,6 +117,7 @@ export function AutomationScriptHistoryModal({
 }: AutomationScriptHistoryModalProps) {
   const [runs, setRuns] = useState<AutomationScriptRunRecord[]>([]);
   const [expandedRunId, setExpandedRunId] = useState("");
+  const [selectedLogRunId, setSelectedLogRunId] = useState("");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -124,6 +125,7 @@ export function AutomationScriptHistoryModal({
     if (!open) {
       setRuns([]);
       setExpandedRunId("");
+      setSelectedLogRunId("");
       setLoading(false);
       return;
     }
@@ -197,6 +199,8 @@ export function AutomationScriptHistoryModal({
   };
 
   const latestRun = runs[0] || null;
+  const selectedLogRun =
+    runs.find((item) => item.id === selectedLogRunId) || null;
   const successCount = runs.filter((item) => item.status === "success").length;
   const failedCount = runs.filter((item) => item.status === "failed").length;
   const scriptCount = new Set(
@@ -204,6 +208,7 @@ export function AutomationScriptHistoryModal({
   ).size;
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -218,15 +223,7 @@ export function AutomationScriptHistoryModal({
       }
     >
       <div className="space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium text-[var(--color-text-primary)]">
-              查看所有脚本最近的调用情况
-            </div>
-            <div className="mt-1 text-xs text-[var(--color-text-muted)]">
-              表格里只保留关键信息，点击某一行可展开查看错误、返回内容和完整摘要。
-            </div>
-          </div>
+        <div className="flex items-center justify-end">
           <Button
             size="sm"
             variant="secondary"
@@ -269,29 +266,32 @@ export function AutomationScriptHistoryModal({
         ) : (
           <div className="overflow-hidden rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] shadow-[var(--shadow-sm)]">
             <div className="max-h-[58vh] overflow-auto">
-              <table className="w-full min-w-[960px]">
+              <table className="w-full min-w-[1120px]">
                 <thead className="sticky top-0 z-10 bg-[var(--color-bg-muted)]">
                   <tr>
-                    <th className="w-14 px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    <th className="w-14 whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       展开
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    <th className="w-[170px] whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       调用时间
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    <th className="w-[230px] whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       脚本
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    <th className="w-[90px] whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       状态
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    <th className="w-[150px] whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       类型
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    <th className="w-[110px] whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       耗时
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       摘要
+                    </th>
+                    <th className="w-[120px] whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                      操作
                     </th>
                   </tr>
                 </thead>
@@ -308,7 +308,7 @@ export function AutomationScriptHistoryModal({
                           onKeyDown={(event) => handleRowKeyDown(event, run.id)}
                           className="cursor-pointer transition-colors duration-150 hover:bg-[var(--color-bg-muted)]/55 focus:outline-none focus-visible:bg-[var(--color-accent-muted)]/40"
                         >
-                          <td className="px-3 py-4 align-top text-[var(--color-text-muted)]">
+                          <td className="whitespace-nowrap px-3 py-4 align-top text-[var(--color-text-muted)]">
                             <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-muted)]">
                               {expanded ? (
                                 <ChevronDown className="h-4 w-4" />
@@ -317,12 +317,12 @@ export function AutomationScriptHistoryModal({
                               )}
                             </span>
                           </td>
-                          <td className="px-4 py-4 align-top text-sm text-[var(--color-text-primary)]">
+                          <td className="whitespace-nowrap px-4 py-4 align-top text-sm text-[var(--color-text-primary)]">
                             <div className="whitespace-nowrap font-medium">
                               {formatDateTime(run.startedAt)}
                             </div>
                           </td>
-                          <td className="px-4 py-4 align-top text-sm text-[var(--color-text-primary)]">
+                          <td className="whitespace-nowrap px-4 py-4 align-top text-sm text-[var(--color-text-primary)]">
                             <div
                               className="max-w-[180px] truncate font-medium"
                               title={run.scriptName || "未命名脚本"}
@@ -330,16 +330,18 @@ export function AutomationScriptHistoryModal({
                               {run.scriptName || "未命名脚本"}
                             </div>
                           </td>
-                          <td className="px-4 py-4 align-top text-sm">
-                            <Badge
-                              variant={getRunStatusBadgeVariant(run.status)}
-                              size="sm"
-                              dot
-                            >
-                              {getRunStatusLabel(run.status)}
-                            </Badge>
+                          <td className="whitespace-nowrap px-4 py-4 align-top text-sm">
+                            <span className="inline-flex whitespace-nowrap">
+                              <Badge
+                                variant={getRunStatusBadgeVariant(run.status)}
+                                size="sm"
+                                dot
+                              >
+                                {getRunStatusLabel(run.status)}
+                              </Badge>
+                            </span>
                           </td>
-                          <td className="px-4 py-4 align-top text-sm text-[var(--color-text-secondary)]">
+                          <td className="whitespace-nowrap px-4 py-4 align-top text-sm text-[var(--color-text-secondary)]">
                             <div
                               className="max-w-[140px] truncate"
                               title={run.scriptType || "-"}
@@ -347,10 +349,10 @@ export function AutomationScriptHistoryModal({
                               {run.scriptType || "-"}
                             </div>
                           </td>
-                          <td className="px-4 py-4 align-top text-sm text-[var(--color-text-primary)]">
+                          <td className="whitespace-nowrap px-4 py-4 align-top text-sm text-[var(--color-text-primary)]">
                             {formatDuration(run.durationMs)}
                           </td>
-                          <td className="px-4 py-4 align-top text-sm text-[var(--color-text-secondary)]">
+                          <td className="whitespace-nowrap px-4 py-4 align-top text-sm text-[var(--color-text-secondary)]">
                             <div
                               className="max-w-[320px] truncate"
                               title={run.summary || "未返回摘要"}
@@ -358,10 +360,24 @@ export function AutomationScriptHistoryModal({
                               {run.summary || "未返回摘要"}
                             </div>
                           </td>
+                          <td className="whitespace-nowrap px-4 py-4 align-top text-sm">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={!run.logText}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedLogRunId(run.id);
+                              }}
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              查看日志
+                            </Button>
+                          </td>
                         </tr>
                         {expanded ? (
                           <tr className="bg-[var(--color-bg-muted)]/35">
-                            <td colSpan={7} className="px-4 pb-4 pt-1">
+                            <td colSpan={8} className="px-4 pb-4 pt-1">
                               <div className="rounded-2xl border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] p-4">
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                                   <HistoryDetailField
@@ -424,7 +440,7 @@ export function AutomationScriptHistoryModal({
                                   </div>
                                 ) : null}
 
-                                {!run.error && !run.resultText ? (
+                                {!run.error && !run.resultText && !run.logText ? (
                                   <div className="mt-3 rounded-xl border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-muted)] px-4 py-3 text-sm text-[var(--color-text-muted)]">
                                     这条记录没有更多详情。
                                   </div>
@@ -443,5 +459,31 @@ export function AutomationScriptHistoryModal({
         )}
       </div>
     </Modal>
+    <Modal
+      open={Boolean(selectedLogRun)}
+      onClose={() => setSelectedLogRunId("")}
+      title="执行日志"
+      width="760px"
+      footer={
+        <Button variant="secondary" onClick={() => setSelectedLogRunId("")}>
+          关闭
+        </Button>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-muted)] px-4 py-3 text-sm">
+          <span className="font-medium text-[var(--color-text-primary)]">
+            {selectedLogRun?.scriptName || "未命名脚本"}
+          </span>
+          <span className="text-xs text-[var(--color-text-muted)]">
+            {formatDateTime(selectedLogRun?.startedAt)}
+          </span>
+        </div>
+        <pre className="max-h-[56vh] overflow-auto rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-muted)] px-4 py-3 font-mono text-xs leading-6 text-[var(--color-text-secondary)] whitespace-pre-wrap break-all">
+          {selectedLogRun?.logText || "暂无执行日志"}
+        </pre>
+      </div>
+    </Modal>
+    </>
   );
 }

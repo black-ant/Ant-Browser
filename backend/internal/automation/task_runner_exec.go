@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -79,6 +80,7 @@ func (m *Manager) RunScriptTask(ctx context.Context, req ScriptTaskRequest) (Scr
 		Summary:           strings.TrimSpace(runnerResp.Summary),
 		Error:             strings.TrimSpace(runnerResp.Error),
 		ResultText:        rawOutput,
+		LogText:           formatTaskRunnerLogs(runnerResp.Logs),
 		DurationMs:        durationMs,
 		StartedAt:         runnerResp.StartedAt,
 		FinishedAt:        runnerResp.FinishedAt,
@@ -94,6 +96,49 @@ func (m *Manager) RunScriptTask(ctx context.Context, req ScriptTaskRequest) (Scr
 		}
 	}
 	return result, nil
+}
+
+func formatTaskRunnerLogs(logs []taskRunnerLogEntry) string {
+	if len(logs) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(logs))
+	for _, entry := range logs {
+		valueText := formatTaskRunnerLogValues(entry.Values)
+		if valueText == "" {
+			continue
+		}
+		timeText := strings.TrimSpace(entry.Time)
+		if timeText == "" {
+			lines = append(lines, valueText)
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s %s", timeText, valueText))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatTaskRunnerLogValues(values []any) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, formatTaskRunnerLogValue(value))
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+func formatTaskRunnerLogValue(value any) string {
+	if value == nil {
+		return "null"
+	}
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text)
+	}
+	if reflect.TypeOf(value).Kind() == reflect.Map || reflect.TypeOf(value).Kind() == reflect.Slice {
+		if data, err := json.Marshal(value); err == nil {
+			return string(data)
+		}
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func (m *Manager) executeTask(ctx context.Context, taskKey string, payload taskRunnerPayload, startMessage string, completeMessage string, timeoutLimit time.Duration) (string, taskRunnerResponse, string, int64, error) {

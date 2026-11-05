@@ -1,49 +1,57 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/proxy"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
 )
 
-func (a *App) BrowserProxyList() []BrowserProxy {
-	if a.browserMgr.ProxyDAO != nil {
-		if list, err := a.browserMgr.ProxyDAO.List(); err == nil {
-			return list
-		}
+func (a *App) BrowserProxyList() ([]BrowserProxy, error) {
+	if a == nil || a.browserMgr == nil || a.config == nil {
+		return nil, fmt.Errorf("代理数据加载上下文不可用")
 	}
-	return append([]BrowserProxy{}, a.config.Browser.Proxies...)
+	proxies, err := browser.LoadLatestProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
+	if err != nil {
+		return nil, err
+	}
+	return proxies, nil
 }
 
 // BrowserProxyListGroups 获取所有代理分组名称
-func (a *App) BrowserProxyListGroups() []string {
-	if a.browserMgr.ProxyDAO != nil {
-		if groups, err := a.browserMgr.ProxyDAO.ListGroups(); err == nil {
-			return groups
-		}
+func (a *App) BrowserProxyListGroups() ([]string, error) {
+	if a == nil || a.browserMgr == nil || a.config == nil {
+		return nil, fmt.Errorf("代理数据加载上下文不可用")
 	}
-	return nil
+	return browser.LoadProxyGroupsWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
 }
 
 // BrowserProxyListByGroup 按分组名称查询代理
-func (a *App) BrowserProxyListByGroup(groupName string) []BrowserProxy {
-	if a.browserMgr.ProxyDAO != nil {
-		if list, err := a.browserMgr.ProxyDAO.ListByGroup(groupName); err == nil {
-			return list
-		}
+func (a *App) BrowserProxyListByGroup(groupName string) ([]BrowserProxy, error) {
+	if a == nil || a.browserMgr == nil || a.config == nil {
+		return nil, fmt.Errorf("代理数据加载上下文不可用")
 	}
-
-	var result []BrowserProxy
-	for _, item := range a.config.Browser.Proxies {
-		if item.GroupName == groupName {
-			result = append(result, item)
-		}
+	proxies, err := browser.LoadProxiesByGroupWithFallback(a.browserMgr.ProxyDAO, groupName, a.config.Browser.Proxies)
+	if err != nil {
+		return nil, err
 	}
-	return result
+	return proxies, nil
 }
 
 // ValidateProxyConfig 验证代理配置是否支持
 func (a *App) ValidateProxyConfig(proxyConfig string, proxyId string) ProxyValidationResult {
 	proxies := a.getLatestProxies()
-	supported, errorMsg := proxy.ValidateProxyConfig(proxyConfig, proxies, proxyId)
+	// 虚拟分组绑定：用成员配置校验（需桥接的成员按成员内核校验）
+	if strings.TrimSpace(proxyConfig) == "" {
+		if memberID, memberConfig, picked := a.resolveVirtualGroupProxyTarget(strings.TrimSpace(proxyId), proxies); picked {
+			proxyId = memberID
+			proxyConfig = memberConfig
+		}
+	}
+	supported, errorMsg := proxy.ValidateProxyConfigWithConnector(proxyConfig, proxies, proxyId, a.defaultProxyConnectorType())
 	return ProxyValidationResult{
 		Supported: supported,
 		ErrorMsg:  errorMsg,
@@ -54,23 +62,160 @@ func (a *App) ValidateProxyConfig(proxyConfig string, proxyId string) ProxyValid
 func (a *App) TestProxyConnectivity(proxyId string, proxyConfig string) ProxyTestResult {
 	proxies := a.getLatestProxies()
 	result := proxy.TestConnectivity(proxyId, proxyConfig, proxies, nil)
-	return ProxyTestResult{ProxyId: result.ProxyId, Ok: result.Ok, LatencyMs: result.LatencyMs, Error: result.Error}
+	if result.Engine == "" {
+		result.Engine = "tcp"
+	}
+	return buildProxyTestResult(result)
 }
 
 // TestProxyRealConnectivity 通过真实 HTTP 请求测试代理连通性（Wails 绑定）
 // 参考 Clash URLTest 策略：多 URL fallback + 复用桥接 + TCP ping 降级
 func (a *App) TestProxyRealConnectivity(proxyId string) ProxyTestResult {
 	proxies := a.getLatestProxies()
-	result := proxy.SpeedTest(proxyId, proxies, a.xrayMgr, a.singboxMgr, nil)
-	return ProxyTestResult{ProxyId: result.ProxyId, Ok: result.Ok, LatencyMs: result.LatencyMs, Error: result.Error}
+	connectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
+	result := proxy.TestRealConnectivityWithRuntimeConfig(proxyId, proxies, a.xrayMgr, a.singboxMgr, a.clashMgr, a.mieruMgr, connectorType, a.proxySpeedTestConfig())
+	return buildProxyTestResult(result)
+}
+
+// BrowserProxyWarmupBridge 只预热本地代理桥接，不执行外网测速。
+func (a *App) BrowserProxyWarmupBridge(proxyId string) ProxyBridgeWarmupResult {
+	proxies := a.getLatestProxies()
+	return a.warmupProxyBridge(proxyId, "", proxies)
+}
+
+// BrowserProxyWarmupBridgeWithConfig 预热指定代理配置，proxyConfig 仅本次预热生效。
+func (a *App) BrowserProxyWarmupBridgeWithConfig(proxyId string, proxyConfig string) ProxyBridgeWarmupResult {
+	proxies := a.getLatestProxies()
+	return a.warmupProxyBridge(proxyId, proxyConfig, proxies)
+}
+
+// BrowserProxyBatchWarmupBridge 批量预热代理桥接，concurrency 控制并发数（默认 5）。
+func (a *App) BrowserProxyBatchWarmupBridge(proxyIds []string, concurrency int) []ProxyBridgeWarmupResult {
+	if len(proxyIds) == 0 {
+		return []ProxyBridgeWarmupResult{}
+	}
+	if concurrency <= 0 {
+		concurrency = 5
+	}
+	if concurrency > len(proxyIds) {
+		concurrency = len(proxyIds)
+	}
+
+	proxies := a.getLatestProxies()
+	results := make([]ProxyBridgeWarmupResult, len(proxyIds))
+	type warmupJob struct {
+		idx     int
+		proxyId string
+	}
+	jobs := make(chan warmupJob, len(proxyIds))
+	var wg sync.WaitGroup
+	for worker := 0; worker < concurrency; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				results[job.idx] = a.warmupProxyBridge(job.proxyId, "", proxies)
+			}
+		}()
+	}
+	for i, proxyID := range proxyIds {
+		jobs <- warmupJob{idx: i, proxyId: proxyID}
+	}
+	close(jobs)
+	wg.Wait()
+	return results
+}
+
+func (a *App) warmupProxyBridge(proxyId string, proxyConfig string, proxies []BrowserProxy) ProxyBridgeWarmupResult {
+	startedAt := time.Now()
+	requestedProxyId := strings.TrimSpace(proxyId)
+	// 虚拟分组绑定：预热目标映射为本次选中的成员代理
+	if strings.TrimSpace(proxyConfig) == "" {
+		if memberID, memberConfig, picked := a.resolveVirtualGroupProxyTarget(requestedProxyId, proxies); picked {
+			proxyId = memberID
+			proxyConfig = memberConfig
+		}
+	}
+	result := ProxyBridgeWarmupResult{ProxyId: requestedProxyId}
+	proxyId = strings.TrimSpace(proxyId)
+	src := strings.TrimSpace(resolveProxyConfigForApp(proxyConfig, proxies, proxyId))
+	if src == "" {
+		result.Error = "代理配置为空"
+		return result
+	}
+
+	resolution, err := proxy.ResolveProxyKernelForConnector(src, proxies, proxyId, a.defaultProxyConnectorType())
+	result.Engine = resolution.Kernel
+	if err != nil {
+		result.Error = err.Error()
+		result.LatencyMs = time.Since(startedAt).Milliseconds()
+		return result
+	}
+	if resolution.Kernel == proxy.ProxyKernelNative {
+		result.Ok = true
+		if strings.EqualFold(src, "direct://") {
+			result.Engine = "direct"
+		}
+		result.LatencyMs = time.Since(startedAt).Milliseconds()
+		return result
+	}
+
+	var socksURL string
+	switch resolution.Kernel {
+	case proxy.ProxyKernelMihomo:
+		if a.clashMgr == nil {
+			result.Error = "mihomo 管理器不可用，请先下载 Mihomo 内核"
+			result.LatencyMs = time.Since(startedAt).Milliseconds()
+			return result
+		}
+		socksURL, err = a.clashMgr.EnsureNodeBridge(src, proxies, proxyId)
+	case proxy.ProxyKernelSingBox:
+		if a.singboxMgr == nil {
+			result.Error = "sing-box 管理器不可用"
+			result.LatencyMs = time.Since(startedAt).Milliseconds()
+			return result
+		}
+		socksURL, err = a.singboxMgr.EnsureBridge(src, proxies, proxyId)
+	case proxy.ProxyKernelXray:
+		if a.xrayMgr == nil {
+			result.Error = "xray 管理器不可用"
+			result.LatencyMs = time.Since(startedAt).Milliseconds()
+			return result
+		}
+		socksURL, err = a.xrayMgr.EnsureBridge(src, proxies, proxyId)
+	default:
+		result.Error = "无法选择代理内核"
+		result.LatencyMs = time.Since(startedAt).Milliseconds()
+		return result
+	}
+	result.LatencyMs = time.Since(startedAt).Milliseconds()
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	result.Ok = true
+	result.SocksURL = socksURL
+	return result
+}
+
+func resolveProxyConfigForApp(proxyConfig string, proxies []BrowserProxy, proxyId string) string {
+	proxyConfig = strings.TrimSpace(proxyConfig)
+	proxyId = strings.TrimSpace(proxyId)
+	if proxyConfig != "" {
+		return proxyConfig
+	}
+	if proxyId == "" {
+		return proxyConfig
+	}
+	for _, item := range proxies {
+		if strings.EqualFold(item.ProxyId, proxyId) {
+			return strings.TrimSpace(item.ProxyConfig)
+		}
+	}
+	return proxyConfig
 }
 
 // getLatestProxies 获取最新的代理列表，优先从数据库读取
 func (a *App) getLatestProxies() []BrowserProxy {
-	if a.browserMgr.ProxyDAO != nil {
-		if list, err := a.browserMgr.ProxyDAO.List(); err == nil && len(list) > 0 {
-			return list
-		}
-	}
-	return a.config.Browser.Proxies
+	return browser.LatestProxiesWithFallback(a.browserMgr.ProxyDAO, a.config.Browser.Proxies)
 }

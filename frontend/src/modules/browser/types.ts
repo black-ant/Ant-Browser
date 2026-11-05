@@ -1,16 +1,21 @@
-export interface BrowserProfile {
+﻿export interface BrowserProfile {
   profileId: string
   profileName: string
   userDataDir: string
   coreId: string
+  restoreLastSession?: '' | 'enabled' | 'disabled' | string
   fingerprintArgs: string[]
+  proxyMode?: 'fixed' | 'dynamic' | 'local' | string
   proxyId: string
   proxyConfig: string
+  proxyGroupName?: string
   proxyBindSourceId?: string
   proxyBindSourceUrl?: string
   proxyBindName?: string
   proxyBindUpdatedAt?: string
+  memoryLimitMb: number
   launchArgs: string[]
+  lastLaunchArgs?: string[]
   tags: string[]
   keywords: string[]
   groupId?: string
@@ -22,22 +27,204 @@ export interface BrowserProfile {
   lastError: string
   createdAt: string
   updatedAt: string
+  deletedAt?: string
   lastStartAt?: string
   lastStopAt?: string
   launchCode?: string
+  windowMarkerCode?: string
 }
 
 export interface BrowserProfileInput {
   profileName: string
   userDataDir: string
   coreId: string
+  restoreLastSession?: '' | 'enabled' | 'disabled' | string
   fingerprintArgs: string[]
+  proxyMode?: 'fixed' | 'dynamic' | 'local' | string
   proxyId: string
   proxyConfig: string
+  proxyGroupName?: string
+  memoryLimitMb: number
   launchArgs: string[]
   tags: string[]
   keywords: string[]
   groupId?: string
+}
+
+export interface BrowserFingerprintRuntimeInfo {
+  language: string
+  languages: string[]
+  timezone: string
+  hardwareConcurrency: number
+  deviceMemory: number
+  maxTouchPoints: number
+  doNotTrack: string
+  mediaDeviceCount: number
+  platform: string
+  userAgent: string
+  userAgentData: string
+  webdriver: boolean
+  screenWidth: number
+  screenHeight: number
+  colorDepth: number
+  innerWidth: number
+  innerHeight: number
+  outerWidth: number
+  outerHeight: number
+  devicePixelRatio: number
+  webglVendor: string
+  webglRenderer: string
+  canvasHash: string
+  audioHash: string
+  clientRectsHash: string
+  plugins: string[]
+}
+
+export interface BrowserFingerprintExpectedInfo {
+  language: string
+  acceptLanguage: string
+  timezone: string
+  hardwareConcurrency: string
+  deviceMemory: string
+  colorDepth: string
+  touchPoints: string
+  windowSize: string
+  brand: string
+  brandVersion: string
+  platform: string
+  platformVersion: string
+  seed: string
+  disableSpoofing: string
+  webrtcPolicy: string
+  doNotTrack: string
+  mediaDevices: string
+  canvasNoise: string
+  audioNoise: string
+  clientRectsNoise: string
+  fontList: string
+  webglVendor: string
+  webglRenderer: string
+}
+
+export interface BrowserFingerprintCheckResult {
+  profileId: string
+  runtime: BrowserFingerprintRuntimeInfo
+  expected: BrowserFingerprintExpectedInfo
+}
+
+export interface BrowserFingerprintCapabilityRow {
+  capability: string
+  status: string
+  inputArg: string
+  runtimeArg: string
+  action: string
+  note: string
+}
+
+export interface BrowserFingerprintCapabilityReport {
+  profileId: string
+  coreId: string
+  coreName: string
+  chromeVersion: string
+  chromeMajor: number
+  versionStatus: string
+  rawArgs: string[]
+  launchArgs: string[]
+  rows: BrowserFingerprintCapabilityRow[]
+  warnings: string[]
+}
+
+export interface BrowserProfilePackageExportResult {
+  cancelled: boolean
+  zipPath: string
+  profileCount: number
+  fileCount: number
+  portableSessionProfileCount?: number
+  portableSessionWarning?: string
+  message: string
+}
+
+export interface BrowserProfilePackageImportResult {
+  cancelled: boolean
+  importedCount: number
+  createdCount?: number
+  overwrittenCount?: number
+  renamedCount?: number
+  profileMappings: Record<string, string>
+  warnings?: string[]
+  message: string
+}
+
+export type BrowserProfilePackageImportActionMode = 'new' | 'overwrite' | 'rename'
+
+export interface BrowserProfilePackageImportAction {
+  sourceProfileId: string
+  sourceIndex: number
+  mode: BrowserProfilePackageImportActionMode
+  profileName?: string
+}
+
+export interface BrowserProfilePackageImportConflict {
+  sourceProfileId: string
+  sourceProfileName: string
+  targetProfileId: string
+  targetProfileName: string
+  matchType: 'profileId' | 'profileName' | string
+  targetRunning: boolean
+  targetDeleted: boolean
+  ambiguous: boolean
+  targetMatches: number
+  sourceTargetCollision: boolean
+  sourceNameCollision: boolean
+}
+
+export interface BrowserProfilePackageImportPreviewProfile {
+  sourceIndex: number
+  sourceProfileId: string
+  sourceProfileName: string
+  targetProfileId: string
+  targetProfileName: string
+  matchType: 'profileId' | 'profileName' | string
+  targetRunning: boolean
+  targetDeleted: boolean
+  ambiguous: boolean
+  targetMatches: number
+  sourceTargetCollision: boolean
+  sourceNameCollision: boolean
+  suggestedAction: BrowserProfilePackageImportActionMode
+  suggestedProfileName: string
+  canOverwrite: boolean
+}
+
+export interface BrowserProfilePackageImportPreview {
+  cancelled: boolean
+  zipPath: string
+  profileCount: number
+  conflictCount: number
+  canOverwrite: boolean
+  profiles: BrowserProfilePackageImportPreviewProfile[]
+  conflicts: BrowserProfilePackageImportConflict[]
+  portableSessionAvailable?: boolean
+  portableSessionProfileCount?: number
+  message: string
+}
+
+export type BrowserProfileCopyMode = 'auto_fingerprint' | 'regular'
+
+export type BrowserProfileAutomationTarget =
+  | 'seed'
+  | 'identity'
+  | 'locale'
+  | 'screen'
+  | 'hardware'
+  | 'render'
+  | 'fonts'
+  | 'network'
+  | 'devices'
+
+export interface BrowserProfileCopyOptions {
+  mode: BrowserProfileCopyMode
+  automationTargets: BrowserProfileAutomationTarget[]
 }
 
 export interface BrowserTab {
@@ -47,14 +234,34 @@ export interface BrowserTab {
   active: boolean
 }
 
+// 安全控制/订阅对齐：后端记录的对齐明细（刷新自动对齐与对齐工作台共用）
+export interface SourceAlignPair {
+  oldName: string
+  newName: string
+  match: string // name / endpoint / country
+}
+
+export interface SourceAlignRecord {
+  at: string
+  mode: string // auto = 刷新自动对齐 / manual = 对齐工作台
+  pairs?: SourceAlignPair[]
+  added: number
+  keptMissing: number
+}
+
 export interface BrowserSettings {
   userDataRoot: string
   defaultFingerprintArgs: string[]
   defaultLaunchArgs: string[]
   defaultStartUrls: string[]
+  lightStartEnabled: boolean
   restoreLastSession: boolean
   startReadyTimeoutMs: number
   startStableWindowMs: number
+  /** 同时运行实例数上限；0 = 不限制，超出后启动请求排队等待空闲名额 */
+  maxConcurrentInstances: number
+  // xray 表示 Xray + sing-box 组合连接栈；mihomo 表示独立 Mihomo 连接栈。
+  defaultConnectorType: 'xray' | 'mihomo' | string
 }
 
 export interface ProxyCheckTarget {
@@ -69,6 +276,9 @@ export interface ProxyCheckTarget {
 
 export interface ProxyCheckSettings {
   bridgeStartTimeoutMs: number
+  speedIntervalMinutes: number
+  failureRetryMinutes: number
+  speedConcurrency: number
   speedTargetId: string
   ipHealthTargetId: string
   targets: ProxyCheckTarget[]
@@ -97,18 +307,94 @@ export interface BrowserProxy {
   proxyId: string
   proxyName: string
   proxyConfig: string
+  preferredKernel?: 'auto' | 'xray' | 'sing-box' | 'mihomo' | string
   dnsServers?: string
   groupName?: string
+  sortOrder?: number
   sourceId?: string
   sourceUrl?: string
   sourceNamePrefix?: string
   sourceAutoRefresh?: boolean
   sourceRefreshIntervalM?: number
   sourceLastRefreshAt?: string
+  /** 该订阅源拉取订阅内容时使用的代理（导入时选定并持久化，刷新时复用；空为直连） */
+  sourceFetchProxyId?: string
+  /** 最近一次订阅刷新失败的错误信息（成功刷新后由后端清空） */
+  sourceLastRefreshError?: string
+  /** 订阅刷新后该节点已不在来源列表中（名称/国家都匹配不上），保留在池内但标记异常 */
+  sourceMissing?: boolean
+  sourceMissingSince?: string
   lastLatencyMs?: number
   lastTestOk?: boolean
-  lastTestedAt?: string
+lastTestedAt?: string
+  speedTestFingerprint?: string
+  lastTestEngine?: string
+  lastTestConnectorType?: string
   lastIPHealthJson?: string
+}
+
+/** 订阅源刷新结果（后端统一匹配逻辑：名称 → 同国家 → 标记异常） */
+export interface ProxySourceRefreshResult {
+  sourceId: string
+  sourceUrl: string
+  fetched: number
+  nameMatched: number
+  countryMatched: number
+  added: number
+  markedMissing: number
+  total: number
+}
+
+export interface BrowserProxyVirtualGroup {
+  groupId: string
+  groupName: string
+  strategy: 'round_robin' | 'sticky' | string
+  /** 当前实际使用的成员（降级切换会改写它） */
+  selectedProxyId?: string
+  /** 用户偏好节点，降级切换不改写，恢复后用于回切 */
+  preferredProxyId?: string
+  memberProxyIds: string[]
+  memberGroupNames?: string[]
+  sortOrder?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type ProxyVirtualGroupMemberState = 'unknown' | 'healthy' | 'suspect' | 'degraded' | 'recovering'
+
+export interface ProxyVirtualGroupMemberHealth {
+  proxyId: string
+  proxyName?: string
+  groupName?: string
+  state: ProxyVirtualGroupMemberState | string
+  latencyMs: number
+  lastProbeAt?: string
+  lastError?: string
+  active?: boolean
+  preferred?: boolean
+}
+
+export interface ProxyVirtualGroupHealth {
+  groupId: string
+  groupName: string
+  strategy: string
+  activeProxyId?: string
+  preferredProxyId?: string
+  total: number
+  healthy: number
+  suspect: number
+  degraded: number
+  /** 全组成员均已降级，启动会被拒绝 */
+  allDegraded: boolean
+  members: ProxyVirtualGroupMemberHealth[]
+  updatedAt?: string
+}
+
+export interface ProxyVirtualGroupProbeResult {
+  groupId: string
+  tested: number
+  healthy: number
+  degraded: number
 }
 
 export interface ProxyIPHealthResult {
@@ -128,10 +414,124 @@ export interface ProxyIPHealthResult {
   updatedAt: string
 }
 
+
+export interface ProxyCoreDownloadProgress {
+  core: string
+  goos: string
+  goarch: string
+  phase: string
+  progress: number
+  message: string
+}
+
+export interface ProxyCoreStatusResult {
+  core: string
+  goos: string
+  goarch: string
+  installed: boolean
+  configured: boolean
+  active: boolean
+  binaryPath: string
+  source: string
+  message: string
+}
+
+export interface ProxyCoreDownloadInfoResult {
+  core: string
+  goos: string
+  goarch: string
+  version: string
+  repo: string
+  releaseUrl: string
+  downloadUrl: string
+  assetName: string
+  installDir: string
+  binaryName: string
+  message: string
+}
+
+export interface ProxyBridgeWarmupResult {
+  proxyId: string
+  ok: boolean
+  engine: string
+  socksUrl: string
+  latencyMs: number
+  error: string
+}
+
+export interface ProxySpeedTestResult {
+  proxyId: string
+  ok: boolean
+  latencyMs: number
+  engine?: string
+  error: string
+  testedAt?: string
+  fingerprint?: string
+}
+
+
+export interface ProxyLocationOption {
+  label: string
+  timezone: string
+  lang: string
+}
+
+export interface ProxyLocationResolveResult {
+  proxyId: string
+  ok: boolean
+  auto: boolean
+  source: string
+  error: string
+  ip: string
+  country: string
+  region: string
+  city: string
+  timezone: string
+  lang: string
+  health?: ProxyIPHealthResult
+  alternates?: ProxyLocationOption[]
+  resolvedAt: string
+}
+
 export interface BrowserCoreExtended {
   coreId: string
   chromeVersion: string
   instanceCount: number
+}
+
+export interface BrowserExtension {
+  extensionId: string
+  name: string
+  version: string
+  description: string
+  iconDataUrl: string
+  manifestJson: string
+  sourceUrl: string
+  installDir: string
+  installMode: string
+  packagePath: string
+  packageHash: string
+  enabled: boolean
+  defaultInstall: boolean
+  installedAt: string
+  updatedAt: string
+}
+
+export interface BrowserExtensionLookupResult {
+  extensionId: string
+  name: string
+  version: string
+  description: string
+  storeUrl: string
+  installable: boolean
+  message: string
+}
+
+export interface BrowserProfileExtensionSettings {
+  profileId: string
+  configured: boolean
+  extensionIds: string[]
+  updatedAt: string
 }
 
 export interface CookieInfo {
@@ -188,3 +588,4 @@ export interface BrowserGroupInput {
 export interface BrowserGroupWithCount extends BrowserGroup {
   instanceCount: number
 }
+

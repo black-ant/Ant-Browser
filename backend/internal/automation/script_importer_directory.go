@@ -118,6 +118,7 @@ func importDirectoryBundle(packageRoot string, entryPath string, descriptor map[
 		Format:          mapStringValueAny(descriptor, "format"),
 		PackageFormat:   mapStringValueAny(descriptor, "packageFormat"),
 		ManifestVersion: mapIntValueAny(descriptor, "manifestVersion"),
+		ID:              mapStringValueAny(descriptor, "id"),
 		Name:            mapStringValueAny(descriptor, "name"),
 		Description:     mapStringValueAny(descriptor, "description"),
 		Type:            mapStringValueAny(descriptor, "type"),
@@ -130,6 +131,8 @@ func importDirectoryBundle(packageRoot string, entryPath string, descriptor map[
 		ParamsText:      descriptor["paramsText"],
 		ScriptText:      string(entryData),
 		Notes:           appendImportSourceNote(mapStringValueAny(descriptor, "notes"), sourceLabel),
+		TargetConfig:    mapObjectValue(descriptor, "targetConfig"),
+		PublicAPI:       mapObjectValue(descriptor, "publicAPI"),
 		Source:          mapObjectValue(descriptor, "source"),
 	}, filepath.Base(packageRoot), sourceLabel)
 	if err != nil {

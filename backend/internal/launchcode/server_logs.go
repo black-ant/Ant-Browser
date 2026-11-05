@@ -33,7 +33,7 @@ func (s *LaunchServer) appendLaunchLog(method, path, clientIP, code string, sele
 
 	log := logger.New("LaunchServer")
 	if ok {
-		log.Info("Launch API 调用", logger.F("method", method), logger.F("path", path), logger.F("code", entry.Code), logger.F("profile_id", profileID), logger.F("status", status), logger.F("duration_ms", entry.DurationMs))
+		log.Debug("Launch API 调用", logger.F("method", method), logger.F("path", path), logger.F("code", entry.Code), logger.F("profile_id", profileID), logger.F("status", status), logger.F("duration_ms", entry.DurationMs))
 		return
 	}
 	log.Warn("Launch API 调用失败", logger.F("method", method), logger.F("path", path), logger.F("code", entry.Code), logger.F("status", status), logger.F("error", errMsg), logger.F("duration_ms", entry.DurationMs))

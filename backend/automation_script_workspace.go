@@ -13,7 +13,7 @@ import (
 func (a *App) preparePlaywrightScriptWorkspace(runtimeDir string, script automation.ScriptRecord) (string, string, func(), error) {
 	execRoot := filepath.Join(runtimeDir, "tmp", "script-run", fmt.Sprintf("%s-%d", strings.TrimSpace(script.ID), time.Now().UnixNano()))
 	scriptPath := filepath.Join(execRoot, filepath.FromSlash(script.EntryFile))
-	artifactDir := filepath.Join(a.appDataDir(), "automation", "artifacts", strings.TrimSpace(script.ID), time.Now().Format("20060102-150405"))
+	artifactDir := filepath.Join(a.automationArtifactsRootDir(), strings.TrimSpace(script.ID), time.Now().Format("20060102-150405"))
 
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return "", "", nil, fmt.Errorf("create script artifact dir failed: %w", err)
@@ -43,6 +43,17 @@ func (a *App) preparePlaywrightScriptWorkspace(runtimeDir string, script automat
 		_ = os.RemoveAll(execRoot)
 	}
 	return scriptPath, artifactDir, cleanup, nil
+}
+
+func (a *App) automationArtifactsRootDir() string {
+	configured := ""
+	if a.config != nil {
+		configured = strings.TrimSpace(a.config.Automation.ArtifactsDir)
+	}
+	if configured == "" {
+		configured = filepath.ToSlash(filepath.Join("data", "automation", "artifacts"))
+	}
+	return a.resolveAppPath(configured)
 }
 
 func copyAutomationScriptDir(srcDir string, dstDir string) error {

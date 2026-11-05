@@ -98,6 +98,54 @@ func TestImportBundleFromBytesSupportsZipPackage(t *testing.T) {
 	}
 }
 
+func TestImportBundleFromZipPreservesPackageIdentityAndPublicAPI(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "proton-package.zip")
+	if err := os.WriteFile(zipPath, buildScriptPackageZipBytes(t, map[string]string{
+		scriptPackageManifestName: `{
+  "format": "ant-automation-script",
+  "packageFormat": "ant-automation-script",
+  "manifestVersion": 1,
+  "id": "proton-mail-first-message",
+  "name": "Proton 邮件搜索并读取最新邮件",
+  "type": "playwright-cdp",
+  "status": "ready",
+  "entryFile": "index.cjs",
+  "targetConfig": {
+    "mode": "manual"
+  },
+  "publicAPI": {
+    "enabled": true,
+    "method": "POST",
+    "path": "mail/proton-first-message",
+    "requestMode": "params-only",
+    "responseMode": "envelope",
+    "timeoutMs": 120000
+  }
+}`,
+		"index.cjs": "module.exports.run = async () => ({ ok: true })",
+	}), 0o644); err != nil {
+		t.Fatalf("write zip failed: %v", err)
+	}
+
+	bundle, err := ImportBundleFromZip(zipPath, "本地文件 "+zipPath)
+	if err != nil {
+		t.Fatalf("ImportBundleFromZip returned error: %v", err)
+	}
+
+	if bundle.Record.ID != "proton-mail-first-message" {
+		t.Fatalf("expected package id to round-trip, got %q", bundle.Record.ID)
+	}
+	if bundle.Record.Status != "ready" {
+		t.Fatalf("expected package status to round-trip, got %q", bundle.Record.Status)
+	}
+	if !bundle.Record.PublicAPI.Enabled || bundle.Record.PublicAPI.Path != "mail/proton-first-message" {
+		t.Fatalf("expected public api to round-trip, got %+v", bundle.Record.PublicAPI)
+	}
+	if bundle.Record.TargetConfig.Mode != "manual" {
+		t.Fatalf("expected target config to round-trip, got %+v", bundle.Record.TargetConfig)
+	}
+}
+
 func TestImportBundleFromZipSupportsSingleRootDirectory(t *testing.T) {
 	zipPath := filepath.Join(t.TempDir(), "nested.zip")
 	if err := os.WriteFile(zipPath, buildScriptPackageZipBytes(t, map[string]string{

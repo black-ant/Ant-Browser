@@ -21,8 +21,8 @@ func tcpPingFallback(proxyId, src string, timeout time.Duration, log *logger.Log
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
-		return TestResult{ProxyId: proxyId, Ok: false, LatencyMs: latency, Error: fmt.Sprintf("TCP 连接失败: %v", err)}
+		return TestResult{ProxyId: proxyId, Ok: false, LatencyMs: latency, Engine: "tcp", Error: fmt.Sprintf("TCP 连接失败: %v", err)}
 	}
 	conn.Close()
-	return TestResult{ProxyId: proxyId, Ok: true, LatencyMs: latency}
+	return TestResult{ProxyId: proxyId, Ok: true, LatencyMs: latency, Engine: "tcp"}
 }

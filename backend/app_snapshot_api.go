@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/snapshot"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -48,7 +49,7 @@ func (a *App) BrowserSnapshotCreate(profileId, name string) (SnapshotInfo, error
 	zipPath := filepath.Join(snapDir, snapshotID+"_"+safeName+".zip")
 	metaPath := filepath.Join(snapDir, snapshotID+"_"+safeName+".meta.json")
 
-	if err := zipDir(userDataDir, zipPath); err != nil {
+	if err := snapshot.ZipDir(userDataDir, zipPath); err != nil {
 		return SnapshotInfo{}, fmt.Errorf("压缩失败: %w", err)
 	}
 
@@ -129,7 +130,7 @@ func (a *App) BrowserSnapshotRestore(profileId, snapshotId string) error {
 		return err
 	}
 
-	metaPath, zipPath, err := findSnapshotFiles(snapDir, snapshotId)
+	metaPath, zipPath, err := snapshot.FindFiles(snapDir, snapshotId)
 	if err != nil {
 		return err
 	}
@@ -142,7 +143,7 @@ func (a *App) BrowserSnapshotRestore(profileId, snapshotId string) error {
 	if err := os.MkdirAll(userDataDir, 0o755); err != nil {
 		return err
 	}
-	return unzipTo(zipPath, userDataDir)
+	return snapshot.UnzipTo(zipPath, userDataDir)
 }
 
 // BrowserSnapshotDelete 删除快照
@@ -151,7 +152,7 @@ func (a *App) BrowserSnapshotDelete(profileId, snapshotId string) error {
 	if err != nil {
 		return err
 	}
-	metaPath, zipPath, err := findSnapshotFiles(snapDir, snapshotId)
+	metaPath, zipPath, err := snapshot.FindFiles(snapDir, snapshotId)
 	if err != nil {
 		return err
 	}

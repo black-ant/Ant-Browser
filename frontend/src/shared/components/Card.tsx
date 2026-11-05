@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 import clsx from 'clsx'
 
 interface CardProps {
-  title?: string
+  title?: ReactNode
   subtitle?: string
   children: ReactNode
   className?: string
@@ -22,9 +22,9 @@ export function Card({
 }: CardProps) {
   const paddings = {
     none: '',
-    sm: 'p-4',
-    md: 'p-5',
-    lg: 'p-6',
+    sm: 'p-3',
+    md: 'p-4',
+    lg: 'p-5',
   }
 
   return (
@@ -38,7 +38,7 @@ export function Card({
       )}
     >
       {(title || actions) && (
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border-muted)]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-muted)]">
           <div>
             {title && (
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">

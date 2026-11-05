@@ -136,6 +136,7 @@ func (m *Manager) probeNodeExecutable(ctx context.Context, nodePath string) (nod
 
 	script := `process.stdout.write(JSON.stringify({path: process.execPath, version: process.versions.node}));`
 	cmd := exec.CommandContext(probeCtx, nodePath, "-e", script)
+	hideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -203,6 +204,7 @@ process.stdout.write(JSON.stringify({
 
 	cmd := exec.CommandContext(checkCtx, nodePath, "-e", script, runtimeDir)
 	cmd.Dir = runtimeDir
+	hideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))

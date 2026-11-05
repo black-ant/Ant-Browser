@@ -20,6 +20,7 @@ export interface AutomationSettings {
   headlessDefault: boolean
   keepRuntimeOnDisable: boolean
   allowTypeScriptBuild: boolean
+  artifactsDir: string
   nodeSource: string
   systemNodePath: string
   nodeVersion: string
@@ -62,6 +63,14 @@ export interface AutomationSystemNodeProbe {
   version: string
 }
 
+export interface LaunchServerSettings {
+  host: string
+  port: number
+  preferredPort: number
+  baseUrl: string
+  ready: boolean
+}
+
 export const defaultAutomationState: AutomationState = {
   settings: {
     enabled: false,
@@ -70,6 +79,7 @@ export const defaultAutomationState: AutomationState = {
     headlessDefault: false,
     keepRuntimeOnDisable: true,
     allowTypeScriptBuild: false,
+    artifactsDir: 'data/automation/artifacts',
     nodeSource: 'auto',
     systemNodePath: '',
     nodeVersion: '22.15.1',
@@ -90,25 +100,6 @@ export const defaultAutomationState: AutomationState = {
     nodeVersion: '22.15.1',
     playwrightVersion: '1.59.0',
   },
-}
-
-export interface BackupActionResult {
-  cancelled?: boolean
-  message?: string
-  zipPath?: string
-  resetFirst?: boolean
-  imported?: number
-  skipped?: number
-  conflicts?: number
-  partial?: boolean
-  componentTotal?: number
-  componentSuccess?: number
-  componentFailed?: number
-  failedComponents?: Array<{
-    componentId?: string
-    componentName?: string
-    error?: string
-  }>
 }
 
 // 获取设置
@@ -137,33 +128,15 @@ export async function saveSettings(settings: AppSettings): Promise<boolean> {
 
 // 重置设置
 export async function resetSettings(): Promise<AppSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.ResetManagedSettings) {
+    throw new Error('当前环境不支持重置所有设置')
+  }
+  await bindings.ResetManagedSettings()
   localStorage.removeItem(SETTINGS_KEY)
   return defaultSettings
 }
 
-export async function initializeSystemData(): Promise<BackupActionResult> {
-  const bindings: any = await getBindings()
-  if (!bindings?.BackupInitializeSystem) {
-    return { cancelled: false, message: '当前环境不支持后端初始化接口' }
-  }
-  return (await bindings.BackupInitializeSystem()) || {}
-}
-
-export async function exportSystemConfig(): Promise<BackupActionResult> {
-  const bindings: any = await getBindings()
-  if (!bindings?.BackupExportPackage) {
-    return { cancelled: false, message: '当前环境不支持后端导出接口' }
-  }
-  return (await bindings.BackupExportPackage()) || {}
-}
-
-export async function importSystemConfig(resetFirst: boolean): Promise<BackupActionResult> {
-  const bindings: any = await getBindings()
-  if (!bindings?.BackupImportPackage) {
-    return { cancelled: false, message: '当前环境不支持后端加载接口' }
-  }
-  return (await bindings.BackupImportPackage(resetFirst)) || {}
-}
 
 export async function fetchAutomationState(): Promise<AutomationState> {
   const bindings: any = await getBindings()
@@ -294,4 +267,34 @@ export async function automationRuntimeSelfCheck(): Promise<AutomationRuntimeChe
     return { ok: false, nodeSource: '', nodeVersion: '', playwrightVersion: '' }
   }
   return (await bindings.AutomationRuntimeSelfCheck()) || { ok: false, nodeSource: '', nodeVersion: '', playwrightVersion: '' }
+}
+
+function normalizeLaunchServerSettings(payload: any): LaunchServerSettings {
+  const host = String(payload?.host || '127.0.0.1')
+  const port = Number(payload?.port) || 0
+  const preferredPort = Number(payload?.preferredPort) || port || 19876
+  const effectivePort = port > 0 ? port : preferredPort
+  return {
+    host,
+    port: effectivePort,
+    preferredPort,
+    baseUrl: String(payload?.baseUrl || (effectivePort > 0 ? `http://${host}:${effectivePort}` : '')),
+    ready: !!payload?.ready && port > 0,
+  }
+}
+
+export async function fetchLaunchServerSettings(): Promise<LaunchServerSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.GetLaunchServerInfo) {
+    return normalizeLaunchServerSettings(null)
+  }
+  return normalizeLaunchServerSettings(await bindings.GetLaunchServerInfo())
+}
+
+export async function saveLaunchServerSettings(port: number): Promise<LaunchServerSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.SaveLaunchServerSettings) {
+    return normalizeLaunchServerSettings({ port, preferredPort: port, ready: false })
+  }
+  return normalizeLaunchServerSettings(await bindings.SaveLaunchServerSettings(port))
 }

@@ -18,6 +18,7 @@ func (a *App) automationStatePayload() map[string]interface{} {
 		"headlessDefault":      false,
 		"keepRuntimeOnDisable": true,
 		"allowTypeScriptBuild": false,
+		"artifactsDir":         "data/automation/artifacts",
 		"nodeSource":           config.DefaultAutomationNodeSource,
 		"systemNodePath":       "",
 		"nodeVersion":          config.DefaultAutomationNodeVersion,
@@ -46,6 +47,7 @@ func (a *App) automationStatePayload() map[string]interface{} {
 		settings["headlessDefault"] = a.config.Automation.HeadlessDefault
 		settings["keepRuntimeOnDisable"] = a.config.Automation.KeepRuntimeOnDisable
 		settings["allowTypeScriptBuild"] = a.config.Automation.AllowTypeScriptBuild
+		settings["artifactsDir"] = a.config.Automation.ArtifactsDir
 		settings["nodeSource"] = a.config.Automation.NodeSource
 		settings["systemNodePath"] = a.config.Automation.SystemNodePath
 		settings["nodeVersion"] = a.config.Automation.NodeVersion
@@ -101,6 +103,11 @@ func applyAutomationConfigDefaults(auto *config.AutomationConfig) {
 	}
 	if !auto.KeepRuntimeOnDisable {
 		auto.KeepRuntimeOnDisable = true
+	}
+	if strings.TrimSpace(auto.ArtifactsDir) == "" {
+		auto.ArtifactsDir = "data/automation/artifacts"
+	} else {
+		auto.ArtifactsDir = strings.TrimSpace(auto.ArtifactsDir)
 	}
 }
 

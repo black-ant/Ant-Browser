@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, FormItem, Input, Select, toast } from '../../../shared/components'
-import type { BrowserProfile } from '../types'
-import { createBrowserProfile, fetchBrowserProfiles } from '../api'
+import { Button, Card, FormItem, Select, toast } from '../../../shared/components'
+import { BrowserProfileCopyForm } from '../components/BrowserProfileCopyForm'
+import { createBrowserProfileCopyOptions, isBrowserProfileCopyOptionsValid } from '../copyOptions'
+import { buildBrowserProfileCopyName } from '../copyName'
+import type { BrowserProfile, BrowserProfileCopyOptions } from '../types'
+import { copyBrowserProfile, fetchBrowserProfiles } from '../api'
 
 export function BrowserCopyPage() {
   const { id } = useParams()
@@ -10,6 +13,7 @@ export function BrowserCopyPage() {
   const [profiles, setProfiles] = useState<BrowserProfile[]>([])
   const [sourceId, setSourceId] = useState(id || '')
   const [targetName, setTargetName] = useState('')
+  const [copyOptions, setCopyOptions] = useState<BrowserProfileCopyOptions>(() => createBrowserProfileCopyOptions())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -25,46 +29,48 @@ export function BrowserCopyPage() {
 
   const sourceProfile = profiles.find(item => item.profileId === sourceId)
 
+  useEffect(() => {
+    if (!sourceProfile) {
+      return
+    }
+    setTargetName(buildBrowserProfileCopyName(sourceProfile.profileName))
+  }, [sourceProfile?.profileId, sourceProfile?.profileName])
+
   const handleCopy = async () => {
-    if (!sourceProfile || !targetName) {
+    if (!sourceProfile || !targetName.trim()) {
       toast.error('请填写目标名称')
+      return
+    }
+    if (!isBrowserProfileCopyOptionsValid(copyOptions)) {
+      toast.error('请至少勾选一个自动化指纹项')
       return
     }
     setSaving(true)
     try {
-      await createBrowserProfile({
-        profileName: targetName,
-        userDataDir: `${sourceProfile.userDataDir}-copy`,
-        coreId: sourceProfile.coreId,
-        fingerprintArgs: sourceProfile.fingerprintArgs,
-        proxyId: sourceProfile.proxyId,
-        proxyConfig: sourceProfile.proxyConfig,
-        launchArgs: sourceProfile.launchArgs,
-        tags: sourceProfile.tags,
-        keywords: sourceProfile.keywords || [],
-      })
+      await copyBrowserProfile(sourceProfile.profileId, targetName.trim(), copyOptions)
       toast.success('配置已复制')
       navigate('/browser/list')
+    } catch (error: any) {
+      toast.error(error?.message || '复制失败')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="space-y-4 animate-fade-in">
+      <Card padding="none" className="shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">配置复制</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">基于现有配置快速创建</p>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Button variant="secondary" size="sm" onClick={() => navigate('/browser/list')}>返回列表</Button>
+            <Button size="sm" onClick={handleCopy} loading={saving} disabled={!targetName.trim() || !isBrowserProfileCopyOptionsValid(copyOptions)}>生成配置</Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => navigate('/browser/list')}>返回列表</Button>
-          <Button size="sm" onClick={handleCopy} loading={saving}>生成配置</Button>
-        </div>
-      </div>
+      </Card>
 
-      <Card title="复制设置" subtitle="选择源配置并设置名称">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Card title="复制设置">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <FormItem label="源配置">
             <Select
               value={sourceId}
@@ -72,9 +78,14 @@ export function BrowserCopyPage() {
               options={profiles.map(item => ({ value: item.profileId, label: item.profileName }))}
             />
           </FormItem>
-          <FormItem label="新配置名称">
-            <Input value={targetName} onChange={e => setTargetName(e.target.value)} placeholder="请输入名称" />
-          </FormItem>
+        </div>
+        <div className="mt-4">
+          <BrowserProfileCopyForm
+            copyName={targetName}
+            copyOptions={copyOptions}
+            onCopyNameChange={setTargetName}
+            onCopyOptionsChange={setCopyOptions}
+          />
         </div>
       </Card>
     </div>

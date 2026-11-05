@@ -1,119 +1,97 @@
 package proxy
 
 import (
-	"strings"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
-func TestProxyConfigToMappingStandardProxy(t *testing.T) {
-	t.Parallel()
+func TestDoSpeedTestRequestMeasuresSecondWarmRequest(t *testing.T) {
+	var headRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodHead {
+			t.Errorf("method = %s, want HEAD", request.Method)
+			return
+		}
+		if headRequests.Add(1) == 1 {
+			// 第一次请求模拟冷连接（TCP/代理握手）耗时，其延迟不应被报告。
+			time.Sleep(300 * time.Millisecond)
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
 
-	mapping, err := proxyConfigToMapping("http://user:pass@example.com:8080/path")
+	latency, statusCode, err := doSpeedTestRequest(server.Client(), server.URL)
 	if err != nil {
-		t.Fatalf("proxyConfigToMapping returned error: %v", err)
+		t.Fatalf("doSpeedTestRequest returned error: %v", err)
 	}
-
-	if got := mapping["type"]; got != "http" {
-		t.Fatalf("type = %v, want http", got)
+	if statusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", statusCode, http.StatusNoContent)
 	}
-	if got := mapping["server"]; got != "example.com" {
-		t.Fatalf("server = %v, want example.com", got)
+	if headRequests.Load() != 2 {
+		t.Fatalf("request count = %d, want 2 (warm-up + measured)", headRequests.Load())
 	}
-	if got := mapping["port"]; got != 8080 {
-		t.Fatalf("port = %v, want 8080", got)
-	}
-	if got := mapping["username"]; got != "user" {
-		t.Fatalf("username = %v, want user", got)
-	}
-	if got := mapping["password"]; got != "pass" {
-		t.Fatalf("password = %v, want pass", got)
+	if latency < 0 || latency >= 200 {
+		t.Fatalf("latency = %d, want the second (warm) request below 200ms", latency)
 	}
 }
 
-func TestProxyConfigToMappingEscapedCredentials(t *testing.T) {
-	t.Parallel()
+func TestDoSpeedTestRequestFallsBackToGETWhenHEADUnsupported(t *testing.T) {
+	var headRequests atomic.Int32
+	var getRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodHead:
+			headRequests.Add(1)
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+		case http.MethodGet:
+			getRequests.Add(1)
+			writer.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected method = %s", request.Method)
+		}
+	}))
+	defer server.Close()
 
-	mapping, err := proxyConfigToMapping("http://user%40mail:p%40ss%3Aword@example.com:8080")
+	_, statusCode, err := doSpeedTestRequest(server.Client(), server.URL)
 	if err != nil {
-		t.Fatalf("proxyConfigToMapping returned error: %v", err)
+		t.Fatalf("doSpeedTestRequest returned error: %v", err)
 	}
-	if got := mapping["username"]; got != "user@mail" {
-		t.Fatalf("username = %v, want user@mail", got)
+	if statusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", statusCode, http.StatusNoContent)
 	}
-	if got := mapping["password"]; got != "p@ss:word" {
-		t.Fatalf("password = %v, want p@ss:word", got)
+	if headRequests.Load() != 1 || getRequests.Load() != 1 {
+		t.Fatalf("request counts = HEAD %d, GET %d; want HEAD 1, GET 1", headRequests.Load(), getRequests.Load())
 	}
 }
 
-func TestProxyEndpointDropsCredentials(t *testing.T) {
-	t.Parallel()
+func TestDoSpeedTestRequestFallsBackToGETWhenHEADNotImplemented(t *testing.T) {
+	var headRequests atomic.Int32
+	var getRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodHead:
+			headRequests.Add(1)
+			writer.WriteHeader(http.StatusNotImplemented)
+		case http.MethodGet:
+			getRequests.Add(1)
+			writer.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected method = %s", request.Method)
+		}
+	}))
+	defer server.Close()
 
-	endpoint, err := proxyEndpoint("http://user:pass@example.com:8080")
+	_, statusCode, err := doSpeedTestRequest(server.Client(), server.URL)
 	if err != nil {
-		t.Fatalf("proxyEndpoint returned error: %v", err)
+		t.Fatalf("doSpeedTestRequest returned error: %v", err)
 	}
-	if endpoint != "example.com:8080" {
-		t.Fatalf("endpoint = %q, want example.com:8080", endpoint)
+	if statusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", statusCode, http.StatusNoContent)
 	}
-}
-
-func TestProxyConfigToMappingClashYAML(t *testing.T) {
-	t.Parallel()
-
-	src := "proxies:\n  - type: vmess\n    server: test.example.com\n    port: 443\n"
-	mapping, err := proxyConfigToMapping(src)
-	if err != nil {
-		t.Fatalf("proxyConfigToMapping returned error: %v", err)
-	}
-
-	if got := mapping["type"]; got != "vmess" {
-		t.Fatalf("type = %v, want vmess", got)
-	}
-	if got := mapping["server"]; got != "test.example.com" {
-		t.Fatalf("server = %v, want test.example.com", got)
-	}
-	if got := mapping["port"]; got != 443 {
-		t.Fatalf("port = %v, want 443", got)
-	}
-	if got := mapping["name"]; got != "speedtest-proxy" {
-		t.Fatalf("name = %v, want speedtest-proxy", got)
-	}
-}
-
-func TestProxyConfigToMappingUnsupportedURI(t *testing.T) {
-	t.Parallel()
-
-	if _, err := proxyConfigToMapping("vmess://example"); err == nil {
-		t.Fatal("expected unsupported URI error")
-	}
-}
-
-func TestURLToMeta(t *testing.T) {
-	t.Parallel()
-
-	meta, err := urlToMeta("https://1.2.3.4:8443/path")
-	if err != nil {
-		t.Fatalf("urlToMeta returned error: %v", err)
-	}
-
-	if meta.Host != "1.2.3.4" {
-		t.Fatalf("host = %q, want 1.2.3.4", meta.Host)
-	}
-	if meta.DstPort != 8443 {
-		t.Fatalf("port = %d, want 8443", meta.DstPort)
-	}
-	if !meta.DstIP.IsValid() || meta.DstIP.String() != "1.2.3.4" {
-		t.Fatalf("DstIP = %v, want 1.2.3.4", meta.DstIP)
-	}
-}
-
-func TestDefaultProxyCheckURLsAreConfigured(t *testing.T) {
-	t.Parallel()
-
-	if strings.TrimSpace(DefaultSpeedTestURL) == "" {
-		t.Fatalf("DefaultSpeedTestURL must not be empty")
-	}
-	if strings.TrimSpace(DefaultIPHealthURL) == "" {
-		t.Fatalf("DefaultIPHealthURL must not be empty")
+	if headRequests.Load() != 1 || getRequests.Load() != 1 {
+		t.Fatalf("request counts = HEAD %d, GET %d; want HEAD 1, GET 1", headRequests.Load(), getRequests.Load())
 	}
 }

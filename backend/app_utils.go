@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,7 +59,7 @@ func (a *App) ensureDefaultCores() {
 	log := logger.New("Browser")
 
 	// 扫描 chrome/ 目录，无论配置是否已有内核都执行一次，确保新增子目录被发现
-	detected := a.scanChromeDir("chrome")
+	detected := a.scanChromeDir(a.browserCoreRoot())
 
 	if len(a.config.Browser.Cores) == 0 {
 		// 配置为空：直接用扫描结果，或兜底写一个占位
@@ -100,13 +101,15 @@ func (a *App) ensureDefaultCores() {
 
 func (a *App) autoDetectCores() {
 	log := logger.New("Browser")
-	// ensureDefaultCores 已完成扫描注册，这里只做路径有效性日志。
+	cores := a.scanAndRegisterCores()
 	// SQLite 模式下以内核表为准，避免与 config.yaml 历史条目不一致。
-	cores := a.config.Browser.Cores
 	if a.browserMgr != nil {
 		cores = a.browserMgr.ListCores()
 	}
 	for _, core := range cores {
+		if a.browserMgr == nil {
+			break
+		}
 		result := a.browserMgr.ValidateCorePath(core.CorePath)
 		if result.Valid {
 			log.Debug("内核路径有效", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath))
@@ -114,6 +117,61 @@ func (a *App) autoDetectCores() {
 			log.Warn("内核路径无效", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath), logger.F("message", result.Message))
 		}
 	}
+}
+
+func (a *App) browserCoreRoot() string {
+	if a != nil && a.config != nil {
+		if root := strings.TrimSpace(a.config.Browser.CoreRoot); root != "" {
+			return root
+		}
+	}
+	return "chrome"
+}
+
+func (a *App) scanAndRegisterCores() []browser.Core {
+	log := logger.New("Browser")
+	detected := a.scanChromeDir(a.browserCoreRoot())
+	if len(detected) == 0 || a.browserMgr == nil {
+		return detected
+	}
+
+	existing := a.browserMgr.ListCores()
+	knownPaths := make(map[string]struct{}, len(existing))
+	hasDefault := false
+	for _, core := range existing {
+		knownPaths[normalizeCorePathForCompare(core.CorePath)] = struct{}{}
+		if core.IsDefault {
+			hasDefault = true
+		}
+	}
+
+	for _, core := range detected {
+		if _, ok := knownPaths[normalizeCorePathForCompare(core.CorePath)]; ok {
+			continue
+		}
+		core.IsDefault = !hasDefault
+		if err := a.browserMgr.SaveCore(browser.CoreInput{
+			CoreId:    core.CoreId,
+			CoreName:  core.CoreName,
+			CorePath:  core.CorePath,
+			IsDefault: core.IsDefault,
+		}); err != nil {
+			log.Warn("自动注册内核失败", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath), logger.F("error", err.Error()))
+			continue
+		}
+		log.Info("发现新内核，已注册", logger.F("core_id", core.CoreId), logger.F("path", core.CorePath))
+		knownPaths[normalizeCorePathForCompare(core.CorePath)] = struct{}{}
+		hasDefault = hasDefault || core.IsDefault
+	}
+	return a.browserMgr.ListCores()
+}
+
+func normalizeCorePathForCompare(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Clean(path))
 }
 
 // scanChromeDir 扫描指定目录，将包含浏览器可执行文件的子文件夹识别为内核。
@@ -128,7 +186,7 @@ func (a *App) scanChromeDir(chromeRoot string) []browser.Core {
 	}
 
 	// 如果根目录本身就有浏览器可执行文件，视为单内核结构
-	if _, _, ok := browser.FindCoreExecutable(baseDir); ok {
+	if _, _, ok := browser.FindCoreExecutableShallow(baseDir); ok {
 		return []browser.Core{
 			{
 				CoreId:    "default",
@@ -173,8 +231,11 @@ func (a *App) scanChromeDir(chromeRoot string) []browser.Core {
 // ============================================================================
 
 // loadProxies 启动时加载代理数据。
-// 优先从 ProxyDAO（SQLite）读取；若 DAO 未注入则降级到 proxies.yaml，最后降级到 config.yaml。
-func (a *App) loadProxies() {
+// DAO 已注入时只信任数据库；只有未注入 DAO 时才读取旧文件。
+func (a *App) loadProxies() error {
+	if a == nil || a.config == nil || a.browserMgr == nil {
+		return fmt.Errorf(`代理数据加载上下文不可用`)
+	}
 	log := logger.New("Browser")
 
 	builtins := []browser.Proxy{
@@ -201,12 +262,12 @@ func (a *App) loadProxies() {
 	if a.browserMgr.ProxyDAO != nil {
 		list, err := a.browserMgr.ProxyDAO.List()
 		if err != nil {
-			log.Error("从数据库读取代理失败", logger.F("error", err.Error()))
-		} else if len(list) > 0 {
-			a.config.Browser.Proxies = list
-			log.Info("代理数据从数据库加载完成", logger.F("count", len(list)))
-			return
+			return fmt.Errorf(`从数据库读取代理失败: %w`, err)
 		}
+		proxies := ensureBuiltins(list)
+		a.config.Browser.Proxies = proxies
+		log.Debug("代理数据从数据库加载完成", logger.F("count", len(proxies)))
+		return nil
 	}
 
 	// 降级：从 proxies.yaml 加载
@@ -218,11 +279,12 @@ func (a *App) loadProxies() {
 		proxies := ensureBuiltins(loaded)
 		a.config.Browser.Proxies = proxies
 		log.Info("代理数据从 proxies.yaml 加载完成", logger.F("count", len(proxies)))
-		return
+		return nil
 	}
 
 	// 最终降级：使用 config.yaml 中的数据
 	proxies := ensureBuiltins(a.config.Browser.Proxies)
 	a.config.Browser.Proxies = proxies
 	log.Info("代理数据使用 config.yaml 默认值", logger.F("count", len(proxies)))
+	return nil
 }

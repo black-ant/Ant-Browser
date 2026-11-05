@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, Copy, Pencil, Play, RefreshCw, Square, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Download, Pencil, Play, RefreshCw, Square, Trash2 } from 'lucide-react'
 
-import { Button, toast } from '../../../shared/components'
+import { Button, FormItem, Input, Modal, toast } from '../../../shared/components'
 import { regenerateBrowserProfileCode, setBrowserProfileCode } from '../api'
 
 interface BatchToolbarProps {
@@ -11,8 +11,10 @@ interface BatchToolbarProps {
   onDeselectAll: () => void
   onBatchStart: () => void
   onBatchStop: () => void
+  onBatchExport: () => void
   onBatchDelete: () => void
   batchLoading: boolean
+  exporting?: boolean
 }
 
 export function BatchToolbar({
@@ -22,8 +24,10 @@ export function BatchToolbar({
   onDeselectAll,
   onBatchStart,
   onBatchStop,
+  onBatchExport,
   onBatchDelete,
   batchLoading,
+  exporting = false,
 }: BatchToolbarProps) {
   if (selectedCount === 0) return null
 
@@ -38,6 +42,9 @@ export function BatchToolbar({
         </Button>
         <Button size="sm" variant="secondary" onClick={onBatchStop} loading={batchLoading} title="批量停止">
           <Square className="w-3.5 h-3.5" />停止
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onBatchExport} loading={exporting} title="导出实例">
+          <Download className="w-3.5 h-3.5" />导出
         </Button>
         <Button
           size="sm"
@@ -59,8 +66,19 @@ interface LaunchCodeCellProps {
   onRefresh: () => void
 }
 
+function resolveCustomCodeError(error: unknown): string {
+  const message = String((error as { message?: string } | null)?.message || '')
+  if (/already exists/i.test(message)) return '该 Code 已被其他实例使用'
+  if (/must be 4-32/i.test(message)) return 'Code 长度需为 4-32 位'
+  if (/only A-Z, 0-9, _ and -/i.test(message)) return '仅支持字母、数字、下划线和短横线'
+  return message || '设置自定义 Code 失败'
+}
+
 export function LaunchCodeCell({ profileId, code, onRefresh }: LaunchCodeCellProps) {
   const [loading, setLoading] = useState(false)
+  const [customCodeOpen, setCustomCodeOpen] = useState(false)
+  const [customCodeValue, setCustomCodeValue] = useState(code || '')
+  const [customCodeError, setCustomCodeError] = useState('')
 
   const handleCopy = () => {
     if (!code) return
@@ -80,23 +98,38 @@ export function LaunchCodeCell({ profileId, code, onRefresh }: LaunchCodeCellPro
     }
   }
 
-  const handleCustomCode = async () => {
-    const next = prompt('请输入自定义 Code（4-32位，仅支持字母/数字/_/-）', code || '')
-    if (next == null) return
+  const handleCustomCode = () => {
+    setCustomCodeValue(code || '')
+    setCustomCodeError('')
+    setCustomCodeOpen(true)
+  }
 
-    const value = next.trim()
+  const handleCustomCodeConfirm = async () => {
+    if (loading) return
+
+    const value = customCodeValue.trim()
     if (!value) {
-      toast.error('Code 不能为空')
+      setCustomCodeError('Code 不能为空')
+      return
+    }
+    if (value.length < 4 || value.length > 32) {
+      setCustomCodeError('Code 长度需为 4-32 位')
+      return
+    }
+    if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+      setCustomCodeError('仅支持字母、数字、下划线和短横线')
       return
     }
 
     setLoading(true)
     try {
       const applied = await setBrowserProfileCode(profileId, value)
+      setCustomCodeOpen(false)
+      setCustomCodeError('')
       onRefresh()
       toast.success(`Code 已更新为 ${applied}`)
     } catch (error: any) {
-      toast.error(error?.message || '设置自定义 Code 失败')
+      setCustomCodeError(resolveCustomCodeError(error))
     } finally {
       setLoading(false)
     }
@@ -107,18 +140,77 @@ export function LaunchCodeCell({ profileId, code, onRefresh }: LaunchCodeCellPro
   }
 
   return (
-    <div className="flex items-center gap-1">
-      <code className="text-xs font-mono bg-[var(--color-bg-secondary)] px-1.5 py-0.5 rounded text-[var(--color-accent)]">{code}</code>
-      <button onClick={handleCopy} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors" title="复制">
-        <Copy className="w-3 h-3" />
-      </button>
-      <button onClick={handleRegenerate} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="重新生成">
-        <RefreshCw className="w-3 h-3" />
-      </button>
-      <button onClick={handleCustomCode} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="自定义">
-        <Pencil className="w-3 h-3" />
-      </button>
-    </div>
+    <>
+      <div className="flex items-center gap-1">
+        <code className="text-xs font-mono bg-[var(--color-bg-secondary)] px-1.5 py-0.5 rounded text-[var(--color-accent)]">{code}</code>
+        <button onClick={handleCopy} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors" title="复制">
+          <Copy className="w-3 h-3" />
+        </button>
+        <button onClick={handleRegenerate} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="重新生成">
+          <RefreshCw className="w-3 h-3" />
+        </button>
+        <button onClick={handleCustomCode} disabled={loading} className="p-0.5 hover:text-[var(--color-accent)] text-[var(--color-text-muted)] transition-colors disabled:opacity-50" title="自定义">
+          <Pencil className="w-3 h-3" />
+        </button>
+      </div>
+
+      <Modal
+        open={customCodeOpen}
+        onClose={() => {
+          if (!loading) {
+            setCustomCodeOpen(false)
+            setCustomCodeError('')
+          }
+        }}
+        title="自定义快捷 Code"
+        width="460px"
+        closable={!loading}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setCustomCodeOpen(false)
+                setCustomCodeError('')
+              }}
+              disabled={loading}
+            >
+              取消
+            </Button>
+            <Button onClick={handleCustomCodeConfirm} loading={loading}>
+              确定
+            </Button>
+          </>
+        }
+      >
+        <FormItem label="Code" required error={customCodeError}>
+          <Input
+            autoFocus
+            value={customCodeValue}
+            onChange={(event) => {
+              setCustomCodeValue(event.target.value)
+              if (customCodeError) setCustomCodeError('')
+            }}
+            onFocus={(event) => event.currentTarget.select()}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                void handleCustomCodeConfirm()
+              }
+            }}
+            maxLength={32}
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="自定义快捷 Code"
+            aria-invalid={!!customCodeError}
+            className="h-10 font-mono tracking-wide"
+          />
+          <p className="mt-1.5 text-xs text-[var(--color-text-muted)]">
+            4-32 位，仅支持字母、数字、下划线和短横线
+          </p>
+        </FormItem>
+      </Modal>
+    </>
   )
 }
 
@@ -131,6 +223,15 @@ export function KeywordInlineRow({ keywords }: KeywordInlineRowProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [isOverflowing, setIsOverflowing] = useState(false)
 
+  const handleCopyKeyword = async (keyword: string) => {
+    try {
+      await navigator.clipboard.writeText(keyword)
+      toast.success('关键字已复制')
+    } catch {
+      toast.error('复制失败')
+    }
+  }
+
   useEffect(() => {
     if (containerRef.current) {
       setIsOverflowing(containerRef.current.scrollHeight > 36)
@@ -138,24 +239,26 @@ export function KeywordInlineRow({ keywords }: KeywordInlineRowProps) {
   }, [keywords])
 
   if (!keywords?.length) {
-    return <span className="text-xs text-[var(--color-text-muted)] italic">暂无关键字</span>
+    return <span className="text-xs text-[var(--color-text-muted)]">-</span>
   }
 
   return (
-    <div className="flex items-start gap-4 w-full">
+    <div className="flex items-start gap-3 w-full min-w-0">
       <div
         ref={containerRef}
-        className={`flex flex-wrap gap-2 flex-1 transition-all duration-300 ${expanded ? '' : 'overflow-hidden max-h-[32px]'}`}
+        className={`flex flex-wrap gap-2 flex-1 min-w-0 transition-all duration-300 ${expanded ? '' : 'overflow-hidden max-h-[32px]'}`}
       >
         {keywords.map((keyword, index) => (
-          <span
+          <button
+            type="button"
             key={index}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] text-[var(--color-text-secondary)] max-w-[200px]"
-            title={keyword}
+            className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-2.5 py-1 text-left text-xs text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+            title={`点击复制：${keyword}`}
+            onClick={() => { void handleCopyKeyword(keyword) }}
           >
             <span className="text-[var(--color-text-muted)] font-mono shrink-0">{index + 1}.</span>
             <span className="truncate">{keyword}</span>
-          </span>
+          </button>
         ))}
       </div>
       {isOverflowing && (

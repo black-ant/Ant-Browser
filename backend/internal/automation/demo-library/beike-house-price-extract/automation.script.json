@@ -1,0 +1,34 @@
+{
+  "format": "ant-automation-script",
+  "packageFormat": "ant-automation-script",
+  "manifestVersion": 1,
+  "id": "beike-house-price-extract",
+  "name": "贝壳二手房价格提取",
+  "description": "打开贝壳二手房详情页，提取页面真实 DOM 中的总价和单价，并导出结构化记录。",
+  "type": "playwright-cdp",
+  "status": "ready",
+  "entryFile": "index.cjs",
+  "tags": [
+    "Playwright",
+    "贝壳",
+    "二手房",
+    "价格提取"
+  ],
+  "selector": {
+    "code": ""
+  },
+  "params": {
+    "targetUrl": "https://wx.ke.com/ershoufang/103147107668.html",
+    "timeoutMs": 60000,
+    "waitAfterLoadMs": 2500,
+    "captureScreenshot": true,
+    "keepOpen": true
+  },
+  "notes": "脚本只读取页面真实内容，不填充 mock 或假设值。若未提取到总价或单价，会在 missingFields 中明确记录缺失字段。",
+  "source": {
+    "type": "builtin",
+    "uri": "repo://backend/internal/automation/demo-library/beike-house-price-extract",
+    "ref": "HEAD",
+    "path": "beike-house-price-extract"
+  }
+}

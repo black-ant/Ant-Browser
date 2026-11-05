@@ -1,0 +1,76 @@
+{
+    "createdAt":  "2026-05-17T16:05:38+08:00",
+    "description":  "打开 Proton Inbox，用查询语句搜索邮件，再用发件邮箱和收件人约束结果，返回命中邮件的正文内容和验证码。",
+    "entryFile":  "index.cjs",
+    "format":  "ant-automation-script",
+    "id":  "proton-mail-first-message",
+    "manifestVersion":  1,
+    "name":  "Proton 邮件搜索并读取最新邮件",
+    "notes":  "searchQuery 只写入 Proton 搜索框；senderEmail 作为高级搜索约束，recipient 留空也可直接跑。若同一邮箱里 OpenAI / ChatGPT 邮件较多，再补 recipient 缩小范围。旧字段 recipientQuery 仍兼容。",
+    "packageFormat":  "ant-automation-script",
+    "params":  {
+                   "recipient":  "",
+                   "searchQuery":  "OpenAI, ChatGPT",
+                   "senderEmail":  ""
+               },
+    "publicAPI":  {
+                      "enabled":  true,
+                      "method":  "POST",
+                      "path":  "mail/proton-first-message",
+                      "requestMode":  "params-only",
+                      "responseMode":  "envelope",
+                      "timeoutMs":  120000,
+                      "requestBodyText":  "",
+                      "responseBodyText":  "{\r\n    \"ok\":  true,\r\n    \"scriptId\":  \"proton-mail-first-message\",\r\n    \"scriptName\":  \"Proton 邮件搜索并读取最新邮件\",\r\n    \"status\":  \"success\",\r\n    \"summary\":  \"已返回当前打开邮件内容\",\r\n    \"error\":  \"\",\r\n    \"runId\":  \"xxx\",\r\n    \"durationMs\":  5902,\r\n    \"result\":  {\r\n                   \"verificationCode\":  \"856734\",\r\n                   \"subject\":  \"Your temporary ChatGPT login code\",\r\n                   \"senderEmail\":  \"noreply@example.com\",\r\n                   \"recipientEmail\":  \"target@example.com\",\r\n                   \"contentText\":  \"OpenAI\\nChatGPT Log-in Code\\nIf that was you, enter this code:\\n856734\\nBest,\\nOpenAI\"\r\n               }\r\n}",
+                      "variables":  [
+
+                                    ]
+                  },
+    "selector":  {
+                     "code":  ""
+                 },
+    "source":  {
+                   "importedAt":  "",
+                   "path":  "proton-mail-first-message",
+                   "ref":  "HEAD",
+                   "type":  "builtin",
+                   "uri":  "repo://backend/internal/automation/demo-library/proton-mail-first-message"
+               },
+    "status":  "ready",
+    "tags":  [
+                 "Playwright",
+                 "邮箱",
+                 "Proton",
+                 "邮件处理"
+             ],
+    "targetConfig":  {
+                         "mode":  "manual",
+                         "selector":  {
+                                          "code":  "",
+                                          "profileId":  "",
+                                          "profileName":  "",
+                                          "groupId":  "",
+                                          "keywords":  [
+
+                                                       ],
+                                          "tags":  [
+
+                                                   ]
+                                      },
+                         "templateSelector":  {
+                                                  "code":  "",
+                                                  "profileId":  "",
+                                                  "profileName":  "",
+                                                  "groupId":  "",
+                                                  "keywords":  [
+
+                                                               ],
+                                                  "tags":  [
+
+                                                           ]
+                                              },
+                         "createNameTemplate":  ""
+                     },
+    "type":  "playwright-cdp",
+    "updatedAt":  "2026-05-24T02:24:39.006Z"
+}

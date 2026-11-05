@@ -1,10 +1,10 @@
 ﻿; Ant Browser NSIS Installer Script
-; Usage: makensis /DVERSION=1.2.0 /DSTAGINGDIR=C:\path\to\staging installer.nsi
+; Usage: makensis /DVERSION=1.9.0 /DSTAGINGDIR=C:\path\to\staging installer.nsi
 
 Unicode True
 
 !ifndef VERSION
-  !define VERSION "1.2.0"
+  !define VERSION "1.9.0"
 !endif
 !ifndef STAGINGDIR
   !define STAGINGDIR "..\publish\staging"
@@ -12,6 +12,7 @@ Unicode True
 
 !define PRODUCT_NAME    "Ant Browser"
 !define PRODUCT_EXE     "ant-chrome.exe"
+!define PRODUCT_ICON    "AntBrowser.ico"
 !define UNINSTALL_KEY   "Software\Microsoft\Windows\CurrentVersion\Uninstall\AntBrowser"
 !define INSTALL_DIR     "$PROGRAMFILES64\Ant Browser"
 !define POWERSHELL_EXE  "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
@@ -26,25 +27,29 @@ Unicode True
   FileWrite ${HANDLE} "$$root = [System.IO.Path]::GetFullPath($$InstallDir).TrimEnd('\') + '\'$\r$\n"
   FileWrite ${HANDLE} "$$exclude = ''$\r$\n"
   FileWrite ${HANDLE} "if (-not [string]::IsNullOrWhiteSpace($$ExcludePath)) { $$exclude = [System.IO.Path]::GetFullPath($$ExcludePath) }$\r$\n"
+  FileWrite ${HANDLE} "$$coreNames = @('xray.exe', 'sing-box.exe', 'mihomo.exe', 'clash.exe')$\r$\n"
   FileWrite ${HANDLE} "function Get-AntBrowserProcesses {$\r$\n"
   FileWrite ${HANDLE} "  @(Get-CimInstance Win32_Process | Where-Object {$\r$\n"
   FileWrite ${HANDLE} "    $$_.ExecutablePath -and $$_.ExecutablePath.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) -and ($$exclude -eq '' -or -not $$_.ExecutablePath.Equals($$exclude, [System.StringComparison]::OrdinalIgnoreCase))$\r$\n"
   FileWrite ${HANDLE} "  })$\r$\n"
   FileWrite ${HANDLE} "}$\r$\n"
-  FileWrite ${HANDLE} "$$deadline = (Get-Date).AddSeconds(10)$\r$\n"
-  FileWrite ${HANDLE} "do {$\r$\n"
-  FileWrite ${HANDLE} "  $$procs = Get-AntBrowserProcesses$\r$\n"
-  FileWrite ${HANDLE} "  if (-not $$procs -or $$procs.Count -eq 0) { exit 0 }$\r$\n"
-  FileWrite ${HANDLE} "  foreach ($$p in $$procs) { try { Stop-Process -Id $$p.ProcessId -Force -ErrorAction Stop } catch {} }$\r$\n"
-  FileWrite ${HANDLE} "  Start-Sleep -Milliseconds 400$\r$\n"
-  FileWrite ${HANDLE} "} while ((Get-Date) -lt $$deadline)$\r$\n"
-  FileWrite ${HANDLE} "$$left = Get-AntBrowserProcesses$\r$\n"
-  FileWrite ${HANDLE} "if ($$left -and $$left.Count -gt 0) {$\r$\n"
-  FileWrite ${HANDLE} "  $$names = ($$left | ForEach-Object { $$_.Name + '#' + $$_.ProcessId }) -join ', '$\r$\n"
-  FileWrite ${HANDLE} "  Write-Host ('still running: ' + $$names)$\r$\n"
-  FileWrite ${HANDLE} "  exit 1$\r$\n"
+  FileWrite ${HANDLE} "$$procs = @(Get-AntBrowserProcesses)$\r$\n"
+  FileWrite ${HANDLE} "if (-not $$procs -or $$procs.Count -eq 0) { exit 0 }$\r$\n"
+  FileWrite ${HANDLE} "$$coreProcs = @($$procs | Where-Object { $$coreNames -contains $$_.Name.ToLowerInvariant() })$\r$\n"
+  FileWrite ${HANDLE} "$$killed = @()$\r$\n"
+  FileWrite ${HANDLE} "foreach ($$proc in $$coreProcs) {$\r$\n"
+  FileWrite ${HANDLE} "  Stop-Process -Id $$proc.ProcessId -Force -ErrorAction SilentlyContinue$\r$\n"
+  FileWrite ${HANDLE} "  if ($$?) { $$killed += ($$proc.Name + '#' + $$proc.ProcessId) }$\r$\n"
   FileWrite ${HANDLE} "}$\r$\n"
-  FileWrite ${HANDLE} "exit 0$\r$\n"
+  FileWrite ${HANDLE} "if ($$killed.Count -gt 0) {$\r$\n"
+  FileWrite ${HANDLE} "  Write-Host ('killed leftover cores: ' + ($$killed -join ', '))$\r$\n"
+  FileWrite ${HANDLE} "  Start-Sleep -Milliseconds 600$\r$\n"
+  FileWrite ${HANDLE} "}$\r$\n"
+  FileWrite ${HANDLE} "$$left = @(Get-AntBrowserProcesses)$\r$\n"
+  FileWrite ${HANDLE} "if (-not $$left -or $$left.Count -eq 0) { exit 0 }$\r$\n"
+  FileWrite ${HANDLE} "$$names = ($$left | ForEach-Object { $$_.Name + '#' + $$_.ProcessId }) -join ', '$\r$\n"
+  FileWrite ${HANDLE} "Write-Host ('running: ' + $$names)$\r$\n"
+  FileWrite ${HANDLE} "exit 1$\r$\n"
 !macroend
 
 Function CloseInstalledProcesses
@@ -60,7 +65,7 @@ retry_powershell:
   !insertmacro WriteCloseProcessScript $1
   FileClose $1
 
-  DetailPrint "正在关闭安装目录中的残留进程: $INSTDIR"
+  DetailPrint "检查安装目录中的运行进程: $INSTDIR"
   ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$0" -InstallDir "$INSTDIR" -ExcludePath ""' $2
   Delete $0
 
@@ -68,17 +73,14 @@ retry_powershell:
     Goto done
   ${EndIf}
 
-  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到旧版本仍有进程占用安装目录。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n点击“重试”将再次尝试关闭残留进程，点击“取消”将终止本次安装。" IDRETRY retry_powershell IDCANCEL install_abort
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到安装目录中仍有运行进程。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n请先从窗口或托盘菜单正常退出应用，再点击“重试”重新检查；点击“取消”将终止本次安装。" IDRETRY retry_powershell IDCANCEL install_abort
 
 install_abort:
   Abort "安装已取消：安装目录中的旧进程仍未退出。"
 
 fallback_taskkill:
-  DetailPrint "PowerShell 不可用，回退到 taskkill 清理主进程和代理进程..."
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM ${PRODUCT_EXE}' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM xray.exe' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM sing-box.exe' $2
-  Sleep 1500
+  MessageBox MB_OK|MB_ICONSTOP "无法安全检查安装目录中的运行进程。为避免强制中断，安装已取消。"
+  Abort "安装已取消：无法安全检查安装目录中的运行进程。"
 
 done:
 FunctionEnd
@@ -96,7 +98,7 @@ retry_powershell:
   !insertmacro WriteCloseProcessScript $1
   FileClose $1
 
-  DetailPrint "正在关闭安装目录中的残留进程: $INSTDIR"
+  DetailPrint "检查安装目录中的运行进程: $INSTDIR"
   ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$0" -InstallDir "$INSTDIR" -ExcludePath "$INSTDIR\Uninstall.exe"' $2
   Delete $0
 
@@ -104,17 +106,82 @@ retry_powershell:
     Goto done
   ${EndIf}
 
-  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到安装目录中仍有旧进程占用文件。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n点击“重试”将再次尝试关闭残留进程，点击“取消”将终止本次卸载。" IDRETRY retry_powershell IDCANCEL uninstall_abort
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "检测到安装目录中仍有运行进程。$\r$\n$\r$\n目录：$INSTDIR$\r$\n$\r$\n请先从窗口或托盘菜单正常退出应用，再点击“重试”重新检查；点击“取消”将终止本次卸载。" IDRETRY retry_powershell IDCANCEL uninstall_abort
 
 uninstall_abort:
   Abort "卸载已取消：安装目录中的旧进程仍未退出。"
 
 fallback_taskkill:
-  DetailPrint "PowerShell 不可用，回退到 taskkill 清理主进程和代理进程..."
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM ${PRODUCT_EXE}' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM xray.exe' $2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM sing-box.exe' $2
-  Sleep 1500
+  MessageBox MB_OK|MB_ICONSTOP "无法安全检查安装目录中的运行进程。为避免强制中断，卸载已取消。"
+  Abort "卸载已取消：无法安全检查安装目录中的运行进程。"
+
+done:
+FunctionEnd
+
+Function RegisterDiagnosticsWatcher
+  IfFileExists "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" 0 done
+  DetailPrint "Registering read-only diagnostics watcher"
+  ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" -InstallDir "$INSTDIR"' $0
+  ${If} $0 == 0
+    DetailPrint "Diagnostics watcher registered"
+  ${Else}
+    DetailPrint "Warning: diagnostics watcher registration failed"
+  ${EndIf}
+done:
+FunctionEnd
+
+Function un.UnregisterDiagnosticsWatcher
+  IfFileExists "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" 0 done
+  DetailPrint "Removing read-only diagnostics watcher"
+  ExecWait '"${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\data\diagnostics\install-ant-chrome-diagnostics-watcher.ps1" -InstallDir "$INSTDIR" -Uninstall' $0
+done:
+FunctionEnd
+
+Function PreserveLegacyBackupLocalConfig
+  StrCpy $4 "$INSTDIR"
+  ReadRegStr $3 HKLM "${UNINSTALL_KEY}" "InstallLocation"
+  ${If} "$3" != ""
+    IfFileExists "$3\backup.local.yaml" 0 legacy_use_current_install
+    StrCpy $4 "$3"
+  ${EndIf}
+
+legacy_use_current_install:
+  IfFileExists "$APPDATA\${PRODUCT_NAME}\backup.local.yaml" legacy_done
+  IfFileExists "$4\backup.local.yaml" 0 legacy_done
+
+  ClearErrors
+  CreateDirectory "$APPDATA\${PRODUCT_NAME}"
+  IfErrors legacy_failed
+  DetailPrint "Preserving legacy backup credentials"
+  ClearErrors
+  CopyFiles /SILENT "$4\backup.local.yaml" "$APPDATA\${PRODUCT_NAME}"
+  IfErrors legacy_failed
+  Goto legacy_done
+
+legacy_failed:
+  MessageBox MB_ICONSTOP|MB_OK "Could not preserve the legacy backup credentials. Installation is cancelled to prevent OpenList / S3 Token loss."
+  Abort "Installation cancelled: legacy backup credential migration failed."
+
+legacy_done:
+FunctionEnd
+
+Function un.PreserveLegacyBackupLocalConfig
+  IfFileExists "$INSTDIR\backup.local.yaml" 0 done
+  IfFileExists "$APPDATA\${PRODUCT_NAME}\backup.local.yaml" done
+
+  ClearErrors
+  CreateDirectory "$APPDATA\${PRODUCT_NAME}"
+  IfErrors preserve_failed
+
+  DetailPrint "迁移旧版本地备份凭据到 $APPDATA\${PRODUCT_NAME}"
+  ClearErrors
+  CopyFiles "$INSTDIR\backup.local.yaml" "$APPDATA\${PRODUCT_NAME}\"
+  IfErrors preserve_failed
+  Goto done
+
+preserve_failed:
+  MessageBox MB_ICONSTOP|MB_OK "无法保存旧版本地备份凭据：$APPDATA\${PRODUCT_NAME}\backup.local.yaml。为避免 OpenList / S3 Token 丢失，卸载已取消。请检查该目录权限后重试。"
+  Abort "卸载已取消：旧版本地备份凭据迁移失败。"
 
 done:
 FunctionEnd
@@ -185,9 +252,6 @@ RequestExecutionLevel admin
 !define MUI_DIRECTORYPAGE_TEXT_DESTINATION "安装目录（建议非 C 盘）"
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE WarnInstallDir
 !insertmacro MUI_PAGE_DIRECTORY
-!undef MUI_PAGE_CUSTOMFUNCTION_LEAVE
-!undef MUI_DIRECTORYPAGE_TEXT_TOP
-!undef MUI_DIRECTORYPAGE_TEXT_DESTINATION
 !define MUI_COMPONENTSPAGE_SMALLDESC
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
@@ -203,8 +267,10 @@ RequestExecutionLevel admin
 Section "Ant Browser (required)" SecMain
   SectionIn RO
   Call CloseInstalledProcesses
+  Call PreserveLegacyBackupLocalConfig
   SetOutPath "$INSTDIR"
   File "${STAGINGDIR}\${PRODUCT_EXE}"
+  File /oname=${PRODUCT_ICON} "..\build\windows\icon.ico"
 !if /FileExists "${STAGINGDIR}\config.yaml"
   IfFileExists "$INSTDIR\config.yaml" +2 0
     File "${STAGINGDIR}\config.yaml"
@@ -217,18 +283,22 @@ Section "Ant Browser (required)" SecMain
   SetOutPath "$INSTDIR"
 !endif
   CreateDirectory "$INSTDIR\data"
+  SetOutPath "$INSTDIR\data\diagnostics"
+  File /r "${STAGINGDIR}\data\diagnostics\*"
+  SetOutPath "$INSTDIR"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName"     "${PRODUCT_NAME}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion"  "${VERSION}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher"       "Ant Chrome Team"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon"     "$INSTDIR\${PRODUCT_EXE}"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon"     "$INSTDIR\${PRODUCT_ICON}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "NoModify"        "1"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "NoRepair"        "1"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+  Call RegisterDiagnosticsWatcher
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}"
-  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}" "" "$INSTDIR\${PRODUCT_ICON}"
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\${PRODUCT_ICON}"
 SectionEnd
 
 Section "Proxy Runtime (xray / sing-box)" SecRuntime
@@ -239,7 +309,7 @@ Section "Proxy Runtime (xray / sing-box)" SecRuntime
 SectionEnd
 
 Section /o "Desktop Shortcut" SecDesktop
-  CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}"
+  CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}" "" "$INSTDIR\${PRODUCT_ICON}"
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
@@ -250,9 +320,11 @@ SectionEnd
 
 Section "Uninstall"
   Call un.CloseInstalledProcesses
+  Call un.UnregisterDiagnosticsWatcher
+  Call un.PreserveLegacyBackupLocalConfig
 
   Delete /REBOOTOK "$INSTDIR\${PRODUCT_EXE}"
-  Delete /REBOOTOK "$INSTDIR\config.yaml"
+  Delete /REBOOTOK "$INSTDIR\${PRODUCT_ICON}"
   Delete /REBOOTOK "$INSTDIR\proxies.yaml"
   Delete /REBOOTOK "$INSTDIR\Uninstall.exe"
   RMDir /r /REBOOTOK "$INSTDIR\bin"

@@ -37,19 +37,20 @@ func (m *Manager) loadProfiles() {
 		} else {
 			for _, p := range profiles {
 				p.CoreId = normalizeProfileCoreID(p.CoreId)
+				p.FingerprintArgs = upgradeLegacyMinimalFingerprintArgs(p.FingerprintArgs)
 				m.Profiles[p.ProfileId] = p
 			}
 			if len(profiles) > 0 {
-				log.Info("实例配置从数据库加载完成", logger.F("count", len(profiles)))
+				log.Debug("实例配置从数据库加载完成", logger.F("count", len(profiles)))
 			} else {
-				log.Info("实例表为空，用户可手动创建新实例")
+				log.Debug("实例表为空，用户可手动创建新实例")
 			}
 			return
 		}
 	}
 
 	if len(m.Config.Browser.Profiles) == 0 {
-		log.Info("实例配置为空，用户可手动创建新实例")
+		log.Debug("实例配置为空，用户可手动创建新实例")
 		return
 	}
 	now := time.Now().Format(time.RFC3339)
@@ -71,13 +72,17 @@ func (m *Manager) loadProfiles() {
 			ProfileName:        item.ProfileName,
 			UserDataDir:        item.UserDataDir,
 			CoreId:             normalizeProfileCoreID(item.CoreId),
-			FingerprintArgs:    append([]string{}, item.FingerprintArgs...),
+			RestoreLastSession: NormalizeRestoreLastSessionMode(item.RestoreLastSession),
+			FingerprintArgs:    upgradeLegacyMinimalFingerprintArgs(item.FingerprintArgs),
+			ProxyMode:          NormalizeProxyMode(item.ProxyMode),
 			ProxyId:            item.ProxyId,
 			ProxyConfig:        item.ProxyConfig,
+			ProxyGroupName:     NormalizeProxyGroupName(item.ProxyGroupName),
 			ProxyBindSourceID:  item.ProxyBindSourceID,
 			ProxyBindSourceURL: item.ProxyBindSourceURL,
 			ProxyBindName:      item.ProxyBindName,
 			ProxyBindUpdatedAt: item.ProxyBindUpdatedAt,
+			MemoryLimitMB:      normalizeMemoryLimitMB(item.MemoryLimitMB),
 			LaunchArgs:         append([]string{}, item.LaunchArgs...),
 			Tags:               append([]string{}, item.Tags...),
 			Keywords:           append([]string{}, item.Keywords...),
@@ -89,7 +94,7 @@ func (m *Manager) loadProfiles() {
 			UpdatedAt:          updatedAt,
 		}
 	}
-	log.Info("浏览器配置从文件加载完成", logger.F("count", len(m.Profiles)))
+	log.Debug("浏览器配置从文件加载完成", logger.F("count", len(m.Profiles)))
 }
 
 // SaveProfiles 保存所有实例配置（DAO 模式：逐条 upsert）
@@ -114,13 +119,17 @@ func (m *Manager) SaveProfiles() error {
 			ProfileName:        profile.ProfileName,
 			UserDataDir:        profile.UserDataDir,
 			CoreId:             normalizeProfileCoreID(profile.CoreId),
+			RestoreLastSession: NormalizeRestoreLastSessionMode(profile.RestoreLastSession),
 			FingerprintArgs:    append([]string{}, profile.FingerprintArgs...),
+			ProxyMode:          NormalizeProxyMode(profile.ProxyMode),
 			ProxyId:            profile.ProxyId,
 			ProxyConfig:        profile.ProxyConfig,
+			ProxyGroupName:     NormalizeProxyGroupName(profile.ProxyGroupName),
 			ProxyBindSourceID:  profile.ProxyBindSourceID,
 			ProxyBindSourceURL: profile.ProxyBindSourceURL,
 			ProxyBindName:      profile.ProxyBindName,
 			ProxyBindUpdatedAt: profile.ProxyBindUpdatedAt,
+			MemoryLimitMB:      normalizeMemoryLimitMB(profile.MemoryLimitMB),
 			LaunchArgs:         append([]string{}, profile.LaunchArgs...),
 			Tags:               append([]string{}, profile.Tags...),
 			Keywords:           append([]string{}, profile.Keywords...),

@@ -1,0 +1,42 @@
+{
+  "format": "ant-automation-script",
+  "packageFormat": "ant-automation-script",
+  "manifestVersion": 1,
+  "id": "dual-instance-runtime-switch",
+  "name": "双实例启动与 Runtime 切换",
+  "description": "通过 Launch API 分别启动两个实例，切换 Runtime 会话后交给 OpenClaw 执行。",
+  "type": "launch-api",
+  "status": "ready",
+  "entryFile": "index.cjs",
+  "tags": [
+    "Launch API",
+    "OpenClaw",
+    "双实例"
+  ],
+  "params": {
+    "browsers": [
+      {
+        "code": "BUYER_001",
+        "skipDefaultStartUrls": true,
+        "startUrls": [
+          "https://finance.sina.com.cn/"
+        ]
+      },
+      {
+        "code": "BUYER_002",
+        "skipDefaultStartUrls": true,
+        "startUrls": [
+          "https://map.baidu.com/"
+        ]
+      }
+    ],
+    "timeoutMs": 45000
+  },
+  "notes": "先通过接口启动两个实例并切换 Runtime 会话；随后把实例信息交给 OpenClaw 执行自动化动作。",
+  "source": {
+    "type": "builtin",
+    "uri": "repo://backend/internal/automation/demo-library/dual-instance-runtime-switch",
+    "ref": "HEAD",
+    "path": "dual-instance-runtime-switch"
+  }
+}

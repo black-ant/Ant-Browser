@@ -20,7 +20,6 @@ export function LaunchStatusPanel({
   return (
     <Card
       title="文档上下文"
-      subtitle="这里集中展示当前章节和 Launch 环境，不再插入正文。"
       className="bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)]"
     >
       <div className="space-y-3">

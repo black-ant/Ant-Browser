@@ -26,6 +26,8 @@ interface TableProps<T> {
   emptyText?: string
   onRowClick?: (record: T) => void
   className?: string
+  tableMinWidth?: string | number
+  tableLayout?: 'auto' | 'fixed'
   maxHeight?: string  // 表格最大高度，默认 'calc(100vh - 320px)'
   stickyHeader?: boolean  // 是否固定表头，默认 true
   onSort?: (sorterResult: SorterResult) => void // 排序变化回调
@@ -41,6 +43,8 @@ export function Table<T extends Record<string, any>>({
   emptyText = '暂无数据',
   onRowClick,
   className,
+  tableMinWidth,
+  tableLayout = 'auto',
   maxHeight = 'calc(100vh - 320px)',
   stickyHeader = true,
   onSort,
@@ -56,7 +60,7 @@ export function Table<T extends Record<string, any>>({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16" style={{ maxHeight }}>
+      <div className="flex items-center justify-center py-10" style={{ maxHeight }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-6 h-6 border-2 border-[var(--color-border-default)] border-t-[var(--color-accent)] rounded-full animate-spin" />
           <span className="text-sm text-[var(--color-text-muted)]">加载中...</span>
@@ -100,17 +104,21 @@ export function Table<T extends Record<string, any>>({
 
   return (
     <div
-      className={clsx('overflow-auto', className)}
+      className={clsx(
+        'w-full min-w-0',
+        maxHeight === 'none' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-auto',
+        className,
+      )}
       style={{ maxHeight }}
     >
-      <table className="min-w-full">
-        <thead className={clsx(stickyHeader && 'sticky top-0 z-10')}>
+      <table className="min-w-full" style={{ minWidth: tableMinWidth, tableLayout }}>
+        <thead className={clsx(stickyHeader && maxHeight !== 'none' && 'sticky top-0 z-10')}>
           <tr>
             {columns.map((col) => (
               <th
                 key={col.key}
                 className={clsx(
-                  'px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)]',
+                  'whitespace-nowrap px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider bg-[var(--color-bg-muted)]',
                   col.align === 'center' && 'text-center',
                   col.align === 'right' && 'text-right',
                   !col.align && 'text-left',
@@ -130,7 +138,7 @@ export function Table<T extends Record<string, any>>({
         <tbody className="divide-y divide-[var(--color-border-muted)] bg-[var(--color-bg-surface)]">
           {data.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-16 text-center">
+              <td colSpan={columns.length} className="px-4 py-10 text-center">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 rounded-full bg-[var(--color-bg-muted)] flex items-center justify-center">
                     <svg className="w-6 h-6 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">

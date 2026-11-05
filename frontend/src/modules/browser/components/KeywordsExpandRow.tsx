@@ -25,19 +25,19 @@ export function KeywordsExpandRow({ keywords, colSpan }: Props) {
         className="px-6 py-3 bg-[var(--color-bg-muted)]/30 border-b border-[var(--color-border-muted)]"
       >
         {!keywords?.length ? (
-          <span className="text-xs text-[var(--color-text-muted)] italic">暂无关键字</span>
+          <span className="text-xs text-[var(--color-text-muted)]">-</span>
         ) : (
-          <div className="flex items-start gap-4">
+          <div className="flex items-start gap-4 min-w-0">
             <div
               ref={containerRef}
-              className={`flex flex-wrap gap-2 flex-1 transition-all duration-300 ${expanded ? '' : 'overflow-hidden max-h-[32px]'}`}
+              className={`flex flex-wrap gap-2 flex-1 min-w-0 transition-all duration-300 ${expanded ? '' : 'overflow-hidden max-h-[32px]'}`}
             >
               {keywords.map((kw, i) => (
                 <span
                   key={i}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs
+                  className="inline-flex max-w-full min-w-0 items-center gap-1.5 px-2.5 py-1 rounded-md text-xs
                     bg-[var(--color-bg-surface)] border border-[var(--color-border-default)]
-                    text-[var(--color-text-secondary)] max-w-[200px]"
+                    text-[var(--color-text-secondary)]"
                   title={kw}
                 >
                   <span className="text-[var(--color-text-muted)] font-mono shrink-0">{i + 1}.</span>

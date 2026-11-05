@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -29,27 +31,7 @@ func (a *App) backupResolveUserDataRoot(cfg *config.Config) string {
 	return a.resolveAppPath(root)
 }
 
-func (a *App) backupClearBusinessTables() error {
-	if a.db == nil || a.db.GetConn() == nil {
-		return fmt.Errorf("数据库未初始化")
-	}
-	tx, err := a.db.GetConn().Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
-	defer tx.Rollback()
-
-	tables := []string{"launch_codes", "browser_profiles", "browser_proxies", "browser_cores", "browser_bookmarks", "browser_groups"}
-	for _, table := range tables {
-		if _, err := tx.Exec("DELETE FROM " + table); err != nil && !backupIsNoSuchTableError(err) {
-			return fmt.Errorf("清空数据表失败(%s): %w", table, err)
-		}
-	}
-	_, _ = tx.Exec(`DELETE FROM sqlite_sequence WHERE name IN ('browser_bookmarks')`)
-	return tx.Commit()
-}
-
-func (a *App) backupApplyIncomingConfig(incoming *config.Config, resetFirst bool) error {
+func (a *App) backupApplyIncomingConfig(incoming *config.Config) error {
 	if incoming == nil {
 		return nil
 	}
@@ -57,17 +39,14 @@ func (a *App) backupApplyIncomingConfig(incoming *config.Config, resetFirst bool
 	if current == nil {
 		current = config.DefaultConfig()
 	}
+	incoming = a.backupNormalizeImportedConfigPaths(incoming, current)
 
-	var target *config.Config
-	if resetFirst {
-		cloned := *incoming
-		target = &cloned
-	} else {
-		target = backupMergeConfig(current, incoming)
+	target := backupMergeConfig(current, incoming)
+	if err := a.backupFilterDeletedBookmarkConfig(target); err != nil {
+		return fmt.Errorf("过滤已删除书签失败: %w", err)
 	}
 	target.Database = current.Database
-	target.App.MaxProfileLimit = current.App.MaxProfileLimit
-	target.App.UsedCDKeys = append([]string{}, current.App.UsedCDKeys...)
+	target.Backup = current.Backup
 
 	if err := target.Save(a.resolveAppPath("config.yaml")); err != nil {
 		return fmt.Errorf("保存导入配置失败: %w", err)
@@ -75,6 +54,244 @@ func (a *App) backupApplyIncomingConfig(incoming *config.Config, resetFirst bool
 	a.config = target
 	a.applyRuntimeConfig(target.Runtime)
 	return nil
+}
+
+func (a *App) backupFilterDeletedBookmarkConfig(cfg *config.Config) error {
+	if cfg == nil {
+		return nil
+	}
+	deletedURLs := mergeBookmarkDeletionURLs(cfg.Browser.DeletedBookmarkURLs)
+	if a.browserMgr == nil || a.browserMgr.BookmarkDAO == nil {
+		cfg.Browser.DeletedBookmarkURLs = deletedURLs
+		cfg.Browser.DefaultBookmarks = filterBookmarksByDeletedURLs(cfg.Browser.DefaultBookmarks, deletedURLs)
+		return nil
+	}
+
+	deletionDAO, ok := a.browserMgr.BookmarkDAO.(browser.BookmarkDeletionDAO)
+	if !ok {
+		return fmt.Errorf("书签数据库不支持读取删除标记")
+	}
+	databaseDeletedURLs, err := deletionDAO.DeletedURLs()
+	if err != nil {
+		return err
+	}
+	deletedURLs = mergeBookmarkDeletionURLs(deletedURLs, databaseDeletedURLs)
+
+	targetActiveURLs := make(map[string]struct{})
+	if a.config != nil {
+		for bookmarkURL := range activeBookmarkURLSet(a.config.Browser.DefaultBookmarks) {
+			targetActiveURLs[bookmarkURL] = struct{}{}
+		}
+	}
+	currentBookmarks, err := a.browserMgr.BookmarkDAO.List()
+	if err != nil {
+		return fmt.Errorf("读取当前书签失败: %w", err)
+	}
+	for bookmarkURL := range activeBookmarkURLSet(currentBookmarks) {
+		targetActiveURLs[bookmarkURL] = struct{}{}
+	}
+	deletedURLs = filterBookmarkDeletionsByActiveURLs(deletedURLs, targetActiveURLs)
+
+	deletionWriter, ok := a.browserMgr.BookmarkDAO.(browser.BookmarkDeletionWriter)
+	if !ok {
+		return fmt.Errorf("书签数据库不支持写入删除标记")
+	}
+	if err := deletionWriter.SyncDeletedURLs(deletedURLs); err != nil {
+		return err
+	}
+	persistedDeletedURLs, err := deletionDAO.DeletedURLs()
+	if err != nil {
+		return err
+	}
+	cfg.Browser.DeletedBookmarkURLs = mergeBookmarkDeletionURLs(persistedDeletedURLs)
+	cfg.Browser.DefaultBookmarks = filterBookmarksByDeletedURLs(cfg.Browser.DefaultBookmarks, cfg.Browser.DeletedBookmarkURLs)
+	return nil
+}
+
+func (a *App) backupNormalizeImportedConfigPaths(incoming, current *config.Config) *config.Config {
+	if incoming == nil {
+		return nil
+	}
+	normalized := *incoming
+	normalized.Browser = incoming.Browser
+	normalized.Browser.Cores = append([]config.BrowserCore(nil), incoming.Browser.Cores...)
+	normalized.Browser.Profiles = append([]config.BrowserProfileConfig(nil), incoming.Browser.Profiles...)
+
+	currentUserDataRoot := "data"
+	if current != nil && strings.TrimSpace(current.Browser.UserDataRoot) != "" {
+		currentUserDataRoot = strings.TrimSpace(current.Browser.UserDataRoot)
+	}
+	normalized.Browser.UserDataRoot = a.backupNormalizeImportedRootPath(
+		normalized.Browser.UserDataRoot,
+		currentUserDataRoot,
+	)
+
+	currentCores := make(map[string]string)
+	if current != nil {
+		for _, core := range current.Browser.Cores {
+			if id := strings.TrimSpace(core.CoreId); id != "" && strings.TrimSpace(core.CorePath) != "" {
+				currentCores[id] = strings.TrimSpace(core.CorePath)
+			}
+		}
+	}
+	normalized.Browser.CoreRoot = a.backupNormalizeImportedRootPath(normalized.Browser.CoreRoot, "chrome")
+	coreRoot := strings.TrimSpace(normalized.Browser.CoreRoot)
+	if coreRoot == "" {
+		coreRoot = "chrome"
+	}
+	for i := range normalized.Browser.Cores {
+		core := &normalized.Browser.Cores[i]
+		corePath := strings.TrimSpace(core.CorePath)
+		if corePath == "" {
+			continue
+		}
+		fallback := currentCores[strings.TrimSpace(core.CoreId)]
+		if fallback == "" {
+			coreID := strings.TrimSpace(core.CoreId)
+			if coreID == "" {
+				coreID = fmt.Sprintf("core-%02d", i+1)
+			}
+			fallback = filepath.Join(coreRoot, "external", coreID)
+		}
+		core.CorePath = a.backupNormalizeImportedRuntimePath(corePath, fallback)
+	}
+	currentProfiles := make(map[string]string)
+	if current != nil {
+		for _, profile := range current.Browser.Profiles {
+			if id := strings.TrimSpace(profile.ProfileId); id != "" && strings.TrimSpace(profile.UserDataDir) != "" {
+				currentProfiles[id] = strings.TrimSpace(profile.UserDataDir)
+			}
+		}
+	}
+	for i := range normalized.Browser.Profiles {
+		profile := &normalized.Browser.Profiles[i]
+		profilePath := strings.TrimSpace(profile.UserDataDir)
+		if profilePath == "" {
+			continue
+		}
+		fallback := currentProfiles[strings.TrimSpace(profile.ProfileId)]
+		if fallback == "" {
+			base := filepath.Base(filepath.Clean(filepath.FromSlash(strings.ReplaceAll(profilePath, "\\", "/"))))
+			if base == "." || base == ".." || base == string(filepath.Separator) || base == "" {
+				base = strings.TrimSpace(profile.ProfileId)
+			}
+			if base == "" {
+				base = fmt.Sprintf("profile-%02d", i+1)
+			}
+			fallback = base
+		}
+		profile.UserDataDir = a.backupNormalizeImportedProfilePath(profilePath, normalized.Browser.UserDataRoot, fallback)
+	}
+
+	if current != nil {
+		normalized.Browser.ChromeBinaryPath = a.backupNormalizePortablePath(normalized.Browser.ChromeBinaryPath, current.Browser.ChromeBinaryPath)
+		normalized.Browser.ClashBinaryPath = a.backupNormalizePortablePath(normalized.Browser.ClashBinaryPath, current.Browser.ClashBinaryPath)
+		normalized.Browser.XrayBinaryPath = a.backupNormalizePortablePath(normalized.Browser.XrayBinaryPath, current.Browser.XrayBinaryPath)
+		normalized.Browser.SingBoxBinaryPath = a.backupNormalizePortablePath(normalized.Browser.SingBoxBinaryPath, current.Browser.SingBoxBinaryPath)
+		normalized.Logging.FilePath = a.backupNormalizePortablePath(normalized.Logging.FilePath, current.Logging.FilePath)
+		normalized.Automation.ArtifactsDir = a.backupNormalizePortablePath(normalized.Automation.ArtifactsDir, current.Automation.ArtifactsDir)
+	} else {
+		normalized.Browser.ChromeBinaryPath = a.backupNormalizePortablePath(normalized.Browser.ChromeBinaryPath, "")
+		normalized.Browser.ClashBinaryPath = a.backupNormalizePortablePath(normalized.Browser.ClashBinaryPath, "")
+		normalized.Browser.XrayBinaryPath = a.backupNormalizePortablePath(normalized.Browser.XrayBinaryPath, "")
+		normalized.Browser.SingBoxBinaryPath = a.backupNormalizePortablePath(normalized.Browser.SingBoxBinaryPath, "")
+		normalized.Logging.FilePath = a.backupNormalizePortablePath(normalized.Logging.FilePath, "data/logs/app.log")
+		normalized.Automation.ArtifactsDir = a.backupNormalizePortablePath(normalized.Automation.ArtifactsDir, "data/automation/artifacts")
+	}
+	return &normalized
+}
+
+func (a *App) backupNormalizeImportedRootPath(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if filepath.IsAbs(value) {
+		return a.backupNormalizePortablePath(value, fallback)
+	}
+
+	clean := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(value, "\\", "/")))
+	if clean == "." || !a.backupPathWithinRuntimeRoots(a.resolveAppPath(clean)) {
+		return strings.TrimSpace(fallback)
+	}
+	return filepath.ToSlash(clean)
+}
+
+func (a *App) backupNormalizeImportedRuntimePath(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if filepath.IsAbs(value) {
+		return a.backupNormalizePortablePath(value, fallback)
+	}
+
+	clean := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(value, "\\", "/")))
+	if clean == "." || !a.backupPathWithinRuntimeRoots(a.resolveAppPath(clean)) {
+		return strings.TrimSpace(fallback)
+	}
+	return filepath.ToSlash(clean)
+}
+
+func (a *App) backupNormalizePortablePath(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || !filepath.IsAbs(value) {
+		return value
+	}
+	if rel, ok := a.backupRelativeRuntimePath(value); ok {
+		return rel
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func (a *App) backupPathWithinRuntimeRoots(path string) bool {
+	for _, root := range backupUniqueNonEmpty([]string{a.appStateRootAbs(), a.appRootAbs()}) {
+		if backupPathWithin(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) backupRelativeRuntimePath(path string) (string, bool) {
+	for _, root := range backupUniqueNonEmpty([]string{a.appStateRootAbs(), a.appRootAbs()}) {
+		rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return filepath.ToSlash(rel), true
+	}
+	return "", false
+}
+
+func (a *App) backupNormalizeImportedProfilePath(value, userDataRoot, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	value = filepath.Clean(filepath.FromSlash(strings.ReplaceAll(value, "\\", "/")))
+	if !filepath.IsAbs(value) && (value == ".." || strings.HasPrefix(value, ".."+string(filepath.Separator))) {
+		return strings.TrimSpace(fallback)
+	}
+
+	root := strings.TrimSpace(userDataRoot)
+	if root == "" {
+		root = "data"
+	}
+	rootAbs := a.resolveAppPath(root)
+	if !filepath.IsAbs(value) && !filepath.IsAbs(root) {
+		if rel, err := filepath.Rel(filepath.Clean(filepath.FromSlash(root)), value); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return filepath.ToSlash(rel)
+		}
+		return filepath.ToSlash(value)
+	}
+	if !filepath.IsAbs(value) {
+		return filepath.ToSlash(value)
+	}
+	if rel, err := filepath.Rel(filepath.Clean(rootAbs), filepath.Clean(value)); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(rel)
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func backupMergeConfig(current, incoming *config.Config) *config.Config {
@@ -90,36 +307,27 @@ func backupMergeConfig(current, incoming *config.Config) *config.Config {
 	if strings.TrimSpace(merged.App.Name) == "" {
 		merged.App.Name = incoming.App.Name
 	}
-	merged.Browser.DefaultBookmarks = backupMergeBookmarks(merged.Browser.DefaultBookmarks, incoming.Browser.DefaultBookmarks)
+	deletedBookmarkURLs := filterBookmarkDeletionsByActiveURLs(
+		mergeBookmarkDeletionURLs(current.Browser.DeletedBookmarkURLs, incoming.Browser.DeletedBookmarkURLs),
+		activeBookmarkURLSet(current.Browser.DefaultBookmarks),
+	)
+	merged.Browser.DeletedBookmarkURLs = deletedBookmarkURLs
+	merged.Browser.DefaultBookmarks = filterBookmarksByDeletedURLs(
+		backupMergeBookmarks(merged.Browser.DefaultBookmarks, incoming.Browser.DefaultBookmarks),
+		deletedBookmarkURLs,
+	)
 	merged.Browser.Cores = backupMergeCores(merged.Browser.Cores, incoming.Browser.Cores)
 	merged.Browser.Proxies = backupMergeProxies(merged.Browser.Proxies, incoming.Browser.Proxies)
+	merged.Browser.ProxyVirtualGroups = backupMergeProxyVirtualGroups(merged.Browser.ProxyVirtualGroups, incoming.Browser.ProxyVirtualGroups)
 	merged.Browser.Profiles = backupMergeProfiles(merged.Browser.Profiles, incoming.Browser.Profiles)
 	return &merged
-}
-
-func backupUnionStrings(a, b []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(a)+len(b))
-	for _, item := range append(append([]string{}, a...), b...) {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		key := strings.ToLower(item)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, item)
-	}
-	return out
 }
 
 func backupMergeBookmarks(a, b []config.BrowserBookmark) []config.BrowserBookmark {
 	seen := map[string]struct{}{}
 	out := make([]config.BrowserBookmark, 0, len(a)+len(b))
 	appendOne := func(item config.BrowserBookmark) {
-		urlKey := strings.ToLower(strings.TrimSpace(item.URL))
+		urlKey := bookmarkURLKey(item.URL)
 		if urlKey == "" {
 			return
 		}
@@ -200,6 +408,44 @@ func backupMergeProxies(a, b []config.BrowserProxy) []config.BrowserProxy {
 		}
 		if cfgKey != "" {
 			seenCfg[cfgKey] = struct{}{}
+		}
+		out = append(out, item)
+	}
+	for _, item := range a {
+		appendOne(item)
+	}
+	for _, item := range b {
+		appendOne(item)
+	}
+	return out
+}
+
+func backupMergeProxyVirtualGroups(a, b []config.BrowserProxyVirtualGroup) []config.BrowserProxyVirtualGroup {
+	seenID := map[string]struct{}{}
+	seenName := map[string]struct{}{}
+	out := make([]config.BrowserProxyVirtualGroup, 0, len(a)+len(b))
+	appendOne := func(item config.BrowserProxyVirtualGroup) {
+		item = browser.NormalizeProxyVirtualGroup(browser.ProxyVirtualGroup(item))
+		idKey := strings.ToLower(strings.TrimSpace(item.GroupId))
+		nameKey := strings.ToLower(strings.TrimSpace(item.GroupName))
+		if idKey == "" && nameKey == "" {
+			return
+		}
+		if idKey != "" {
+			if _, ok := seenID[idKey]; ok {
+				return
+			}
+		}
+		if nameKey != "" {
+			if _, ok := seenName[nameKey]; ok {
+				return
+			}
+		}
+		if idKey != "" {
+			seenID[idKey] = struct{}{}
+		}
+		if nameKey != "" {
+			seenName[nameKey] = struct{}{}
 		}
 		out = append(out, item)
 	}

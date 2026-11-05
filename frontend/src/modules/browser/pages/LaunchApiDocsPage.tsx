@@ -70,7 +70,7 @@ export function LaunchApiDocsPage() {
       )}
       header={null}
       content={(
-        <div className="space-y-5">
+        <div className="space-y-4">
           {activeDoc.id === 'tutorial-flow'
             ? <LaunchDocsFlowPage baseUrl={launchBaseUrl} />
             : isStructuredApiDocId(activeDoc.id)

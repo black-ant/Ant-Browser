@@ -53,7 +53,7 @@ function TagPanel({ tags, selected, profilesByTag, totalCount, onSelect, onCreat
   }
 
   return (
-    <div className="w-52 shrink-0 border-r border-[var(--color-border)] flex flex-col bg-[var(--color-bg-surface)]">
+    <div className="w-52 shrink-0 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg-surface)] flex flex-col">
       <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
         <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">标签列表</span>
         <button
@@ -158,7 +158,7 @@ function ActionBar({ selectedCount, allTags, onAddTags, onRemoveTags, onClear }:
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 rounded-lg text-sm">
+    <div className="flex items-center gap-3 px-4 py-2.5 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 rounded-md text-sm">
       <span className="text-[var(--color-primary)] font-medium shrink-0">已选 {selectedCount} 个</span>
       <div className="flex items-center gap-1.5 flex-1 flex-wrap">
         {/* 添加标签 */}
@@ -340,7 +340,7 @@ export function TagManagementPage() {
         />
 
         {/* 实例表格 */}
-        <Card padding="none" className="flex-1 overflow-hidden">
+        <Card padding="none" className="!rounded-md flex-1 overflow-hidden">
           <div className="overflow-auto h-full">
             <table className="min-w-full">
               <thead className="sticky top-0 z-10">
@@ -361,9 +361,9 @@ export function TagManagementPage() {
               </thead>
               <tbody className="divide-y divide-[var(--color-border-muted)] bg-[var(--color-bg-surface)]">
                 {loading ? (
-                  <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-[var(--color-text-muted)]">加载中...</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-[var(--color-text-muted)]">加载中...</td></tr>
                 ) : displayProfiles.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-[var(--color-text-muted)]">暂无实例</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-[var(--color-text-muted)]">暂无实例</td></tr>
                 ) : displayProfiles.map(p => (
                   <tr
                     key={p.profileId}

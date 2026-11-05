@@ -18,6 +18,17 @@ func TestMarshalScriptTemplateRoundTripsAdditionalFiles(t *testing.T) {
 			SelectorText: `{"code":"DEMO_TEMPLATE"}`,
 			ParamsText:   `{"url":"https://example.com"}`,
 			ScriptText:   "const helper = require('./helpers/helper.cjs')\nmodule.exports.run = async () => helper.run()",
+			PublicAPI: ScriptPublicAPIConfig{
+				Enabled:          true,
+				Path:             "mail/template-roundtrip",
+				RequestMode:      "params-only",
+				ResponseMode:     "result-only",
+				RequestBodyText:  "{\n  \"recipientQuery\": \"target@example.com\"\n}",
+				ResponseBodyText: "{\n  \"verificationCode\": \"429792\"\n}",
+				Variables: []ScriptPublicAPIVariable{
+					{Name: "recipientQuery", DefaultValue: "target@example.com", Description: "收件人", Required: true},
+				},
+			},
 		},
 		Files: []ImportedBundleFile{
 			{
@@ -61,6 +72,12 @@ func TestMarshalScriptTemplateRoundTripsAdditionalFiles(t *testing.T) {
 	}
 	if !hasBundleFile(imported.Files, "assets/raw.bin", []byte{0x00, 0x01, 0x02, 0xff}) {
 		t.Fatalf("expected binary file to round-trip, got %+v", imported.Files)
+	}
+	if imported.Record.PublicAPI.Path != "mail/template-roundtrip" || !imported.Record.PublicAPI.Enabled {
+		t.Fatalf("expected public api to round-trip, got %+v", imported.Record.PublicAPI)
+	}
+	if len(imported.Record.PublicAPI.Variables) != 1 || imported.Record.PublicAPI.Variables[0].Name != "recipientQuery" {
+		t.Fatalf("expected public api variables to round-trip, got %+v", imported.Record.PublicAPI.Variables)
 	}
 }
 

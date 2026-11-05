@@ -161,6 +161,7 @@ export async function automationDemoCreateProfile(options: AutomationDemoCreateO
     fingerprintArgs: [],
     proxyId: '',
     proxyConfig: '',
+    memoryLimitMb: 0,
     launchArgs: normalizedOptions.launchArgs || [],
     tags: ['自动化', 'Demo'],
     keywords: ['automation-demo', 'launch-api-demo'],

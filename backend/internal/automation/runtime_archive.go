@@ -35,21 +35,37 @@ func writeRuntimeManifest(path, nodeVersion, playwrightVersion, runtimeVersion, 
 }
 
 func writeRunnerScript(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	runnerDir := filepath.Dir(path)
+	if err := os.MkdirAll(runnerDir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, runnerScriptContent, 0o755)
+	for name, content := range runnerAssetFiles {
+		mode := os.FileMode(0o644)
+		if name == runnerScriptFileName {
+			mode = 0o755
+		}
+		if err := os.WriteFile(filepath.Join(runnerDir, name), content, mode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func syncRunnerScript(path string) error {
-	current, err := os.ReadFile(path)
-	if err == nil && string(current) == string(runnerScriptContent) {
-		return nil
+	runnerDir := filepath.Dir(path)
+	for name, content := range runnerAssetFiles {
+		current, err := os.ReadFile(filepath.Join(runnerDir, name))
+		if err != nil {
+			if os.IsNotExist(err) {
+				return writeRunnerScript(path)
+			}
+			return err
+		}
+		if string(current) != string(content) {
+			return writeRunnerScript(path)
+		}
 	}
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return writeRunnerScript(path)
+	return nil
 }
 
 func extractArchive(archivePath, destDir, format, stripPrefix string) error {

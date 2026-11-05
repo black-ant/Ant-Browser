@@ -29,7 +29,6 @@ export function LaunchDemoPanel({
   return (
     <Card
       title={config.title}
-      subtitle={config.subtitle}
       className="bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)]"
     >
       <div className="space-y-4">

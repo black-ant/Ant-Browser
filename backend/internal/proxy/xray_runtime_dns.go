@@ -6,6 +6,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type DnsDiagnosticSummary struct {
+	HasConfig       bool     `json:"hasConfig"`
+	SourceFormat    string   `json:"sourceFormat"`
+	EnhancedMode    string   `json:"enhancedMode"`
+	NameserverCount int      `json:"nameserverCount"`
+	FallbackCount   int      `json:"fallbackCount"`
+	XrayServerCount int      `json:"xrayServerCount"`
+	Unsupported     []string `json:"unsupported"`
+}
+
 // parseDnsConfig 解析 DNS 配置，支持两种格式：
 // 1. Clash dns: YAML 块（含 nameserver/fallback 等字段）
 // 2. 逗号分隔的 IP 列表（兼容旧格式）
@@ -73,4 +83,53 @@ func isXrayDnsAddr(s string) bool {
 		return false
 	}
 	return true
+}
+
+func buildDnsDiagnosticSummary(raw string) DnsDiagnosticSummary {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return DnsDiagnosticSummary{}
+	}
+	summary := DnsDiagnosticSummary{HasConfig: true, SourceFormat: "list"}
+	type clashDns struct {
+		Enable       bool     `yaml:"enable"`
+		EnhancedMode string   `yaml:"enhanced-mode"`
+		Nameserver   []string `yaml:"nameserver"`
+		Fallback     []string `yaml:"fallback"`
+	}
+	type clashDnsWrapper struct {
+		Dns clashDns `yaml:"dns"`
+	}
+	var wrapper clashDnsWrapper
+	if err := yaml.Unmarshal([]byte(raw), &wrapper); err == nil && (len(wrapper.Dns.Nameserver) > 0 || len(wrapper.Dns.Fallback) > 0 || wrapper.Dns.EnhancedMode != "") {
+		summary.SourceFormat = "clash"
+		summary.EnhancedMode = strings.TrimSpace(wrapper.Dns.EnhancedMode)
+		summary.NameserverCount = len(wrapper.Dns.Nameserver)
+		summary.FallbackCount = len(wrapper.Dns.Fallback)
+		for _, server := range append(append([]string{}, wrapper.Dns.Nameserver...), wrapper.Dns.Fallback...) {
+			server = strings.TrimSpace(server)
+			if server == "" {
+				continue
+			}
+			if isXrayDnsAddr(server) {
+				summary.XrayServerCount++
+			} else {
+				summary.Unsupported = append(summary.Unsupported, server)
+			}
+		}
+		return summary
+	}
+	for _, server := range strings.Split(raw, ",") {
+		server = strings.TrimSpace(server)
+		if server == "" {
+			continue
+		}
+		summary.NameserverCount++
+		if isXrayDnsAddr(server) {
+			summary.XrayServerCount++
+		} else {
+			summary.Unsupported = append(summary.Unsupported, server)
+		}
+	}
+	return summary
 }

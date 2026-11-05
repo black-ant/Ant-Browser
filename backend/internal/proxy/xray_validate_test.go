@@ -75,11 +75,17 @@ func TestRequiresLocalProxyBridgeForBrowserAuthenticatedSocks5(t *testing.T) {
 	if !RequiresLocalProxyBridgeForBrowser("http://user:pass@127.0.0.1:8080") {
 		t.Fatal("expected authenticated http proxy to require browser bridge")
 	}
+	if !RequiresLocalProxyBridgeForBrowser("https://user:pass@127.0.0.1:8443") {
+		t.Fatal("expected authenticated https proxy to require browser bridge")
+	}
 	if RequiresLocalProxyBridgeForBrowser("socks5://127.0.0.1:1080") {
 		t.Fatal("expected unauthenticated socks5 proxy not to require browser bridge")
 	}
 	if RequiresLocalProxyBridgeForBrowser("http://127.0.0.1:8080") {
 		t.Fatal("expected unauthenticated http proxy not to require browser bridge")
+	}
+	if RequiresLocalProxyBridgeForBrowser("https://127.0.0.1:8443") {
+		t.Fatal("expected unauthenticated https proxy not to require browser bridge")
 	}
 }
 
@@ -159,6 +165,41 @@ func TestBuildDirectProxyBridgeOutboundAuthenticatedHTTP(t *testing.T) {
 	}
 	if user["user"] != "user" || user["pass"] != "pass" {
 		t.Fatalf("unexpected user payload: %+v", user)
+	}
+}
+
+func TestBuildDirectProxyBridgeOutboundAuthenticatedHTTPS(t *testing.T) {
+	outbound, ok, err := buildDirectProxyBridgeOutbound("https://user:pass@proxy.example.com:8443")
+	if err != nil {
+		t.Fatalf("buildDirectProxyBridgeOutbound returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected bridge outbound for authenticated https proxy")
+	}
+	if outbound["protocol"] != "http" {
+		t.Fatalf("protocol = %v, want http", outbound["protocol"])
+	}
+	streamSettings, ok := outbound["streamSettings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("streamSettings missing: %+v", outbound)
+	}
+	if streamSettings["security"] != "tls" {
+		t.Fatalf("security = %v, want tls", streamSettings["security"])
+	}
+	settings, ok := outbound["settings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("settings missing: %+v", outbound)
+	}
+	servers, ok := settings["servers"].([]interface{})
+	if !ok || len(servers) != 1 {
+		t.Fatalf("servers invalid: %+v", settings["servers"])
+	}
+	server, ok := servers[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("server invalid: %+v", servers[0])
+	}
+	if server["address"] != "proxy.example.com" || server["port"] != 8443 {
+		t.Fatalf("server = %+v, want proxy.example.com:8443", server)
 	}
 }
 

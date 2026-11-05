@@ -1,6 +1,10 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { Button } from './Button'
+
+export const MODAL_EXIT_DURATION_MS = 420
+const MODAL_BACKDROP_EXIT_DURATION_MS = 680
 
 interface ModalProps {
   open: boolean
@@ -21,34 +25,45 @@ export function Modal({
   width = '500px',
   closable = true,
 }: ModalProps) {
+  const [mounted, setMounted] = useState(open)
+  const [closing, setClosing] = useState(false)
+
   useEffect(() => {
     if (open) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
+      setMounted(true)
+      setClosing(false)
+      return
     }
+
+    setClosing(true)
+    const timer = window.setTimeout(() => {
+      setMounted(false)
+      setClosing(false)
+    }, MODAL_BACKDROP_EXIT_DURATION_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [open])
+
+  useEffect(() => {
+    document.body.style.overflow = mounted ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
-  }, [open])
+  }, [mounted])
 
-  if (!open) return null
+  if (!mounted) return null
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* 遮罩层 */}
+  return createPortal(
+    <div className="fixed inset-0 z-[9990] flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
-        onClick={closable ? onClose : undefined}
+        className={`modal-backdrop absolute inset-0 ${closing ? 'animate-modal-backdrop-out' : 'animate-modal-backdrop-in'}`}
       />
 
-      {/* 弹窗内容 */}
       <div
-        className="relative bg-[var(--color-bg-elevated)] rounded-xl shadow-2xl animate-scale-in max-h-[90vh] w-full flex flex-col"
+        className={`modal-surface relative flex max-h-[90vh] w-full flex-col rounded-xl bg-[var(--color-bg-elevated)] shadow-2xl ${closing ? 'animate-modal-out' : 'animate-modal-in'}`}
         style={{ width, maxWidth: '90vw' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 标题栏 */}
         {(title || closable) && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)] flex-shrink-0">
             {title && (
@@ -67,19 +82,18 @@ export function Modal({
           </div>
         )}
 
-        {/* 内容区 */}
         <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
           {children}
         </div>
 
-        {/* 底部按钮 */}
         {footer && (
           <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)] flex-shrink-0">
             {footer}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -88,6 +102,7 @@ interface ConfirmModalProps {
   open: boolean
   onClose: () => void
   onConfirm: () => void
+  onConfirmStart?: () => void
   title?: string
   content: ReactNode
   confirmText?: string
@@ -99,12 +114,36 @@ export function ConfirmModal({
   open,
   onClose,
   onConfirm,
+  onConfirmStart,
   title = '确认',
   content,
   confirmText = '确定',
   cancelText = '取消',
   danger = false,
 }: ConfirmModalProps) {
+  const [confirming, setConfirming] = useState(false)
+  const confirmTimerRef = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (confirmTimerRef.current !== null) window.clearTimeout(confirmTimerRef.current)
+  }, [])
+
+  useEffect(() => {
+    if (open) setConfirming(false)
+  }, [open])
+
+  const handleConfirm = () => {
+    if (confirming) return
+
+    setConfirming(true)
+    onConfirmStart?.()
+    onClose()
+    confirmTimerRef.current = window.setTimeout(() => {
+      confirmTimerRef.current = null
+      onConfirm()
+    }, MODAL_EXIT_DURATION_MS)
+  }
+
   return (
     <Modal
       open={open}
@@ -113,15 +152,13 @@ export function ConfirmModal({
       width="400px"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={confirming}>
             {cancelText}
           </Button>
           <Button
             variant={danger ? 'danger' : 'primary'}
-            onClick={() => {
-              onConfirm()
-              onClose()
-            }}
+            onClick={handleConfirm}
+            disabled={confirming}
           >
             {confirmText}
           </Button>

@@ -1,8 +1,8 @@
-﻿import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Keyboard, Play, Search, Tag } from 'lucide-react'
 import { Badge, Button, Modal, toast } from '../../../shared/components'
-import { fetchBrowserProfiles, fetchGroups, startBrowserInstanceByCode } from '../api'
-import type { BrowserGroupWithCount, BrowserProfile } from '../types'
+import { startBrowserInstanceByCode } from '../api'
+import type { BrowserProfile } from '../types'
 import { resolveActionFeedback } from '../utils/actionErrors'
 
 interface QuickLaunchModalProps {
@@ -10,56 +10,9 @@ interface QuickLaunchModalProps {
   onClose: () => void
 }
 
-interface ProfileTagSection {
-  tag: string
-  items: BrowserProfile[]
-}
-
-interface GroupFilterOption {
-  id: string
-  name: string
-  count: number
-}
-
-const UNTAGGED_LABEL = '未打标签'
-const GROUP_ALL = '__all__'
-const GROUP_UNGROUPED = '__ungrouped__'
-
-function normalizeText(v?: string): string {
-  return (v || '').trim().toLowerCase()
-}
-
-function normalizeCode(v?: string): string {
-  return normalizeText(v).toUpperCase()
-}
-
-function buildSearchText(profile: BrowserProfile): string {
-  return [
-    profile.profileName,
-    profile.launchCode || '',
-    ...(profile.tags || []),
-    ...(profile.keywords || []),
-  ]
-    .join(' ')
-    .toLowerCase()
-}
-
-function sortProfiles(a: BrowserProfile, b: BrowserProfile): number {
-  if (a.running !== b.running) {
-    return a.running ? -1 : 1
-  }
-  return a.profileName.localeCompare(b.profileName, 'zh-CN')
-}
-
-function pickPrimaryTag(profile: BrowserProfile): string {
-  const tags = (profile.tags || []).map(t => t.trim()).filter(Boolean)
-  return tags.length > 0 ? tags[0] : UNTAGGED_LABEL
-}
-
+import { buildSearchText, GROUP_ALL, GROUP_UNGROUPED, normalizeCode, normalizeText, pickPrimaryTag, UNTAGGED_LABEL, type GroupFilterOption, type ProfileTagSection } from './QuickLaunchModal.helpers'
+import { useQuickLaunchData } from './useQuickLaunchData'
 export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
-  const [profiles, setProfiles] = useState<BrowserProfile[]>([])
-  const [groups, setGroups] = useState<BrowserGroupWithCount[]>([])
-  const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [groupFilter, setGroupFilter] = useState(GROUP_ALL)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -72,45 +25,19 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
   const autoScrollingRef = useRef(false)
   const autoScrollTimerRef = useRef<number | null>(null)
 
+
+  const { profiles, groups, loading } = useQuickLaunchData(open, inputRef)
+
   useEffect(() => {
     if (!open) return
-
-    let alive = true
     setQuery('')
     setGroupFilter(GROUP_ALL)
     setSelectedIndex(0)
-    setLoading(true)
-
-    Promise.allSettled([fetchBrowserProfiles(), fetchGroups()])
-      .then(([profilesResult, groupsResult]) => {
-        if (!alive) return
-
-        if (profilesResult.status === 'fulfilled') {
-          setProfiles((profilesResult.value || []).slice().sort(sortProfiles))
-        } else {
-          toast.error('加载实例列表失败')
-          setProfiles([])
-        }
-
-        if (groupsResult.status === 'fulfilled') {
-          setGroups(groupsResult.value || [])
-        } else {
-          setGroups([])
-        }
-      })
-      .finally(() => {
-        if (!alive) return
-        setLoading(false)
-        setTimeout(() => inputRef.current?.focus(), 0)
-      })
-
     return () => {
-      alive = false
       setStartingCode('')
       setActiveTag('')
     }
   }, [open])
-
   const groupNameMap = useMemo(() => {
     const map = new Map<string, string>()
     groups.forEach((group) => {
@@ -282,7 +209,9 @@ export function QuickLaunchModal({ open, onClose }: QuickLaunchModalProps) {
     setStartingCode(normalized)
     try {
       const profile = await startBrowserInstanceByCode(normalized)
-      toast.success(profile?.running ? `实例「${profile.profileName}」已在运行` : `实例「${profile?.profileName || normalized}」已启动`)
+      if (profile?.runtimeWarning) {
+        toast.warning(`实例「${profile.profileName || normalized}」已启动：${profile.runtimeWarning}`)
+      }
       onClose()
       return true
     } catch (error: any) {

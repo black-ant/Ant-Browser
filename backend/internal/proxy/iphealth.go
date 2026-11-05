@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +30,7 @@ func FetchDefaultIPHealthInfo(
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
 ) (map[string]interface{}, error) {
-	return FetchIPHealthInfo(proxyId, proxies, xrayMgr, singboxMgr, nil)
+	return FetchIPHealthInfo(proxyId, proxies, xrayMgr, singboxMgr, nil, nil, config.BrowserConnectorXray, nil)
 }
 
 func FetchIPHealthInfo(
@@ -37,6 +38,9 @@ func FetchIPHealthInfo(
 	proxies []config.BrowserProxy,
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
+	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
+	connectorType string,
 	cfg *IPHealthConfig,
 ) (map[string]interface{}, error) {
 	if cfg == nil {
@@ -68,11 +72,12 @@ func FetchIPHealthInfo(
 		return meta, fmt.Errorf("未找到代理配置")
 	}
 
-	client, err := buildIPHealthHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, timeout)
+	client, releaseClient, err := buildIPHealthHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, timeout)
 	if err != nil {
 		meta["error"] = err.Error()
 		return meta, fmt.Errorf("创建 IP 健康检测客户端失败（source=%s）: %w", source, err)
 	}
+	defer releaseClient()
 
 	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
 	if err != nil {
@@ -157,9 +162,12 @@ func buildIPHealthHTTPClient(
 	proxies []config.BrowserProxy,
 	xrayMgr *XrayManager,
 	singboxMgr *SingBoxManager,
+	clashMgr *ClashManager,
+	mieruMgr *MieruManager,
+	connectorType string,
 	timeout time.Duration,
-) (*http.Client, error) {
-	return buildProxyHTTPClient(src, proxyId, proxies, xrayMgr, singboxMgr, timeout)
+) (*http.Client, func(), error) {
+	return buildProbeHTTPClientContext(context.Background(), src, proxyId, proxies, xrayMgr, singboxMgr, clashMgr, mieruMgr, connectorType, timeout)
 }
 
 func resolveIPHealthSource(cfg *IPHealthConfig, targetURL string) string {

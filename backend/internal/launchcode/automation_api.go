@@ -11,9 +11,15 @@ import (
 	"ant-chrome/backend/internal/automation"
 )
 
+const (
+	automationMinTimeoutMs = 1000
+	automationMaxTimeoutMs = 30 * 60 * 1000
+)
+
 type automationScriptRunAPIRequest struct {
 	ScriptID          string          `json:"scriptId"`
 	Selector          json.RawMessage `json:"selector"`
+	TargetInput       json.RawMessage `json:"targetInput"`
 	Params            json.RawMessage `json:"params"`
 	UseScriptSelector *bool           `json:"useScriptSelector"`
 	UseScriptParams   *bool           `json:"useScriptParams"`
@@ -21,19 +27,20 @@ type automationScriptRunAPIRequest struct {
 }
 
 type automationScriptSummary struct {
-	ID           string                        `json:"id"`
-	Name         string                        `json:"name"`
-	Description  string                        `json:"description"`
-	Type         string                        `json:"type"`
-	Status       string                        `json:"status"`
-	EntryFile    string                        `json:"entryFile"`
-	Tags         []string                      `json:"tags"`
-	Selector     map[string]interface{}        `json:"selector"`
-	Params       map[string]interface{}        `json:"params"`
-	Notes        string                        `json:"notes"`
-	TargetConfig automation.ScriptTargetConfig `json:"targetConfig"`
-	CreatedAt    string                        `json:"createdAt"`
-	UpdatedAt    string                        `json:"updatedAt"`
+	ID           string                           `json:"id"`
+	Name         string                           `json:"name"`
+	Description  string                           `json:"description"`
+	Type         string                           `json:"type"`
+	Status       string                           `json:"status"`
+	EntryFile    string                           `json:"entryFile"`
+	Tags         []string                         `json:"tags"`
+	Selector     map[string]interface{}           `json:"selector"`
+	Params       map[string]interface{}           `json:"params"`
+	Notes        string                           `json:"notes"`
+	TargetConfig automation.ScriptTargetConfig    `json:"targetConfig"`
+	PublicAPI    automation.ScriptPublicAPIConfig `json:"publicAPI"`
+	CreatedAt    string                           `json:"createdAt"`
+	UpdatedAt    string                           `json:"updatedAt"`
 }
 
 type automationScriptDetail struct {
@@ -45,28 +52,19 @@ type automationScriptDetail struct {
 
 func (s *LaunchServer) handleAutomationScripts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
-			"ok":    false,
-			"error": "method not allowed",
-		})
+		writeAutomationAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", "")
 		return
 	}
 
 	lister, ok := s.starter.(AutomationScriptLister)
 	if !ok {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"ok":    false,
-			"error": "automation script api is unavailable",
-		})
+		writeAutomationAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "automation script api is unavailable", "")
 		return
 	}
 
 	items, err := lister.AutomationScriptList()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"ok":    false,
-			"error": err.Error(),
-		})
+		writeAutomationAPIError(w, http.StatusInternalServerError, "internal_error", err.Error(), "")
 		return
 	}
 
@@ -75,37 +73,27 @@ func (s *LaunchServer) handleAutomationScripts(w http.ResponseWriter, r *http.Re
 		result = append(result, summarizeAutomationScript(item))
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":    true,
-		"count": len(result),
-		"items": result,
+	writeAutomationAPISuccess(w, http.StatusOK, "", automationAPIListData[automationScriptSummary]{
+		Items: result,
+		Count: len(result),
 	})
 }
 
 func (s *LaunchServer) handleAutomationScriptByID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
-			"ok":    false,
-			"error": "method not allowed",
-		})
+		writeAutomationAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", "")
 		return
 	}
 
 	scriptID, ok := parseAutomationScriptPathID(r.URL.Path)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]interface{}{
-			"ok":    false,
-			"error": "script not found",
-		})
+		writeAutomationAPIError(w, http.StatusNotFound, "not_found", "script not found", "")
 		return
 	}
 
 	getter, ok := s.starter.(AutomationScriptGetter)
 	if !ok {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"ok":    false,
-			"error": "automation script api is unavailable",
-		})
+		writeAutomationAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "automation script api is unavailable", "")
 		return
 	}
 
@@ -113,47 +101,31 @@ func (s *LaunchServer) handleAutomationScriptByID(w http.ResponseWriter, r *http
 	if err != nil {
 		message := strings.TrimSpace(err.Error())
 		if os.IsNotExist(err) {
-			writeJSON(w, http.StatusNotFound, map[string]interface{}{
-				"ok":    false,
-				"error": "script not found",
-			})
+			writeAutomationAPIError(w, http.StatusNotFound, "not_found", "script not found", "")
 			return
 		}
 		if strings.Contains(strings.ToLower(message), "script id is invalid") || strings.Contains(strings.ToLower(message), "script id is required") {
-			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-				"ok":    false,
-				"error": message,
-			})
+			writeAutomationAPIError(w, http.StatusBadRequest, "invalid_request", message, "scriptId")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"ok":    false,
-			"error": message,
-		})
+		writeAutomationAPIError(w, http.StatusInternalServerError, "internal_error", message, "")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":   true,
-		"item": detailAutomationScript(*item),
+	writeAutomationAPISuccess(w, http.StatusOK, "", automationAPIItemData[automationScriptDetail]{
+		Item: detailAutomationScript(*item),
 	})
 }
 
 func (s *LaunchServer) handleAutomationScriptRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
-			"ok":    false,
-			"error": "method not allowed",
-		})
+		writeAutomationAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", "")
 		return
 	}
 
 	runner, ok := s.starter.(AutomationScriptRunner)
 	if !ok {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"ok":    false,
-			"error": "automation script api is unavailable",
-		})
+		writeAutomationAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "automation script api is unavailable", "")
 		return
 	}
 
@@ -161,52 +133,41 @@ func (s *LaunchServer) handleAutomationScriptRun(w http.ResponseWriter, r *http.
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"ok":    false,
-			"error": "invalid request body",
-		})
+		writeAutomationAPIError(w, http.StatusBadRequest, "invalid_request", "invalid request body", "")
 		return
 	}
 
 	input, err := normalizeAutomationRunRequest(req)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"ok":    false,
-			"error": err.Error(),
-		})
+		writeAutomationAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), automationRequestErrorField(err))
 		return
 	}
 
 	run, err := runner.AutomationScriptRunWithOptions(input)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"ok":    false,
-			"error": err.Error(),
-		})
+		writeAutomationAPIError(w, http.StatusInternalServerError, "internal_error", err.Error(), "")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":  true,
-		"run": run,
-	})
+	data := automationAPIRunData{
+		Run:     run,
+		Summary: run.Summary,
+	}
+	if result := decodeAutomationRunResult(run.ResultText); result != nil {
+		data.Result = result
+	}
+	writeAutomationAPISuccess(w, http.StatusOK, run.Summary, data)
 }
 
 func (s *LaunchServer) handleAutomationScriptRuns(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
-			"ok":    false,
-			"error": "method not allowed",
-		})
+		writeAutomationAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", "")
 		return
 	}
 
 	lister, ok := s.starter.(AutomationScriptRunLister)
 	if !ok {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"ok":    false,
-			"error": "automation script api is unavailable",
-		})
+		writeAutomationAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "automation script api is unavailable", "")
 		return
 	}
 
@@ -225,18 +186,14 @@ func (s *LaunchServer) handleAutomationScriptRuns(w http.ResponseWriter, r *http
 
 	items, err := lister.AutomationScriptRunList(limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"ok":    false,
-			"error": err.Error(),
-		})
+		writeAutomationAPIError(w, http.StatusInternalServerError, "internal_error", err.Error(), "")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":    true,
-		"count": len(items),
-		"limit": limit,
-		"items": items,
+	writeAutomationAPISuccess(w, http.StatusOK, "", automationAPIListData[automation.ScriptRunRecord]{
+		Items: items,
+		Count: len(items),
+		Limit: limit,
 	})
 }
 
@@ -253,6 +210,7 @@ func summarizeAutomationScript(record automation.ScriptRecord) automationScriptS
 		Params:       parseJSONObjectText(record.ParamsText),
 		Notes:        strings.TrimSpace(record.Notes),
 		TargetConfig: record.TargetConfig,
+		PublicAPI:    record.PublicAPI,
 		CreatedAt:    strings.TrimSpace(record.CreatedAt),
 		UpdatedAt:    strings.TrimSpace(record.UpdatedAt),
 	}
@@ -287,6 +245,10 @@ func normalizeAutomationRunRequest(req automationScriptRunAPIRequest) (automatio
 	if err != nil {
 		return automation.ScriptRunRequest{}, err
 	}
+	targetInput, hasTargetInput, err := decodeJSONObjectRaw(req.TargetInput, "targetInput")
+	if err != nil {
+		return automation.ScriptRunRequest{}, err
+	}
 	params, hasParams, err := decodeJSONObjectRaw(req.Params, "params")
 	if err != nil {
 		return automation.ScriptRunRequest{}, err
@@ -298,6 +260,9 @@ func normalizeAutomationRunRequest(req automationScriptRunAPIRequest) (automatio
 	}
 	useScriptParams, err := resolveUseScriptField("params", req.UseScriptParams, hasParams)
 	if err != nil {
+		return automation.ScriptRunRequest{}, err
+	}
+	if err := validateAutomationTimeoutMs(req.TimeoutMs); err != nil {
 		return automation.ScriptRunRequest{}, err
 	}
 
@@ -322,11 +287,22 @@ func normalizeAutomationRunRequest(req automationScriptRunAPIRequest) (automatio
 	return automation.ScriptRunRequest{
 		ScriptID:          scriptID,
 		SelectorText:      selectorText,
+		TargetInput:       targetInput,
 		ParamsText:        paramsText,
-		UseScriptSelector: useScriptSelector,
+		UseScriptSelector: useScriptSelector && !hasTargetInput,
 		UseScriptParams:   useScriptParams,
 		TimeoutMs:         req.TimeoutMs,
 	}, nil
+}
+
+func validateAutomationTimeoutMs(timeoutMs int) error {
+	if timeoutMs == 0 {
+		return nil
+	}
+	if timeoutMs < automationMinTimeoutMs || timeoutMs > automationMaxTimeoutMs {
+		return badAutomationRequest("timeoutMs must be between 1000 and 1800000")
+	}
+	return nil
 }
 
 func resolveUseScriptField(name string, explicit *bool, hasObject bool) (bool, error) {
@@ -360,6 +336,14 @@ func decodeJSONObjectRaw(raw json.RawMessage, fieldName string) (map[string]inte
 	return obj, true, nil
 }
 
+func decodeAutomationRunResult(raw string) interface{} {
+	_, result, ok := decodeAutomationRunPayloadValue(raw)
+	if !ok {
+		return nil
+	}
+	return result
+}
+
 func parseJSONObjectText(text string) map[string]interface{} {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
@@ -388,6 +372,16 @@ func upperFirst(value string) string {
 
 func badAutomationRequest(message string) error {
 	return automationRequestError(strings.TrimSpace(message))
+}
+
+func automationRequestErrorField(err error) string {
+	message := strings.TrimSpace(err.Error())
+	for _, field := range []string{"scriptId", "selector", "targetInput", "params"} {
+		if strings.Contains(message, field) {
+			return field
+		}
+	}
+	return ""
 }
 
 type automationRequestError string

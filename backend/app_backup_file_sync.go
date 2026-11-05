@@ -10,12 +10,16 @@ import (
 	"strings"
 )
 
-func backupSyncDir(src, dst string, overwrite bool, stats *backupMergeStats, shouldSkip func(rel string) bool) error {
+func backupSyncDir(src, dst string, stats *backupMergeStats, shouldSkip func(rel string) bool, rollback ...*backupImportRollback) error {
 	if !backupPathExists(src) {
 		return nil
 	}
+	dstExisted := backupPathExists(dst)
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
+	}
+	if !dstExisted && len(rollback) > 0 && rollback[0] != nil {
+		rollback[0].recordCreatedPath(dst)
 	}
 
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
@@ -47,23 +51,25 @@ func backupSyncDir(src, dst string, overwrite bool, stats *backupMergeStats, sho
 
 		target := filepath.Join(dst, filepath.FromSlash(rel))
 		if d.IsDir() {
-			return os.MkdirAll(target, 0755)
+			targetExisted := backupPathExists(target)
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+			if !targetExisted && len(rollback) > 0 && rollback[0] != nil {
+				rollback[0].recordCreatedPath(target)
+			}
+			return nil
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
 		}
 
-		if overwrite {
-			if err := backupCopyFile(path, target); err != nil {
-				return err
-			}
-			stats.Imported++
-			return nil
-		}
-
 		if _, err := os.Stat(target); os.IsNotExist(err) {
 			if err := backupCopyFile(path, target); err != nil {
 				return err
+			}
+			if len(rollback) > 0 && rollback[0] != nil {
+				rollback[0].recordCreatedPath(target)
 			}
 			stats.Imported++
 			return nil
@@ -154,28 +160,4 @@ func backupSHA256File(path string) (string, error) {
 func backupShouldSkipAppDBFile(rel string) bool {
 	r := strings.TrimSpace(filepath.ToSlash(rel))
 	return r == "app.db" || r == "app.db-wal" || r == "app.db-shm"
-}
-
-func backupRemoveContentsExcept(dir string, keep map[string]struct{}) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return nil
-	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		p := filepath.Join(dir, entry.Name())
-		if backupPathInSet(p, keep) {
-			continue
-		}
-		if err := os.RemoveAll(p); err != nil {
-			return err
-		}
-	}
-	return nil
 }

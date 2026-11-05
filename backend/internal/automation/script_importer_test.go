@@ -22,6 +22,16 @@ func TestImportBundleFromBytesSupportsInlineJSONPackage(t *testing.T) {
   "params": {
     "url": "https://example.com"
   },
+  "publicAPI": {
+    "enabled": true,
+    "path": "mail/demo-script",
+    "requestMode": "params-only",
+    "responseMode": "result-only",
+    "variables": [
+      {"name": "recipientQuery", "defaultValue": "target@example.com", "description": "收件人", "required": true},
+      {"name": "senderEmail", "defaultValue": "otp@tm1.openai.com, noreply@tm.openai.com"}
+    ]
+  },
   "script": "module.exports.run = async () => ({ ok: true })"
 }`), "远程地址 https://example.com/demo-script.json")
 	if err != nil {
@@ -48,6 +58,12 @@ func TestImportBundleFromBytesSupportsInlineJSONPackage(t *testing.T) {
 	}
 	if len(bundle.Files) != 1 || bundle.Files[0].Path != "index.cjs" {
 		t.Fatalf("unexpected bundle files: %+v", bundle.Files)
+	}
+	if bundle.Record.PublicAPI.Path != "mail/demo-script" || !bundle.Record.PublicAPI.Enabled {
+		t.Fatalf("unexpected public api import result: %+v", bundle.Record.PublicAPI)
+	}
+	if len(bundle.Record.PublicAPI.Variables) != 2 || bundle.Record.PublicAPI.Variables[0].Name != "recipientQuery" || !bundle.Record.PublicAPI.Variables[0].Required {
+		t.Fatalf("unexpected public api variables: %+v", bundle.Record.PublicAPI.Variables)
 	}
 	if bundle.Record.Source.Type != "remote-url" {
 		t.Fatalf("expected remote-url source, got %+v", bundle.Record.Source)

@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/fsutil"
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"os"
@@ -14,21 +15,13 @@ import (
 func (a *App) OpenUserDataDir(userDataDir string) error {
 	log := logger.New("Browser")
 
-	userDataDir = strings.TrimSpace(userDataDir)
-	if userDataDir == "" {
-		return fmt.Errorf("用户数据目录不能为空")
+	userDataRoot := ""
+	if a.config != nil {
+		userDataRoot = a.config.Browser.UserDataRoot
 	}
-
-	var fullPath string
-	if filepath.IsAbs(userDataDir) {
-		fullPath = userDataDir
-	} else {
-		root := strings.TrimSpace(a.config.Browser.UserDataRoot)
-		if root == "" {
-			root = "data"
-		}
-		root = a.resolveAppPath(root)
-		fullPath = filepath.Join(root, userDataDir)
+	fullPath, err := fsutil.ResolveUserDataDir(a.resolveAppPath, userDataRoot, userDataDir)
+	if err != nil {
+		return err
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -53,20 +46,44 @@ func (a *App) OpenUserDataDir(userDataDir string) error {
 	return nil
 }
 
+// OpenUserDataRoot 在资源管理器中打开浏览器用户数据根目录。
+func (a *App) OpenUserDataRoot() error {
+	log := logger.New("Browser")
+
+	userDataRoot := "data"
+	if a.config != nil && strings.TrimSpace(a.config.Browser.UserDataRoot) != "" {
+		userDataRoot = strings.TrimSpace(a.config.Browser.UserDataRoot)
+	}
+	rootPath := a.resolveAppPath(userDataRoot)
+	if _, err := os.Stat(rootPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(rootPath, 0755); err != nil {
+			log.Error("创建用户数据根目录失败", logger.F("path", rootPath), logger.F("error", err))
+			return fmt.Errorf("创建目录失败: %v", err)
+		}
+	}
+
+	absPath, err := filepath.Abs(rootPath)
+	if err != nil {
+		log.Error("获取用户数据根目录绝对路径失败", logger.F("path", rootPath), logger.F("error", err))
+		return err
+	}
+
+	if err := openPathInFileManager(absPath); err != nil {
+		log.Error("打开用户数据根目录失败", logger.F("path", absPath), logger.F("error", err))
+		return err
+	}
+
+	log.Info("已打开用户数据根目录", logger.F("path", absPath))
+	return nil
+}
+
 // OpenCorePath 在资源管理器中打开内核路径
 func (a *App) OpenCorePath(corePath string) error {
 	log := logger.New("Browser")
 
-	corePath = strings.TrimSpace(corePath)
-	if corePath == "" {
-		return fmt.Errorf("内核路径不能为空")
-	}
-
-	var fullPath string
-	if filepath.IsAbs(corePath) {
-		fullPath = corePath
-	} else {
-		fullPath = a.resolveAppPath(corePath)
+	fullPath, err := fsutil.ResolveExistingPath(a.resolveAppPath, corePath, "内核路径不能为空")
+	if err != nil {
+		return err
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {

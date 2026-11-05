@@ -15,15 +15,15 @@ export function StatCard({ title, value, icon, trend }: StatCardProps) {
   return (
     <div 
       className={clsx(
-        'bg-[var(--color-bg-surface)] rounded-xl overflow-hidden',
+        'min-w-0 bg-[var(--color-bg-surface)] rounded-xl overflow-hidden',
         'border border-[var(--color-border-default)]',
         'transition-all duration-200',
         'hover:border-[var(--color-border-strong)]',
         'group'
       )}
     >
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-4">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-[var(--color-text-muted)] font-medium tracking-wide uppercase">
               {title}

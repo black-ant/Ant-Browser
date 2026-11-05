@@ -5,5 +5,6 @@ type TestResult struct {
 	ProxyId   string
 	Ok        bool
 	LatencyMs int64
+	Engine    string
 	Error     string
 }

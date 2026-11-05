@@ -1,9 +1,24 @@
 package proxy
 
 import (
+	"ant-chrome/backend/internal/logger"
+	"errors"
 	"fmt"
 	"time"
 )
+
+func (m *XrayManager) discardBridge(key string, bridge *XrayBridge) {
+	if bridge == nil {
+		return
+	}
+	m.mu.Lock()
+	bridge.Stopping = true
+	if current, ok := m.Bridges[key]; ok && current == bridge {
+		delete(m.Bridges, key)
+	}
+	m.mu.Unlock()
+	m.stopBridgeProcess(bridge)
+}
 
 func (m *XrayManager) tryReuseBridge(key string, pin bool) (string, bool) {
 	var stale *XrayBridge
@@ -11,7 +26,7 @@ func (m *XrayManager) tryReuseBridge(key string, pin bool) (string, bool) {
 	m.mu.Lock()
 	if bridge, ok := m.Bridges[key]; ok && bridge != nil {
 		alive := bridge.Running && bridge.Cmd != nil && bridge.Cmd.Process != nil && bridge.Cmd.ProcessState == nil
-		if alive && waitPortReady("127.0.0.1", bridge.Port, 800*time.Millisecond) == nil {
+		if alive && waitSocks5Ready("127.0.0.1", bridge.Port, 800*time.Millisecond) == nil {
 			if pin {
 				bridge.RefCount++
 			}
@@ -44,7 +59,7 @@ func (m *XrayManager) registerBridge(key string, bridge *XrayBridge, pin bool) (
 		}
 
 		alive := existing.Running && existing.Cmd != nil && existing.Cmd.Process != nil && existing.Cmd.ProcessState == nil
-		if alive && waitPortReady("127.0.0.1", existing.Port, 800*time.Millisecond) == nil {
+		if alive && waitSocks5Ready("127.0.0.1", existing.Port, 800*time.Millisecond) == nil {
 			if pin {
 				existing.RefCount++
 			}
@@ -59,9 +74,16 @@ func (m *XrayManager) registerBridge(key string, bridge *XrayBridge, pin bool) (
 			return socksURL, true
 		}
 
+		transferredRefCount := 0
+		if existing.Restarting && existing.RefCount > 0 {
+			transferredRefCount = existing.RefCount
+		}
 		existing.Stopping = true
 		delete(m.Bridges, key)
 		duplicate = existing
+		if transferredRefCount > 0 && !pin {
+			bridge.RefCount = transferredRefCount
+		}
 	}
 
 	if pin {
@@ -81,15 +103,39 @@ func (m *XrayManager) watchBridge(bridge *XrayBridge, key string) {
 	if bridge == nil || bridge.Cmd == nil {
 		return
 	}
-	_ = bridge.Cmd.Wait()
+	_ = bridge.waitExit()
 
+	var shouldRestart bool
+	var refCount int
 	m.mu.Lock()
 	if current, ok := m.Bridges[key]; ok && current == bridge {
-		delete(m.Bridges, key)
+		refCount = bridge.RefCount
+		if !bridge.Stopping && refCount > 0 && !bridge.Restarting {
+			bridge.Restarting = true
+			shouldRestart = true
+		} else {
+			delete(m.Bridges, key)
+		}
 	}
 	bridge.Running = false
 	stopping := bridge.Stopping
 	m.mu.Unlock()
+
+	if shouldRestart {
+		log := logger.New("Xray")
+		if err := m.restartPinnedBridge(log, key, bridge); err == nil {
+			return
+		} else if errors.Is(err, errXrayBridgeRestartNotNeeded) {
+			return
+		} else {
+			log.Error("xray 桥接同端口恢复失败", logger.F("key", key), logger.F("port", bridge.Port), logger.F("error", err.Error()))
+			m.mu.Lock()
+			if current, ok := m.Bridges[key]; ok && current == bridge {
+				delete(m.Bridges, key)
+			}
+			m.mu.Unlock()
+		}
+	}
 
 	if !stopping && m.OnBridgeDied != nil {
 		m.OnBridgeDied(key, fmt.Errorf("xray 桥接进程意外退出"))

@@ -1,0 +1,134 @@
+{
+  "extVersion": "1.30.02",
+  "name": "Example Domain - JavaScript Variable Export",
+  "icon": "riCodeSSlashLine",
+  "table": [],
+  "version": "1.30.02",
+  "drawflow": {
+    "nodes": [
+      {
+        "type": "BlockBasic",
+        "id": "trigger-1",
+        "label": "trigger",
+        "position": { "x": 80, "y": 240 },
+        "data": { "type": "manual" }
+      },
+      {
+        "type": "BlockBasic",
+        "id": "open-example-1",
+        "label": "new-tab",
+        "position": { "x": 350, "y": 240 },
+        "data": {
+          "url": "https://example.com/",
+          "active": true,
+          "waitTabLoaded": true
+        }
+      },
+      {
+        "type": "BlockDelay",
+        "id": "delay-1",
+        "label": "delay",
+        "position": { "x": 620, "y": 240 },
+        "data": { "time": 500 }
+      },
+      {
+        "type": "BlockBasic",
+        "id": "javascript-1",
+        "label": "javascript-code",
+        "position": { "x": 890, "y": 240 },
+        "data": {
+          "description": "Read the page heading and store it in a workflow variable.",
+          "timeout": 20000,
+          "context": "website",
+          "code": "const heading = document.querySelector('h1')?.textContent?.trim() || '';\nautomaSetVariable('pageTitle', heading);\nautomaNextBlock({ pageTitle: heading });",
+          "preloadScripts": [],
+          "everyNewTab": false,
+          "runBeforeLoad": false
+        }
+      },
+      {
+        "type": "BlockBasic",
+        "id": "export-title-1",
+        "label": "export-data",
+        "position": { "x": 1160, "y": 240 },
+        "data": {
+          "name": "example-domain-page-title",
+          "type": "json",
+          "description": "Export the pageTitle variable.",
+          "variableName": "pageTitle",
+          "addBOMHeader": false,
+          "onConflict": "uniquify",
+          "dataToExport": "variable"
+        }
+      },
+      {
+        "type": "BlockBasic",
+        "id": "notification-1",
+        "label": "notification",
+        "position": { "x": 1430, "y": 240 },
+        "data": {
+          "message": "JavaScript stored pageTitle and exported it as JSON.",
+          "title": "Automa JavaScript test"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-trigger-open",
+        "source": "trigger-1",
+        "target": "open-example-1",
+        "sourceHandle": "trigger-1-output-1",
+        "targetHandle": "open-example-1-input-1",
+        "type": "custom",
+        "markerEnd": "arrowclosed"
+      },
+      {
+        "id": "edge-open-delay",
+        "source": "open-example-1",
+        "target": "delay-1",
+        "sourceHandle": "open-example-1-output-1",
+        "targetHandle": "delay-1-input-1",
+        "type": "custom",
+        "markerEnd": "arrowclosed"
+      },
+      {
+        "id": "edge-delay-javascript",
+        "source": "delay-1",
+        "target": "javascript-1",
+        "sourceHandle": "delay-1-output-1",
+        "targetHandle": "javascript-1-input-1",
+        "type": "custom",
+        "markerEnd": "arrowclosed"
+      },
+      {
+        "id": "edge-javascript-export",
+        "source": "javascript-1",
+        "target": "export-title-1",
+        "sourceHandle": "javascript-1-output-1",
+        "targetHandle": "export-title-1-input-1",
+        "type": "custom",
+        "markerEnd": "arrowclosed"
+      },
+      {
+        "id": "edge-export-notification",
+        "source": "export-title-1",
+        "target": "notification-1",
+        "sourceHandle": "export-title-1-output-1",
+        "targetHandle": "notification-1-input-1",
+        "type": "custom",
+        "markerEnd": "arrowclosed"
+      }
+    ],
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "settings": {
+    "execContext": "popup",
+    "notification": true,
+    "onError": "stop-workflow"
+  },
+  "globalData": "{}",
+  "description": "Open Example Domain, use JavaScript to set pageTitle, export the variable as JSON, and notify on completion.",
+  "includedWorkflows": {}
+}

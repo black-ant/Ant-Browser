@@ -1,28 +1,26 @@
 package backend
 
-import (
-	"errors"
-	"testing"
-)
+import "testing"
 
-func TestBuildProxyIPHealthResultPreservesErrorSourceMetadata(t *testing.T) {
-	result := buildProxyIPHealthResult("proxy-1", map[string]interface{}{
-		"_source":    "trace",
-		"_targetUrl": "https://example.invalid/trace",
-		"_parser":    "cloudflare_trace",
-	}, errors.New("request failed"))
-
-	if result.Source != "trace" {
-		t.Fatalf("source = %q, want trace", result.Source)
+func TestProxySpeedBatchConcurrencyClamp(t *testing.T) {
+	app := NewApp("")
+	cases := []struct {
+		name      string
+		requested int
+		total     int
+		want      int
+	}{
+		{"frontend default 20 runs at 20", 20, 100, 20},
+		{"zero falls back to default 5", 0, 100, 5},
+		{"oversized request clamps to 20", 100, 100, 20},
+		{"never exceeds total", 20, 3, 3},
+		{"empty total", 20, 0, 0},
 	}
-	if result.Error != "request failed" {
-		t.Fatalf("error = %q, want request failed", result.Error)
-	}
-	rawError, _ := result.RawData["error"].(string)
-	if rawError != "request failed" {
-		t.Fatalf("raw error = %q, want request failed", rawError)
-	}
-	if got, _ := result.RawData["_targetUrl"].(string); got != "https://example.invalid/trace" {
-		t.Fatalf("target url = %q, want trace url", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := app.proxySpeedBatchConcurrency(tc.requested, tc.total); got != tc.want {
+				t.Fatalf("proxySpeedBatchConcurrency(%d, %d) = %d, want %d", tc.requested, tc.total, got, tc.want)
+			}
+		})
 	}
 }

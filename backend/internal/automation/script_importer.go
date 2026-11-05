@@ -16,6 +16,7 @@ type scriptImportEnvelope struct {
 	PackageFormat   string               `json:"packageFormat"`
 	ManifestVersion int                  `json:"manifestVersion"`
 	Manifest        map[string]any       `json:"manifest"`
+	ID              string               `json:"id"`
 	Name            string               `json:"name"`
 	Description     string               `json:"description"`
 	Type            string               `json:"type"`
@@ -30,6 +31,7 @@ type scriptImportEnvelope struct {
 	ScriptText      string               `json:"scriptText"`
 	Notes           string               `json:"notes"`
 	TargetConfig    map[string]any       `json:"targetConfig"`
+	PublicAPI       map[string]any       `json:"publicAPI"`
 	Source          map[string]any       `json:"source"`
 	Files           []scriptTemplateFile `json:"files"`
 }

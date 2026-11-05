@@ -9,6 +9,56 @@ import (
 
 var defaultBrowserStartURLs = []string{}
 
+const (
+	// BrowserConnectorXray 表示 Xray + sing-box 组合连接栈。
+	BrowserConnectorXray = "xray"
+	// BrowserConnectorMihomo 表示独立 Mihomo 连接栈。
+	BrowserConnectorMihomo = "mihomo"
+)
+
+const (
+	BrowserConnectorXrayStack   = BrowserConnectorXray
+	BrowserConnectorMihomoStack = BrowserConnectorMihomo
+)
+
+const (
+	DefaultProxySpeedIntervalMinutes      = 30
+	DefaultProxyFailureRetryMinutes       = 5
+	DefaultProxySpeedConcurrency          = 5
+	DefaultProxyScheduledSpeedConcurrency = 5
+	MaxProxySpeedIntervalMinutes          = 24 * 60
+	MaxProxySpeedConcurrency              = 10
+)
+
+const (
+	// 虚拟分组健康状态默认参数。
+	DefaultVirtualGroupProbeIntervalMinutes  = 5
+	DefaultDegradeFailureThreshold           = 2
+	DefaultRestoreSuccessThreshold           = 2
+	DefaultRuntimeFailoverCooldownMinutes    = 10
+	DefaultRuntimeFailoverMaxAttempts        = 3
+	MaxVirtualGroupHealthThreshold           = 5
+	MaxRuntimeFailoverCooldownMinutes        = 24 * 60
+	MaxRuntimeFailoverAttempts               = 10
+)
+
+// MaxVirtualGroupProbeIntervalMinutes 是虚拟分组成员核验间隔的硬上限。
+// 需求是"至少每 3 小时核验一次"，这里压到 2 小时，给调度轮询粒度留出余量，
+// 保证即使配置写满上限，实际核验间隔也不会突破 3 小时。
+const MaxVirtualGroupProbeIntervalMinutes = 120
+
+// NormalizeBrowserConnectorType 规范化连接栈配置。
+func NormalizeBrowserConnectorType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case BrowserConnectorMihomo, "clash", "clash-meta":
+		return BrowserConnectorMihomo
+	case BrowserConnectorXray, "sing-box", "singbox", "sing_box", "":
+		return BrowserConnectorXray
+	default:
+		return BrowserConnectorXray
+	}
+}
+
 func DefaultBrowserStartURLs() []string {
 	return append([]string{}, defaultBrowserStartURLs...)
 }
@@ -39,15 +89,6 @@ func normalizeConfig(config *Config) {
 	if config.App.Window.MinHeight <= 0 {
 		config.App.Window.MinHeight = defaultConfig.App.Window.MinHeight
 	}
-	if config.App.UsedCDKeys == nil {
-		config.App.UsedCDKeys = []string{}
-	}
-
-	expectedLimit := MinimumProfileLimitForUsedKeys(config.App.UsedCDKeys)
-	if config.App.MaxProfileLimit < expectedLimit {
-		config.App.MaxProfileLimit = expectedLimit
-	}
-
 	if config.Runtime.MaxMemoryMB <= 0 {
 		config.Runtime.MaxMemoryMB = defaultConfig.Runtime.MaxMemoryMB
 	}
@@ -101,6 +142,8 @@ func normalizeConfig(config *Config) {
 	}
 	if len(config.Browser.DefaultFingerprintArgs) == 0 {
 		config.Browser.DefaultFingerprintArgs = append([]string{}, defaultConfig.Browser.DefaultFingerprintArgs...)
+	} else if isLegacyMinimalDefaultFingerprintArgs(config.Browser.DefaultFingerprintArgs) {
+		config.Browser.DefaultFingerprintArgs = appendEffectiveRuntimeFingerprintArgs(config.Browser.DefaultFingerprintArgs)
 	}
 	if len(config.Browser.DefaultLaunchArgs) == 0 {
 		config.Browser.DefaultLaunchArgs = append([]string{}, defaultConfig.Browser.DefaultLaunchArgs...)
@@ -110,14 +153,21 @@ func normalizeConfig(config *Config) {
 	} else if isLegacyVerificationStartURLs(config.Browser.DefaultStartURLs) {
 		config.Browser.DefaultStartURLs = []string{}
 	}
+	if config.Browser.LightStartEnabled == nil {
+		config.Browser.LightStartEnabled = defaultConfig.Browser.LightStartEnabled
+	}
 	if config.Browser.StartReadyTimeoutMs <= 0 {
 		config.Browser.StartReadyTimeoutMs = defaultConfig.Browser.StartReadyTimeoutMs
 	}
 	if config.Browser.StartStableWindowMs <= 0 {
 		config.Browser.StartStableWindowMs = defaultConfig.Browser.StartStableWindowMs
 	}
+	config.Browser.DefaultConnectorType = NormalizeBrowserConnectorType(config.Browser.DefaultConnectorType)
 	if config.Browser.DefaultBookmarks == nil {
 		config.Browser.DefaultBookmarks = []BrowserBookmark{}
+	}
+	if config.Browser.DeletedBookmarkURLs == nil {
+		config.Browser.DeletedBookmarkURLs = []string{}
 	}
 	if config.Browser.Cores == nil {
 		config.Browser.Cores = []BrowserCore{}
@@ -131,6 +181,56 @@ func normalizeConfig(config *Config) {
 	if config.ProxyCheck.BridgeStartTimeoutMs <= 0 {
 		config.ProxyCheck.BridgeStartTimeoutMs = defaultConfig.ProxyCheck.BridgeStartTimeoutMs
 	}
+	if config.ProxyCheck.SpeedIntervalMinutes <= 0 {
+		config.ProxyCheck.SpeedIntervalMinutes = defaultConfig.ProxyCheck.SpeedIntervalMinutes
+	} else if config.ProxyCheck.SpeedIntervalMinutes > MaxProxySpeedIntervalMinutes {
+		config.ProxyCheck.SpeedIntervalMinutes = MaxProxySpeedIntervalMinutes
+	}
+	if config.ProxyCheck.FailureRetryMinutes <= 0 {
+		config.ProxyCheck.FailureRetryMinutes = defaultConfig.ProxyCheck.FailureRetryMinutes
+	} else if config.ProxyCheck.FailureRetryMinutes > 24*60 {
+		config.ProxyCheck.FailureRetryMinutes = 24 * 60
+	}
+	if config.ProxyCheck.SpeedConcurrency <= 0 {
+		config.ProxyCheck.SpeedConcurrency = defaultConfig.ProxyCheck.SpeedConcurrency
+	} else if config.ProxyCheck.SpeedConcurrency > MaxProxySpeedConcurrency {
+		config.ProxyCheck.SpeedConcurrency = MaxProxySpeedConcurrency
+	}
+	if config.ProxyCheck.VirtualGroupHealthEnabled == nil {
+		config.ProxyCheck.VirtualGroupHealthEnabled = defaultConfig.ProxyCheck.VirtualGroupHealthEnabled
+	}
+	if config.ProxyCheck.RuntimeFailoverEnabled == nil {
+		config.ProxyCheck.RuntimeFailoverEnabled = defaultConfig.ProxyCheck.RuntimeFailoverEnabled
+	}
+	if config.ProxyCheck.VirtualGroupProbeIntervalMinutes <= 0 {
+		config.ProxyCheck.VirtualGroupProbeIntervalMinutes = defaultConfig.ProxyCheck.VirtualGroupProbeIntervalMinutes
+	} else if config.ProxyCheck.VirtualGroupProbeIntervalMinutes > MaxVirtualGroupProbeIntervalMinutes {
+		config.ProxyCheck.VirtualGroupProbeIntervalMinutes = MaxVirtualGroupProbeIntervalMinutes
+	}
+	config.ProxyCheck.DegradeFailureThreshold = clampInt(
+		config.ProxyCheck.DegradeFailureThreshold,
+		defaultConfig.ProxyCheck.DegradeFailureThreshold,
+		1,
+		MaxVirtualGroupHealthThreshold,
+	)
+	config.ProxyCheck.RestoreSuccessThreshold = clampInt(
+		config.ProxyCheck.RestoreSuccessThreshold,
+		defaultConfig.ProxyCheck.RestoreSuccessThreshold,
+		1,
+		MaxVirtualGroupHealthThreshold,
+	)
+	config.ProxyCheck.RuntimeFailoverCooldownMinutes = clampInt(
+		config.ProxyCheck.RuntimeFailoverCooldownMinutes,
+		defaultConfig.ProxyCheck.RuntimeFailoverCooldownMinutes,
+		1,
+		MaxRuntimeFailoverCooldownMinutes,
+	)
+	config.ProxyCheck.RuntimeFailoverMaxAttempts = clampInt(
+		config.ProxyCheck.RuntimeFailoverMaxAttempts,
+		defaultConfig.ProxyCheck.RuntimeFailoverMaxAttempts,
+		1,
+		MaxRuntimeFailoverAttempts,
+	)
 	if strings.TrimSpace(config.ProxyCheck.SpeedTargetID) == "" {
 		config.ProxyCheck.SpeedTargetID = defaultConfig.ProxyCheck.SpeedTargetID
 	}
@@ -141,6 +241,11 @@ func normalizeConfig(config *Config) {
 		config.ProxyCheck.Targets = append([]ProxyCheckTarget{}, defaultConfig.ProxyCheck.Targets...)
 	}
 
+	if config.ProxySourceRefresh.Enabled == nil {
+		config.ProxySourceRefresh.Enabled = defaultConfig.ProxySourceRefresh.Enabled
+	}
+	config.Browser.ProxySourceIgnoredNames = normalizeSourceIgnoredNames(config.Browser.ProxySourceIgnoredNames)
+
 	if config.LaunchServer.Port <= 0 {
 		config.LaunchServer.Port = defaultConfig.LaunchServer.Port
 	}
@@ -149,11 +254,50 @@ func normalizeConfig(config *Config) {
 		config.LaunchServer.Auth.Header = defaultConfig.LaunchServer.Auth.Header
 	}
 
+	if strings.TrimSpace(config.Backup.Channels.OpenList.BaseURL) != "" {
+		config.Backup.Channels.OpenList.BaseURL = strings.TrimSpace(config.Backup.Channels.OpenList.BaseURL)
+	}
+	if strings.TrimSpace(config.Backup.Channels.OpenList.RemotePath) == "" {
+		config.Backup.Channels.OpenList.RemotePath = defaultConfig.Backup.Channels.OpenList.RemotePath
+	} else {
+		config.Backup.Channels.OpenList.RemotePath = strings.TrimSpace(config.Backup.Channels.OpenList.RemotePath)
+	}
+	config.Backup.Channels.OpenList.AuthMode = strings.ToLower(strings.TrimSpace(config.Backup.Channels.OpenList.AuthMode))
+	if config.Backup.Channels.OpenList.AuthMode != "basic" && config.Backup.Channels.OpenList.AuthMode != "token" {
+		if strings.TrimSpace(config.Backup.Channels.OpenList.Username) != "" {
+			config.Backup.Channels.OpenList.AuthMode = "basic"
+		} else {
+			config.Backup.Channels.OpenList.AuthMode = "token"
+		}
+	}
+	config.Backup.Channels.OpenList.Username = strings.TrimSpace(config.Backup.Channels.OpenList.Username)
+	config.Backup.Channels.OpenList.Password = strings.TrimSpace(config.Backup.Channels.OpenList.Password)
+	config.Backup.Channels.OpenList.Token = strings.TrimSpace(config.Backup.Channels.OpenList.Token)
+	if config.Backup.Channels.OpenList.UploadRateLimitMBps < 0 {
+		config.Backup.Channels.OpenList.UploadRateLimitMBps = defaultConfig.Backup.Channels.OpenList.UploadRateLimitMBps
+	}
+	config.Backup.Channels.S3.Endpoint = strings.TrimSpace(config.Backup.Channels.S3.Endpoint)
+	config.Backup.Channels.S3.Region = strings.TrimSpace(config.Backup.Channels.S3.Region)
+	if config.Backup.Channels.S3.Region == "" {
+		config.Backup.Channels.S3.Region = defaultConfig.Backup.Channels.S3.Region
+	}
+	config.Backup.Channels.S3.Bucket = strings.TrimSpace(config.Backup.Channels.S3.Bucket)
+	config.Backup.Channels.S3.Prefix = strings.TrimSpace(config.Backup.Channels.S3.Prefix)
+	config.Backup.Channels.S3.AccessKeyID = strings.TrimSpace(config.Backup.Channels.S3.AccessKeyID)
+	config.Backup.Channels.S3.SecretAccessKey = strings.TrimSpace(config.Backup.Channels.S3.SecretAccessKey)
+	config.Backup.Channels.S3.SessionToken = strings.TrimSpace(config.Backup.Channels.S3.SessionToken)
+	if strings.TrimSpace(config.Backup.Schedule.DailyTime) == "" {
+		config.Backup.Schedule.DailyTime = defaultConfig.Backup.Schedule.DailyTime
+	} else {
+		config.Backup.Schedule.DailyTime = strings.TrimSpace(config.Backup.Schedule.DailyTime)
+	}
+
 	automationUnset := !config.Automation.Enabled &&
 		!config.Automation.HeadlessDefault &&
 		!config.Automation.KeepRuntimeOnDisable &&
 		strings.TrimSpace(config.Automation.InstallPolicy) == "" &&
 		strings.TrimSpace(config.Automation.RuntimeVersion) == "" &&
+		strings.TrimSpace(config.Automation.ArtifactsDir) == "" &&
 		strings.TrimSpace(config.Automation.NodeSource) == "" &&
 		strings.TrimSpace(config.Automation.SystemNodePath) == "" &&
 		strings.TrimSpace(config.Automation.NodeVersion) == "" &&
@@ -169,6 +313,11 @@ func normalizeConfig(config *Config) {
 		}
 		if strings.TrimSpace(config.Automation.PlaywrightCoreVersion) == "" {
 			config.Automation.PlaywrightCoreVersion = defaultConfig.Automation.PlaywrightCoreVersion
+		}
+		if strings.TrimSpace(config.Automation.ArtifactsDir) == "" {
+			config.Automation.ArtifactsDir = defaultConfig.Automation.ArtifactsDir
+		} else {
+			config.Automation.ArtifactsDir = strings.TrimSpace(config.Automation.ArtifactsDir)
 		}
 		config.Automation.NodeSource = normalizeAutomationNodeSource(config.Automation.NodeSource)
 		config.Automation.SystemNodePath = strings.TrimSpace(config.Automation.SystemNodePath)
@@ -221,8 +370,6 @@ func DefaultConfig() *Config {
 				MinWidth:  1200,
 				MinHeight: 700,
 			},
-			MaxProfileLimit: DefaultMaxProfileLimit,
-			UsedCDKeys:      []string{},
 		},
 		Runtime: RuntimeConfig{
 			MaxMemoryMB: 0,
@@ -233,15 +380,31 @@ func DefaultConfig() *Config {
 			DefaultFingerprintArgs: defaultFingerprintArgsForOS(goruntime.GOOS),
 			DefaultLaunchArgs:      []string{"--disable-sync", "--no-first-run"},
 			DefaultStartURLs:       DefaultBrowserStartURLs(),
+			LightStartEnabled:      boolPtr(true),
 			RestoreLastSession:     false,
 			StartReadyTimeoutMs:    3000,
 			StartStableWindowMs:    1200,
+			DefaultConnectorType:   BrowserConnectorXray,
+		},
+		ProxySourceRefresh: ProxySourceRefreshConfig{
+			Enabled: boolPtr(true),
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,
+			SpeedIntervalMinutes: DefaultProxySpeedIntervalMinutes,
+			FailureRetryMinutes:  DefaultProxyFailureRetryMinutes,
+			SpeedConcurrency:     DefaultProxySpeedConcurrency,
 			SpeedTargetID:        "",
 			IPHealthTargetID:     "",
 			Targets:              []ProxyCheckTarget{},
+
+			VirtualGroupHealthEnabled:        boolPtr(true),
+			VirtualGroupProbeIntervalMinutes: DefaultVirtualGroupProbeIntervalMinutes,
+			DegradeFailureThreshold:          DefaultDegradeFailureThreshold,
+			RestoreSuccessThreshold:          DefaultRestoreSuccessThreshold,
+			RuntimeFailoverEnabled:           boolPtr(true),
+			RuntimeFailoverCooldownMinutes:   DefaultRuntimeFailoverCooldownMinutes,
+			RuntimeFailoverMaxAttempts:       DefaultRuntimeFailoverMaxAttempts,
 		},
 		Logging: LoggingConfig{
 			Level:           "info",
@@ -280,10 +443,25 @@ func DefaultConfig() *Config {
 			HeadlessDefault:       false,
 			KeepRuntimeOnDisable:  true,
 			AllowTypeScriptBuild:  false,
+			ArtifactsDir:          "data/automation/artifacts",
 			NodeSource:            DefaultAutomationNodeSource,
 			SystemNodePath:        "",
 			NodeVersion:           DefaultAutomationNodeVersion,
 			PlaywrightCoreVersion: DefaultAutomationPWVersion,
+		},
+		Backup: BackupConfig{
+			Channels: BackupChannelsConfig{
+				OpenList: OpenListChannelConfig{
+					RemotePath: "ant-chrome/backups",
+				},
+				S3: S3ChannelConfig{
+					Region: "us-east-1",
+				},
+			},
+			Schedule: BackupScheduleConfig{
+				Enabled:   false,
+				DailyTime: "02:00",
+			},
 		},
 	}
 }
@@ -296,7 +474,55 @@ func defaultFingerprintArgsForOS(goos string) []string {
 	case "linux":
 		platform = "linux"
 	}
-	return []string{"--fingerprint-brand=Chrome", "--fingerprint-platform=" + platform}
+	return []string{
+		"--fingerprint-brand=Chrome",
+		"--fingerprint-platform=" + platform,
+		"--disable-non-proxied-udp",
+		"--fingerprinting-canvas-image-data-noise",
+		"--fingerprinting-client-rects-noise",
+	}
+}
+
+func isLegacyMinimalDefaultFingerprintArgs(args []string) bool {
+	if len(args) != 2 {
+		return false
+	}
+	hasBrand := false
+	hasPlatform := false
+	for _, arg := range args {
+		trimmed := strings.TrimSpace(arg)
+		if strings.HasPrefix(trimmed, "--fingerprint-brand=") {
+			hasBrand = true
+		}
+		if strings.HasPrefix(trimmed, "--fingerprint-platform=") {
+			hasPlatform = true
+		}
+	}
+	return hasBrand && hasPlatform
+}
+
+func appendEffectiveRuntimeFingerprintArgs(args []string) []string {
+	defaultRuntimeArgs := []string{
+		"--disable-non-proxied-udp",
+		"--fingerprinting-canvas-image-data-noise",
+		"--fingerprinting-client-rects-noise",
+	}
+	out := append([]string{}, args...)
+	for _, defaultArg := range defaultRuntimeArgs {
+		if !containsFingerprintArg(out, defaultArg) {
+			out = append(out, defaultArg)
+		}
+	}
+	return out
+}
+
+func containsFingerprintArg(args []string, expected string) bool {
+	for _, arg := range args {
+		if strings.TrimSpace(arg) == expected {
+			return true
+		}
+	}
+	return false
 }
 func DefaultAutomationRuntimeVersion(nodeVersion, playwrightVersion string) string {
 	return fmt.Sprintf("node-%s-playwright-core-%s", strings.TrimSpace(nodeVersion), strings.TrimSpace(playwrightVersion))
@@ -311,4 +537,50 @@ func normalizeAutomationNodeSource(value string) string {
 	default:
 		return AutomationNodeSourceAuto
 	}
+}
+
+func boolPtr(value bool) *bool {
+	v := value
+	return &v
+}
+
+// normalizeSourceIgnoredNames 清洗订阅源忽略名单：去掉空 key/空名称，空列表整体剔除。
+func normalizeSourceIgnoredNames(input map[string][]string) map[string][]string {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make(map[string][]string, len(input))
+	for sourceID, names := range input {
+		key := strings.TrimSpace(sourceID)
+		if key == "" {
+			continue
+		}
+		cleaned := make([]string, 0, len(names))
+		for _, name := range names {
+			if trimmed := strings.TrimSpace(name); trimmed != "" {
+				cleaned = append(cleaned, trimmed)
+			}
+		}
+		if len(cleaned) > 0 {
+			result[key] = cleaned
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// clampInt 未配置（<=0）时回落到默认值，再钳制到 [min, max]。
+func clampInt(value int, fallback int, min int, max int) int {
+	if value <= 0 {
+		value = fallback
+	}
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }

@@ -1,6 +1,9 @@
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Activity,
+  Archive,
+  Bell,
   Bookmark,
   BookOpen,
   FileText,
@@ -16,12 +19,16 @@ import {
   Cpu,
   Globe,
   Bot,
+  Puzzle,
   Tag,
+  User,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
 import { useLayoutStore } from "../../store/layoutStore";
 import { projectConfig, navigationConfig } from "../../config";
+import { useNotificationStore } from "../../store/notificationStore";
+import { GetAppConfig } from "../../wailsjs/go/main/App";
 
 // 导入应用logo
 import logoImage from "../../resources/images/logo.png";
@@ -35,13 +42,17 @@ const iconMap: Record<string, LucideIcon> = {
   Monitor,
   ListChecks,
   Activity,
+  Archive,
+  Bell,
   FileText,
   Cpu,
   Globe,
   Bot,
+  Puzzle,
   Bookmark,
   BookOpen,
   Tag,
+  User,
 };
 
 function getIcon(iconName: string): LucideIcon {
@@ -51,6 +62,27 @@ function getIcon(iconName: string): LucideIcon {
 export function Sidebar() {
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar } = useLayoutStore();
+  const [appVersion, setAppVersion] = useState("");
+  const { notifications } = useNotificationStore();
+  const unreadNotificationCount = notifications.filter((notification) => !notification.read).length;
+
+  useEffect(() => {
+    const app = (window as any).go?.main?.App;
+    if (!app?.GetAppConfig) return;
+
+    GetAppConfig()
+      .then((config) => {
+        const version = typeof config?.version === "string" ? config.version.trim() : "";
+        setAppVersion(version);
+      })
+      .catch(() => {
+        setAppVersion("");
+      });
+  }, []);
+
+  const isItemActive = (path: string) =>
+    location.pathname === path ||
+    (path !== "/" && location.pathname.startsWith(`${path}/`));
 
   return (
     <aside
@@ -83,9 +115,16 @@ export function Sidebar() {
                 {projectConfig.shortName.charAt(0)}
               </span>
             </div>
-            <h2 className="text-base font-semibold text-[var(--color-text-primary)] tracking-tight truncate">
-              {projectConfig.name}
-            </h2>
+            <div className="min-w-0 flex items-baseline gap-2">
+              <h2 className="truncate text-base font-semibold tracking-tight text-[var(--color-text-primary)]">
+                {projectConfig.name}
+              </h2>
+              {appVersion && (
+                <span className="shrink-0 text-[10px] font-medium text-[var(--color-text-muted)]">
+                  v{appVersion}
+                </span>
+              )}
+            </div>
           </div>
         ) : (
           <div className="w-8 h-8 rounded-full overflow-hidden bg-[var(--color-accent)] flex items-center justify-center">
@@ -107,7 +146,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 px-3 space-y-6 overflow-y-auto">
+      <nav className="flex-1 py-4 px-3 space-y-4 overflow-y-auto">
         {navigationConfig.map((section) => (
           <div key={section.title}>
             {!sidebarCollapsed && (
@@ -118,10 +157,7 @@ export function Sidebar() {
             <div className="space-y-1">
               {section.items.map((item) => {
                 const Icon = getIcon(item.icon);
-                const isActive =
-                  location.pathname === item.path ||
-                  (item.path !== "/" &&
-                    location.pathname.startsWith(`${item.path}/`));
+                const isActive = isItemActive(item.path);
 
                 return (
                   <Link
@@ -129,7 +165,7 @@ export function Sidebar() {
                     to={item.path}
                     title={sidebarCollapsed ? item.name : undefined}
                     className={clsx(
-                      "flex items-center rounded-lg transition-all duration-150",
+                      "relative flex items-center rounded-lg transition-all duration-150",
                       isActive
                         ? "bg-[var(--color-accent)] text-[var(--color-text-inverse)] shadow-sm"
                         : "text-[var(--color-text-secondary)] hover:bg-[var(--color-accent-muted)] hover:text-[var(--color-text-primary)]",
@@ -140,8 +176,21 @@ export function Sidebar() {
                   >
                     <Icon className="w-[18px] h-[18px] flex-shrink-0" />
                     {!sidebarCollapsed && (
-                      <span className="text-sm font-medium truncate">
+                      <span className="min-w-0 truncate text-sm font-medium">
                         {item.name}
+                      </span>
+                    )}
+                    {item.path === "/notifications" && unreadNotificationCount > 0 && (
+                      <span
+                        aria-label={`${unreadNotificationCount} 条未读通知`}
+                        className={clsx(
+                          "flex items-center justify-center rounded-full bg-[var(--color-error)] text-[10px] font-semibold text-white",
+                          sidebarCollapsed
+                            ? "absolute right-0 top-0 h-4 min-w-4 px-1"
+                            : "ml-auto h-5 min-w-5 px-1.5",
+                        )}
+                      >
+                        {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
                       </span>
                     )}
                   </Link>
@@ -151,6 +200,25 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      <div className="border-t border-[var(--color-border-muted)] p-3">
+        <Link
+          to="/profile"
+          title={sidebarCollapsed ? "关于我" : undefined}
+          className={clsx(
+            "flex items-center rounded-lg transition-all duration-150",
+            isItemActive("/profile")
+              ? "bg-[var(--color-accent)] text-[var(--color-text-inverse)] shadow-sm"
+              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-accent-muted)] hover:text-[var(--color-text-primary)]",
+            sidebarCollapsed
+              ? "relative mx-auto h-10 w-10 justify-center"
+              : "gap-3 px-3 py-2.5",
+          )}
+        >
+          <User className="h-[18px] w-[18px] shrink-0" />
+          {!sidebarCollapsed && <span className="truncate text-sm font-medium">关于我</span>}
+        </Link>
+      </div>
 
       {/* Toggle Button */}
       <div className="p-3 border-t border-[var(--color-border-muted)]">

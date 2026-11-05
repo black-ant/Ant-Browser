@@ -25,7 +25,7 @@ func (m *Manager) List() []Profile {
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].ProfileId < list[j].ProfileId
 	})
-	log.Info("浏览器配置列表查询", logger.F("count", len(list)))
+	log.Debug("浏览器配置列表查询", logger.F("count", len(list)))
 	return list
 }
 

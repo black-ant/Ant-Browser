@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "隔离自检 Pro",
+  "version": "2.0.0",
+  "description": "逐项验证实例隔离：storage / sync / IndexedDB / localStorage / 实例指纹 / 启动次数",
+  "permissions": ["storage", "unlimitedStorage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "隔离自检 Pro",
+    "default_popup": "popup.html"
+  }
+}

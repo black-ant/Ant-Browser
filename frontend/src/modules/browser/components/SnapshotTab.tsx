@@ -140,7 +140,7 @@ export function SnapshotTab({ profileId, running }: Props) {
 
   return (
     <div className="space-y-4">
-      <Card title="创建快照" subtitle={running ? '实例运行中，请先停止后再创建快照' : '将当前用户数据目录压缩为快照'}>
+      <Card title="创建快照" subtitle={running ? '实例运行中，请先停止后再创建快照' : undefined}>
         <div className="flex flex-col sm:flex-row gap-3">
           <Input
             value={newName}

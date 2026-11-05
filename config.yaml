@@ -9,8 +9,6 @@ app:
         height: 1000
         min_width: 1200
         min_height: 700
-    max_profile_limit: 20
-    used_cd_keys: []
 runtime:
     max_memory_mb: 0
     gc_percent: 100
@@ -41,13 +39,18 @@ browser:
     default_fingerprint_args:
         - --fingerprint-brand=Chrome
         - --fingerprint-platform=windows
+        - --disable-non-proxied-udp
+        - --fingerprinting-canvas-image-data-noise
+        - --fingerprinting-client-rects-noise
     default_launch_args:
         - --disable-sync
         - --no-first-run
     default_start_urls: []
+    light_start_enabled: true
     restore_last_session: false
     start_ready_timeout_ms: 3000
     start_stable_window_ms: 1200
+    default_connector_type: xray
 proxy_check:
     bridge_start_timeout_ms: 15000
     speed_target_id: ""
@@ -60,10 +63,11 @@ launch_server:
         api_key: ""
         header: X-Ant-Api-Key
 automation:
-    enabled: false
+    enabled: true
     install_policy: on_demand
     runtime_version: node-22.15.1-playwright-core-1.59.0
     keep_runtime_on_disable: true
+    artifacts_dir: data/automation/artifacts
     node_source: auto
     node_version: 22.15.1
     playwright_core_version: 1.59.0

@@ -1,15 +1,26 @@
 import type { ProxyIPHealthResult } from '../../types'
 
 import type { ClashProxy } from './helpers'
-import { normalizeRefreshIntervalM, resolveImportedProxyName } from './helpers'
+import { resolveImportedProxyName } from './helpers'
 
-const PROXY_LATENCY_CACHE_KEY = 'browser:proxyPool:latencyMap:v1'
+
 const PROXY_IP_HEALTH_CACHE_KEY = 'browser:proxyPool:ipHealthMap:v1'
 const PROXY_SOURCE_IGNORED_NAMES_KEY = 'browser:proxyPool:sourceIgnoredProxyNames:v1'
-const PROXY_GLOBAL_AUTO_REFRESH_KEY = 'browser:proxyPool:globalAutoRefreshEnabled:v1'
-const PROXY_GLOBAL_REFRESH_INTERVAL_KEY = 'browser:proxyPool:globalRefreshIntervalM:v1'
-const PROXY_LATENCY_CACHE_TTL_MS = 12 * 60 * 60 * 1000
-const PROXY_IP_HEALTH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+// 选择弹窗、实例列表、插件管理页的历史测速结果显示窗口
+export const PROXY_SPEED_RESULT_MAX_AGE_MS = 72 * 60 * 60 * 1000
+export const PROXY_IP_HEALTH_RESULT_MAX_AGE_MS = 12 * 60 * 60 * 1000
+// 显示端的 now 往往是挂载时/定时 tick 的快照，刚完成的测速 testedAt 会比它"新"，
+// 负 age 是时钟快照滞后而非数据异常，允许 1 分钟以内的偏差，否则刚测完的结果会被误判不新鲜。
+export const PROXY_SPEED_RESULT_CLOCK_SKEW_MS = 60 * 1000
+
+export function isProxySpeedResultFresh(testedAt?: string, now = Date.now(), maxAgeMs = PROXY_SPEED_RESULT_MAX_AGE_MS): boolean {
+  if (!testedAt) return false
+  const timestamp = Date.parse(testedAt)
+  if (!Number.isFinite(timestamp)) return false
+  const age = now - timestamp
+  const effectiveMaxAgeMs = maxAgeMs > 0 ? maxAgeMs : PROXY_SPEED_RESULT_MAX_AGE_MS
+  return age >= -PROXY_SPEED_RESULT_CLOCK_SKEW_MS && age <= effectiveMaxAgeMs
+}
 
 export function readSourceIgnoredProxyNames(): Record<string, string[]> {
   try {
@@ -90,30 +101,6 @@ export function applyIgnoredProxyNamesForSource(
   })
 }
 
-export function readGlobalRefreshConfig(): { enabled: boolean; intervalM: number } {
-  try {
-    const rawEnabled = localStorage.getItem(PROXY_GLOBAL_AUTO_REFRESH_KEY)
-    const rawInterval = localStorage.getItem(PROXY_GLOBAL_REFRESH_INTERVAL_KEY)
-    const enabled = rawEnabled === '1'
-    const interval = normalizeRefreshIntervalM(Number(rawInterval || 0))
-    return {
-      enabled,
-      intervalM: interval > 0 ? interval : 60,
-    }
-  } catch {
-    return { enabled: false, intervalM: 60 }
-  }
-}
-
-export function writeGlobalRefreshConfig(enabled: boolean, intervalM: number) {
-  try {
-    localStorage.setItem(PROXY_GLOBAL_AUTO_REFRESH_KEY, enabled ? '1' : '0')
-    localStorage.setItem(PROXY_GLOBAL_REFRESH_INTERVAL_KEY, String(intervalM))
-  } catch {
-    // ignore write failures
-  }
-}
-
 export function toLatencyValue(ok: boolean, latencyMs: number, error?: string): number {
   if (ok) return latencyMs
   const message = (error || '').toLowerCase()
@@ -122,42 +109,6 @@ export function toLatencyValue(ok: boolean, latencyMs: number, error?: string): 
   return -4
 }
 
-export function readLatencyCache(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem(PROXY_LATENCY_CACHE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as { timestamp?: number; data?: Record<string, number> }
-    if (!parsed?.timestamp || !parsed?.data) return {}
-    if (Date.now() - parsed.timestamp > PROXY_LATENCY_CACHE_TTL_MS) return {}
-
-    const cleaned: Record<string, number> = {}
-    Object.entries(parsed.data).forEach(([proxyId, latency]) => {
-      if (typeof latency === 'number' && Number.isFinite(latency) && latency !== -1) {
-        cleaned[proxyId] = latency
-      }
-    })
-    return cleaned
-  } catch {
-    return {}
-  }
-}
-
-export function writeLatencyCache(data: Record<string, number>) {
-  try {
-    const cleaned: Record<string, number> = {}
-    Object.entries(data).forEach(([proxyId, latency]) => {
-      if (typeof latency === 'number' && Number.isFinite(latency) && latency !== -1) {
-        cleaned[proxyId] = latency
-      }
-    })
-    localStorage.setItem(PROXY_LATENCY_CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data: cleaned,
-    }))
-  } catch {
-    // ignore write failures
-  }
-}
 
 export function readIPHealthCache(): Record<string, ProxyIPHealthResult> {
   try {
@@ -165,7 +116,7 @@ export function readIPHealthCache(): Record<string, ProxyIPHealthResult> {
     if (!raw) return {}
     const parsed = JSON.parse(raw) as { timestamp?: number; data?: Record<string, ProxyIPHealthResult> }
     if (!parsed?.timestamp || !parsed?.data) return {}
-    if (Date.now() - parsed.timestamp > PROXY_IP_HEALTH_CACHE_TTL_MS) return {}
+    if (Date.now() - parsed.timestamp > PROXY_IP_HEALTH_RESULT_MAX_AGE_MS) return {}
 
     const cleaned: Record<string, ProxyIPHealthResult> = {}
     Object.entries(parsed.data).forEach(([proxyId, item]) => {
@@ -185,6 +136,38 @@ export function writeIPHealthCache(data: Record<string, ProxyIPHealthResult>) {
       timestamp: Date.now(),
       data,
     }))
+  } catch {
+    // ignore write failures
+  }
+}
+
+// 对齐工作台：每个订阅源最近一次人工对齐的记录（展示用，非权威数据）
+const PROXY_SOURCE_ALIGN_RECORD_KEY = 'browser:proxyPool:sourceAlignRecord:v1'
+
+export interface SourceAlignRecord {
+  at: string
+  pairs: Array<{ oldName: string; newName: string }>
+  added: number
+  keptMissing: number
+}
+
+export function readSourceAlignRecord(sourceId: string): SourceAlignRecord | null {
+  try {
+    const raw = localStorage.getItem(PROXY_SOURCE_ALIGN_RECORD_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Record<string, SourceAlignRecord>
+    return parsed[sourceId] || null
+  } catch {
+    return null
+  }
+}
+
+export function writeSourceAlignRecord(sourceId: string, record: SourceAlignRecord) {
+  try {
+    const raw = localStorage.getItem(PROXY_SOURCE_ALIGN_RECORD_KEY)
+    const parsed = raw ? (JSON.parse(raw) as Record<string, SourceAlignRecord>) : {}
+    parsed[sourceId] = record
+    localStorage.setItem(PROXY_SOURCE_ALIGN_RECORD_KEY, JSON.stringify(parsed))
   } catch {
     // ignore write failures
   }

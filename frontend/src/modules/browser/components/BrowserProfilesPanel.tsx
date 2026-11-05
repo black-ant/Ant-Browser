@@ -1,10 +1,18 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { Copy, Key, Play, RotateCcw, Settings, Square, Trash2 } from 'lucide-react'
+import { Copy, Download, FolderOpen, Key, Loader2, MoreHorizontal, Play, Puzzle, Repeat2, RotateCcw, Settings, Square, Trash2, Wifi } from 'lucide-react'
 
-import { Badge, Button, Card, Table } from '../../../shared/components'
+import { Badge, Button, Card, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 
-import type { BrowserCore, BrowserProfile, BrowserProxy } from '../types'
+import type { BrowserCore, BrowserProfile, BrowserProxy, BrowserProxyVirtualGroup, ProxySpeedTestResult } from '../types'
+import { testProxyConnectivity } from '../api'
+import { useProxySpeedFreshness } from '../proxySpeedFreshness'
+import { isProxySpeedResultFresh } from '../pages/proxyPool/storage'
+import { useProxySpeedStore } from '../proxySpeedStore'
+import { ensureProxySpeedListener, recordProxySpeedResult, testProxySpeedOnce } from '../proxySpeedService'
+import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import type { BrowserViewMode } from './BrowserListLayout'
 import { KeywordInlineRow, LaunchCodeCell } from './BrowserListWidgets'
 
@@ -15,11 +23,57 @@ interface ProfileStatus {
   label: string
 }
 
+function ProfileStatusIndicator({ status }: { status: ProfileStatus }) {
+  const dotColor = status.variant === 'success'
+    ? 'bg-[var(--color-success)]'
+    : status.variant === 'error'
+      ? 'bg-[var(--color-error)]'
+      : 'bg-[var(--color-text-muted)]'
+
+  return (
+    <span
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bg-muted)]"
+      role="img"
+      aria-label={status.label}
+      title={status.label}
+    >
+      <span className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
+    </span>
+  )
+}
+
+function ProfileWindowMarkerBadge({ code }: { code: string }) {
+  return (
+    <span
+      className="absolute left-2.5 top-2.5 z-10 inline-flex min-h-5 min-w-5 items-center justify-center rounded-md border border-[var(--color-accent)]/25 bg-[var(--color-accent)] px-1 text-[10px] font-semibold leading-none text-[var(--color-text-inverse)]"
+      role="img"
+      aria-label={`实例标识：${code}`}
+      title={`实例标识：${code}`}
+    >
+      {code}
+    </span>
+  )
+}
+
+function ProfileWindowMarkerCode({ code }: { code: string }) {
+  return (
+    <span
+      className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-md border border-[var(--color-accent)]/25 bg-[var(--color-accent)] px-1 text-[10px] font-semibold leading-none text-[var(--color-text-inverse)]"
+      role="img"
+      aria-label={`实例标识：${code}`}
+      title={`实例标识：${code}`}
+    >
+      {code}
+    </span>
+  )
+}
+
 interface BrowserProfilesPanelProps {
   loading: boolean
   viewMode: BrowserViewMode
   profiles: BrowserProfile[]
   proxies: BrowserProxy[]
+  virtualGroups: BrowserProxyVirtualGroup[]
   selectedIds: Set<string>
   resolveProfileCore: (profile: BrowserProfile) => BrowserCore | null
   getProfileCoreLabel: (profile: BrowserProfile) => string
@@ -35,7 +89,11 @@ interface BrowserProfilesPanelProps {
   onStop: (profileId: string) => void
   onRestart: (profileId: string) => void
   onOpenKeywords: (profile: BrowserProfile) => void
+  onOpenExtensions: (profile: BrowserProfile) => void
+  onOpenDataDir: (profile: BrowserProfile) => void
+  onExport: (profile: BrowserProfile) => void
   onOpenCopy: (profile: BrowserProfile) => void
+  onOpenProxyPicker: (profile: BrowserProfile) => void
   onDelete: (profileId: string) => void
 }
 
@@ -45,7 +103,62 @@ const formatTime = (value?: string) => {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN')
 }
 
-function formatProxyLabel(profile: BrowserProfile, proxy?: BrowserProxy): string {
+const normalizeProxyKey = (value?: string) => (value || '').trim().toLowerCase()
+
+function isDynamicProfile(profile: BrowserProfile): boolean {
+  return normalizeProxyKey(profile.proxyMode) === 'dynamic'
+}
+
+function selectDynamicProxyCandidate(
+  profile: BrowserProfile,
+  proxies: BrowserProxy[],
+  virtualGroups: BrowserProxyVirtualGroup[],
+  now: number,
+  speedResultMaxAgeMs: number,
+): BrowserProxy | undefined {
+  const groupName = (profile.proxyGroupName || '').trim()
+  const virtualGroup = virtualGroups.find(group => normalizeProxyKey(group.groupName) === normalizeProxyKey(groupName))
+  const virtualMemberIds = virtualGroup
+    ? new Set([
+        ...(virtualGroup.memberProxyIds || []).map(proxyId => normalizeProxyKey(proxyId)).filter(Boolean),
+        ...proxies
+          .filter(proxy => (virtualGroup.memberGroupNames || []).some(memberGroupName => normalizeProxyKey(memberGroupName) === normalizeProxyKey(proxy.groupName)))
+          .map(proxy => normalizeProxyKey(proxy.proxyId))
+          .filter(Boolean),
+      ])
+    : null
+
+  const candidates = proxies.filter(proxy => {
+    const proxyId = normalizeProxyKey(proxy.proxyId)
+    if (!proxyId || normalizeProxyKey(proxy.proxyConfig) === 'direct://') return false
+    if (virtualMemberIds) {
+      if (!virtualMemberIds.has(proxyId)) return false
+    } else if (groupName && normalizeProxyKey(proxy.groupName) !== normalizeProxyKey(groupName)) {
+      return false
+    }
+    return proxy.lastTestOk === true
+      && typeof proxy.lastLatencyMs === 'number'
+      && proxy.lastLatencyMs >= 0
+      && isProxySpeedResultFresh(proxy.lastTestedAt, now, speedResultMaxAgeMs)
+  })
+
+  return [...candidates].sort((left, right) => {
+    const latencyDelta = (left.lastLatencyMs || 0) - (right.lastLatencyMs || 0)
+    if (latencyDelta !== 0) return latencyDelta
+    const sortOrderDelta = (left.sortOrder || 0) - (right.sortOrder || 0)
+    if (sortOrderDelta !== 0) return sortOrderDelta
+    return normalizeProxyKey(left.proxyId).localeCompare(normalizeProxyKey(right.proxyId))
+  })[0]
+}
+
+function formatProxyLabel(profile: BrowserProfile, proxy?: BrowserProxy, virtualGroups?: BrowserProxyVirtualGroup[]): string {
+  if (isDynamicProfile(profile)) {
+    return profile.proxyGroupName?.trim() ? `动态代理 · ${profile.proxyGroupName.trim()}` : '动态代理'
+  }
+  const boundVirtualGroup = (virtualGroups || []).find(group => group.groupId === profile.proxyId)
+  if (boundVirtualGroup) {
+    return `虚拟分组 · ${boundVirtualGroup.groupName}（${boundVirtualGroup.strategy === 'sticky' ? '保持' : '轮询'}）`
+  }
   if (proxy?.proxyName) {
     return proxy.proxyName
   }
@@ -59,9 +172,275 @@ function formatProxyLabel(profile: BrowserProfile, proxy?: BrowserProxy): string
   return '-'
 }
 
+function ProxyLatency({ result }: { result?: ProxySpeedTestResult | null }) {
+  // 不渲染空白：没有可展示的结果时明确显示“未测速”，
+  // 失败显示“失败”，避免“数据凭空消失”的观感。
+  if (!result) {
+    return <span className="text-[var(--color-text-muted)] text-xs">未测速</span>
+  }
+  if (!result.ok) return <span className="text-xs text-red-500">失败</span>
+  const color = result.latencyMs < 200 ? 'text-green-500' : result.latencyMs < 500 ? 'text-yellow-500' : 'text-red-500'
+  return <span className={`text-xs font-medium ${color}`}>{result.latencyMs}ms</span>
+}
+
+function ProxyInlineActions({
+  profile,
+  proxy,
+  proxies,
+  virtualGroups,
+  isBusy,
+  onOpenProxyPicker,
+  maxWidthClass = 'max-w-[220px]',
+  now,
+  speedResultMaxAgeMs,
+}: {
+  profile: BrowserProfile
+  proxy?: BrowserProxy
+  proxies: BrowserProxy[]
+  virtualGroups: BrowserProxyVirtualGroup[]
+  isBusy: boolean
+  onOpenProxyPicker: (profile: BrowserProfile) => void
+  maxWidthClass?: string
+  now: number
+  speedResultMaxAgeMs: number
+}) {
+  const [testing, setTesting] = useState(false)
+  const speedResults = useProxySpeedStore((state) => state.results)
+  const isDynamic = isDynamicProfile(profile)
+  const dynamicProxy = useMemo(
+    () => isDynamic ? selectDynamicProxyCandidate(profile, proxies, virtualGroups, now, speedResultMaxAgeMs) : undefined,
+    [isDynamic, now, profile, proxies, speedResultMaxAgeMs, virtualGroups],
+  )
+  const speedTargetProxy = isDynamic ? dynamicProxy : proxy
+  const speedTargetProxyId = speedTargetProxy?.proxyId?.trim() || profile.proxyId.trim()
+  // 固定绑定虚拟分组：展示成员代理中最佳的测速结果（测速实际落在成员上）
+  const boundVirtualGroup = !isDynamic
+    ? virtualGroups.find(group => group.groupId === profile.proxyId)
+    : undefined
+  const virtualGroupMemberIds = useMemo(() => {
+    if (!boundVirtualGroup) return undefined
+    const ids = new Set<string>()
+    ;(boundVirtualGroup.memberProxyIds || []).forEach(proxyId => {
+      const key = proxyId.trim().toLowerCase()
+      if (key) ids.add(key)
+    })
+    const groupNames = new Set((boundVirtualGroup.memberGroupNames || []).map(name => name.trim().toLowerCase()).filter(Boolean))
+    if (groupNames.size > 0) {
+      proxies.forEach(item => {
+        if (groupNames.has((item.groupName || '').trim().toLowerCase())) {
+          ids.add(item.proxyId.trim().toLowerCase())
+        }
+      })
+    }
+    return ids
+  }, [boundVirtualGroup, proxies])
+  useEffect(() => {
+    useProxySpeedStore.getState().applyBackendResults(proxies, (testedAt) => isProxySpeedResultFresh(testedAt, now, speedResultMaxAgeMs))
+  }, [proxies, now, speedResultMaxAgeMs])
+  useEffect(() => {
+    ensureProxySpeedListener()
+  }, [])
+  const speedTargetKey = normalizeProxyKey(speedTargetProxyId)
+  const displayResult = useMemo(() => {
+    if (virtualGroupMemberIds) {
+      let best: (typeof speedResults)[string] | null = null
+      virtualGroupMemberIds.forEach(memberKey => {
+        const result = Object.values(speedResults).find(item => normalizeProxyKey(item.proxyId) === memberKey)
+        if (!result || !result.ok) return
+        if (!isProxySpeedResultFresh(result.testedAt, now, speedResultMaxAgeMs)) return
+        if (!best || result.latencyMs < best.latencyMs) best = result
+      })
+      return best
+    }
+    if (!speedTargetKey) return null
+    const exact = speedResults[speedTargetProxyId]
+    const match = exact || Object.values(speedResults).find((result) => normalizeProxyKey(result.proxyId) === speedTargetKey)
+    if (!match) return null
+    if (!isProxySpeedResultFresh(match.testedAt, now, speedResultMaxAgeMs)) return null
+    return match
+  }, [speedResults, speedTargetProxyId, speedTargetKey, virtualGroupMemberIds, now, speedResultMaxAgeMs])
+  const canTest = isDynamic
+    ? !!dynamicProxy
+    : !!profile.proxyId || !!profile.proxyConfig.trim()
+
+  const handleTest = async () => {
+    if (testing || !canTest) return
+    setTesting(true)
+    try {
+      if (isDynamic) {
+        await testProxySpeedOnce(dynamicProxy!.proxyId)
+      } else if (profile.proxyId) {
+        await testProxySpeedOnce(profile.proxyId)
+      } else {
+        const result = await testProxyConnectivity(profile.profileId, profile.proxyConfig)
+        recordProxySpeedResult({ ...result, proxyId: result.proxyId || speedTargetProxyId || profile.profileId })
+      }
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div className={`inline-flex ${maxWidthClass} items-center gap-1.5 text-xs`} title={formatProxyLabel(profile, proxy, virtualGroups)}>
+      <span className="min-w-0 truncate text-[var(--color-text-primary)]">{formatProxyLabel(profile, proxy, virtualGroups)}</span>
+      <button
+        type="button"
+        className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+        title={isBusy ? '实例操作中，暂不可切换代理' : '切换代理'}
+        disabled={isBusy}
+        onClick={() => onOpenProxyPicker(profile)}
+      >
+        <Repeat2 className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+        title={canTest ? (isDynamic ? '测速当前动态代理候选' : '测速') : (isDynamic ? '暂无有效动态代理候选' : '无可测速代理')}
+        disabled={testing || !canTest}
+        onClick={handleTest}
+      >
+        {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
+      </button>
+      <ProxyLatency result={displayResult} />
+    </div>
+  )
+}
+
+function ProfileMoreActions({
+  open,
+  disabled,
+  onToggle,
+  onClose,
+  onRestart,
+  onOpenKeywords,
+  onOpenExtensions,
+  onOpenDataDir,
+  onExport,
+}: {
+  open: boolean
+  disabled: boolean
+  onToggle: () => void
+  onClose: () => void
+  onRestart: () => void
+  onOpenKeywords: () => void
+  onOpenExtensions: () => void
+  onOpenDataDir: () => void
+  onExport: () => void
+}) {
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
+
+  useEffect(() => {
+    if (!open) return
+    const updateMenuPosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const menuWidth = 128
+      const menuHeight = 208
+      const gap = 8
+      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8))
+      const belowTop = rect.bottom + gap
+      const top = belowTop + menuHeight > window.innerHeight
+        ? Math.max(8, rect.top - menuHeight - gap)
+        : belowTop
+      setMenuPosition({ top, left })
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        onClose()
+      }
+    }
+    updateMenuPosition()
+    document.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('resize', updateMenuPosition)
+    window.addEventListener('scroll', updateMenuPosition, true)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('resize', updateMenuPosition)
+      window.removeEventListener('scroll', updateMenuPosition, true)
+    }
+  }, [open, onClose])
+
+  const runAndClose = (handler: () => void) => {
+    handler()
+    onClose()
+  }
+
+  return (
+    <>
+    <div ref={triggerRef} className="inline-flex">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onToggle}
+        title="更多"
+        disabled={disabled}
+        className="px-2"
+      >
+        <MoreHorizontal className="w-3.5 h-3.5" />
+        更多
+      </Button>
+    </div>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[9999] w-32 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-1.5 shadow-xl"
+          style={{ top: menuPosition.top, left: menuPosition.left }}
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]"
+            onClick={() => runAndClose(onRestart)}
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            重启
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]"
+            onClick={() => runAndClose(onOpenKeywords)}
+          >
+            <Key className="w-3.5 h-3.5" />
+            关键字
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]"
+            onClick={() => runAndClose(onOpenExtensions)}
+          >
+            <Puzzle className="w-3.5 h-3.5" />
+            插件
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]"
+            onClick={() => runAndClose(onOpenDataDir)}
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            数据目录
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-text-primary)]"
+            onClick={() => runAndClose(onExport)}
+          >
+            <Download className="w-3.5 h-3.5" />
+            导出
+          </button>
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
 function BrowserProfileCard({
   profile,
   proxy,
+  proxies,
+  virtualGroups,
   isSelected,
   status,
   coreLabel,
@@ -74,11 +453,17 @@ function BrowserProfileCard({
   onStop,
   onRestart,
   onOpenKeywords,
+  onOpenExtensions,
   onOpenCopy,
+  onOpenProxyPicker,
   onDelete,
+  now,
+  speedResultMaxAgeMs,
 }: {
   profile: BrowserProfile
   proxy: BrowserProxy | undefined
+  proxies: BrowserProxy[]
+  virtualGroups: BrowserProxyVirtualGroup[]
   isSelected: boolean
   status: ProfileStatus
   coreLabel: string
@@ -91,17 +476,24 @@ function BrowserProfileCard({
   onStop: (profileId: string) => void
   onRestart: (profileId: string) => void
   onOpenKeywords: (profile: BrowserProfile) => void
+  onOpenExtensions: (profile: BrowserProfile) => void
   onOpenCopy: (profile: BrowserProfile) => void
+  onOpenProxyPicker: (profile: BrowserProfile) => void
   onDelete: (profileId: string) => void
+  now: number
+  speedResultMaxAgeMs: number
 }) {
+  const markerCode = profile.running ? (profile.windowMarkerCode || '').trim().toUpperCase() : ''
+
   return (
     <div
-      className={`flex flex-col border rounded-xl bg-[var(--color-bg-surface)] p-3 shadow-[0_1px_4px_rgba(0,0,0,0.08)] transition-all duration-200 h-[320px] overflow-hidden
+      className={`relative flex min-h-[320px] flex-col border rounded-xl bg-[var(--color-bg-surface)] p-3 shadow-[0_1px_4px_rgba(0,0,0,0.08)] transition-all duration-200 overflow-visible
         ${isSelected ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/20' : 'border-[var(--color-border-default)] hover:border-[var(--color-accent)]'}
       `}
     >
+      {markerCode && <ProfileWindowMarkerBadge code={markerCode} />}
       <div className="flex flex-col gap-3 pb-3 border-b border-[var(--color-border-muted)]/50 shrink-0">
-        <div className="flex justify-between items-start gap-2">
+        <div className={`flex justify-between items-start gap-2 ${markerCode ? 'pl-8' : ''}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <input
               type="checkbox"
@@ -119,9 +511,10 @@ function BrowserProfileCard({
             )}
           </div>
 
-          <Badge variant={status.variant} dot dotClassName="w-2 h-2 shrink-0">
-            {status.label}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <ProfileStatusIndicator status={status} />
+            {markerCode && <ProfileWindowMarkerCode code={markerCode} />}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 flex-wrap">
@@ -139,22 +532,31 @@ function BrowserProfileCard({
           <span className="w-px h-4 bg-[var(--color-border-muted)] mx-1"></span>
           <Button size="sm" variant="ghost" onClick={() => onRestart(profile.profileId)} title="重启" className="px-3" disabled={isBusy}><RotateCcw className="w-4 h-4 mr-1.5" />重启</Button>
           <Button size="sm" variant="ghost" onClick={() => onOpenKeywords(profile)} title="关键字管理" className="px-3" disabled={isBusy}><Key className="w-4 h-4 mr-1.5" />关键字</Button>
+          <Button size="sm" variant="ghost" onClick={() => onOpenExtensions(profile)} title="插件配置" className="px-3" disabled={isBusy}><Puzzle className="w-4 h-4 mr-1.5" />插件</Button>
           <Link to={`/browser/edit/${profile.profileId}`}><Button size="sm" variant="ghost" title="配置" className="px-3" disabled={isBusy}><Settings className="w-4 h-4 mr-1.5" />配置</Button></Link>
           <Button size="sm" variant="ghost" onClick={() => onOpenCopy(profile)} title="克隆" className="px-3" disabled={isBusy}><Copy className="w-4 h-4 mr-1.5" />克隆</Button>
           <Button size="sm" variant="ghost" onClick={() => onDelete(profile.profileId)} title="删除" className="px-3 text-red-500 hover:text-red-600 hover:bg-red-50" disabled={isBusy}><Trash2 className="w-4 h-4 mr-1.5" />删除</Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-2 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 py-1 shrink-0">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs text-[var(--color-text-muted)] font-medium">内核版本</span>
           <span className="text-xs text-[var(--color-text-primary)]">{coreLabel}</span>
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-xs text-[var(--color-text-muted)] font-medium">代理配置</span>
-          <span className="text-xs text-[var(--color-text-primary)] truncate" title={formatProxyLabel(profile, proxy)}>
-            {formatProxyLabel(profile, proxy)}
-          </span>
+          <ProxyInlineActions
+            profile={profile}
+            proxy={proxy}
+            proxies={proxies}
+            virtualGroups={virtualGroups}
+            isBusy={isBusy}
+            onOpenProxyPicker={onOpenProxyPicker}
+            maxWidthClass="max-w-full"
+            now={now}
+            speedResultMaxAgeMs={speedResultMaxAgeMs}
+          />
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-xs text-[var(--color-text-muted)] font-medium">快捷配置码</span>
@@ -166,9 +568,9 @@ function BrowserProfileCard({
         </div>
       </div>
 
-      <div className="border-t border-[var(--color-border-muted)]/50 pt-2 flex items-start gap-2 flex-1 min-h-0">
+      <div className="flex items-start gap-2 border-t border-[var(--color-border-muted)]/50 pt-2">
         <span className="text-xs font-medium text-[var(--color-text-primary)] shrink-0 pt-0.5">系统关键字</span>
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+        <div className="flex-1 pr-1">
           <KeywordInlineRow keywords={profile.keywords || []} />
         </div>
       </div>
@@ -181,6 +583,7 @@ export function BrowserProfilesPanel({
   viewMode,
   profiles,
   proxies,
+  virtualGroups,
   selectedIds,
   resolveProfileCore,
   getProfileCoreLabel,
@@ -196,11 +599,33 @@ export function BrowserProfilesPanel({
   onStop,
   onRestart,
   onOpenKeywords,
+  onOpenExtensions,
+  onOpenDataDir,
+  onExport,
   onOpenCopy,
+  onOpenProxyPicker,
   onDelete,
 }: BrowserProfilesPanelProps) {
+  const { now, speedResultMaxAgeMs } = useProxySpeedFreshness()
+
+  // 安全控制：并发启动闸门的排队/放行反馈（事件由后端启动闸门发出）。
+  useEffect(() => {
+    const nameOf = (profileId?: string) =>
+      profiles.find(item => item.profileId === profileId)?.profileName || profileId || ''
+    const offQueued = EventsOn('instance:launch:queued', (payload: { profileId?: string; position?: number; limit?: number }) => {
+      toast.info(`实例「${nameOf(payload?.profileId)}」已进入启动队列（第 ${payload?.position || '-'} 位），等待空闲名额后自动启动`)
+    })
+    const offAdmitted = EventsOn('instance:launch:admitted', (payload: { profileId?: string }) => {
+      toast.success(`实例「${nameOf(payload?.profileId)}」已获得启动名额，开始启动`)
+    })
+    return () => {
+      offQueued?.()
+      offAdmitted?.()
+    }
+  }, [profiles])
   const allSelected = profiles.length > 0 && selectedIds.size === profiles.length
   const partiallySelected = selectedIds.size > 0 && selectedIds.size < profiles.length
+  const [openMoreProfileId, setOpenMoreProfileId] = useState<string | null>(null)
 
   const columns: TableColumn<BrowserProfile>[] = [
     {
@@ -237,14 +662,16 @@ export function BrowserProfilesPanel({
     {
       key: 'profileName',
       title: '实例名称',
+      width: 320,
       render: (value, record) => (
-        <div className="flex flex-col gap-1">
-          <Link className="text-[var(--color-accent)] text-sm font-medium hover:underline" to={`/browser/detail/${record.profileId}`}>
+        <div className="flex min-w-[260px] items-center gap-2 whitespace-nowrap">
+          <Link className="block min-w-0 truncate text-[var(--color-accent)] text-sm font-medium hover:underline" to={`/browser/detail/${record.profileId}`} title={String(value || '')}>
             {value}
           </Link>
           {record.tags && record.tags.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {record.tags.map(tag => <Badge variant="default" key={tag}>{tag}</Badge>)}
+            <div className="flex shrink-0 gap-1 overflow-hidden">
+              {record.tags.slice(0, 2).map(tag => <Badge variant="default" key={tag}>{tag}</Badge>)}
+              {record.tags.length > 2 && <Badge variant="default">+{record.tags.length - 2}</Badge>}
             </div>
           )}
         </div>
@@ -256,7 +683,13 @@ export function BrowserProfilesPanel({
       width: 100,
       render: (_, record) => {
         const status = getProfileStatus(record)
-        return <Badge variant={status.variant} dot>{status.label}</Badge>
+        const markerCode = record.running ? (record.windowMarkerCode || '').trim().toUpperCase() : ''
+        return (
+          <div className="flex items-center gap-1.5">
+            <ProfileStatusIndicator status={status} />
+            {markerCode && <ProfileWindowMarkerCode code={markerCode} />}
+          </div>
+        )
       },
     },
     {
@@ -269,7 +702,8 @@ export function BrowserProfilesPanel({
       title: '代理',
       render: (value, record) => {
         const proxy = proxies.find(item => item.proxyId === value)
-        return <span className="text-xs" title={formatProxyLabel(record, proxy)}>{formatProxyLabel(record, proxy)}</span>
+        const isBusy = isProfileBusy(record.profileId)
+        return <ProxyInlineActions profile={record} proxy={proxy} proxies={proxies} virtualGroups={virtualGroups} isBusy={isBusy} onOpenProxyPicker={onOpenProxyPicker} now={now} speedResultMaxAgeMs={speedResultMaxAgeMs} />
       },
     },
     {
@@ -291,14 +725,16 @@ export function BrowserProfilesPanel({
     {
       key: 'actions',
       title: '操作',
+      width: 248,
       align: 'right',
       render: (_, record) => {
         const isStarting = isProfileStarting(record.profileId)
         const isStopping = isProfileStopping(record.profileId)
         const isBusy = isProfileBusy(record.profileId)
+        const isMoreOpen = openMoreProfileId === record.profileId
 
         return (
-          <div className="flex justify-end gap-1">
+          <div className="flex justify-end gap-1.5 whitespace-nowrap">
             {record.running ? (
               <Button size="sm" variant="secondary" onClick={() => onStop(record.profileId)} title="停止" loading={isStopping}>
                 {!isStopping && <Square className="w-3.5 h-3.5" />}
@@ -308,10 +744,19 @@ export function BrowserProfilesPanel({
                 {!isStarting && <Play className="w-3.5 h-3.5 fill-current" />}
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={() => onRestart(record.profileId)} title="重启" disabled={isBusy}><RotateCcw className="w-3.5 h-3.5" /></Button>
-            <Button size="sm" variant="ghost" onClick={() => onOpenKeywords(record)} title="关键字" disabled={isBusy}><Key className="w-3.5 h-3.5" /></Button>
             <Link to={`/browser/edit/${record.profileId}`}><Button size="sm" variant="ghost" title="配置" disabled={isBusy}><Settings className="w-3.5 h-3.5" /></Button></Link>
             <Button size="sm" variant="ghost" onClick={() => onOpenCopy(record)} title="克隆" disabled={isBusy}><Copy className="w-3.5 h-3.5" /></Button>
+            <ProfileMoreActions
+              open={isMoreOpen}
+              disabled={isBusy}
+              onToggle={() => setOpenMoreProfileId(isMoreOpen ? null : record.profileId)}
+              onClose={() => setOpenMoreProfileId(null)}
+              onRestart={() => onRestart(record.profileId)}
+              onOpenKeywords={() => onOpenKeywords(record)}
+              onOpenExtensions={() => onOpenExtensions(record)}
+              onOpenDataDir={() => onOpenDataDir(record)}
+              onExport={() => onExport(record)}
+            />
             <Button size="sm" variant="ghost" onClick={() => onDelete(record.profileId)} title="删除" disabled={isBusy}><Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
           </div>
         )
@@ -321,24 +766,26 @@ export function BrowserProfilesPanel({
 
   return (
     <Card padding="none">
-      <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
-        {loading ? (
-          <div className="py-16 flex items-center justify-center text-sm text-[var(--color-text-muted)]">加载中...</div>
-        ) : profiles.length === 0 ? (
-          <div className="py-16 flex items-center justify-center text-sm text-[var(--color-text-muted)]">暂无数据</div>
-        ) : viewMode === 'table' ? (
-          <Table
-            columns={columns}
-            data={profiles}
-            rowKey="profileId"
-          />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[500px] p-4 items-start content-start">
-            {profiles.map((profile) => (
+      {loading ? (
+        <div className="flex items-center justify-center py-10 text-sm text-[var(--color-text-muted)]">加载中...</div>
+      ) : profiles.length === 0 ? (
+        <div className="flex items-center justify-center py-10 text-sm text-[var(--color-text-muted)]">暂无数据</div>
+      ) : viewMode === 'table' ? (
+        <Table
+          columns={columns}
+          data={profiles}
+          rowKey="profileId"
+          maxHeight="none"
+        />
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-3 p-3 content-start lg:grid-cols-2 2xl:grid-cols-3">
+          {profiles.map((profile) => (
+            <div key={profile.profileId} className="min-w-0">
               <BrowserProfileCard
-                key={profile.profileId}
                 profile={profile}
                 proxy={proxies.find(item => item.proxyId === profile.proxyId)}
+                proxies={proxies}
+                virtualGroups={virtualGroups}
                 isSelected={selectedIds.has(profile.profileId)}
                 status={getProfileStatus(profile)}
                 coreLabel={resolveProfileCore(profile)?.coreName || getProfileCoreLabel(profile)}
@@ -351,13 +798,17 @@ export function BrowserProfilesPanel({
                 onStop={onStop}
                 onRestart={onRestart}
                 onOpenKeywords={onOpenKeywords}
+                onOpenExtensions={onOpenExtensions}
                 onOpenCopy={onOpenCopy}
+                onOpenProxyPicker={onOpenProxyPicker}
                 onDelete={onDelete}
+                now={now}
+                speedResultMaxAgeMs={speedResultMaxAgeMs}
               />
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   )
 }

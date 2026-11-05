@@ -114,7 +114,7 @@ export function BrowserSettingsModal({ open, onClose, settings: initSettings, co
     <>
       <Modal open={open} onClose={onClose} title="基础配置" width="700px"
         footer={<><Button variant="secondary" onClick={onClose}>取消</Button><Button onClick={handleSave} loading={saving}>保存</Button></>}>
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[var(--color-text-primary)]">内核管理</span>
@@ -125,20 +125,25 @@ export function BrowserSettingsModal({ open, onClose, settings: initSettings, co
           <FormItem label="用户数据根目录">
             <Input value={settings.userDataRoot} onChange={e => setSettings(p => ({ ...p, userDataRoot: e.target.value }))} placeholder="data" />
           </FormItem>
-          <FormItem label="默认指纹参数（每行一个）">
+          <FormItem label="默认指纹参数" hint="每行一个参数">
             <Textarea value={fingerprintText} onChange={e => setFingerprintText(e.target.value)} rows={3} placeholder="--fingerprint-brand=Chrome" />
           </FormItem>
-          <FormItem label="默认启动参数（每行一个）">
+          <FormItem label="默认启动参数" hint="每行一个参数">
             <Textarea value={launchText} onChange={e => setLaunchText(e.target.value)} rows={3} placeholder="--disable-sync" />
           </FormItem>
-          <FormItem label="默认启动页面（每行一个 URL）">
+          <FormItem label="默认启动页面" hint="每行一个 URL，留空则启动时不自动打开页面">
             <Textarea value={startUrlsText} onChange={e => setStartUrlsText(e.target.value)} rows={4} placeholder="启动 URL" />
           </FormItem>
-          <FormItem label="恢复上次关闭的标签页" hint="关闭后只打开上面配置的默认页面或空白页">
+          <FormItem label="轻启动模式" hint="先起空白页，实例就绪后再打开默认页面">
+            <div className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] px-3 py-2">
+              <span className="text-sm text-[var(--color-text-primary)]">延后打开启动页</span>
+              <Switch checked={settings.lightStartEnabled} onChange={checked => setSettings(prev => ({ ...prev, lightStartEnabled: checked }))} />
+            </div>
+          </FormItem>
+          <FormItem label="默认恢复历史标签" hint="实例选择跟随内核时使用；不影响启动页和启动书签。实例未覆盖时，下次启动恢复之前的标签页和窗口。">
             <div className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] px-3 py-2">
               <div>
-                <p className="text-sm text-[var(--color-text-primary)]">允许恢复旧 tab</p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">开启后，下次启动会继续恢复之前浏览过的页面。</p>
+                <p className="text-sm text-[var(--color-text-primary)]">内核默认</p>
               </div>
               <Switch checked={settings.restoreLastSession} onChange={checked => setSettings(prev => ({ ...prev, restoreLastSession: checked }))} />
             </div>

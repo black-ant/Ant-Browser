@@ -58,7 +58,8 @@ publish/staging/
 publish/output/
 
 # Internal docs / scratch files
-docs/
+docs/*
+!docs/feature-difference-approval.md
 DEPLOYMENT_GUIDE.md
 plan.md
 pic/
@@ -78,6 +79,7 @@ profiles.yaml
 # Frontend deps/cache
 frontend/node_modules/
 frontend/dist/
+frontend/dist_stub/
 frontend/.vite/
 
 # Python cache
@@ -96,3 +98,49 @@ tmp-debug-port*/
 .env
 .env.*
 !.env.example
+
+# Local sensitive configs / accounts
+backup.local.yaml
+*.ovpn
+clash.yaml
+mihomo.yaml
+singbox.json
+xray.json
+proxy-subscription.yaml
+proxy-subscriptions.yaml
+subscription.yaml
+subscriptions.yaml
+vpn-sockets-connectivity-report.md
+account.json
+accounts.json
+accounts.yaml
+accounts.yml
+*credential*.json
+*credentials*.json
+*secret*.json
+*secrets*.json
+*token*.json
+*tokens*.json
+*cookie*.json
+*cookies*.json
+*.local.yaml
+*.local.yml
+*.local.json
+
+# Local backups
+.local-backup/
+*.zip
+*.jar
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.tar.xz
+*.txz
+*.tar.bz2
+*.tbz2
+*.bak
+*.backup
+*.old
+*.orig

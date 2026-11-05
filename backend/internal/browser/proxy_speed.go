@@ -1,110 +1,354 @@
 package browser
 
 import (
+	"ant-chrome/backend/internal/config"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
 
 // SpeedTestFunc 执行单个代理测速的函数类型
 type SpeedTestFunc func(proxyId string) (ok bool, latencyMs int64, err string)
+type ProxySpeedTestFunc func(proxy Proxy) (ok bool, latencyMs int64, err string)
+type ProxySpeedResultCurrentFunc func(proxy Proxy, proxies []Proxy) bool
 
 // ProxySpeedScheduler 代理测速定时调度器
 type ProxySpeedScheduler struct {
-	dao       ProxyDAO
-	testFn    SpeedTestFunc
-	interval  time.Duration
-	concLimit int
-	stopCh    chan struct{}
-	mu        sync.Mutex
-	running   bool
+	dao           ProxyDAO
+	testFn        SpeedTestFunc
+	proxyTestFn   ProxySpeedTestFunc
+	resultCurrent ProxySpeedResultCurrentFunc
+	// priorityFn 值越大越先探测，用于让虚拟分组成员优先于全池。
+	priorityFn func(proxy Proxy) int
+	// intervalFn 返回单个代理的自定义探测间隔，<=0 表示沿用全局设置。
+	intervalFn    func(proxy Proxy) time.Duration
+	persistResult bool
+	interval      time.Duration
+	failureRetry  time.Duration
+	concLimit     int
+	stopCh        chan struct{}
+	doneCh        chan struct{}
+	mu            sync.Mutex
+	running       bool
+	testing       bool
+	stopped       bool
+	runWG         sync.WaitGroup
+}
+
+const (
+	DefaultProxySpeedInterval     = time.Duration(config.DefaultProxySpeedIntervalMinutes) * time.Minute
+	DefaultProxySpeedInitialDelay = 2 * time.Minute
+	DefaultProxySpeedConcurrency  = config.DefaultProxyScheduledSpeedConcurrency
+	DefaultProxySpeedFailureRetry = 5 * time.Minute
+)
+
+func isProxySpeedResultDue(testedAt string, checkedAt time.Time, interval time.Duration) bool {
+	if interval <= 0 {
+		interval = DefaultProxySpeedInterval
+	}
+	testedTime, err := time.Parse(time.RFC3339, strings.TrimSpace(testedAt))
+	if err != nil {
+		return true
+	}
+	age := checkedAt.Sub(testedTime)
+	return age < 0 || age >= interval
 }
 
 // NewProxySpeedScheduler 创建调度器，interval 为测速间隔，concLimit 为并发数
 func NewProxySpeedScheduler(dao ProxyDAO, testFn SpeedTestFunc, interval time.Duration, concLimit int) *ProxySpeedScheduler {
+	if interval <= 0 {
+		interval = DefaultProxySpeedInterval
+	}
 	if concLimit <= 0 {
-		concLimit = 5
+		concLimit = DefaultProxySpeedConcurrency
 	}
 	return &ProxySpeedScheduler{
-		dao:       dao,
-		testFn:    testFn,
-		interval:  interval,
-		concLimit: concLimit,
-		stopCh:    make(chan struct{}),
+		dao:           dao,
+		testFn:        testFn,
+		interval:      interval,
+		failureRetry:  DefaultProxySpeedFailureRetry,
+		concLimit:     concLimit,
+		stopCh:        make(chan struct{}),
+		persistResult: true,
 	}
+}
+
+func NewProxySpeedSchedulerWithRetry(dao ProxyDAO, testFn SpeedTestFunc, interval time.Duration, failureRetry time.Duration, concLimit int) *ProxySpeedScheduler {
+	s := NewProxySpeedScheduler(dao, testFn, interval, concLimit)
+	if failureRetry > 0 {
+		s.failureRetry = failureRetry
+	}
+	return s
+}
+
+func (s *ProxySpeedScheduler) SetProxySpeedTestFunc(testFn ProxySpeedTestFunc) {
+	s.mu.Lock()
+	s.proxyTestFn = testFn
+	s.mu.Unlock()
+}
+
+func (s *ProxySpeedScheduler) SetResultCurrentFunc(check ProxySpeedResultCurrentFunc) {
+	s.mu.Lock()
+	s.resultCurrent = check
+	s.mu.Unlock()
+}
+
+func (s *ProxySpeedScheduler) SetResultPersistence(enabled bool) {
+	s.mu.Lock()
+	s.persistResult = enabled
+	s.mu.Unlock()
+}
+
+// SetPriorityFunc 设置探测优先级（值越大越先探测）；传 nil 表示取消。
+func (s *ProxySpeedScheduler) SetPriorityFunc(fn func(proxy Proxy) int) {
+	s.mu.Lock()
+	s.priorityFn = fn
+	s.mu.Unlock()
+}
+
+// SetIntervalFunc 设置单个代理的探测间隔；返回 <=0 表示沿用全局设置。
+func (s *ProxySpeedScheduler) SetIntervalFunc(fn func(proxy Proxy) time.Duration) {
+	s.mu.Lock()
+	s.intervalFn = fn
+	s.mu.Unlock()
 }
 
 // Start 启动定时任务（非阻塞）
 func (s *ProxySpeedScheduler) Start() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.running {
+	if s.running || s.stopped {
+		s.mu.Unlock()
 		return
 	}
 	s.running = true
-	go s.loop()
+	s.doneCh = make(chan struct{})
+	doneCh := s.doneCh
+	s.mu.Unlock()
+	go s.loop(doneCh)
 }
 
 // Stop 停止定时任务
 func (s *ProxySpeedScheduler) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.running {
+	if s.stopped {
+		doneCh := s.doneCh
+		s.mu.Unlock()
+		if doneCh != nil {
+			<-doneCh
+		}
+		s.runWG.Wait()
 		return
 	}
+	s.stopped = true
 	s.running = false
+	doneCh := s.doneCh
 	close(s.stopCh)
+	s.mu.Unlock()
+
+	if doneCh != nil {
+		<-doneCh
+	}
+	s.runWG.Wait()
 }
 
 // RunOnce 立即执行一轮测速（可手动触发）
 func (s *ProxySpeedScheduler) RunOnce() {
-	go s.runAll()
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.runWG.Add(1)
+	s.mu.Unlock()
+	go func() {
+		defer s.runWG.Done()
+		s.runAll()
+	}()
 }
 
-func (s *ProxySpeedScheduler) loop() {
-	// 启动后延迟 10s 跑第一轮，避免影响启动速度
+func (s *ProxySpeedScheduler) loop(doneCh chan struct{}) {
+	defer close(doneCh)
+
+	// 启动后延迟一段时间跑第一轮，避免启动阶段频繁拉起代理内核。
 	select {
-	case <-time.After(10 * time.Second):
+	case <-time.After(DefaultProxySpeedInitialDelay):
 	case <-s.stopCh:
 		return
 	}
-	s.runAll()
+	s.runTracked()
 
-	ticker := time.NewTicker(s.interval)
-	defer ticker.Stop()
 	for {
+		// 每轮重新计算等待时间：分组/成员可能在运行期被新增，间隔函数随之变化。
+		timer := time.NewTimer(s.tickInterval())
 		select {
-		case <-ticker.C:
-			s.runAll()
+		case <-timer.C:
+			s.runTracked()
 		case <-s.stopCh:
+			timer.Stop()
 			return
 		}
 	}
 }
 
+// proxySpeedSchedulerMaxTick 是调度的等待上限。
+// 分组可能在调度器运行期间新建，等待过长会让新成员迟迟排不上核验。
+const proxySpeedSchedulerMaxTick = 5 * time.Minute
+
+// tickInterval 计算下一轮调度的等待时间。
+//
+// 必须把自定义间隔（intervalFn）纳入最小值：全局测速间隔与失败重试间隔都允许配置到 24 小时，
+// 只按全局间隔等待会让虚拟分组成员的分钟级核验间隔永远等不到 tick，周期核验被无限期推后。
+func (s *ProxySpeedScheduler) tickInterval() time.Duration {
+	s.mu.Lock()
+	interval := s.interval
+	failureRetry := s.failureRetry
+	intervalFn := s.intervalFn
+	dao := s.dao
+	s.mu.Unlock()
+
+	tick := interval
+	if tick <= 0 {
+		tick = DefaultProxySpeedInterval
+	}
+	if failureRetry > 0 && failureRetry < tick {
+		tick = failureRetry
+	}
+	if intervalFn != nil && dao != nil {
+		if proxies, err := dao.List(); err == nil {
+			for _, proxy := range proxies {
+				if custom := intervalFn(proxy); custom > 0 && custom < tick {
+					tick = custom
+				}
+			}
+		}
+	}
+	if tick > proxySpeedSchedulerMaxTick {
+		tick = proxySpeedSchedulerMaxTick
+	}
+	if tick < time.Minute {
+		tick = time.Minute
+	}
+	return tick
+}
+
+func (s *ProxySpeedScheduler) runTracked() {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.runWG.Add(1)
+	s.mu.Unlock()
+	defer s.runWG.Done()
+	s.runAll()
+}
+
 func (s *ProxySpeedScheduler) runAll() {
+	if !s.beginRun() {
+		return
+	}
+	defer s.finishRun()
+
 	proxies, err := s.dao.List()
 	if err != nil || len(proxies) == 0 {
 		return
 	}
 
-	sem := make(chan struct{}, s.concLimit)
-	var wg sync.WaitGroup
+	s.mu.Lock()
+	testFn := s.testFn
+	proxyTestFn := s.proxyTestFn
+	resultCurrent := s.resultCurrent
+	persistResult := s.persistResult
+	priorityFn := s.priorityFn
+	intervalFn := s.intervalFn
+	s.mu.Unlock()
 
+	if testFn == nil && proxyTestFn == nil {
+		return
+	}
+
+	type probeJob struct {
+		proxy    Proxy
+		priority int
+	}
+	jobs := make([]probeJob, 0, len(proxies))
+	checkedAt := time.Now()
 	for _, p := range proxies {
 		// 跳过直连（无意义测速）
 		if p.ProxyConfig == "direct://" {
 			continue
 		}
+		nextInterval := s.interval
+		if !p.LastTestOk {
+			nextInterval = s.failureRetry
+		}
+		if intervalFn != nil {
+			if custom := intervalFn(p); custom > 0 {
+				// 失败节点保留更短的失败重试间隔，避免把退避拉长。
+				if p.LastTestOk || custom < nextInterval {
+					nextInterval = custom
+				}
+			}
+		}
+		due := isProxySpeedResultDue(p.LastTestedAt, checkedAt, nextInterval)
+		if !due && resultCurrent != nil && !resultCurrent(p, proxies) {
+			due = true
+		}
+		if !due {
+			continue
+		}
+		priority := 0
+		if priorityFn != nil {
+			priority = priorityFn(p)
+		}
+		jobs = append(jobs, probeJob{proxy: p, priority: priority})
+	}
+
+	// 两段式：先按优先级排序，再提交并发闸门，保证分组成员在大池子里也先被观测。
+	sort.SliceStable(jobs, func(i, j int) bool { return jobs[i].priority > jobs[j].priority })
+
+	sem := make(chan struct{}, s.concLimit)
+	var wg sync.WaitGroup
+	for _, job := range jobs {
+		p := job.proxy
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(proxyId string) {
+		go func(proxy Proxy) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			proxyId := proxy.ProxyId
 
-			ok, latencyMs, _ := s.testFn(proxyId)
+			var ok bool
+			var latencyMs int64
+			var testErr string
+			if proxyTestFn != nil {
+				ok, latencyMs, testErr = proxyTestFn(proxy)
+			} else {
+				ok, latencyMs, testErr = testFn(proxyId)
+			}
 			testedAt := time.Now().Format(time.RFC3339)
-			_ = s.dao.UpdateSpeedResult(proxyId, ok, latencyMs, testedAt)
-		}(p.ProxyId)
+			if persistResult {
+				_ = s.dao.UpdateSpeedResult(proxyId, ok, latencyMs, testedAt)
+			}
+			_ = testErr
+		}(p)
 	}
 	wg.Wait()
+}
+
+func (s *ProxySpeedScheduler) beginRun() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.testing {
+		return false
+	}
+	s.testing = true
+	return true
+}
+
+func (s *ProxySpeedScheduler) finishRun() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.testing = false
 }

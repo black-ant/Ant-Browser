@@ -1,8 +1,11 @@
 ﻿import { ReactNode, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 import clsx from 'clsx'
 
+const SELECT_CHEVRON_DATA_URI =
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2364758b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5.5 7.5 4.5 4.5 4.5-4.5'/%3E%3C/svg%3E")`
+
 interface FormItemProps {
-  label?: string
+  label?: ReactNode
   required?: boolean
   hint?: string
   error?: string
@@ -14,11 +17,20 @@ export function FormItem({ label, required, hint, error, children, className }: 
   return (
     <div className={clsx('space-y-1.5', className)}>
       {label && (
-        <label className="block text-sm font-medium text-[var(--color-text-secondary)]">
-          {label}
-          {required && <span className="text-[var(--color-error)] ml-0.5">*</span>}
-          {hint && <span className="text-xs font-normal text-[var(--color-text-muted)] ml-1">({hint})</span>}
-        </label>
+        <div className="flex items-center gap-1 text-sm font-medium text-[var(--color-text-secondary)]">
+          <span>
+            {label}
+            {required && <span className="text-[var(--color-error)] ml-0.5">*</span>}
+          </span>
+          {hint && (
+            <span className="group relative inline-flex" tabIndex={0} aria-label={hint} title={hint}>
+              <span className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[var(--color-border-muted)] text-[10px] font-semibold leading-none text-[var(--color-text-muted)]">?</span>
+              <span className="pointer-events-none absolute left-0 top-5 z-50 hidden w-64 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 py-2 text-xs font-normal leading-5 text-[var(--color-text-secondary)] shadow-lg group-hover:block group-focus:block">
+                {hint}
+              </span>
+            </span>
+          )}
+        </div>
       )}
       {children}
       {error && <p className="text-xs text-[var(--color-error)]">{error}</p>}
@@ -56,13 +68,15 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   options: { value: string; label: string }[]
 }
 
-export function Select({ error, options, className, ...props }: SelectProps) {
+export function Select({ error, options, className, style, ...props }: SelectProps) {
   return (
     <select
       className={clsx(
-        'block h-9 px-3 text-sm',
+        'block h-9 appearance-none px-3 pr-10 text-sm',
         'bg-[var(--color-bg-surface)] text-[var(--color-text-primary)]',
         'border border-[var(--color-border-default)] rounded-lg',
+        'shadow-[var(--shadow-xs)]',
+        'hover:border-[var(--color-border-strong)]',
         'focus:outline-none focus:border-[var(--color-border-strong)] focus:ring-1 focus:ring-[var(--color-border-strong)]',
         'disabled:bg-[var(--color-bg-muted)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed',
         'transition-colors duration-150',
@@ -72,6 +86,13 @@ export function Select({ error, options, className, ...props }: SelectProps) {
         !className?.includes('w-') && 'w-full',
         className
       )}
+      style={{
+        backgroundImage: SELECT_CHEVRON_DATA_URI,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 0.8rem center',
+        backgroundSize: '0.95rem 0.95rem',
+        ...style,
+      }}
       {...props}
     >
       {options.map((opt) => (
@@ -110,14 +131,16 @@ interface SwitchProps {
   checked: boolean
   onChange: (checked: boolean) => void
   disabled?: boolean
+  'aria-label'?: string
 }
 
-export function Switch({ checked, onChange, disabled }: SwitchProps) {
+export function Switch({ checked, onChange, disabled, 'aria-label': ariaLabel }: SwitchProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={clsx(

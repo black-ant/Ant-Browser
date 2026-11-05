@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 interface TagInputProps {
@@ -8,14 +9,34 @@ interface TagInputProps {
   placeholder?: string
 }
 
+interface DropdownPosition {
+  left: number
+  top: number
+  width: number
+}
+
 export function TagInput({ value, onChange, suggestions = [], placeholder = '输入标签后按回车' }: TagInputProps) {
   const [input, setInput] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [position, setPosition] = useState<DropdownPosition | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const filtered = suggestions.filter(
     s => s.toLowerCase().includes(input.toLowerCase()) && !value.includes(s)
   )
+  const open = showSuggestions && filtered.length > 0
+
+  const updatePosition = useCallback(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setPosition({
+      left: rect.left,
+      top: rect.bottom + 4,
+      width: rect.width,
+    })
+  }, [])
 
   const addTag = (tag: string) => {
     const t = tag.trim()
@@ -40,19 +61,39 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = '输
     }
   }
 
-  // 点击外部关闭建议
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null)
+      return
+    }
+    updatePosition()
+  }, [open, filtered.length, value.length, updatePosition])
+
+  useEffect(() => {
+    if (!open) return
+
+    const handleReposition = () => updatePosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [open, updatePosition])
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (inputRef.current && !inputRef.current.closest('.tag-input-wrap')?.contains(e.target as Node)) {
-        setShowSuggestions(false)
-      }
+      const target = e.target as Node
+      if (wrapRef.current?.contains(target)) return
+      if ((target as Element).closest?.('[data-tag-input-dropdown]')) return
+      setShowSuggestions(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   return (
-    <div className="tag-input-wrap relative">
+    <div ref={wrapRef} className="tag-input-wrap relative">
       <div
         className="min-h-9 flex flex-wrap gap-1.5 items-center px-3 py-1.5 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] cursor-text focus-within:border-[var(--color-accent)] transition-colors"
         onClick={() => inputRef.current?.focus()}
@@ -83,8 +124,12 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = '输
         />
       </div>
 
-      {showSuggestions && filtered.length > 0 && (
-        <div className="absolute z-20 top-full mt-1 w-full bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] rounded-md shadow-lg overflow-hidden">
+      {open && position && createPortal(
+        <div
+          data-tag-input-dropdown
+          className="fixed z-[9999] max-h-56 overflow-auto rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] shadow-lg"
+          style={{ left: position.left, top: position.top, width: position.width }}
+        >
           {filtered.slice(0, 8).map(s => (
             <button
               key={s}
@@ -95,7 +140,8 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = '输
               {s}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

@@ -21,6 +21,7 @@ type ScriptTaskResult struct {
 	Summary           string `json:"summary"`
 	Error             string `json:"error"`
 	ResultText        string `json:"resultText"`
+	LogText           string `json:"logText"`
 	DurationMs        int64  `json:"durationMs"`
 	StartedAt         string `json:"startedAt"`
 	FinishedAt        string `json:"finishedAt"`
@@ -42,15 +43,21 @@ type taskRunnerPayload struct {
 }
 
 type taskRunnerResponse struct {
-	OK             bool   `json:"ok"`
-	Summary        string `json:"summary,omitempty"`
-	Error          string `json:"error,omitempty"`
-	Title          string `json:"title"`
-	URL            string `json:"url"`
-	ScreenshotPath string `json:"screenshotPath,omitempty"`
-	StartedAt      string `json:"startedAt"`
-	FinishedAt     string `json:"finishedAt"`
-	IsolatedPage   bool   `json:"isolatedPage"`
+	OK             bool                 `json:"ok"`
+	Summary        string               `json:"summary,omitempty"`
+	Error          string               `json:"error,omitempty"`
+	Title          string               `json:"title"`
+	URL            string               `json:"url"`
+	ScreenshotPath string               `json:"screenshotPath,omitempty"`
+	StartedAt      string               `json:"startedAt"`
+	FinishedAt     string               `json:"finishedAt"`
+	IsolatedPage   bool                 `json:"isolatedPage"`
+	Logs           []taskRunnerLogEntry `json:"logs,omitempty"`
+}
+
+type taskRunnerLogEntry struct {
+	Time   string `json:"time"`
+	Values []any  `json:"values"`
 }
 
 type TaskEvent struct {

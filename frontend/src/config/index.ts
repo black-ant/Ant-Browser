@@ -2,13 +2,13 @@
 export { default as config } from './project.config'
 export {
   projectConfig,
-  navigationConfig,
   featuresConfig,
   uiConfig,
 } from './project.config'
+export { navigationConfig } from './navigation.config'
 export { profilePageConfig } from './profile.config'
 
-export type { NavItem, NavSection } from './project.config'
+export type { NavItem, NavSection } from './navigation.config'
 export type {
   AuthorProfileConfig,
   ProfileChannelConfig,

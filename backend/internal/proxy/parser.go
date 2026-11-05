@@ -15,6 +15,7 @@ type chainSocks5Hop struct {
 	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
+	TLS      bool   `json:"tls,omitempty"`
 }
 
 type chainSocks5Config struct {
@@ -77,8 +78,8 @@ func validateChainSocks5Hop(label string, hop chainSocks5Hop) error {
 		return fmt.Errorf("%s代理端口必须在 1-65535 之间", label)
 	}
 	protocol := strings.ToLower(strings.TrimSpace(hop.Protocol))
-	if protocol != "" && protocol != "socks5" && protocol != "http" {
-		return fmt.Errorf("%s协议仅支持 http 或 socks5", label)
+	if protocol != "" && protocol != "socks5" && protocol != "http" && protocol != "https" {
+		return fmt.Errorf("%s协议仅支持 http、https 或 socks5", label)
 	}
 	if strings.TrimSpace(hop.Password) != "" && strings.TrimSpace(hop.Username) == "" {
 		return fmt.Errorf("%s填写密码时请同时填写账号", label)

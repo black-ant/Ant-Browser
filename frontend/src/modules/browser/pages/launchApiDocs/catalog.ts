@@ -3,12 +3,15 @@ import { DEFAULT_API_AUTH, DEFAULT_LAUNCH_BASE_URL } from '../../launchContext'
 import {
   DOC_API_OVERVIEW,
   DOC_CORE_INTRO,
+  DOC_EXTENSION_INTRO,
+  DOC_OPERATION_FLOW,
   DOC_PROXY_INTRO,
   DOC_SKILL_USAGE,
   DOC_TUTORIAL,
 } from './contentIntro'
 import { DOC_CHANGELOG } from './contentChangelog'
 import {
+  DOC_API_AUTOMATION,
   DOC_API_PROFILES_LAUNCH,
   DOC_API_RUNTIME,
 } from './contentApi'
@@ -17,7 +20,6 @@ import { getStructuredApiHiddenDocItems } from './structuredApiDocs'
 
 export interface LaunchDocDemoConfig {
   title: string
-  subtitle: string
   primaryDocLabel: string
   actionKeys: AutomationDemoActionKey[]
 }
@@ -57,7 +59,7 @@ export const DOC_GROUPS: LaunchDocGroup[] = [
         id: 'tutorial-flow',
         label: '操作流程',
         summary: '按步骤串起内核、代理、实例和接口调用。',
-        content: '',
+        content: DOC_OPERATION_FLOW,
       },
     ],
   },
@@ -98,6 +100,18 @@ export const DOC_GROUPS: LaunchDocGroup[] = [
     ],
   },
   {
+    id: 'extension',
+    label: '插件介绍',
+    items: [
+      {
+        id: 'extension-usage',
+        label: '插件包管理',
+        summary: '插件安装、实例限制、分组选择和单实例配置。',
+        content: DOC_EXTENSION_INTRO,
+      },
+    ],
+  },
+  {
     id: 'api',
     label: '接口介绍',
     items: [
@@ -123,7 +137,7 @@ export const DOC_GROUPS: LaunchDocGroup[] = [
         id: 'api-automation',
         label: '脚本自动化',
         summary: '自动化接口总览、字段规则和调用顺序。',
-        content: '',
+        content: DOC_API_AUTOMATION,
       },
       {
         id: 'api-support',

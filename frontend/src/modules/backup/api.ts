@@ -1,0 +1,219 @@
+import type { BackupChannelSelection } from './channels'
+import type { BackupPackageInfo } from './packageInfo'
+import type { BrowserProfilePackageImportPreview } from '../browser/types'
+
+export interface BackupActionResult {
+  cancelled?: boolean
+  message?: string
+  zipPath?: string
+  imported?: number
+  skipped?: number
+  conflicts?: number
+  includedEntries?: number
+  skippedEntries?: number
+  fileCount?: number
+  partial?: boolean
+  rolledBack?: boolean
+  componentTotal?: number
+  componentSuccess?: number
+  componentFailed?: number
+  localSaved?: boolean
+  remoteUploaded?: boolean
+  remoteName?: string
+  remoteSize?: number
+  localDirectory?: string
+  metadataPath?: string
+  metadataAvailable?: boolean
+  remoteNames?: string[]
+  remoteError?: string
+  remoteWarning?: string
+  portableSessionProfileCount?: number
+  portableSessionWarning?: string
+  profileCount?: number
+  profileNames?: string[]
+  importedCount?: number
+  createdCount?: number
+  overwrittenCount?: number
+  renamedCount?: number
+  requiresProfileImportConfirmation?: boolean
+  profileImportPreview?: BrowserProfilePackageImportPreview
+  warnings?: string[]
+  packageType?: 'full' | 'profile' | string
+  failedComponents?: Array<{
+    componentId?: string
+    componentName?: string
+    error?: string
+  }>
+}
+
+export interface BackupFileInfo extends BackupPackageInfo {
+  size: number
+  modifiedAt: string
+}
+
+export interface BackupLocalSettings {
+  localDirectory: string
+}
+
+export interface BackupSelectLocalDirectoryResult extends BackupLocalSettings {
+  cancelled: boolean
+}
+
+export interface BackupLocalHistoryItem extends BackupPackageInfo {
+  name: string
+  path: string
+  size: number
+  modifiedAt: string
+  createdAt?: string
+  metadataAvailable: boolean
+  metadataError?: string
+  metadataOrphan?: boolean
+  appName?: string
+  appVersion?: string
+}
+
+export type BackupDestinationSelection = BackupChannelSelection
+
+const getBindings = async () => {
+  try {
+    return await import('../../wailsjs/go/main/App')
+  } catch {
+    return null
+  }
+}
+
+export async function createBackupPackage(
+  destinations: BackupDestinationSelection,
+  profileIds: string[] = [],
+  portableSessionPassword = '',
+): Promise<BackupActionResult> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupCreatePackage) {
+    throw new Error('当前环境不支持统一备份接口')
+  }
+  const payload: Record<string, string> = {}
+  for (const [channelId, enabled] of Object.entries(destinations)) {
+    if (typeof enabled === 'boolean') {
+      payload[channelId] = String(enabled)
+    }
+  }
+  if (profileIds.length > 0) {
+    payload.profileIds = JSON.stringify(profileIds)
+  }
+  if (portableSessionPassword) {
+    payload.portableSessionPassword = portableSessionPassword
+  }
+  return (await bindings.BackupCreatePackage(payload)) || {}
+}
+
+export async function exportSystemConfig(): Promise<BackupActionResult> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupExportPackage) {
+    return { cancelled: false, message: '当前环境不支持后端导出接口' }
+  }
+  return (await bindings.BackupExportPackage()) || {}
+}
+
+export async function importSystemConfig(): Promise<BackupActionResult> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupImportPackage) {
+    return { cancelled: false, message: '当前环境不支持后端导入接口' }
+  }
+  return (await bindings.BackupImportPackage()) || {}
+}
+
+export async function restoreLocalSystemConfig(zipPath: string): Promise<BackupActionResult> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupRestoreLocalPackage) {
+    throw new Error('当前环境不支持本地备份恢复接口')
+  }
+  return (await bindings.BackupRestoreLocalPackage(zipPath.trim())) || {}
+}
+
+export async function openBackupPath(zipPath: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (!bindings?.OpenBackupPath) {
+    throw new Error('当前环境不支持打开本地备份路径')
+  }
+  await bindings.OpenBackupPath(zipPath.trim())
+}
+
+export async function getBackupFileInfo(zipPath: string): Promise<BackupFileInfo> {
+  const bindings: any = await getBindings()
+  if (!bindings?.GetBackupFileInfo) {
+    throw new Error('当前环境不支持读取本地备份文件信息')
+  }
+  const raw = (await bindings.GetBackupFileInfo(zipPath.trim())) || {}
+  return {
+    size: Number.isFinite(raw.size) ? Math.max(0, Number(raw.size)) : 0,
+    modifiedAt: typeof raw.modifiedAt === 'string' ? raw.modifiedAt : '',
+    packageType: typeof raw.packageType === 'string' ? raw.packageType : undefined,
+    profileCount: Number.isFinite(raw.profileCount) ? Math.max(0, Number(raw.profileCount)) : undefined,
+    profileNames: Array.isArray(raw.profileNames) ? (raw.profileNames as unknown[]).filter((item: unknown): item is string => typeof item === 'string') : undefined,
+  }
+}
+
+function normalizeLocalBackupItem(raw: any): BackupLocalHistoryItem {
+  const profileNames = Array.isArray(raw?.profileNames)
+    ? (raw.profileNames as unknown[]).filter((item: unknown): item is string => typeof item === 'string').map((item: string) => item.trim()).filter(Boolean)
+    : undefined
+  const profileCount = Number(raw?.profileCount)
+  return {
+    name: typeof raw?.name === 'string' ? raw.name : '',
+    path: typeof raw?.path === 'string' ? raw.path : '',
+    size: Number.isFinite(Number(raw?.size)) ? Math.max(0, Number(raw.size)) : 0,
+    modifiedAt: typeof raw?.modifiedAt === 'string' ? raw.modifiedAt : '',
+    createdAt: typeof raw?.createdAt === 'string' ? raw.createdAt : undefined,
+    metadataAvailable: raw?.metadataAvailable === true,
+    metadataError: typeof raw?.metadataError === 'string' ? raw.metadataError : undefined,
+    metadataOrphan: raw?.metadataOrphan === true,
+    appName: typeof raw?.appName === 'string' ? raw.appName : undefined,
+    appVersion: typeof raw?.appVersion === 'string' ? raw.appVersion : undefined,
+    packageType: typeof raw?.packageType === 'string' ? raw.packageType : undefined,
+    profileCount: Number.isFinite(profileCount) && profileCount > 0 ? Math.floor(profileCount) : undefined,
+    profileNames: profileNames?.length ? profileNames : undefined,
+  }
+}
+
+export async function fetchLocalBackupSettings(): Promise<BackupLocalSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupGetLocalSettings) {
+    throw new Error('当前环境不支持本地备份目录设置')
+  }
+  const raw = (await bindings.BackupGetLocalSettings()) || {}
+  return {
+    localDirectory: typeof raw.localDirectory === 'string' ? raw.localDirectory.trim() : '',
+  }
+}
+
+export async function saveLocalBackupDirectory(directory: string): Promise<BackupLocalSettings> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupSaveLocalDirectory) {
+    throw new Error('当前环境不支持保存本地备份目录')
+  }
+  const raw = (await bindings.BackupSaveLocalDirectory(directory.trim())) || {}
+  return {
+    localDirectory: typeof raw.localDirectory === 'string' ? raw.localDirectory.trim() : '',
+  }
+}
+
+export async function selectLocalBackupDirectory(): Promise<BackupSelectLocalDirectoryResult> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupSelectLocalDirectory) {
+    throw new Error('当前环境不支持选择本地备份目录')
+  }
+  const raw = (await bindings.BackupSelectLocalDirectory()) || {}
+  return {
+    cancelled: raw.cancelled === true,
+    localDirectory: typeof raw.localDirectory === 'string' ? raw.localDirectory.trim() : '',
+  }
+}
+
+export async function listLocalBackups(directory = ''): Promise<BackupLocalHistoryItem[]> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BackupListLocalBackups) {
+    throw new Error('当前环境不支持扫描本地备份目录')
+  }
+  const raw = await bindings.BackupListLocalBackups(directory.trim())
+  return Array.isArray(raw) ? raw.map(normalizeLocalBackupItem).filter(item => item.name || item.path) : []
+}

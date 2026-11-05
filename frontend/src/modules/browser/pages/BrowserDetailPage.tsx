@@ -17,9 +17,11 @@ import {
 import { CookieManagerCard } from '../components/CookieManagerCard'
 import { SnapshotTab } from '../components/SnapshotTab'
 import { resolveActionErrorMessage, resolveActionFeedback } from '../utils/actionErrors'
+import { warmupProfileProxyBeforeStart } from '../utils/proxyWarmup'
 
-const resolveRuntimeStatus = (running: boolean, debugReady: boolean) => {
-  if (!running) return { variant: 'warning' as const, label: '已停止' }
+const resolveRuntimeStatus = (running: boolean, debugReady: boolean, lastError = '') => {
+  if (!running && lastError.trim()) return { variant: 'error' as const, label: '异常' }
+  if (!running) return { variant: 'default' as const, label: '已停止' }
   if (!debugReady) return { variant: 'info' as const, label: '运行中（待就绪）' }
   return { variant: 'success' as const, label: '运行中' }
 }
@@ -57,6 +59,10 @@ export function BrowserDetailPage() {
     if (!id) return
     const list = await fetchBrowserTabs(id)
     setTabs(list)
+  }
+
+  const refreshProfileInBackground = () => {
+    void loadProfile().catch(() => undefined)
   }
 
   useEffect(() => { void loadProfile() }, [id])
@@ -102,21 +108,39 @@ export function BrowserDetailPage() {
   }
 
   const handleOpenUrl = async () => {
-    await openBrowserUrl(profile.profileId, targetUrl)
-    toast.success('已发送打开指令')
+    const normalizedTargetUrl = targetUrl.trim()
+    if (!normalizedTargetUrl) {
+      toast.warning('请输入目标地址')
+      return
+    }
+
+    try {
+      const opened = await openBrowserUrl(profile.profileId, normalizedTargetUrl)
+      if (!opened) {
+        toast.warning('打开指令未执行')
+        return
+      }
+      toast.success('已在运行中实例打开地址')
+    } catch (error: any) {
+      const feedback = resolveActionFeedback(error, '打开地址失败')
+      if (feedback.tone === 'warning') {
+        toast.warning(feedback.message)
+      } else {
+        toast.error(feedback.message)
+      }
+    }
   }
 
   const handleStart = async () => {
     setPendingAction('starting')
     try {
+      await warmupProfileProxyBeforeStart(profile)
       const startedProfile = await startBrowserInstance(profile.profileId)
       if (startedProfile) {
         setProfile(startedProfile)
       }
-      if (startedProfile?.running && !startedProfile.debugReady && startedProfile.runtimeWarning) {
-        toast.warning(startedProfile.runtimeWarning)
-      } else {
-        toast.success('实例已启动')
+      if (startedProfile?.runtimeWarning || (startedProfile?.running && !startedProfile.debugReady)) {
+        toast.warning(startedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
       }
     } catch (error: any) {
       const feedback = resolveActionFeedback(error, '实例启动失败')
@@ -126,7 +150,7 @@ export function BrowserDetailPage() {
         toast.error(feedback.message)
       }
     } finally {
-      await loadProfile()
+      refreshProfileInBackground()
       setPendingAction(null)
     }
   }
@@ -138,11 +162,10 @@ export function BrowserDetailPage() {
       if (stoppedProfile) {
         setProfile(stoppedProfile)
       }
-      toast.success('实例已停止')
     } catch (error: any) {
       toast.error(resolveActionErrorMessage(error, '实例停止失败'))
     } finally {
-      await loadProfile()
+      refreshProfileInBackground()
       setPendingAction(null)
     }
   }
@@ -150,11 +173,14 @@ export function BrowserDetailPage() {
   const handleRestart = async () => {
     setPendingAction('restarting')
     try {
+      await warmupProfileProxyBeforeStart(profile)
       const restartedProfile = await restartBrowserInstance(profile.profileId)
       if (restartedProfile) {
         setProfile(restartedProfile)
       }
-      toast.success('实例已重启')
+      if (restartedProfile?.runtimeWarning || (restartedProfile?.running && !restartedProfile.debugReady)) {
+        toast.warning(restartedProfile.runtimeWarning || '浏览器窗口已启动，调试接口仍在后台接管。')
+      }
     } catch (error: any) {
       const feedback = resolveActionFeedback(error, '实例重启失败')
       if (feedback.tone === 'warning') {
@@ -163,7 +189,7 @@ export function BrowserDetailPage() {
         toast.error(feedback.message)
       }
     } finally {
-      await loadProfile()
+      refreshProfileInBackground()
       setPendingAction(null)
     }
   }
@@ -184,25 +210,27 @@ export function BrowserDetailPage() {
   const isStopping = pendingAction === 'stopping'
   const isRestarting = pendingAction === 'restarting'
   const isBusy = pendingAction !== null
-  const runtimeStatus = resolveRuntimeStatus(profile.running, profile.debugReady)
+  const runtimeStatus = resolveRuntimeStatus(profile.running, profile.debugReady, profile.lastError)
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       {/* 页头 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">实例详情</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">{profile.profileName}</p>
+      <Card padding="none" className="shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">实例详情</h1>
+            <p className="mt-1 truncate text-sm text-[var(--color-text-muted)]">{profile.profileName}</p>
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Link to={`/browser/edit/${profile.profileId}`}>
+              <Button variant="secondary" size="sm">编辑配置</Button>
+            </Link>
+            <Link to="/browser/list">
+              <Button variant="ghost" size="sm">返回列表</Button>
+            </Link>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Link to={`/browser/edit/${profile.profileId}`}>
-            <Button variant="secondary" size="sm">编辑配置</Button>
-          </Link>
-          <Link to="/browser/list">
-            <Button variant="ghost" size="sm">返回列表</Button>
-          </Link>
-        </div>
-      </div>
+      </Card>
 
       {/* Tab 导航 */}
       <div className="flex border-b border-[var(--color-border)]">
@@ -226,7 +254,7 @@ export function BrowserDetailPage() {
       {activeTab === 'overview' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card title="运行信息" subtitle="实例运行状态与端口信息">
+            <Card title="运行信息">
               <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
                 <div className="flex justify-between">
                   <span>状态</span>
@@ -255,7 +283,7 @@ export function BrowserDetailPage() {
               </div>
             </Card>
 
-            <Card title="配置摘要" subtitle="指纹与启动参数">
+            <Card title="配置摘要">
               <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
                 <div className="flex justify-between">
                   <span>用户数据目录</span>
@@ -315,7 +343,7 @@ export function BrowserDetailPage() {
             </Card>
           </div>
 
-          <Card title="快捷操作" subtitle="快速控制实例">
+          <Card title="快捷操作">
             <div className="flex flex-wrap items-center gap-2">
               {profile.running ? (
                 <Button size="sm" variant="secondary" onClick={handleStop} loading={isStopping} disabled={isBusy && !isStopping}>
@@ -336,7 +364,7 @@ export function BrowserDetailPage() {
           </Card>
 
           {profile.lastError && (
-            <Card title="最近错误" subtitle="最近一次启动或运行失败原因">
+            <Card title="最近错误">
               <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
                 {profile.lastError}
               </div>
@@ -344,14 +372,14 @@ export function BrowserDetailPage() {
           )}
 
           {profile.runtimeWarning && (
-            <Card title="运行提示" subtitle="当前实例处于部分可用状态">
+            <Card title="运行提示">
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 whitespace-pre-line">
                 {profile.runtimeWarning}
               </div>
             </Card>
           )}
 
-          <Card title="打开地址" subtitle="向实例发送打开 URL 指令">
+          <Card title="打开地址">
             <div className="flex flex-col md:flex-row gap-3">
               <Input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder="请输入目标地址" />
               <Button onClick={handleOpenUrl}>
@@ -361,7 +389,7 @@ export function BrowserDetailPage() {
             </div>
           </Card>
 
-          <Card title="标签页列表" subtitle="当前实例标签页信息">
+          <Card title="标签页列表">
             <Table columns={tabsColumns} data={tabs} rowKey="tabId" />
           </Card>
 

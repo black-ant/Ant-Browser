@@ -16,7 +16,7 @@ export function TagFilterBar({ tags, selected, onChange }: TagFilterBarProps) {
   const isAllSelected = selected.size === 0
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-1.5 flex-wrap">
       <span className="text-xs text-[var(--color-text-muted)] shrink-0">标签：</span>
       <button
         onClick={() => onChange(new Set())}

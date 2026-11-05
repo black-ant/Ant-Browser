@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -90,6 +91,86 @@ func EnsureDefaultBookmarks(userDataDir string, bookmarks []config.BrowserBookma
 		return fmt.Errorf("序列化书签失败: %w", err)
 	}
 	return os.WriteFile(bookmarksPath, out, 0644)
+}
+
+// ReplaceBookmarkURL 将已有书签中的 oldURL 更新为 newURL，用于修复运行时动态书签地址。
+func ReplaceBookmarkURL(userDataDir string, oldURL string, newURL string) (bool, error) {
+	oldURL = strings.TrimSpace(oldURL)
+	newURL = strings.TrimSpace(newURL)
+	if oldURL == "" || newURL == "" || strings.EqualFold(oldURL, newURL) {
+		return false, nil
+	}
+	return replaceBookmarkURL(userDataDir, newURL, func(node map[string]interface{}) bool {
+		urlValue, _ := node["url"].(string)
+		return strings.EqualFold(strings.TrimSpace(urlValue), oldURL)
+	})
+}
+
+func replaceBookmarkURL(userDataDir string, newURL string, match func(map[string]interface{}) bool) (bool, error) {
+	bookmarksPath := filepath.Join(userDataDir, "Default", "Bookmarks")
+	data, err := os.ReadFile(bookmarksPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return false, fmt.Errorf("解析书签失败: %w", err)
+	}
+	roots, ok := root["roots"].(map[string]interface{})
+	if !ok {
+		return false, nil
+	}
+	changed := false
+	for _, item := range roots {
+		folder, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if children, ok := folder["children"].([]interface{}); ok {
+			if replaceBookmarkURLInNodes(children, newURL, match) {
+				folder["date_modified"] = toChromiumTime(time.Now())
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	out, err := json.MarshalIndent(root, "", "   ")
+	if err != nil {
+		return false, fmt.Errorf("序列化书签失败: %w", err)
+	}
+	return true, os.WriteFile(bookmarksPath, out, 0644)
+}
+
+func replaceBookmarkURLInNodes(nodes []interface{}, newURL string, match func(map[string]interface{}) bool) bool {
+	changed := false
+	for _, item := range nodes {
+		node, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if node["type"] == "url" {
+			if match(node) {
+				node["url"] = newURL
+				node["guid"] = bookmarkGUID(newURL)
+				changed = true
+			}
+			continue
+		}
+		if node["type"] == "folder" {
+			if children, ok := node["children"].([]interface{}); ok {
+				if replaceBookmarkURLInNodes(children, newURL, match) {
+					node["date_modified"] = toChromiumTime(time.Now())
+					changed = true
+				}
+			}
+		}
+	}
+	return changed
 }
 
 // newEmptyBookmarkRoot 构建一个空的书签根结构

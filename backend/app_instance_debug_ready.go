@@ -95,23 +95,55 @@ func waitBrowserDebugPortStable(initialDebugPort int, userDataDir string, timeou
 		return debugPort, nil
 	}
 	allowDetachedGrace := initialDebugPort > 0
+	return stabilizeBrowserDebugPort(debugPort, stableFor, allowDetachedGrace, monitor, probeBrowserDebugPort)
+}
 
+func stabilizeBrowserDebugPort(debugPort int, stableFor time.Duration, allowDetachedGrace bool, monitor *browserProcessMonitor, probe func(int, time.Duration) error) (int, error) {
 	deadline := time.Now().Add(stableFor)
-	for time.Now().Before(deadline) {
+	consecutiveFailures := 0
+	const maxStableProbeFailures = 2
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
 		if monitor != nil && monitor.HasExited() {
 			if !allowDetachedGrace {
 				return 0, newBrowserStartupExitError(monitor.Result())
 			}
 		}
-		if err := probeBrowserDebugPort(debugPort, browserDebugProbeTimeout); err != nil {
-			if monitor != nil && monitor.HasExited() {
-				if !allowDetachedGrace {
-					return 0, newBrowserStartupExitError(monitor.Result())
-				}
-			}
-			return 0, fmt.Errorf("浏览器调试端口 %d 短暂就绪后又失效：%w", debugPort, err)
+		probeTimeout := browserDebugProbeTimeout
+		if remaining < probeTimeout {
+			probeTimeout = remaining
 		}
-		time.Sleep(150 * time.Millisecond)
+		if err := probe(debugPort, probeTimeout); err != nil {
+			consecutiveFailures++
+			if consecutiveFailures > maxStableProbeFailures {
+				return 0, fmt.Errorf("浏览器调试端口 %d 稳定窗口内连续失败：%w", debugPort, err)
+			}
+		} else {
+			consecutiveFailures = 0
+		}
+
+		remaining = time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		sleepFor := 150 * time.Millisecond
+		if remaining < sleepFor {
+			sleepFor = remaining
+		}
+		time.Sleep(sleepFor)
+	}
+
+	if monitor != nil && monitor.HasExited() && !allowDetachedGrace {
+		return 0, newBrowserStartupExitError(monitor.Result())
+	}
+	if err := probe(debugPort, browserDebugProbeTimeout); err != nil {
+		return 0, fmt.Errorf("浏览器调试端口 %d 稳定窗口最终探测失败：%w", debugPort, err)
+	}
+	if monitor != nil && monitor.HasExited() && !allowDetachedGrace {
+		return 0, newBrowserStartupExitError(monitor.Result())
 	}
 	return debugPort, nil
 }

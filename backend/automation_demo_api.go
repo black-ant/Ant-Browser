@@ -119,18 +119,26 @@ func (a *App) automationDemoRequest(method string, apiPath string, body any) (in
 	return a.automationDemoRequestWithContext(context.Background(), method, apiPath, body)
 }
 
-func (a *App) automationDemoRequestWithContext(ctx context.Context, method string, apiPath string, body any) (int, map[string]interface{}, error) {
+func automationDemoRequestContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, automationDemoTimeout)
+}
+
+func (a *App) automationDemoRequestWithContext(ctx context.Context, method string, apiPath string, body any) (int, map[string]interface{}, error) {
+	reqCtx, cancel := automationDemoRequestContext(ctx)
+	defer cancel()
+
 	baseURL, authHeader, authValue, err := a.automationDemoEndpoint()
 	if err != nil {
 		return 0, nil, err
 	}
 
 	requestURL := strings.TrimRight(baseURL, "/") + apiPath
-	ctx, cancel := context.WithTimeout(ctx, automationDemoTimeout)
-	defer cancel()
 
 	var reader io.Reader
 	if body != nil {
@@ -141,7 +149,7 @@ func (a *App) automationDemoRequestWithContext(ctx context.Context, method strin
 		reader = bytes.NewReader(raw)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, requestURL, reader)
+	req, err := http.NewRequestWithContext(reqCtx, method, requestURL, reader)
 	if err != nil {
 		return 0, nil, fmt.Errorf("create demo request failed: %w", err)
 	}
@@ -152,9 +160,9 @@ func (a *App) automationDemoRequestWithContext(ctx context.Context, method strin
 		req.Header.Set(authHeader, authValue)
 	}
 
-	resp, err := (&http.Client{Timeout: automationDemoTimeout}).Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
+		if ctxErr := reqCtx.Err(); ctxErr != nil {
 			return 0, nil, fmt.Errorf("call launch api failed: %w", ctxErr)
 		}
 		return 0, nil, fmt.Errorf("call launch api failed: %w", err)

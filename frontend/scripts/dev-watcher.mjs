@@ -318,7 +318,9 @@ function main() {
     childKilledByRssLimit = false
     child = spawn(nodeExecutable, nodeArgs.args, {
       cwd: frontendDir,
-      stdio: 'inherit',
+      // Keep stdin open for Vite. In detached Windows launches the inherited
+      // stdin can close immediately, which makes Vite exit cleanly after boot.
+      stdio: ['pipe', 'inherit', 'inherit'],
       env: childEnv,
     })
 

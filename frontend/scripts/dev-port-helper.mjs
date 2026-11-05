@@ -17,6 +17,7 @@ function runPowerShell(command, cwd = repoRoot) {
   return spawnSync('powershell.exe', ['-NoProfile', '-Command', command], {
     cwd,
     encoding: 'utf8',
+    timeout: 12000,
   })
 }
 
@@ -32,6 +33,10 @@ function normalizeProcessChain(proc) {
 
 function collectProcessesByPowerShell(filterCommand) {
   const result = runPowerShell(filterCommand)
+
+  if (result.error) {
+    throw new Error(result.error.message || 'failed to inspect processes')
+  }
 
   if (result.status !== 0) {
     throw new Error(result.stderr?.trim() || 'failed to inspect processes')
@@ -58,9 +63,12 @@ export function listListeners(port) {
   const items = collectProcessesByPowerShell(`
 $port = ${port}
 $items = @()
+$allProcs = Get-CimInstance Win32_Process
+$procMap = @{}
+foreach ($item in $allProcs) { $procMap[[string]$item.ProcessId] = $item }
 $conns = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue
 foreach ($conn in $conns) {
-  $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($conn.OwningProcess)" | Select-Object -First 1
+  $proc = $procMap[[string]$conn.OwningProcess]
   if (-not $proc) { continue }
 
   $chain = @()
@@ -76,7 +84,7 @@ foreach ($conn in $conns) {
       commandLine = [string]$current.CommandLine
     }
     if ($current.ParentProcessId -le 0) { break }
-    $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($current.ParentProcessId)" | Select-Object -First 1
+    $current = $procMap[[string]$current.ParentProcessId]
     $depth++
   }
 
@@ -126,14 +134,22 @@ export function killProcessTree(pid) {
   const killed = spawnSync('taskkill.exe', ['/F', '/T', '/PID', String(pid)], {
     cwd: repoRoot,
     stdio: 'ignore',
+    timeout: 8000,
   })
+  if (killed.error) {
+    return false
+  }
   return killed.status === 0
 }
 
 export function listProjectDevProcesses() {
   return collectProcessesByPowerShell(`
 $items = @()
-$procs = Get-CimInstance Win32_Process -Filter "${processInspectionFilter}"
+$allProcs = Get-CimInstance Win32_Process
+$procMap = @{}
+foreach ($item in $allProcs) { $procMap[[string]$item.ProcessId] = $item }
+$targetNames = @('node.exe', 'cmd.exe', 'npm.exe', 'esbuild.exe', 'wails.exe')
+$procs = $allProcs | Where-Object { $targetNames -contains $_.Name }
 foreach ($proc in $procs) {
   $chain = @()
   $current = $proc
@@ -148,7 +164,7 @@ foreach ($proc in $procs) {
       commandLine = [string]$current.CommandLine
     }
     if ($current.ParentProcessId -le 0) { break }
-    $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($current.ParentProcessId)" | Select-Object -First 1
+    $current = $procMap[[string]$current.ParentProcessId]
     $depth++
   }
 

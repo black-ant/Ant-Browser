@@ -1,0 +1,32 @@
+{
+  "format": "ant-automation-script",
+  "packageFormat": "ant-automation-script",
+  "manifestVersion": 1,
+  "id": "news-query-txt",
+  "name": "查询新闻并写 TXT",
+  "description": "通过 Bing 搜索新闻关键词，提取结果并写入本地 txt 文件。",
+  "type": "playwright-cdp",
+  "status": "ready",
+  "entryFile": "index.cjs",
+  "tags": [
+    "Playwright",
+    "新闻",
+    "TXT"
+  ],
+  "params": {
+    "keyword": "OpenAI",
+    "limit": 10,
+    "timeRange": "week",
+    "outputFileName": "openai-news.txt",
+    "timeoutMs": 30000,
+    "waitAfterLoadMs": 1500,
+    "captureScreenshot": false
+  },
+  "notes": "脚本会优先使用 Bing 搜索真实新闻结果，并自动追加时间过滤、排除问答/聚合站点、回退查询词和质量校验；只有达到新闻质量门槛时才会判定成功，并把结果写入本地 txt。执行时可直接点“创建 Demo 并执行”，成功后在结果里的 outputPath 查看文件。",
+  "source": {
+    "type": "builtin",
+    "uri": "repo://backend/internal/automation/demo-library/news-query-txt",
+    "ref": "HEAD",
+    "path": "news-query-txt"
+  }
+}

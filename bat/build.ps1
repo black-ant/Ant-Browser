@@ -123,7 +123,7 @@ try {
 
     Write-Host ""
     Write-Host "[6/7] Building app..."
-    Invoke-NativeCommand -FilePath "wails" -Arguments @("build")
+    Invoke-NativeCommand -FilePath "wails" -Arguments @("build", "-tags", "native_webview2loader")
 
     if ($tempDistCreated -and (Test-Path -LiteralPath $frontendDist)) {
         Remove-Item -LiteralPath $frontendDist -Recurse -Force -ErrorAction SilentlyContinue

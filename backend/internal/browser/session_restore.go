@@ -24,15 +24,25 @@ func ClearSessionRestoreData(userDataDir string) error {
 	}
 
 	profileDir := filepath.Join(rootDir, "Default")
+	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("stat profile dir: %w", err)
+	}
+
 	sessionsDir := filepath.Join(profileDir, "Sessions")
 	var errs []error
 
-	if err := os.RemoveAll(sessionsDir); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("remove sessions dir: %w", err))
-	} else if err == nil {
-		if mkErr := os.MkdirAll(sessionsDir, 0o755); mkErr != nil {
-			errs = append(errs, fmt.Errorf("recreate sessions dir: %w", mkErr))
+	if _, statErr := os.Stat(sessionsDir); statErr == nil {
+		if err := os.RemoveAll(sessionsDir); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("remove sessions dir: %w", err))
+		} else if err == nil {
+			if mkErr := os.MkdirAll(sessionsDir, 0o755); mkErr != nil {
+				errs = append(errs, fmt.Errorf("recreate sessions dir: %w", mkErr))
+			}
 		}
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		errs = append(errs, fmt.Errorf("stat sessions dir: %w", statErr))
 	}
 
 	for _, name := range sessionRestoreLegacyFiles {

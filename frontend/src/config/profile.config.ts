@@ -1,4 +1,4 @@
-import { projectConfig } from './project.config'
+import { projectConfig } from './projectBase.config'
 import { PROJECT_GITHUB_URL } from './links'
 
 export type ProfileIconKey =
@@ -73,7 +73,7 @@ export const profilePageConfig: ProfilePageLocalConfig = {
     location: '中国',
     joinDate: '2020',
     email: 'contact@antblack.dev',
-    website: 'http://blog.antblack.de',
+    website: 'http://blog.antblack.cn',
     github: 'https://github.com/black-ant',
     skills: ['Go', 'React', 'TypeScript', 'Wails', 'Node.js', 'Docker'],
     channels: [
@@ -87,8 +87,8 @@ export const profilePageConfig: ProfilePageLocalConfig = {
       {
         name: '个人博客',
         description: '独立站文章与项目归档',
-        detail: 'blog.antblack.de',
-        href: 'http://blog.antblack.de',
+        detail: 'blog.antblack.cn',
+        href: 'http://blog.antblack.cn',
         icon: 'globe',
       },
       {

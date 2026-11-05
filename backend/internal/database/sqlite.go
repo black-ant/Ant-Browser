@@ -142,6 +142,251 @@ var migrations = []migration{
 			`ALTER TABLE browser_bookmarks ADD COLUMN open_on_start INTEGER NOT NULL DEFAULT 0`,
 		},
 	},
+	{
+		version: 8,
+		desc:    "添加 Chrome 插件包管理表",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_extensions (
+				extension_id  TEXT PRIMARY KEY,
+				name          TEXT NOT NULL,
+				version       TEXT NOT NULL DEFAULT '',
+				description   TEXT NOT NULL DEFAULT '',
+				manifest_json TEXT NOT NULL DEFAULT '{}',
+				source_url    TEXT NOT NULL DEFAULT '',
+				install_dir   TEXT NOT NULL,
+				enabled       INTEGER NOT NULL DEFAULT 1,
+				installed_at  TEXT NOT NULL DEFAULT '',
+				updated_at    TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_extensions_enabled ON browser_extensions(enabled)`,
+		},
+	},
+	{
+		version: 9,
+		desc:    "添加实例插件绑定表",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_profile_extension_settings (
+				profile_id  TEXT PRIMARY KEY,
+				configured  INTEGER NOT NULL DEFAULT 0,
+				updated_at  TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE TABLE IF NOT EXISTS browser_profile_extensions (
+				profile_id    TEXT NOT NULL,
+				extension_id  TEXT NOT NULL,
+				enabled       INTEGER NOT NULL DEFAULT 1,
+				created_at    TEXT NOT NULL DEFAULT '',
+				updated_at    TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (profile_id, extension_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_profile_extensions_profile ON browser_profile_extensions(profile_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_profile_extensions_extension ON browser_profile_extensions(extension_id)`,
+		},
+	},
+	{
+		version: 10,
+		desc:    "插件表添加图标缓存字段",
+		stmts: []string{
+			`ALTER TABLE browser_extensions ADD COLUMN icon_data_url TEXT NOT NULL DEFAULT ''`,
+		},
+	},
+	{
+		version: 11,
+		desc:    "实例表添加回收站字段",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_profiles_deleted_at ON browser_profiles(deleted_at)`,
+		},
+	},
+	{
+		version: 12,
+		desc:    "代理表添加指定内核字段",
+		stmts: []string{
+			`ALTER TABLE browser_proxies ADD COLUMN preferred_kernel TEXT NOT NULL DEFAULT ''`,
+		},
+	},
+	{
+		version: 13,
+		desc:    "实例表添加历史标签恢复覆盖字段",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN restore_last_session TEXT NOT NULL DEFAULT ''`,
+		},
+	},
+	{
+		version: 14,
+		desc:    "实例表添加内存限制字段",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN memory_limit_mb INTEGER NOT NULL DEFAULT 0`,
+		},
+	},
+	{
+		version: 15,
+		desc:    "插件包持久安装与实例运行态",
+		stmts: []string{
+			`ALTER TABLE browser_extensions ADD COLUMN install_mode TEXT NOT NULL DEFAULT 'persistent'`,
+			`ALTER TABLE browser_extensions ADD COLUMN package_path TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_extensions ADD COLUMN package_hash TEXT NOT NULL DEFAULT ''`,
+			`CREATE TABLE IF NOT EXISTS browser_profile_extension_runtime (
+				profile_id           TEXT NOT NULL,
+				extension_id         TEXT NOT NULL,
+				runtime_extension_id TEXT NOT NULL DEFAULT '',
+				install_mode         TEXT NOT NULL DEFAULT 'persistent',
+				installed_version    TEXT NOT NULL DEFAULT '',
+				package_hash         TEXT NOT NULL DEFAULT '',
+				status               TEXT NOT NULL DEFAULT '',
+				backup_path          TEXT NOT NULL DEFAULT '',
+				last_verified_at     TEXT NOT NULL DEFAULT '',
+				last_error           TEXT NOT NULL DEFAULT '',
+				created_at           TEXT NOT NULL DEFAULT '',
+				updated_at           TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (profile_id, extension_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_profile_extension_runtime_profile ON browser_profile_extension_runtime(profile_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_profile_extension_runtime_extension ON browser_profile_extension_runtime(extension_id)`,
+		},
+	},
+	{
+		version: 16,
+		desc:    "插件默认安装策略",
+		stmts: []string{
+			`ALTER TABLE browser_extensions ADD COLUMN default_install INTEGER NOT NULL DEFAULT 0`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_extensions_default_install ON browser_extensions(default_install)`,
+		},
+	},
+	{
+		version: 17,
+		desc:    "清理历史插件默认安装误标",
+		stmts: []string{
+			`UPDATE browser_extensions SET default_install = 0`,
+		},
+	},
+	{
+		version: 24,
+		desc:    "添加实例代理模式与代理池分组字段",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN proxy_mode TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_profiles ADD COLUMN proxy_group_name TEXT NOT NULL DEFAULT ''`,
+		},
+	},
+	{
+		version: 25,
+		desc:    "添加代理虚拟连接分组及成员选择策略",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_proxy_virtual_groups (
+				group_id           TEXT PRIMARY KEY,
+				group_name         TEXT NOT NULL COLLATE NOCASE UNIQUE,
+				strategy           TEXT NOT NULL DEFAULT 'round_robin',
+				selected_proxy_id  TEXT NOT NULL DEFAULT '',
+				member_proxy_ids   TEXT NOT NULL DEFAULT '[]',
+				member_group_names TEXT NOT NULL DEFAULT '[]',
+				sort_order         INTEGER NOT NULL DEFAULT 0,
+				created_at         TEXT NOT NULL DEFAULT '',
+				updated_at         TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_proxy_virtual_groups_sort_order ON browser_proxy_virtual_groups(sort_order, group_name)`,
+		},
+	},
+	{
+		version: 26,
+		desc:    "记录代理测速来源与配置指纹",
+		stmts: []string{
+			`ALTER TABLE browser_proxies ADD COLUMN last_test_engine TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxies ADD COLUMN last_test_connector_type TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxies ADD COLUMN last_test_fingerprint TEXT NOT NULL DEFAULT ''`,
+		},
+	},
+	{
+		version: 27,
+		desc:    "记录已删除书签，避免备份导入复活",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_bookmark_deletions (
+				url        TEXT PRIMARY KEY NOT NULL,
+				deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+		},
+	},
+	{
+		version: 28,
+		desc:    "修复跨分支数据库缺失字段",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN runtime_type TEXT NOT NULL DEFAULT 'desktop_chromium'`,
+			`ALTER TABLE browser_profiles ADD COLUMN runtime_config_json TEXT NOT NULL DEFAULT '{}'`,
+			`ALTER TABLE browser_profiles ADD COLUMN proxy_mode TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_profiles ADD COLUMN proxy_group_name TEXT NOT NULL DEFAULT ''`,
+			`CREATE TABLE IF NOT EXISTS browser_proxy_virtual_groups (
+				group_id           TEXT PRIMARY KEY,
+				group_name         TEXT NOT NULL COLLATE NOCASE UNIQUE,
+				strategy           TEXT NOT NULL DEFAULT 'round_robin',
+				selected_proxy_id  TEXT NOT NULL DEFAULT '',
+				member_proxy_ids   TEXT NOT NULL DEFAULT '[]',
+				member_group_names TEXT NOT NULL DEFAULT '[]',
+				sort_order         INTEGER NOT NULL DEFAULT 0,
+				created_at         TEXT NOT NULL DEFAULT '',
+				updated_at         TEXT NOT NULL DEFAULT ''
+			)`,
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN strategy TEXT NOT NULL DEFAULT 'round_robin'`,
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN selected_proxy_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN member_proxy_ids TEXT NOT NULL DEFAULT '[]'`,
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN member_group_names TEXT NOT NULL DEFAULT '[]'`,
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`,
+			`CREATE INDEX IF NOT EXISTS idx_browser_proxy_virtual_groups_sort_order ON browser_proxy_virtual_groups(sort_order, group_name)`,
+		},
+	},
+	{
+		version: 29,
+		desc:    "添加虚拟分组健康状态与偏好节点",
+		stmts: []string{
+			`ALTER TABLE browser_proxy_virtual_groups ADD COLUMN preferred_proxy_id TEXT NOT NULL DEFAULT ''`,
+			`CREATE TABLE IF NOT EXISTS browser_proxy_virtual_group_member_state (
+				group_id              TEXT NOT NULL,
+				proxy_id              TEXT NOT NULL,
+				state                 TEXT NOT NULL DEFAULT 'unknown',
+				consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+				consecutive_successes INTEGER NOT NULL DEFAULT 0,
+				last_probe_at         TEXT NOT NULL DEFAULT '',
+				last_success_at       TEXT NOT NULL DEFAULT '',
+				last_failure_at       TEXT NOT NULL DEFAULT '',
+				next_probe_at         TEXT NOT NULL DEFAULT '',
+				last_error            TEXT NOT NULL DEFAULT '',
+				last_engine           TEXT NOT NULL DEFAULT '',
+				last_connector_type   TEXT NOT NULL DEFAULT '',
+				updated_at            TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (group_id, proxy_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_vgm_state_group_state ON browser_proxy_virtual_group_member_state(group_id, state)`,
+		},
+	},
+	{
+		version: 30,
+		desc:    "清理不含任何插件的手动实例插件配置",
+		stmts: []string{
+			// 「手动设置」却一个插件都没绑，是空列表，不承载任何意图，
+			// 等价于没有手动配置。留着会让该实例永久无法跟随「默认安装」。
+			`DELETE FROM browser_profile_extension_settings
+			 WHERE configured = 1
+			   AND NOT EXISTS (
+			     SELECT 1 FROM browser_profile_extensions b
+			     WHERE b.profile_id = browser_profile_extension_settings.profile_id
+			   )`,
+		},
+	},
+	{
+		version: 31,
+		desc:    "代理订阅刷新：标记已从来源消失的节点",
+		stmts: []string{
+			`ALTER TABLE browser_proxies ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE browser_proxies ADD COLUMN source_missing_since TEXT NOT NULL DEFAULT ''`,
+		},
+	},
+	{
+		version: 32,
+		desc:    "代理订阅刷新：持久化每源的拉取代理与最近一次刷新失败原因",
+		stmts: []string{
+			`ALTER TABLE browser_proxies ADD COLUMN source_fetch_proxy_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_proxies ADD COLUMN source_last_refresh_error TEXT NOT NULL DEFAULT ''`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

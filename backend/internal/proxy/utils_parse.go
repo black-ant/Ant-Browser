@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -46,8 +47,33 @@ func proxyEndpoint(src string) (string, error) {
 		if at := strings.LastIndex(rest, "@"); at >= 0 {
 			hostport := strings.SplitN(rest[at+1:], "?", 2)[0]
 			hostport = strings.SplitN(hostport, "#", 2)[0]
-			return hostport, nil
+			host, port, err := splitHostPortLenient(hostport)
+			if err != nil {
+				return "", err
+			}
+			return net.JoinHostPort(host, strconv.Itoa(port)), nil
 		}
+	}
+
+	if strings.HasPrefix(l, "ss://") {
+		outbound, err := buildOutboundSS(src)
+		if err != nil {
+			return "", err
+		}
+		settings, ok := outbound["settings"].(map[string]interface{})
+		if !ok {
+			return "", fmt.Errorf("ss 节点缺少 settings")
+		}
+		serverConfig, err := firstShadowsocksServer(settings)
+		if err != nil {
+			return "", err
+		}
+		server := getMapString(serverConfig, "address")
+		port := getMapInt(serverConfig, "port")
+		if server == "" || port == 0 {
+			return "", fmt.Errorf("ss 节点信息不完整")
+		}
+		return net.JoinHostPort(server, strconv.Itoa(port)), nil
 	}
 
 	var payload interface{}
@@ -63,6 +89,31 @@ func proxyEndpoint(src string) (string, error) {
 	}
 
 	return "", fmt.Errorf("无法解析代理地址")
+}
+
+func splitHostPortLenient(hostport string) (string, int, error) {
+	hostport = strings.TrimSpace(hostport)
+	if hostport == "" {
+		return "", 0, fmt.Errorf("缺少代理地址")
+	}
+	if host, portText, err := net.SplitHostPort(hostport); err == nil {
+		port, convErr := strconv.Atoi(portText)
+		if convErr != nil || port <= 0 || port > 65535 {
+			return "", 0, fmt.Errorf("代理端口无效: %s", portText)
+		}
+		return strings.Trim(host, "[]"), port, nil
+	}
+	idx := strings.LastIndex(hostport, ":")
+	if idx <= 0 || idx == len(hostport)-1 {
+		return "", 0, fmt.Errorf("无法解析代理地址: %s", hostport)
+	}
+	host := strings.Trim(strings.TrimSpace(hostport[:idx]), "[]")
+	portText := strings.TrimSpace(hostport[idx+1:])
+	port, err := strconv.Atoi(portText)
+	if host == "" || err != nil || port <= 0 || port > 65535 {
+		return "", 0, fmt.Errorf("无法解析代理地址: %s", hostport)
+	}
+	return host, port, nil
 }
 
 func toStringMap(input interface{}) map[string]interface{} {
@@ -81,7 +132,7 @@ func toStringMap(input interface{}) map[string]interface{} {
 
 func getMapString(m map[string]interface{}, key string) string {
 	v, ok := m[key]
-	if !ok {
+	if !ok || v == nil {
 		return ""
 	}
 	switch s := v.(type) {

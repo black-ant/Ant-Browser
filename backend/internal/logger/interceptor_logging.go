@@ -17,7 +17,7 @@ func (m *MethodInterceptor) beforeCall(methodName string, params []interface{}) 
 	}
 
 	// 记录方法入口日志
-	entry := NewLogEntry(INFO, "interceptor", fmt.Sprintf("Method call started: %s", methodName))
+	entry := NewLogEntry(DEBUG, "interceptor", fmt.Sprintf("Method call started: %s", methodName))
 	entry.WithRequestID(ctx.RequestID)
 	entry.WithMethod(methodName)
 
@@ -71,7 +71,7 @@ func (m *MethodInterceptor) afterCall(ctx *CallContext, result interface{}, err 
 		}
 	} else {
 		// 成功情况
-		entry = NewLogEntry(INFO, "interceptor", fmt.Sprintf("Method call completed: %s", ctx.MethodName))
+		entry = NewLogEntry(DEBUG, "interceptor", fmt.Sprintf("Method call completed: %s", ctx.MethodName))
 
 		// 记录返回结果
 		if m.config.LogResults && result != nil {

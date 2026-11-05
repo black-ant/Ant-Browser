@@ -1,169 +1,119 @@
 package backend
 
 import (
-	internalbrowser "ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
-	"encoding/json"
-	"os"
+	"ant-chrome/backend/internal/database"
 	"path/filepath"
-	"reflect"
 	"testing"
 )
 
-func TestBookmarkSyncToProfilesAppliesCurrentDefaults(t *testing.T) {
-	t.Parallel()
-
-	appRoot := t.TempDir()
-	cfg := config.DefaultConfig()
-	cfg.Browser.UserDataRoot = "data"
-	cfg.Browser.DefaultBookmarks = []config.BrowserBookmark{
-		{Name: "默认书签", URL: "https://default.example/"},
-	}
-
-	app := NewApp(appRoot)
-	app.config = cfg
-	app.browserMgr = internalbrowser.NewManager(cfg, appRoot)
-	app.browserMgr.Profiles["profile-1"] = &internalbrowser.Profile{
-		ProfileId:   "profile-1",
-		ProfileName: "实例 1",
-		UserDataDir: "profile-1",
-	}
-
-	result := app.BookmarkSyncToProfiles()
-	if result.Total != 1 || result.Synced != 1 || result.Skipped != 0 || result.Failed != 0 {
-		t.Fatalf("unexpected sync result: %+v", result)
-	}
-
-	bookmarksPath := filepath.Join(appRoot, "data", "profile-1", "Default", "Bookmarks")
-	data, err := os.ReadFile(bookmarksPath)
+func TestMigrateToSQLiteFiltersDeletedDefaultBookmarks(t *testing.T) {
+	root := t.TempDir()
+	db, err := database.NewDB(filepath.Join(root, "app.db"))
 	if err != nil {
-		t.Fatalf("read bookmarks: %v", err)
+		t.Fatal(err)
 	}
-	var root map[string]interface{}
-	if err := json.Unmarshal(data, &root); err != nil {
-		t.Fatalf("unmarshal bookmarks: %v", err)
-	}
-	if countBookmarkURLInRoot(root, "https://default.example/") != 1 {
-		t.Fatalf("default bookmark was not synced once: %s", string(data))
-	}
-}
-
-func TestBookmarkListAlwaysIncludesVerificationBookmarks(t *testing.T) {
-	t.Parallel()
-
-	appRoot := t.TempDir()
-	cfg := config.DefaultConfig()
-	cfg.Browser.DefaultBookmarks = []config.BrowserBookmark{
-		{Name: "用户默认书签", URL: "https://user.example/"},
+	defer db.Close()
+	if err := db.Migrate(); err != nil {
+		t.Fatal(err)
 	}
 
-	app := NewApp(appRoot)
-	app.config = cfg
-	app.browserMgr = internalbrowser.NewManager(cfg, appRoot)
-
-	bookmarks := app.BookmarkList()
-	for _, url := range []string{"https://ippure.com/", "https://iplark.com/", "https://ping0.cc/"} {
-		if countBookmarkItemsByURL(bookmarks, url) != 1 {
-			t.Fatalf("expected verification bookmark %s exactly once, got %+v", url, bookmarks)
-		}
+	bookmarkDAO := browser.NewSQLiteBookmarkDAO(db.GetConn())
+	if err := bookmarkDAO.ReplaceAll([]config.BrowserBookmark{{Name: "Ping0", URL: "https://ping0.cc/"}}); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestBookmarkSavePersistsVerificationBookmarks(t *testing.T) {
-	t.Parallel()
-
-	appRoot := t.TempDir()
-	cfg := config.DefaultConfig()
-	app := NewApp(appRoot)
-	app.config = cfg
-	app.browserMgr = internalbrowser.NewManager(cfg, appRoot)
-
-	if err := app.BookmarkSave([]config.BrowserBookmark{{Name: "用户默认书签", URL: "https://user.example/", OpenOnStart: true}}); err != nil {
-		t.Fatalf("BookmarkSave returned error: %v", err)
+	if err := bookmarkDAO.ReplaceAll(nil); err != nil {
+		t.Fatal(err)
 	}
-	if item, ok := findBookmarkItemByURL(app.config.Browser.DefaultBookmarks, "https://user.example/"); !ok || !item.OpenOnStart {
-		t.Fatalf("expected open_on_start to be preserved, got %+v", app.config.Browser.DefaultBookmarks)
+
+	app := NewApp(root)
+	app.db = db
+	app.config = config.DefaultConfig()
+	app.config.Browser.DefaultBookmarks = nil
+	app.config.Browser.DeletedBookmarkURLs = []string{"https://www.google.com/"}
+	app.browserMgr = browser.NewManager(app.config, app.appRoot)
+	app.browserMgr.CoreDAO = browser.NewSQLiteCoreDAO(db.GetConn())
+	app.browserMgr.ProxyDAO = browser.NewSQLiteProxyDAO(db.GetConn())
+	app.browserMgr.ProfileDAO = browser.NewSQLiteProfileDAO(db.GetConn())
+	app.browserMgr.BookmarkDAO = bookmarkDAO
+	app.browserMgr.ProxyVirtualGroupDAO = browser.NewSQLiteProxyVirtualGroupDAO(db.GetConn())
+
+	app.migrateToSQLite()
+	bookmarks, err := bookmarkDAO.List()
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, url := range []string{"https://ippure.com/", "https://iplark.com/", "https://ping0.cc/"} {
-		if countBookmarkItemsByURL(app.config.Browser.DefaultBookmarks, url) != 1 {
-			t.Fatalf("expected saved verification bookmark %s exactly once, got %+v", url, app.config.Browser.DefaultBookmarks)
-		}
+	if containsBookmarkURL(bookmarks, "https://www.google.com/") {
+		t.Fatalf("config-deleted default bookmark was initialized: %#v", bookmarks)
+	}
+	if containsBookmarkURL(bookmarks, "https://ping0.cc/") {
+		t.Fatalf("SQLite-deleted default bookmark was initialized: %#v", bookmarks)
+	}
+	if !containsBookmarkURL(bookmarks, fingerprintCheckBookmarkURL) {
+		t.Fatalf("protected fingerprint bookmark was not initialized: %#v", bookmarks)
+	}
+
+	deletedURLs, err := bookmarkDAO.DeletedURLs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deletedURLs) != 2 || !containsStringValue(deletedURLs, "https://ping0.cc/") || !containsStringValue(deletedURLs, "https://www.google.com/") {
+		t.Fatalf("deletion markers after migration = %#v", deletedURLs)
 	}
 }
 
-func TestBrowserDefaultStartURLsIncludesOpenOnStartBookmarks(t *testing.T) {
-	t.Parallel()
+func TestBookmarkSaveAllowsVerificationBookmarksToBeRemovedAndReset(t *testing.T) {
+	root := t.TempDir()
+	app := NewApp(root)
+	app.config = config.DefaultConfig()
+	app.config.Browser.DefaultBookmarks = append([]config.BrowserBookmark{}, defaultBookmarkList...)
+	app.browserMgr = browser.NewManager(app.config, app.appRoot)
 
-	appRoot := t.TempDir()
-	cfg := config.DefaultConfig()
-	cfg.Browser.DefaultStartURLs = []string{"https://home.example/"}
-	cfg.Browser.DefaultBookmarks = []config.BrowserBookmark{
-		{Name: "启动打开", URL: "https://open.example/", OpenOnStart: true},
-		{Name: "普通书签", URL: "https://closed.example/"},
-		{Name: "重复启动页", URL: "https://home.example/", OpenOnStart: true},
+	if err := app.BookmarkSave([]BrowserBookmark{{Name: "Google", URL: "https://www.google.com/"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, verificationURL := range []string{
+		"https://ippure.com/",
+		"https://iplark.com/",
+		"https://ping0.cc/",
+	} {
+		if containsBookmarkURL(app.BookmarkList(), verificationURL) {
+			t.Fatalf("verification bookmark %q was automatically restored: %#v", verificationURL, app.BookmarkList())
+		}
 	}
 
-	app := NewApp(appRoot)
-	app.config = cfg
-	app.browserMgr = internalbrowser.NewManager(cfg, appRoot)
+	savedConfig, err := config.Load(filepath.Join(root, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	restartedApp := NewApp(root)
+	restartedApp.config = savedConfig
+	restartedApp.browserMgr = browser.NewManager(savedConfig, restartedApp.appRoot)
+	if containsBookmarkURL(restartedApp.BookmarkList(), "https://ping0.cc/") {
+		t.Fatal("verification bookmark returned after config reload")
+	}
 
-	got := app.browserDefaultStartURLs()
-	want := []string{"https://home.example/", "https://open.example/"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("default start urls mismatch: got=%v want=%v", got, want)
+	if err := restartedApp.BookmarkReset(); err != nil {
+		t.Fatal(err)
+	}
+	if !containsBookmarkURL(restartedApp.BookmarkList(), "https://ping0.cc/") {
+		t.Fatal("reset did not restore the default verification bookmark")
+	}
+	savedAfterReset, err := config.Load(filepath.Join(root, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(savedAfterReset.Browser.DeletedBookmarkURLs) != 0 {
+		t.Fatalf("deletion markers after reset = %#v, want none", savedAfterReset.Browser.DeletedBookmarkURLs)
 	}
 }
 
-func countBookmarkURLInRoot(root map[string]interface{}, url string) int {
-	count := 0
-	roots, ok := root["roots"].(map[string]interface{})
-	if !ok {
-		return count
-	}
-	for _, item := range roots {
-		folder, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if children, ok := folder["children"].([]interface{}); ok {
-			count += countBookmarkURLInNodes(children, url)
+func containsStringValue(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
 		}
 	}
-	return count
-}
-
-func countBookmarkURLInNodes(nodes []interface{}, url string) int {
-	count := 0
-	for _, item := range nodes {
-		node, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if node["type"] == "url" && node["url"] == url {
-			count++
-		}
-		if children, ok := node["children"].([]interface{}); ok {
-			count += countBookmarkURLInNodes(children, url)
-		}
-	}
-	return count
-}
-
-func findBookmarkItemByURL(items []config.BrowserBookmark, url string) (config.BrowserBookmark, bool) {
-	for _, item := range items {
-		if item.URL == url {
-			return item, true
-		}
-	}
-	return config.BrowserBookmark{}, false
-}
-
-func countBookmarkItemsByURL(items []config.BrowserBookmark, url string) int {
-	count := 0
-	for _, item := range items {
-		if item.URL == url {
-			count++
-		}
-	}
-	return count
+	return false
 }

@@ -2,6 +2,7 @@ package automation
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -47,6 +48,7 @@ func normalizeScriptRecord(input ScriptRecord, existing ScriptRecord) (ScriptRec
 		ScriptText:      normalizeScriptText(input.ScriptText),
 		Notes:           strings.TrimSpace(input.Notes),
 		TargetConfig:    normalizeScriptTargetConfig(input.TargetConfig),
+		PublicAPI:       normalizeScriptPublicAPIConfig(input.PublicAPI),
 		Source:          normalizeScriptSource(input.Source, existing.Source),
 		CreatedAt:       createdAt,
 		UpdatedAt:       updatedAt,
@@ -193,6 +195,149 @@ func normalizeScriptTargetSelector(input ScriptTargetSelector) ScriptTargetSelec
 		Keywords:    normalizeScriptTags(input.Keywords),
 		Tags:        normalizeScriptTags(input.Tags),
 	}
+}
+
+func normalizeScriptPublicAPIConfig(input ScriptPublicAPIConfig) ScriptPublicAPIConfig {
+	return ScriptPublicAPIConfig{
+		Enabled:          input.Enabled,
+		Method:           normalizeScriptPublicAPIMethod(input.Method),
+		Path:             normalizeScriptPublicAPIPath(input.Path),
+		RequestMode:      normalizeScriptPublicAPIRequestMode(input.RequestMode),
+		ResponseMode:     normalizeScriptPublicAPIResponseMode(input.ResponseMode),
+		TimeoutMs:        normalizeScriptPublicAPITimeout(input.TimeoutMs),
+		RequestBodyText:  normalizeScriptJSONText(input.RequestBodyText),
+		ResponseBodyText: normalizeScriptJSONText(input.ResponseBodyText),
+		Variables:        normalizeScriptPublicAPIVariables(input.Variables),
+	}
+}
+
+func normalizeScriptPublicAPIVariables(variables []ScriptPublicAPIVariable) []ScriptPublicAPIVariable {
+	seen := make(map[string]struct{}, len(variables))
+	result := make([]ScriptPublicAPIVariable, 0, len(variables))
+	for _, variable := range variables {
+		name := strings.TrimSpace(variable.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, ScriptPublicAPIVariable{
+			Name:         name,
+			DefaultValue: strings.TrimSpace(variable.DefaultValue),
+			Description:  strings.TrimSpace(variable.Description),
+			Required:     variable.Required,
+		})
+	}
+	return result
+}
+
+func normalizeScriptPublicAPIMethod(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "POST":
+		return "POST"
+	default:
+		return "POST"
+	}
+}
+
+func normalizeScriptPublicAPIRequestMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "params-only":
+		return "params-only"
+	default:
+		return "standard"
+	}
+}
+
+func normalizeScriptPublicAPIResponseMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "result-only":
+		return "result-only"
+	default:
+		return "envelope"
+	}
+}
+
+func normalizeScriptPublicAPITimeout(value int) int {
+	if value <= 0 {
+		return defaultScriptPublicAPITimeoutMs
+	}
+	if value < 1000 {
+		return 1000
+	}
+	if value > 30*60*1000 {
+		return 30 * 60 * 1000
+	}
+	return value
+}
+
+func normalizeScriptPublicAPIPath(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return ""
+	}
+
+	normalized = strings.ReplaceAll(normalized, "\\", "/")
+	lower := strings.ToLower(normalized)
+	if strings.HasPrefix(lower, scriptPublicAPIBasePath+"/") {
+		normalized = normalized[len(scriptPublicAPIBasePath)+1:]
+	} else if strings.HasPrefix(lower, strings.TrimPrefix(scriptPublicAPIBasePath, "/")+"/") {
+		normalized = normalized[len(strings.TrimPrefix(scriptPublicAPIBasePath, "/"))+1:]
+	}
+
+	cleaned := path.Clean("/" + normalized)
+	cleaned = strings.Trim(cleaned, "/")
+	if cleaned == "" || cleaned == "." {
+		return ""
+	}
+
+	parts := strings.Split(cleaned, "/")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if normalizedPart := normalizeScriptPublicAPIPathSegment(part); normalizedPart != "" {
+			result = append(result, normalizedPart)
+		}
+	}
+	return strings.Join(result, "/")
+}
+
+func normalizeScriptPublicAPIPathSegment(value string) string {
+	var builder strings.Builder
+	lastDash := false
+
+	for _, ch := range strings.TrimSpace(value) {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+			builder.WriteRune(ch)
+			lastDash = false
+		case ch >= 'A' && ch <= 'Z':
+			builder.WriteRune(ch + 32)
+			lastDash = false
+		case ch >= '0' && ch <= '9':
+			builder.WriteRune(ch)
+			lastDash = false
+		case ch == '-', ch == '_', ch == '.':
+			builder.WriteRune(ch)
+			lastDash = false
+		default:
+			if !lastDash {
+				builder.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+
+	return strings.Trim(builder.String(), "-")
+}
+
+func scriptPublicAPIRoute(pathValue string) string {
+	pathValue = normalizeScriptPublicAPIPath(pathValue)
+	if pathValue == "" {
+		return scriptPublicAPIBasePath
+	}
+	return scriptPublicAPIBasePath + "/" + pathValue
 }
 
 func isSafeScriptID(value string) bool {

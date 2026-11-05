@@ -13,8 +13,10 @@ const (
 	defaultScriptPackageFormat      = "ant-automation-script"
 	defaultScriptManifestVersion    = 1
 	defaultScriptCreateNameTemplate = "${templateName}-${timestamp}"
+	defaultScriptPublicAPITimeoutMs = 300000
 	scriptStoreConfigFileName       = "config"
 	scriptStoreLegacyConfigName     = "manifest.json"
+	scriptPublicAPIBasePath         = "/api/automation/hooks"
 )
 
 type ScriptSource struct {
@@ -41,24 +43,44 @@ type ScriptTargetConfig struct {
 	CreateNameTemplate string               `json:"createNameTemplate"`
 }
 
+type ScriptPublicAPIConfig struct {
+	Enabled          bool                      `json:"enabled"`
+	Method           string                    `json:"method"`
+	Path             string                    `json:"path"`
+	RequestMode      string                    `json:"requestMode"`
+	ResponseMode     string                    `json:"responseMode"`
+	TimeoutMs        int                       `json:"timeoutMs"`
+	RequestBodyText  string                    `json:"requestBodyText"`
+	ResponseBodyText string                    `json:"responseBodyText"`
+	Variables        []ScriptPublicAPIVariable `json:"variables"`
+}
+
+type ScriptPublicAPIVariable struct {
+	Name         string `json:"name"`
+	DefaultValue string `json:"defaultValue"`
+	Description  string `json:"description"`
+	Required     bool   `json:"required"`
+}
+
 type ScriptRecord struct {
-	PackageFormat   string             `json:"packageFormat"`
-	ManifestVersion int                `json:"manifestVersion"`
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Description     string             `json:"description"`
-	Type            string             `json:"type"`
-	Status          string             `json:"status"`
-	EntryFile       string             `json:"entryFile"`
-	Tags            []string           `json:"tags"`
-	SelectorText    string             `json:"selectorText"`
-	ParamsText      string             `json:"paramsText"`
-	ScriptText      string             `json:"scriptText"`
-	Notes           string             `json:"notes"`
-	TargetConfig    ScriptTargetConfig `json:"targetConfig"`
-	Source          ScriptSource       `json:"source"`
-	CreatedAt       string             `json:"createdAt"`
-	UpdatedAt       string             `json:"updatedAt"`
+	PackageFormat   string                `json:"packageFormat"`
+	ManifestVersion int                   `json:"manifestVersion"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Description     string                `json:"description"`
+	Type            string                `json:"type"`
+	Status          string                `json:"status"`
+	EntryFile       string                `json:"entryFile"`
+	Tags            []string              `json:"tags"`
+	SelectorText    string                `json:"selectorText"`
+	ParamsText      string                `json:"paramsText"`
+	ScriptText      string                `json:"scriptText"`
+	Notes           string                `json:"notes"`
+	TargetConfig    ScriptTargetConfig    `json:"targetConfig"`
+	PublicAPI       ScriptPublicAPIConfig `json:"publicAPI"`
+	Source          ScriptSource          `json:"source"`
+	CreatedAt       string                `json:"createdAt"`
+	UpdatedAt       string                `json:"updatedAt"`
 }
 
 type ImportedBundleFile struct {
@@ -72,22 +94,23 @@ type ImportedBundle struct {
 }
 
 type scriptStoreConfig struct {
-	PackageFormat   string             `json:"packageFormat"`
-	ManifestVersion int                `json:"manifestVersion"`
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Description     string             `json:"description"`
-	Type            string             `json:"type"`
-	Status          string             `json:"status"`
-	EntryFile       string             `json:"entryFile"`
-	Tags            []string           `json:"tags"`
-	SelectorText    string             `json:"selectorText"`
-	ParamsText      string             `json:"paramsText"`
-	Notes           string             `json:"notes"`
-	TargetConfig    ScriptTargetConfig `json:"targetConfig"`
-	Source          ScriptSource       `json:"source"`
-	CreatedAt       string             `json:"createdAt"`
-	UpdatedAt       string             `json:"updatedAt"`
+	PackageFormat   string                `json:"packageFormat"`
+	ManifestVersion int                   `json:"manifestVersion"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Description     string                `json:"description"`
+	Type            string                `json:"type"`
+	Status          string                `json:"status"`
+	EntryFile       string                `json:"entryFile"`
+	Tags            []string              `json:"tags"`
+	SelectorText    string                `json:"selectorText"`
+	ParamsText      string                `json:"paramsText"`
+	Notes           string                `json:"notes"`
+	TargetConfig    ScriptTargetConfig    `json:"targetConfig"`
+	PublicAPI       ScriptPublicAPIConfig `json:"publicAPI"`
+	Source          ScriptSource          `json:"source"`
+	CreatedAt       string                `json:"createdAt"`
+	UpdatedAt       string                `json:"updatedAt"`
 }
 
 type ScriptStore struct {
@@ -154,6 +177,9 @@ func (s *ScriptStore) Save(input ScriptRecord) (ScriptRecord, error) {
 	if err != nil {
 		return ScriptRecord{}, err
 	}
+	if err := s.validateRecord(record); err != nil {
+		return ScriptRecord{}, err
+	}
 
 	return s.writeRecord(dir, record, existing, nil)
 }
@@ -209,6 +235,9 @@ func (s *ScriptStore) ImportBundle(bundle ImportedBundle) (ScriptRecord, error) 
 	}
 
 	existing, _ := s.readScriptDir(dir)
+	if err := s.validateRecord(record); err != nil {
+		return ScriptRecord{}, err
+	}
 	return s.writeRecord(dir, record, existing, bundle.Files)
 }
 

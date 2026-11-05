@@ -2,6 +2,9 @@ package main
 
 import (
 	"ant-chrome/backend"
+	"ant-chrome/internal/lifecycle"
+	"ant-chrome/internal/singleinstance"
+	"ant-chrome/internal/windowsizing"
 	"context"
 	"embed"
 	"encoding/json"
@@ -13,6 +16,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v2"
+	wailslogger "github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
@@ -88,7 +92,62 @@ func (a *App) shouldBlockClose(ctx context.Context) bool {
 	return backend.ShouldBlockClose(a.App, ctx)
 }
 
+func (a *App) BrowserExtensionManualInstallGuide(query string) (backend.BrowserExtensionManualInstallGuide, error) {
+	return a.App.BrowserExtensionManualInstallGuide(query)
+}
+
+func (a *App) BrowserExtensionOpenManualDownloadDir() error {
+	return a.App.BrowserExtensionOpenManualDownloadDir()
+}
+
+func (a *App) BrowserExtensionListManualDownloadFiles() ([]backend.BrowserExtensionManualDownloadFile, error) {
+	return a.App.BrowserExtensionListManualDownloadFiles()
+}
+
+func (a *App) BrowserExtensionInstallManualDownloadFile(fileName string) (backend.BrowserExtension, error) {
+	return a.App.BrowserExtensionInstallManualDownloadFile(fileName)
+}
+
+func (a *App) BrowserProfilePackagePrepareImport() (backend.ProfilePackageImportPreview, error) {
+	return a.App.BrowserProfilePackagePrepareImport()
+}
+
+func (a *App) BrowserProfilePackagePrepareImportFromPath(zipPath string) (backend.ProfilePackageImportPreview, error) {
+	return a.App.BrowserProfilePackagePrepareImportFromPath(zipPath)
+}
+
+func (a *App) BrowserProfilePackageExportWithOptions(profileIds []string, options backend.ProfilePackageExportOptions) (backend.ProfilePackageExportResult, error) {
+	return a.App.BrowserProfilePackageExportWithOptions(profileIds, options)
+}
+
+func (a *App) BrowserProfilePackageImportWithOptions(zipPath string, options backend.ProfilePackageImportOptions) (backend.ProfilePackageImportResult, error) {
+	return a.App.BrowserProfilePackageImportWithOptions(zipPath, options)
+}
+
+func (a *App) BackupGetLocalSettings() backend.BackupLocalSettings {
+	return a.App.BackupGetLocalSettings()
+}
+
+func (a *App) BackupSelectLocalDirectory() (backend.BackupSelectLocalDirectoryResult, error) {
+	return a.App.BackupSelectLocalDirectory()
+}
+
+func (a *App) BackupSaveLocalDirectory(directory string) (backend.BackupLocalSettings, error) {
+	return a.App.BackupSaveLocalDirectory(directory)
+}
+
+func (a *App) BackupListLocalBackups(directory string) ([]backend.BackupLocalHistoryItem, error) {
+	return a.App.BackupListLocalBackups(directory)
+}
+
 func main() {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			lifecycle.LogPanic(appRoot, "process.panic", recovered)
+			panic(recovered)
+		}
+	}()
+
 	// 确定应用根目录：
 	// 1. 生产环境：exe 所在目录（快捷方式启动时 CWD 可能不对，需要修正）
 	// 2. dev 环境：wails dev 时 exe 可能在 temp 目录或 build/bin 目录，使用当前工作目录
@@ -136,7 +195,24 @@ func main() {
 	}
 	if err := backend.EnsureRuntimeLayout(appRoot); err != nil {
 		log.Printf("准备用户数据目录失败: %v", err)
+		lifecycle.Log(appRoot, "runtime_layout.error", map[string]interface{}{"error": err.Error()})
 	}
+	lifecycle.Log(appRoot, "process.start", map[string]interface{}{"dev": isDevMode})
+	singleInstance, primaryInstance, err := singleinstance.Acquire(appRoot)
+	if err != nil {
+		log.Printf("单实例检查失败: %v", err)
+		lifecycle.Log(appRoot, "single_instance.error", map[string]interface{}{"error": err.Error()})
+	}
+	lifecycle.Log(appRoot, "single_instance.checked", map[string]interface{}{"primary": primaryInstance})
+	if !primaryInstance {
+		lifecycle.Log(appRoot, "process.exit.non_primary", nil)
+		if startupDebugEnabled {
+			log.Printf("检测到已有应用实例，已请求唤醒并退出当前进程")
+		}
+		return
+	}
+	defer singleInstance.Close()
+	defer lifecycle.Log(appRoot, "process.defer_exit", nil)
 	if startupDebugEnabled && backend.RuntimeUsesDetachedState(appRoot) {
 		log.Printf("检测到安装目录需要只读运行，状态目录切换到: %s", backend.RuntimeStateRoot(appRoot))
 	}
@@ -161,14 +237,36 @@ func main() {
 	cfg, err := backend.LoadConfig(backend.ResolveRuntimePath(appRoot, "config.yaml"))
 	if err != nil {
 		log.Printf("加载配置失败，使用默认配置: %v", err)
+		lifecycle.Log(appRoot, "config.error", map[string]interface{}{"error": err.Error()})
 		cfg = backend.DefaultConfig()
 	}
+	lifecycle.Log(appRoot, "config.loaded", map[string]interface{}{"path": backend.ResolveRuntimePath(appRoot, "config.yaml")})
 
 	// 创建应用实例
 	app := NewApp(appRoot, buildVersion)
 
 	var wailsCtx context.Context
 	startupReached := make(chan struct{})
+	go func() {
+		for activation := range singleInstance.Activations() {
+			if wailsCtx == nil {
+				select {
+				case <-startupReached:
+				case <-time.After(12 * time.Second):
+				}
+				if wailsCtx == nil {
+					activation.Complete()
+					continue
+				}
+			}
+			runtime.WindowShow(wailsCtx)
+			runtime.WindowUnminimise(wailsCtx)
+			runtime.WindowSetAlwaysOnTop(wailsCtx, true)
+			runtime.WindowSetAlwaysOnTop(wailsCtx, false)
+			singleinstance.ActivateExistingWindow(os.Getpid())
+			activation.Complete()
+		}
+	}()
 
 	if startupDebugEnabled {
 		go func() {
@@ -185,50 +283,83 @@ func main() {
 	if startupDebugEnabled {
 		log.Printf("准备调用 wails.Run 创建 GUI 窗口")
 	}
-	err = wails.Run(&options.App{
-		Title:     cfg.App.Name,
+	windowBounds := windowsizing.ResolveStartupWindowBounds(windowsizing.StartupWindowBounds{
 		Width:     cfg.App.Window.Width,
 		Height:    cfg.App.Window.Height,
 		MinWidth:  cfg.App.Window.MinWidth,
 		MinHeight: cfg.App.Window.MinHeight,
+	})
+	if startupDebugEnabled {
+		log.Printf(
+			"窗口启动尺寸: width=%d height=%d minWidth=%d minHeight=%d",
+			windowBounds.Width,
+			windowBounds.Height,
+			windowBounds.MinWidth,
+			windowBounds.MinHeight,
+		)
+	}
+	err = wails.Run(&options.App{
+		Title:     cfg.App.Name,
+		Logger:    lifecycle.NewWailsLogger(appRoot),
+		Width:     windowBounds.Width,
+		Height:    windowBounds.Height,
+		MinWidth:  windowBounds.MinWidth,
+		MinHeight: windowBounds.MinHeight,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 245, G: 247, B: 250, A: 255},
 		OnStartup: func(ctx context.Context) {
+			lifecycle.Log(appRoot, "wails.on_startup.begin", nil)
 			close(startupReached)
 			if startupDebugEnabled {
 				log.Printf("Wails OnStartup 已触发，GUI 宿主已创建")
 			}
 			wailsCtx = ctx
+			runtime.WindowCenter(wailsCtx)
+			backend.ApplyMainApplicationWindowIcon(appRoot, cfg.App.Name)
 			// 启动系统托盘（非阻塞）
-			go backend.RunTray(backend.TrayCallbacks{
+			go lifecycle.RunTraySafely(appRoot, backend.TrayCallbacks{
 				OnShow: func() {
+					lifecycle.Log(appRoot, "tray.show", nil)
 					runtime.WindowShow(wailsCtx)
 					runtime.WindowUnminimise(wailsCtx)
+					singleinstance.ActivateExistingWindow(os.Getpid())
 				},
 				OnQuitAppOnly: func() {
+					lifecycle.Log(appRoot, "tray.quit_app_only", nil)
 					app.QuitAppOnly()
 				},
 				OnQuit: func() {
+					lifecycle.Log(appRoot, "tray.quit", nil)
 					app.ForceQuit()
 				},
+				OnExit: func() {
+					lifecycle.Log(appRoot, "tray.exit", nil)
+				},
 			})
+			lifecycle.Log(appRoot, "tray.start.requested", nil)
 			app.startup(ctx)
+			lifecycle.Log(appRoot, "wails.on_startup.complete", nil)
 			if startupDebugEnabled {
 				log.Printf("后端 startup 已完成")
 			}
 		},
 		OnShutdown: func(ctx context.Context) {
+			lifecycle.Log(appRoot, "wails.on_shutdown.begin", nil)
 			if startupDebugEnabled {
 				log.Printf("Wails OnShutdown 已触发")
 			}
 			backend.QuitTray()
 			app.shutdown(ctx)
+			lifecycle.Log(appRoot, "wails.on_shutdown.complete", nil)
 		},
 		// 拦截关闭按钮事件，由前端处理自定义对话框
 		OnBeforeClose: func(ctx context.Context) bool {
-			return app.shouldBlockClose(ctx)
+			lifecycle.Log(appRoot, "wails.on_before_close.begin", nil)
+			blocked := app.shouldBlockClose(ctx)
+			lifecycle.Log(appRoot, "wails.on_before_close.result", map[string]interface{}{"blocked": blocked})
+			return blocked
 		},
 		Bind: []interface{}{
 			app,
@@ -239,14 +370,19 @@ func main() {
 			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
 		},
 		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
+			WebviewIsTransparent:                false,
+			WindowIsTranslucent:                 false,
+			WebviewGpuIsDisabled:                true,
+			WebviewDisableRendererCodeIntegrity: true,
 		},
+		LogLevelProduction: wailslogger.ERROR,
 	})
 
 	if err != nil {
+		lifecycle.Log(appRoot, "wails.run.error", map[string]interface{}{"error": err.Error()})
 		log.Fatal("启动应用失败:", err)
 	}
+	lifecycle.Log(appRoot, "wails.run.returned", nil)
 	if startupDebugEnabled {
 		log.Printf("wails.Run 已退出")
 	}

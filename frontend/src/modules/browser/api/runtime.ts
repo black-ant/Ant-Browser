@@ -22,9 +22,12 @@ export function createDefaultBrowserSettings(): BrowserSettings {
     defaultFingerprintArgs: [],
     defaultLaunchArgs: [],
     defaultStartUrls: [],
+    lightStartEnabled: true,
     restoreLastSession: false,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
+    maxConcurrentInstances: 0,
+    defaultConnectorType: 'xray',
   }
 }
 
@@ -37,6 +40,7 @@ let mockProfiles: BrowserProfile[] = [
     fingerprintArgs: ['--fingerprint-brand=Chrome', '--fingerprint-platform=windows'],
     proxyId: '',
     proxyConfig: '',
+    memoryLimitMb: 0,
     launchArgs: ['--disable-features=Translate'],
     tags: ['默认'],
     keywords: [],

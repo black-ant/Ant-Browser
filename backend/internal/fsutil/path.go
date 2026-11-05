@@ -1,6 +1,7 @@
 package fsutil
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,39 @@ func NormalizePathInput(p string) string {
 		return ""
 	}
 	return cleaned
+}
+
+func ResolveUserDataDir(appPathResolver func(string) string, userDataRoot string, userDataDir string) (string, error) {
+	userDataDir = strings.TrimSpace(userDataDir)
+	if userDataDir == "" {
+		return "", fmt.Errorf("用户数据目录不能为空")
+	}
+	if filepath.IsAbs(userDataDir) {
+		return userDataDir, nil
+	}
+
+	root := strings.TrimSpace(userDataRoot)
+	if root == "" {
+		root = "data"
+	}
+	if appPathResolver != nil {
+		root = appPathResolver(root)
+	}
+	return filepath.Join(root, userDataDir), nil
+}
+
+func ResolveExistingPath(appPathResolver func(string) string, inputPath string, emptyMessage string) (string, error) {
+	inputPath = strings.TrimSpace(inputPath)
+	if inputPath == "" {
+		return "", errors.New(emptyMessage)
+	}
+	if filepath.IsAbs(inputPath) {
+		return inputPath, nil
+	}
+	if appPathResolver != nil {
+		return appPathResolver(inputPath), nil
+	}
+	return inputPath, nil
 }
 
 // ValidateExecutable checks whether a file is runnable on the current platform.

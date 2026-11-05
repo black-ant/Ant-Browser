@@ -1,213 +1,70 @@
-const fs = require('fs');
-const http = require('http');
-const https = require('https');
+﻿const fs = require('fs');
 const path = require('path');
-const util = require('util');
-const { pathToFileURL } = require('url');
+const {
+  normalizeTimeout,
+  sleep,
+  writeStream,
+  closeBrowserConnection,
+  buildConnectEndpoints,
+  normalizePathUnderRoot,
+  requestJSON,
+  toSerializable,
+} = require('./runner_shared.cjs');
+const { normalizeOrigin, normalizePermissionList, normalizePageAPIRequest, executePageAPIRequest } = require('./runner_page_api.cjs');
+const { loadScriptModule } = require('./runner_script_loader.cjs');
 
 const ALLOWED_WAIT_UNTIL = new Set(['load', 'domcontentloaded', 'networkidle', 'commit']);
 
-function normalizeTimeout(value, fallback) {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed) && parsed > 0) {
-    return Math.round(parsed);
-  }
-  return fallback;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function writeStream(stream, text) {
-  return new Promise((resolve, reject) => {
-    stream.write(text, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve();
-    });
-  });
-}
-
-async function closeBrowserConnection(browser) {
-  if (!browser || typeof browser.close !== 'function') {
-    return;
-  }
-  await browser.close({ reason: 'automation task finished' }).catch(() => {});
-}
-
-function normalizeEndpointCandidate(value) {
-  const normalized = String(value || '').trim();
-  if (!normalized) {
+function getPageURL(page) {
+  if (!page || typeof page.url !== 'function') {
     return '';
   }
-
   try {
-    const parsed = new URL(normalized);
-    if (!['http:', 'https:', 'ws:', 'wss:'].includes(parsed.protocol)) {
-      return '';
-    }
-    if (parsed.port === '0') {
-      return '';
-    }
-    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && (!parsed.pathname || parsed.pathname === '/') && !parsed.search && !parsed.hash) {
-      return parsed.origin;
-    }
-    return parsed.toString();
+    return String(page.url() || '').trim();
   } catch {
     return '';
   }
 }
 
-function buildConnectEndpoints(payload, session) {
-  const candidates = [];
-  const seen = new Set();
-
-  const pushCandidate = (value) => {
-    const endpoint = normalizeEndpointCandidate(value);
-    if (!endpoint || seen.has(endpoint)) {
-      return;
-    }
-    seen.add(endpoint);
-    candidates.push(endpoint);
-  };
-
-  pushCandidate(session && session.cdpUrl);
-
-  const debugPort = Number(session && session.debugPort);
-  if (Number.isFinite(debugPort) && debugPort > 0) {
-    pushCandidate(`http://127.0.0.1:${Math.round(debugPort)}`);
+function normalizeComparableURL(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
   }
-
-  pushCandidate(payload && payload.launchBaseUrl);
-  return candidates;
+  if (text === 'about:blank') {
+    return text;
+  }
+  try {
+    return new URL(text).toString();
+  } catch {
+    return text;
+  }
 }
 
-function normalizePathUnderRoot(rootDir, targetName) {
-  const normalizedName = String(targetName || '').trim();
-  const resolvedRoot = path.resolve(String(rootDir || ''));
-  if (!resolvedRoot) {
-    throw new Error('artifactDir is required');
+function shouldReuseExistingPageByDefault(page, targetURL) {
+  const currentURL = normalizeComparableURL(getPageURL(page));
+  if (!currentURL || currentURL === 'about:blank') {
+    return true;
   }
-
-  const candidate = normalizedName ? path.resolve(resolvedRoot, normalizedName) : resolvedRoot;
-  if (candidate !== resolvedRoot && !candidate.startsWith(`${resolvedRoot}${path.sep}`)) {
-    throw new Error('artifact path escapes root directory');
-  }
-  return candidate;
+  const nextURL = normalizeComparableURL(targetURL);
+  return nextURL !== '' && currentURL === nextURL;
 }
 
-async function requestJSON(method, requestURL, body, headers = {}) {
-  const target = new URL(requestURL);
-  const transport = target.protocol === 'https:' ? https : http;
-  const payload = body == null ? '' : JSON.stringify(body);
-
-  return await new Promise((resolve, reject) => {
-    const req = transport.request(
-      {
-        protocol: target.protocol,
-        hostname: target.hostname,
-        port: target.port,
-        path: `${target.pathname}${target.search}`,
-        method,
-        headers: {
-          Accept: 'application/json',
-          ...(payload
-            ? {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(payload),
-              }
-            : {}),
-          ...headers,
-        },
-      },
-      (res) => {
-        const chunks = [];
-        res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => {
-          const rawText = Buffer.concat(chunks).toString('utf8').trim();
-          let responseBody = {};
-          if (rawText) {
-            try {
-              responseBody = JSON.parse(rawText);
-            } catch {
-              responseBody = { rawBody: rawText };
-            }
-          }
-          resolve({
-            status: res.statusCode || 0,
-            body: responseBody,
-          });
-        });
-      }
-    );
-
-    req.on('error', reject);
-    if (payload) {
-      req.write(payload);
-    }
-    req.end();
-  });
-}
-
-function inspectValue(value) {
-  return util.inspect(value, {
-    depth: 4,
-    breakLength: 120,
-    maxArrayLength: 20,
-    compact: false,
-  });
-}
-
-function toSerializable(value, seen = new WeakSet()) {
-  if (value == null) {
-    return value;
+function hasOpenPageIntent(options) {
+  const openOptions = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+  if (String(openOptions.url || '').trim()) {
+    return true;
   }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
+  if (openOptions.permissions !== undefined) {
+    return true;
   }
-  if (typeof value === 'bigint') {
-    return value.toString();
+  if (typeof openOptions.permissionOrigin === 'string' && openOptions.permissionOrigin.trim()) {
+    return true;
   }
-  if (value instanceof Date) {
-    return value.toISOString();
+  if (openOptions.reuseCurrentPage === true || openOptions.bringToFront === true) {
+    return true;
   }
-  if (value instanceof Error) {
-    return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack,
-    };
-  }
-  if (Buffer.isBuffer(value)) {
-    return value.toString('utf8');
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => toSerializable(item, seen));
-  }
-  if (typeof value === 'function') {
-    return `[Function ${value.name || 'anonymous'}]`;
-  }
-  if (typeof value !== 'object') {
-    return inspectValue(value);
-  }
-  if (seen.has(value)) {
-    return '[Circular]';
-  }
-  seen.add(value);
-
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype === Object.prototype || prototype === null) {
-    const result = {};
-    for (const [key, entry] of Object.entries(value)) {
-      result[key] = toSerializable(entry, seen);
-    }
-    return result;
-  }
-
-  return inspectValue(value);
+  return false;
 }
 
 function buildLaunchRequestBody(defaultSelector, options) {
@@ -225,6 +82,8 @@ function buildLaunchRequestBody(defaultSelector, options) {
     'tags',
     'groupId',
     'matchMode',
+    'proxyId',
+    'proxyConfig',
     'launchArgs',
     'startUrls',
     'skipDefaultStartUrls',
@@ -244,64 +103,11 @@ function buildLaunchRequestBody(defaultSelector, options) {
     body.selector = selector;
   }
 
+  if (!Object.prototype.hasOwnProperty.call(body, 'skipDefaultStartUrls')) {
+    body.skipDefaultStartUrls = true;
+  }
+
   return body;
-}
-
-async function loadScriptModule(scriptPath) {
-  const resolvedPath = path.resolve(String(scriptPath || ''));
-  if (!resolvedPath) {
-    throw new Error('scriptPath is required');
-  }
-
-  let requiredModule = null;
-  let requireError = null;
-  try {
-    requiredModule = require(resolvedPath);
-  } catch (error) {
-    requireError = error;
-  }
-
-  const imported = async () => {
-    const moduleURL = pathToFileURL(resolvedPath).href;
-    return await import(`${moduleURL}?t=${Date.now()}`);
-  };
-
-  if (requiredModule && typeof requiredModule.run === 'function') {
-    return requiredModule;
-  }
-  if (typeof requiredModule === 'function') {
-    return { run: requiredModule };
-  }
-  if (requiredModule && requiredModule.default && typeof requiredModule.default.run === 'function') {
-    return requiredModule.default;
-  }
-
-  try {
-    const importedModule = await imported();
-    if (importedModule && typeof importedModule.run === 'function') {
-      return importedModule;
-    }
-    if (importedModule && typeof importedModule.default === 'function') {
-      return { run: importedModule.default };
-    }
-    if (
-      importedModule &&
-      importedModule.default &&
-      typeof importedModule.default.run === 'function'
-    ) {
-      return importedModule.default;
-    }
-  } catch (importError) {
-    if (requireError) {
-      throw requireError;
-    }
-    throw importError;
-  }
-
-  if (requireError) {
-    throw requireError;
-  }
-  throw new Error('script must export run()');
 }
 
 async function runScriptTask(payload, chromium) {
@@ -358,7 +164,9 @@ async function runScriptTask(payload, chromium) {
     return response.body;
   };
 
-  const connect = async (session = {}) => {
+  const connect = async (session = {}, options = {}) => {
+    const connectOptions =
+      options && typeof options === 'object' && !Array.isArray(options) ? options : {};
     const endpoints = buildConnectEndpoints(payload, session);
     if (endpoints.length === 0) {
       throw new Error(
@@ -368,7 +176,8 @@ async function runScriptTask(payload, chromium) {
       );
     }
 
-    const deadline = Date.now() + timeout;
+    const connectTimeout = normalizeTimeout(connectOptions.timeoutMs, timeout);
+    const deadline = Date.now() + connectTimeout;
     let lastError = null;
 
     while (Date.now() <= deadline) {
@@ -380,7 +189,7 @@ async function runScriptTask(payload, chromium) {
 
         try {
           const browser = await chromium.connectOverCDP(endpoint, {
-            timeout: Math.max(1000, Math.min(remaining, timeout)),
+            timeout: Math.max(1000, Math.min(remaining, connectTimeout)),
           });
           connectedBrowsers.add(browser);
           const context = browser.contexts()[0] || null;
@@ -409,14 +218,248 @@ async function runScriptTask(payload, chromium) {
     const lastMessage =
       lastError && lastError.message ? lastError.message : String(lastError || 'unknown error');
     throw new Error(
-      `cdp endpoint is not ready after ${timeout} ms (endpoints: ${endpoints.join(', ')}): ${lastMessage}`
+      `cdp endpoint is not ready after ${connectTimeout} ms (endpoints: ${endpoints.join(', ')}): ${lastMessage}`
     );
+  };
+
+  const resolveConnectionContext = async (connection) => {
+    const browser = connection && connection.browser ? connection.browser : null;
+    if (!browser) {
+      throw new Error('browser connection is unavailable');
+    }
+
+    const context =
+      connection.context ||
+      browser.contexts()[0] ||
+      (typeof browser.newContext === 'function' ? await browser.newContext() : null);
+    if (!context) {
+      throw new Error('browser context is unavailable');
+    }
+
+    return {
+      browser,
+      context,
+    };
+  };
+
+  const grantPermissions = async (target, options = {}) => {
+    const permissionOptions =
+      options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const permissions = normalizePermissionList(permissionOptions.permissions);
+    const origin = normalizeOrigin(permissionOptions.origin);
+
+    let context = null;
+    if (target && typeof target.grantPermissions === 'function') {
+      context = target;
+    } else if (target && typeof target === 'object') {
+      context = target.context || null;
+      if (!context && target.browser) {
+        const resolved = await resolveConnectionContext(target);
+        context = resolved.context;
+      }
+    }
+
+    if (!context) {
+      return {
+        applied: false,
+        permissions,
+        origin,
+        reason: 'browser context is unavailable',
+      };
+    }
+    if (!origin) {
+      return {
+        applied: false,
+        permissions,
+        origin: '',
+        reason: 'origin is required',
+      };
+    }
+    if (permissions.length === 0) {
+      return {
+        applied: false,
+        permissions,
+        origin,
+        reason: 'permissions are required',
+      };
+    }
+    if (typeof context.grantPermissions !== 'function') {
+      return {
+        applied: false,
+        permissions,
+        origin,
+        reason: 'grantPermissions is unavailable',
+      };
+    }
+
+    try {
+      await context.grantPermissions(permissions, { origin });
+      return {
+        applied: true,
+        permissions,
+        origin,
+        strategy: 'grantPermissions',
+      };
+    } catch (error) {
+      return {
+        applied: false,
+        permissions,
+        origin,
+        reason: error && error.message ? error.message : String(error),
+      };
+    }
+  };
+
+  const openPage = async (connection, options = {}) => {
+    const openOptions =
+      options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const { browser, context } = await resolveConnectionContext(connection);
+    const shouldReuseCurrentPage = openOptions.reuseCurrentPage === true;
+    const hasReuseCurrentPageOption = Object.prototype.hasOwnProperty.call(
+      openOptions,
+      'reuseCurrentPage'
+    );
+    const targetURL = String(openOptions.url || '').trim();
+
+    let page = null;
+    const currentPage = connection && connection.page ? connection.page : null;
+    if (
+      currentPage &&
+      typeof currentPage.isClosed === 'function' &&
+      !currentPage.isClosed() &&
+      (shouldReuseCurrentPage ||
+        (!hasReuseCurrentPageOption && shouldReuseExistingPageByDefault(currentPage, targetURL)))
+    ) {
+      page = currentPage;
+    }
+    if (!page && targetURL) {
+      page = await context.newPage();
+    }
+
+    if (page && typeof page.bringToFront === 'function' && openOptions.bringToFront !== false) {
+      await page.bringToFront().catch(() => {});
+    }
+
+    const permissionResult =
+      openOptions.permissions !== undefined
+        ? await grantPermissions(context, {
+            origin:
+              typeof openOptions.permissionOrigin === 'string' && openOptions.permissionOrigin.trim()
+                ? openOptions.permissionOrigin
+                : openOptions.url,
+            permissions: openOptions.permissions,
+          })
+        : {
+            applied: false,
+            permissions: [],
+            origin: '',
+            reason: '',
+          };
+
+    if (targetURL) {
+      const waitUntil = ALLOWED_WAIT_UNTIL.has(String(openOptions.waitUntil || '').trim())
+        ? String(openOptions.waitUntil).trim()
+        : 'domcontentloaded';
+      await page.goto(targetURL, {
+        waitUntil,
+        timeout: normalizeTimeout(openOptions.timeoutMs, timeout),
+      });
+    }
+
+    return {
+      browser,
+      context,
+      page,
+      permissionResult,
+      reusedPage: page === (connection && connection.page ? connection.page : null),
+    };
+  };
+
+  const resolvePageTarget = (target) => {
+    if (target && typeof target.evaluate === 'function') {
+      return target;
+    }
+    if (target && target.page && typeof target.page.evaluate === 'function') {
+      return target.page;
+    }
+    throw new Error('page api target must be a Playwright page or an object containing page');
+  };
+
+  const callPageAPI = async (target, urlOrRequest, options = {}) => {
+    const page = resolvePageTarget(target);
+    const request = normalizePageAPIRequest(urlOrRequest, options);
+    const response = await page.evaluate(executePageAPIRequest, request);
+
+    if (request.throwOnError && (!response || response.ok !== true)) {
+      const status = response && response.status ? response.status : 0;
+      const message =
+        (response && typeof response.error === 'string' && response.error.trim()) ||
+        (status ? `page api returned http ${status}` : 'page api request failed');
+      throw new Error(message);
+    }
+
+    return response;
+  };
+
+  const browserFetch = callPageAPI;
+  const pageAPI = callPageAPI;
+
+  const useBrowser = async (options = {}) => {
+    const runOptions = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const launchOptions =
+      runOptions.launch && typeof runOptions.launch === 'object' && !Array.isArray(runOptions.launch)
+        ? runOptions.launch
+        : runOptions;
+    const connectOptions =
+      runOptions.connect && typeof runOptions.connect === 'object' && !Array.isArray(runOptions.connect)
+        ? runOptions.connect
+        : {};
+    const openOptions =
+      runOptions.open && typeof runOptions.open === 'object' && !Array.isArray(runOptions.open)
+        ? runOptions.open
+        : {
+            url: runOptions.url,
+            waitUntil: runOptions.waitUntil,
+            timeoutMs: runOptions.timeoutMs,
+            permissions: runOptions.permissions,
+            permissionOrigin: runOptions.permissionOrigin,
+            reuseCurrentPage: runOptions.reuseCurrentPage,
+            bringToFront: runOptions.bringToFront,
+          };
+
+    const session = await launch(launchOptions);
+    const connection = await connect(session, connectOptions);
+    const opened = hasOpenPageIntent(openOptions)
+      ? await openPage(connection, openOptions)
+      : {
+          browser: connection.browser,
+          context: connection.context,
+          page: connection.page || null,
+          permissionResult: {
+            applied: false,
+            permissions: [],
+            origin: '',
+            reason: '',
+          },
+          reusedPage: Boolean(connection.page),
+        };
+    return {
+      session,
+      connection,
+      ...opened,
+    };
   };
 
   const api = {
     chromium,
     launch,
     connect,
+    grantPermissions,
+    openPage,
+    useBrowser,
+    callPageAPI,
+    pageAPI,
+    browserFetch,
     selector,
     params,
     log,
@@ -465,6 +508,20 @@ async function runScriptTask(payload, chromium) {
       logs,
       artifacts: Array.from(new Set(artifacts)),
       result: normalizedResult,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      summary: '脚本执行失败',
+      error: error && error.message ? error.message : String(error),
+      title: '',
+      url: '',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      isolatedPage: false,
+      logs,
+      artifacts: Array.from(new Set(artifacts)),
+      result: null,
     };
   } finally {
     await Promise.all(Array.from(connectedBrowsers, (browser) => closeBrowserConnection(browser)));
