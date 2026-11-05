@@ -62,7 +62,7 @@ Use **Actions → Build and Release → Run workflow**, push to `master` / `main
 
 The optional `version` input overrides the package version on branch runs. CI validates the app executable, bundled proxy runtimes, `Info.plist`, and ZIP extraction. Once all platform builds pass, the ZIPs are uploaded to the shared GitHub Release alongside Linux/Arch packages and `SHA256SUMS`. Branch runs publish prereleases; stable version tags publish formal releases.
 
-Only the ZIP is uploaded, preserving the `.app` executable permissions. Packages remain unsigned and not notarized. CI does not prove Finder launch, browser-core startup, or real proxy connectivity. See [the Actions workflow documentation](../../.github/README.md).
+Only the ZIP is uploaded, preserving the `.app` executable permissions. Packages remain unsigned and not notarized. CI does not prove Finder launch, browser-core startup, or real proxy connectivity.
 
 ## Bundle and User State
 
