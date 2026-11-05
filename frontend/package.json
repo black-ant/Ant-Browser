@@ -38,5 +38,9 @@
     "tailwindcss": "^3.3.6",
     "typescript": "^5.3.3",
     "vite": "^5.0.8"
+  },
+  "allowScripts": {
+    "@swc/core@1.15.18": true,
+    "esbuild@0.21.5": true
   }
 }

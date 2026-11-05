@@ -1,30 +1,11 @@
 name: Build Arch Package
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       version:
-        description: Optional package version override, for example 1.2.0
-        required: false
+        required: true
         type: string
-  push:
-    branches:
-      - master
-      - main
-    paths:
-      - .github/workflows/build-arch.yml
-      - packaging/arch/**
-      - backend/**
-      - frontend/**
-      - bin/linux-amd64/**
-      - build/appicon.png
-      - chrome/README.md
-      - go.mod
-      - go.sum
-      - main.go
-      - publish/config.init.linux.yaml
-      - tools/runtime/**
-      - wails.json
 
 permissions:
   contents: read
@@ -32,7 +13,8 @@ permissions:
 jobs:
   build:
     name: Build Arch x86_64 package
-    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    runs-on: ubuntu-24.04
     container:
       image: archlinux:base-devel
 
@@ -80,7 +62,6 @@ jobs:
             nspr \
             nss \
             nodejs \
-            npm \
             pango \
             pkgconf \
             python \
@@ -88,35 +69,16 @@ jobs:
             xdg-utils \
             zlib
 
-      - name: Prepare package version
-        run: |
-          set -euo pipefail
-          version="${{ github.event.inputs.version || '' }}"
-          if [[ -z "$version" ]]; then
-            version="$(python3 - <<'PY'
-          import json
-          with open("wails.json", "r", encoding="utf-8") as f:
-              data = json.load(f)
-          print((((data or {}).get("info") or {}).get("productVersion") or "").strip())
-          PY
-          )"
-          fi
-          if [[ -z "$version" ]]; then
-            echo "Package version is empty" >&2
-            exit 1
-          fi
-          python3 - "$version" <<'PY'
-          import pathlib
-          import re
-          import sys
+      - name: Apply package version
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+        run: python3 scripts/ci/release.py version "$PACKAGE_VERSION"
 
-          version = sys.argv[1]
-          path = pathlib.Path("packaging/arch/PKGBUILD")
-          text = path.read_text(encoding="utf-8")
-          text = re.sub(r"^pkgver=.*$", f"pkgver={version}", text, count=1, flags=re.M)
-          path.write_text(text, encoding="utf-8")
-          PY
-          echo "ANT_BROWSER_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Download shared frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: ant-browser-frontend
+          path: frontend/dist
 
       - name: Create build user
         run: |
@@ -135,16 +97,10 @@ jobs:
           set -euo pipefail
           runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE' && bash tools/runtime/verify-runtime.sh linux-amd64"
 
-      - name: Build frontend
-        run: |
-          set -euo pipefail
-          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE/frontend' && BROWSERSLIST_IGNORE_OLD_DATA=1 npm ci --prefer-offline --no-audit --no-fund"
-          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE/frontend' && BROWSERSLIST_IGNORE_OLD_DATA=1 npm run build:clean"
-
       - name: Build Wails binary
         run: |
           set -euo pipefail
-          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE' && PATH=\"\$HOME/go/bin:\$PATH\" wails build -s -m -skipbindings -platform linux/amd64 -o ant-chrome -tags webkit2_41"
+          runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE' && PATH=\"\$HOME/go/bin:\$PATH\" wails build -s -m -skipbindings -skipembedcreate -platform linux/amd64 -o ant-chrome -tags webkit2_41 -trimpath"
           test -x build/bin/ant-chrome
           ldd build/bin/ant-chrome | tee /tmp/ant-browser-ldd.txt
           if grep -q "not found" /tmp/ant-browser-ldd.txt; then
@@ -159,9 +115,12 @@ jobs:
           runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE/packaging/arch' && PKGDEST='$GITHUB_WORKSPACE/publish/output' makepkg -f -C --clean --noconfirm"
 
       - name: Validate Arch package
+        env:
+          ANT_BROWSER_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          pkg_file="$(ls -1 publish/output/ant-browser-${ANT_BROWSER_VERSION}-*-x86_64.pkg.tar.zst | head -n 1)"
+          pkg_version="${ANT_BROWSER_VERSION//-/_}"
+          pkg_file="publish/output/ant-browser-${pkg_version}-1-x86_64.pkg.tar.zst"
           echo "Validating: $pkg_file"
           pacman -Qpi "$pkg_file"
           pacman -Qlp "$pkg_file" >/dev/null
@@ -170,6 +129,8 @@ jobs:
       - name: Upload Arch package
         uses: actions/upload-artifact@v4
         with:
-          name: ant-browser-arch-x86_64
+          name: ant-browser-package-arch-x86_64
           path: publish/output/ant-browser-*-x86_64.pkg.tar.zst
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

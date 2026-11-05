@@ -7,6 +7,7 @@ STAGING_ROOT="$ROOT_DIR/publish/staging/mac"
 ARCH=""
 VERSION=""
 SKIP_BUILD=0
+SKIP_FRONTEND=0
 SKIP_RUNTIME_VERIFY=0
 KEEP_STAGING=0
 
@@ -18,6 +19,7 @@ Usage:
 Options:
   --arch <arm64|amd64>   Target architecture (required)
   --version <ver>        Package version (default: read from wails.json)
+  --skip-frontend        Reuse prebuilt frontend/dist (CI shared artifact)
   --skip-build           Skip frontend and Wails build steps
   --skip-runtime-verify  Skip runtime hash verification
   --keep-staging         Keep assembled .app bundle in publish/staging/mac
@@ -34,6 +36,10 @@ while [[ $# -gt 0 ]]; do
     --version)
       VERSION="${2:-}"
       shift 2
+      ;;
+    --skip-frontend)
+      SKIP_FRONTEND=1
+      shift
       ;;
     --skip-build)
       SKIP_BUILD=1
@@ -198,16 +204,25 @@ else
 fi
 
 if [[ "$SKIP_BUILD" -ne 1 ]]; then
-  echo "[1/4] Installing frontend dependencies..."
-  (cd "$ROOT_DIR/frontend" && npm ci --prefer-offline --no-audit --no-fund)
+  if [[ "$SKIP_FRONTEND" -ne 1 ]]; then
+    echo "[1/4] Installing frontend dependencies..."
+    (cd "$ROOT_DIR/frontend" && npm ci --prefer-offline --no-audit --no-fund)
 
-  echo "[2/4] Building frontend assets..."
-  (cd "$ROOT_DIR/frontend" && npm run build:clean)
+    echo "[2/4] Building frontend assets..."
+    (cd "$ROOT_DIR/frontend" && npm run build:clean)
+
+  else
+    test -s "$ROOT_DIR/frontend/dist/index.html" || {
+      echo "[ERROR] prebuilt frontend/dist/index.html is missing" >&2
+      exit 1
+    }
+    echo "[CI] Reusing prebuilt frontend assets"
+  fi
 
   echo "[3/4] Building macOS app bundle with Wails..."
   (
     cd "$ROOT_DIR"
-    wails build -s -platform "darwin/$ARCH" -o ant-chrome
+    wails build -s -m -skipbindings -skipembedcreate -trimpath -platform "darwin/$ARCH" -o ant-chrome
   )
 else
   echo "[WARN] skipping build step"

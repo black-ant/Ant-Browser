@@ -1,11 +1,10 @@
-name: Publish macOS Packages
+name: Build macOS Packages
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       version:
-        description: Optional package version override, for example 1.9.0
-        required: false
+        required: true
         type: string
 
 permissions:
@@ -13,6 +12,8 @@ permissions:
 
 jobs:
   build:
+    name: macOS ${{ matrix.arch }} (unsigned)
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -21,60 +22,52 @@ jobs:
             runner: macos-15-intel
           - arch: arm64
             runner: macos-15
-
     runs-on: ${{ matrix.runner }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Build unsigned macOS package
+          go-version: stable
+          cache-dependency-path: go.sum
+      - name: Apply package version
         env:
-          VERSION: ${{ inputs.version }}
+          PACKAGE_VERSION: ${{ inputs.version }}
+        run: python3 scripts/ci/release.py version "$PACKAGE_VERSION"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ant-browser-frontend
+          path: frontend/dist
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Build unsigned macOS package using shared frontend
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: bash publish/mac/publish-mac.sh --arch "$PACKAGE_ARCH" --version "$PACKAGE_VERSION" --skip-frontend
+      - name: Validate app bundle and ZIP permissions
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+          PACKAGE_ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          args=(--arch "${{ matrix.arch }}")
-          if [[ -n "$VERSION" ]]; then
-            args+=(--version "$VERSION")
-          fi
-          bash publish/mac/publish-mac.sh "${args[@]}"
-
-      - name: Validate app bundle
-        run: |
-          set -euo pipefail
-          app_path="$(ls -1d publish/output/AntBrowser-*-macos-${{ matrix.arch }}.app | head -n 1)"
-          zip_path="$(ls -1 publish/output/AntBrowser-*-macos-${{ matrix.arch }}.zip | head -n 1)"
-          echo "Validating: $app_path"
+          app_name="AntBrowser-${PACKAGE_VERSION}-macos-${PACKAGE_ARCH}.app"
+          app_path="publish/output/$app_name"
           test -x "$app_path/Contents/MacOS/ant-chrome"
           test -x "$app_path/Contents/MacOS/bin/xray"
           test -x "$app_path/Contents/MacOS/bin/sing-box"
           plutil -lint "$app_path/Contents/Info.plist"
-          ditto -x -k "$zip_path" /tmp/ant-browser-macos-validate
-          test -x "/tmp/ant-browser-macos-validate/$(basename "$app_path")/Contents/MacOS/ant-chrome"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          validate_dir="$(mktemp -d)"
+          ditto -x -k "publish/output/AntBrowser-${PACKAGE_VERSION}-macos-${PACKAGE_ARCH}.zip" "$validate_dir"
+          test -x "$validate_dir/$app_name/Contents/MacOS/ant-chrome"
+          test -x "$validate_dir/$app_name/Contents/MacOS/bin/xray"
+          test -x "$validate_dir/$app_name/Contents/MacOS/bin/sing-box"
+      - uses: actions/upload-artifact@v4
         with:
-          name: ant-browser-macos-${{ matrix.arch }}
-          path: |
-            publish/output/AntBrowser-*-macos-${{ matrix.arch }}.app
-            publish/output/AntBrowser-*-macos-${{ matrix.arch }}.zip
+          name: ant-browser-package-macos-${{ matrix.arch }}
+          # ZIP preserves executable permissions; uploading a raw .app does not.
+          path: publish/output/AntBrowser-*-macos-${{ matrix.arch }}.zip
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

@@ -1,26 +1,19 @@
-name: Publish Linux Packages
+name: Build Linux Packages
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       version:
-        description: Optional package version override, for example 1.9.0
-        required: false
+        required: true
         type: string
-  push:
-    tags:
-      - "v*"
 
 permissions:
-  contents: write
-
-concurrency:
-  group: publish-linux-${{ github.ref }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
   build:
-    name: Build Linux ${{ matrix.arch }}
+    name: Linux ${{ matrix.arch }}
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -29,111 +22,65 @@ jobs:
             runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
-
     runs-on: ${{ matrix.runner }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+          go-version: stable
+          cache-dependency-path: go.sum
+      - name: Apply package version
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+        run: python3 scripts/ci/release.py version "$PACKAGE_VERSION"
+      - uses: actions/download-artifact@v4
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
+          name: ant-browser-frontend
+          path: frontend/dist
       - name: Install Linux build dependencies
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            ca-certificates \
-            curl \
-            dpkg-dev \
-            git \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf \
-            pkg-config \
-            python3 \
-            tar
-
+            build-essential ca-certificates curl dpkg-dev git \
+            libayatana-appindicator3-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+            patchelf pkg-config python3 tar
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Verify runtime files
-        run: bash tools/runtime/verify-runtime.sh linux-${{ matrix.arch }}
-
-      - name: Build Linux packages
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Compile all Go packages and test binaries
+        if: matrix.arch == 'amd64'
+        run: go test -tags webkit2_41 -run '^$' ./...
+      - name: Build Linux packages using shared frontend
         env:
-          VERSION: ${{ inputs.version }}
-          BROWSERSLIST_IGNORE_OLD_DATA: "1"
+          PACKAGE_VERSION: ${{ inputs.version }}
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: bash publish/linux/publish-linux.sh --arch "$PACKAGE_ARCH" --version "$PACKAGE_VERSION" --skip-frontend
+      - name: Validate packages and shared libraries
+        env:
+          PACKAGE_ARCH: ${{ matrix.arch }}
+          PACKAGE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          args=(--arch "${{ matrix.arch }}")
-          if [[ -n "${VERSION:-}" ]]; then
-            args+=(--version "$VERSION")
-          fi
-          bash publish/linux/publish-linux.sh "${args[@]}"
-
-      - name: Validate deb package metadata
-        run: |
-          set -euo pipefail
-          deb_file="$(ls -1 publish/output/*_${{ matrix.arch }}.deb | head -n 1)"
-          echo "Validating: $deb_file"
+          ldd build/bin/ant-chrome | tee /tmp/ant-browser-ldd.txt
+          ! grep -q 'not found' /tmp/ant-browser-ldd.txt
+          grep -q 'libwebkit2gtk-4.1' /tmp/ant-browser-ldd.txt
+          deb_file="publish/output/ant-browser_${PACKAGE_VERSION}_${PACKAGE_ARCH}.deb"
           dpkg-deb -I "$deb_file"
-          dpkg-deb -c "$deb_file" >/dev/null
-
-      - name: Validate tar package layout
-        run: |
-          set -euo pipefail
-          tar_file="$(ls -1 publish/output/AntBrowser-*-linux-${{ matrix.arch }}.tar.gz | head -n 1)"
+          dpkg-deb --contents "$deb_file" > /tmp/ant-browser-deb-files.txt
           validate_dir="$(mktemp -d)"
-          echo "Validating: $tar_file"
-          tar -xzf "$tar_file" -C "$validate_dir"
+          tar -xzf "publish/output/AntBrowser-${PACKAGE_VERSION}-linux-${PACKAGE_ARCH}.tar.gz" -C "$validate_dir"
           test -x "$validate_dir/ant-chrome"
           test -x "$validate_dir/bin/xray"
           test -x "$validate_dir/bin/sing-box"
           test -f "$validate_dir/config.yaml"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: ant-browser-linux-${{ matrix.arch }}
+          name: ant-browser-package-linux-${{ matrix.arch }}
           path: |
             publish/output/*_${{ matrix.arch }}.deb
             publish/output/*-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
-
-  release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-          merge-multiple: true
-
-      - name: Upload release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || gh release create "$TAG_NAME" --generate-notes
-          gh release upload "$TAG_NAME" release-artifacts/* --clobber
+          compression-level: 0
+          retention-days: 7

@@ -408,6 +408,8 @@ Windows 升级或卸载旧版本时，安装器会先将旧安装目录中的 `b
 
 ## 开发与发布文档
 
+- Actions 构建与自动 Release： [工作流说明](.github/README.md)（分支构建发布预发行版，`v*` 标签发布正式版）
+
 - Windows 开发与发布：[`bat/README.md`](bat/README.md)
 - Linux 打包：[`publish/linux/README.md`](publish/linux/README.md)
 - macOS unsigned 打包：[`publish/mac/README.md`](publish/mac/README.md)

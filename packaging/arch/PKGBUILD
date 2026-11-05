@@ -1,6 +1,6 @@
 # Maintainer: Ant Browser Team <contact@antblack.de>
 pkgname=ant-browser
-pkgver=1.2.0
+pkgver=1.9.0
 pkgrel=1
 pkgdesc="Multi-profile browser launcher with proxy-pool management"
 arch=('x86_64')
