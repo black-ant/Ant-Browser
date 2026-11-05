@@ -1,8 +1,11 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/logger"
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -80,7 +83,7 @@ func (a *App) cancelBackgroundTasksAndWait() {
 	if cancel != nil {
 		cancel()
 	}
-	a.backgroundTasks.Wait()
+	a.waitBackgroundTasks()
 }
 
 func (a *App) resumeBackgroundTasks() {
@@ -94,11 +97,35 @@ func (a *App) resumeBackgroundTasks() {
 	a.runtimeMu.Unlock()
 }
 
+// backgroundTaskWaitTimeout 是关闭/维护流程等待后台任务的上限。
+// 后台任务（典型是代理测速扫描：每个代理都要拉起一个 sing-box/xray 内核进程）
+// 在 ctx 取消后仍可能把整轮队列跑完，无上限等待会让「退出应用」被拖到数分钟。
+// 超时只记录告警并继续关闭流程，不阻塞退出。
+const backgroundTaskWaitTimeout = 8 * time.Second
+
+// waitGroupWithTimeout 等待 wg 归零，最多等 timeout；返回 false 表示超时。
+func waitGroupWithTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 func (a *App) waitBackgroundTasks() {
 	if a == nil {
 		return
 	}
-	a.backgroundTasks.Wait()
+	if !waitGroupWithTimeout(&a.backgroundTasks, backgroundTaskWaitTimeout) {
+		logger.New("App").Warn("等待后台任务超时，继续关闭流程",
+			logger.F("timeout", backgroundTaskWaitTimeout.String()))
+	}
 }
 
 func (a *App) emitRuntimeEvent(eventName string, optionalData ...interface{}) {

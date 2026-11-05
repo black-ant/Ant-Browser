@@ -126,14 +126,23 @@ func cdpBrowserCallResult(debugPort int, method string, params map[string]any) (
 		return nil, fmt.Errorf("浏览器级 CDP 命令发送失败: %w", err)
 	}
 
-	var cdpResp cdpResponse
-	if err := conn.ReadJSON(&cdpResp); err != nil {
-		return nil, fmt.Errorf("浏览器级 CDP 响应读取失败: %w", err)
+	// 同一连接上可能先收到事件通知（Id 为 0），跳过直到拿到本次请求的响应。
+	for {
+		var cdpResp cdpResponse
+		if err := conn.ReadJSON(&cdpResp); err != nil {
+			return nil, fmt.Errorf("浏览器级 CDP 响应读取失败: %w", err)
+		}
+		if cdpResp.Id != msg.Id {
+			continue
+		}
+		if cdpResp.Error != nil {
+			return nil, fmt.Errorf("浏览器级 CDP 错误: %s", cdpResp.Error.Message)
+		}
+		if cdpResp.Result == nil {
+			return map[string]any{}, nil
+		}
+		return cdpResp.Result, nil
 	}
-	if cdpResp.Error != nil {
-		return nil, fmt.Errorf("浏览器级 CDP 错误: %s", cdpResp.Error.Message)
-	}
-	return cdpResp.Result, nil
 }
 
 func createBrowserStartTarget(debugPort int, url string) error {

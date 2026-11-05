@@ -74,7 +74,9 @@ proxy_check:
 proxy_source_refresh:
     enabled: true
 launch_server:
-    port: 19876
+    # 19876 被安装版（/opt/ant-browser）常驻占用，19877 被本地 Node 服务占用；
+    # 项目版测试固定用 19900，避免启动服务绑定失败。
+    port: 19900
     auth:
         enabled: false
         api_key: ""
