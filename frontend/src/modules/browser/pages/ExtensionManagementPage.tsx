@@ -397,7 +397,14 @@ export function ExtensionManagementPage() {
       setItems((current) => current.filter((entry) => entry.extensionId !== item.extensionId))
       toast.success('插件已删除')
     } catch (error: any) {
-      toast.error(error?.message || '删除插件失败')
+      const message = String(error?.message || '')
+      // 记录已不存在（此前删除已完成但列表未同步）：对账移除卡片，不让用户陷入"永远删不掉"。
+      if (/no rows|not found|不存在|已删除/i.test(message)) {
+        setItems((current) => current.filter((entry) => entry.extensionId !== item.extensionId))
+        toast.info('插件记录已不存在，已从列表移除')
+      } else {
+        toast.error(message || '删除插件失败')
+      }
     } finally {
       setBusyId('')
       setBusyAction('')

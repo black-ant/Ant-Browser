@@ -25,6 +25,10 @@ type ExtensionDAO interface {
 	UpsertProfileExtensionRuntime(runtime ProfileExtensionRuntime) error
 	DeleteProfileExtensionRuntime(profileID string, extensionID string) error
 	DeleteProfileExtensionRuntimeForProfile(profileID string) error
+	SetBuiltinSuperseded(builtinID string, extensionID string) error
+	GetBuiltinSupersededBy(builtinID string) (string, error)
+	ClearBuiltinSuperseded(builtinID string) error
+	MigrateExtensionReferences(oldExtensionID string, newExtensionID string) error
 }
 
 type SQLiteExtensionDAO struct {
@@ -140,13 +144,72 @@ func (d *SQLiteExtensionDAO) SetDefaultInstall(extensionID string, enabled bool)
 }
 
 func (d *SQLiteExtensionDAO) Delete(extensionID string) error {
-	_, err := d.db.Exec(`DELETE FROM browser_extensions WHERE extension_id = ?`, strings.TrimSpace(extensionID))
+	extensionID = strings.TrimSpace(extensionID)
+	_, err := d.db.Exec(`DELETE FROM browser_extensions WHERE extension_id = ?`, extensionID)
 	if err != nil {
 		return fmt.Errorf("删除插件失败: %w", err)
 	}
-	_, _ = d.db.Exec(`DELETE FROM browser_profile_extensions WHERE extension_id = ?`, strings.TrimSpace(extensionID))
-	_, _ = d.db.Exec(`DELETE FROM browser_profile_extension_runtime WHERE extension_id = ?`, strings.TrimSpace(extensionID))
+	_, _ = d.db.Exec(`DELETE FROM browser_profile_extensions WHERE extension_id = ?`, extensionID)
+	_, _ = d.db.Exec(`DELETE FROM browser_profile_extension_runtime WHERE extension_id = ?`, extensionID)
+	// 取代内置版本的插件被删除时清除标记，下次启动内置插件会重新登记。
+	_, _ = d.db.Exec(`DELETE FROM browser_builtin_extension_superseded WHERE extension_id = ?`, extensionID)
 	return nil
+}
+
+// SetBuiltinSuperseded 记录内置插件被某个手动安装的同名同版本插件取代。
+func (d *SQLiteExtensionDAO) SetBuiltinSuperseded(builtinID string, extensionID string) error {
+	_, err := d.db.Exec(`
+		INSERT INTO browser_builtin_extension_superseded (builtin_id, extension_id, created_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(builtin_id) DO UPDATE SET extension_id = excluded.extension_id, created_at = excluded.created_at`,
+		strings.TrimSpace(builtinID), strings.TrimSpace(extensionID), time.Now().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("记录内置插件取代标记失败: %w", err)
+	}
+	return nil
+}
+
+// GetBuiltinSupersededBy 返回取代该内置插件的插件 ID，无标记时返回空串。
+func (d *SQLiteExtensionDAO) GetBuiltinSupersededBy(builtinID string) (string, error) {
+	var extensionID string
+	err := d.db.QueryRow(`SELECT extension_id FROM browser_builtin_extension_superseded WHERE builtin_id = ?`, strings.TrimSpace(builtinID)).Scan(&extensionID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("读取内置插件取代标记失败: %w", err)
+	}
+	return extensionID, nil
+}
+
+// ClearBuiltinSuperseded 清除内置插件的取代标记。
+func (d *SQLiteExtensionDAO) ClearBuiltinSuperseded(builtinID string) error {
+	_, err := d.db.Exec(`DELETE FROM browser_builtin_extension_superseded WHERE builtin_id = ?`, strings.TrimSpace(builtinID))
+	return err
+}
+
+// MigrateExtensionReferences 把实例插件配置从旧插件 ID 迁移到新 ID（用于内置版本被替换时保留实例绑定）。
+func (d *SQLiteExtensionDAO) MigrateExtensionReferences(oldExtensionID string, newExtensionID string) error {
+	oldExtensionID = strings.TrimSpace(oldExtensionID)
+	newExtensionID = strings.TrimSpace(newExtensionID)
+	if oldExtensionID == "" || newExtensionID == "" || strings.EqualFold(oldExtensionID, newExtensionID) {
+		return nil
+	}
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().Format(time.RFC3339)
+	// UPDATE OR IGNORE：目标 (profile_id, extension_id) 已存在时跳过，避免主键冲突。
+	if _, err := tx.Exec(`UPDATE OR IGNORE browser_profile_extensions SET extension_id = ?, updated_at = ? WHERE extension_id = ?`, newExtensionID, now, oldExtensionID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM browser_profile_extensions WHERE extension_id = ?`, oldExtensionID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (d *SQLiteExtensionDAO) GetProfileSettings(profileID string) (ProfileExtensionSettings, error) {

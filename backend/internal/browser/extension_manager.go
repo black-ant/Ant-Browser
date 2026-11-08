@@ -116,10 +116,10 @@ func (m *Manager) LookupExtensionWithHTTPClient(query string, client *http.Clien
 }
 
 func (m *Manager) InstallExtensionFromWebStore(ctx context.Context, query string) (Extension, error) {
-	return m.InstallExtensionFromWebStoreWithHTTPClient(ctx, query, nil)
+	return m.InstallExtensionFromWebStoreWithHTTPClient(ctx, query, nil, nil)
 }
 
-func (m *Manager) InstallExtensionFromWebStoreWithHTTPClient(ctx context.Context, query string, client *http.Client) (Extension, error) {
+func (m *Manager) InstallExtensionFromWebStoreWithHTTPClient(ctx context.Context, query string, client *http.Client, onBuiltinConflict BuiltinConflictHandler) (Extension, error) {
 	extensionID := NormalizeExtensionID(query)
 	if extensionID == "" {
 		return Extension{}, fmt.Errorf("请输入 Chrome 插件 ID 或 Chrome Web Store 链接")
@@ -128,10 +128,10 @@ func (m *Manager) InstallExtensionFromWebStoreWithHTTPClient(ctx context.Context
 	if err != nil {
 		return Extension{}, err
 	}
-	return m.InstallExtensionPackageBytes(extensionID, BuildChromeWebStoreURL(extensionID), data)
+	return m.InstallExtensionPackageBytes(extensionID, BuildChromeWebStoreURL(extensionID), data, onBuiltinConflict)
 }
 
-func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL string, data []byte) (Extension, error) {
+func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL string, data []byte, onBuiltinConflict BuiltinConflictHandler) (Extension, error) {
 	if len(data) == 0 {
 		return Extension{}, fmt.Errorf("插件包为空")
 	}
@@ -165,11 +165,27 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 		return Extension{}, err
 	}
 
+	localeMessages := readExtensionLocaleMessagesFromZip(zipData, manifest)
+	extension := Extension{
+		ExtensionID:  resolvedID,
+		Name:         resolveExtensionMessage(resolveExtensionName(manifest, resolvedID), localeMessages),
+		Version:      strings.TrimSpace(manifest.Version),
+		Description:  resolveExtensionDescription(manifest, localeMessages),
+		IconDataURL:  readExtensionIconDataURLFromZip(zipData, manifest),
+		ManifestJSON: string(manifestData),
+		SourceURL:    strings.TrimSpace(sourceURL),
+		InstallMode:  ExtensionInstallModePersistent,
+		Enabled:      true,
+	}
+	pendingBuiltin, err := m.prepareBuiltinReplacement(&extension, onBuiltinConflict)
+	if err != nil {
+		return Extension{}, err
+	}
+
 	installDir := filepath.Join(m.ResolveRelativePath(filepath.Join("data", extensionsRootDir)), resolvedID)
 	if err := replaceExtensionDirFromZip(zipData, installDir); err != nil {
 		return Extension{}, err
 	}
-	installMode := ExtensionInstallModePersistent
 	packagePath := ""
 	packageHash := ""
 	if isCRXExtensionPackage(data) {
@@ -177,28 +193,17 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 		if err != nil {
 			return Extension{}, err
 		}
-		installMode = ExtensionInstallModePersistent
 	}
 
-	localeMessages := readExtensionLocaleMessagesFromZip(zipData, manifest)
-	manifestJSON := string(manifestData)
-	extension := Extension{
-		ExtensionID:  resolvedID,
-		Name:         resolveExtensionMessage(resolveExtensionName(manifest, resolvedID), localeMessages),
-		Version:      strings.TrimSpace(manifest.Version),
-		Description:  resolveExtensionDescription(manifest, localeMessages),
-		IconDataURL:  readExtensionIconDataURLFromZip(zipData, manifest),
-		ManifestJSON: manifestJSON,
-		SourceURL:    strings.TrimSpace(sourceURL),
-		InstallDir:   installDir,
-		InstallMode:  installMode,
-		PackagePath:  packagePath,
-		PackageHash:  packageHash,
-		Enabled:      true,
-	}
+	extension.InstallDir = installDir
+	extension.PackagePath = packagePath
+	extension.PackageHash = packageHash
 	if m.ExtensionDAO != nil {
 		if err := m.ExtensionDAO.Upsert(extension); err != nil {
 			return Extension{}, err
+		}
+		if err := m.settleBuiltinReplacement(pendingBuiltin, resolvedID); err != nil {
+			return Extension{}, fmt.Errorf("插件已安装，但替换内置版本未完成: %w", err)
 		}
 		stored, err := m.ExtensionDAO.Get(resolvedID)
 		if err == nil {
@@ -208,7 +213,7 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 	return extension, nil
 }
 
-func (m *Manager) InstallExtensionPackageFile(path string) (Extension, error) {
+func (m *Manager) InstallExtensionPackageFile(path string, onBuiltinConflict BuiltinConflictHandler) (Extension, error) {
 	normalizedPath := strings.TrimSpace(path)
 	if normalizedPath == "" {
 		return Extension{}, fmt.Errorf("插件文件路径不能为空")
@@ -217,10 +222,10 @@ func (m *Manager) InstallExtensionPackageFile(path string) (Extension, error) {
 	if err != nil {
 		return Extension{}, fmt.Errorf("读取插件文件失败: %w", err)
 	}
-	return m.InstallExtensionPackageBytes("", normalizedPath, data)
+	return m.InstallExtensionPackageBytes("", normalizedPath, data, onBuiltinConflict)
 }
 
-func (m *Manager) InstallExtensionDirectory(sourceDir string) (Extension, error) {
+func (m *Manager) InstallExtensionDirectory(sourceDir string, onBuiltinConflict BuiltinConflictHandler) (Extension, error) {
 	normalizedDir := strings.TrimSpace(sourceDir)
 	if normalizedDir == "" {
 		return Extension{}, fmt.Errorf("插件目录不能为空")
@@ -241,10 +246,6 @@ func (m *Manager) InstallExtensionDirectory(sourceDir string) (Extension, error)
 	if err := m.ensureExtensionInstallAllowed(extensionID); err != nil {
 		return Extension{}, err
 	}
-	installDir := filepath.Join(m.ResolveRelativePath(filepath.Join("data", extensionsRootDir)), extensionID)
-	if err := copyExtensionDirectory(normalizedDir, installDir); err != nil {
-		return Extension{}, err
-	}
 	localeMessages := readExtensionLocaleMessagesFromDir(normalizedDir, manifest)
 	extension := Extension{
 		ExtensionID:  extensionID,
@@ -254,13 +255,25 @@ func (m *Manager) InstallExtensionDirectory(sourceDir string) (Extension, error)
 		IconDataURL:  readExtensionIconDataURLFromDir(normalizedDir, manifest),
 		ManifestJSON: string(manifestData),
 		SourceURL:    normalizedDir,
-		InstallDir:   installDir,
 		InstallMode:  ExtensionInstallModePersistent,
 		Enabled:      true,
 	}
+	pendingBuiltin, err := m.prepareBuiltinReplacement(&extension, onBuiltinConflict)
+	if err != nil {
+		return Extension{}, err
+	}
+
+	installDir := filepath.Join(m.ResolveRelativePath(filepath.Join("data", extensionsRootDir)), extensionID)
+	if err := copyExtensionDirectory(normalizedDir, installDir); err != nil {
+		return Extension{}, err
+	}
+	extension.InstallDir = installDir
 	if m.ExtensionDAO != nil {
 		if err := m.ExtensionDAO.Upsert(extension); err != nil {
 			return Extension{}, err
+		}
+		if err := m.settleBuiltinReplacement(pendingBuiltin, extensionID); err != nil {
+			return Extension{}, fmt.Errorf("插件已安装，但替换内置版本未完成: %w", err)
 		}
 		if stored, err := m.ExtensionDAO.Get(extensionID); err == nil {
 			return stored, nil

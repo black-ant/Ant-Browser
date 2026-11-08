@@ -387,6 +387,17 @@ var migrations = []migration{
 			`ALTER TABLE browser_proxies ADD COLUMN source_last_refresh_error TEXT NOT NULL DEFAULT ''`,
 		},
 	},
+	{
+		version: 33,
+		desc:    "添加内置插件被手动安装取代的标记表",
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS browser_builtin_extension_superseded (
+				builtin_id   TEXT PRIMARY KEY,
+				extension_id TEXT NOT NULL,
+				created_at   TEXT NOT NULL DEFAULT ''
+			)`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

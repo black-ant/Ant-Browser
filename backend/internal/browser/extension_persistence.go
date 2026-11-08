@@ -190,6 +190,16 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 		warnings = append(warnings, fmt.Errorf("读取实例插件列表失败：%w", err))
 		return warnings
 	}
+	if settings.Configured {
+		// 绑定里存在但记录已丢失的插件（例如替换内置版本途中失败）不能静默消失，
+		// 否则实例启动后少一个插件而用户无从感知。
+		if missing := missingExtensionIDs(settings.ExtensionIDs, extensions); len(missing) > 0 {
+			log.Warn("实例绑定的插件记录已不存在",
+				logger.F("profile_id", profile.ProfileId),
+				logger.F("missing_ids", strings.Join(missing, ",")))
+			warnings = append(warnings, fmt.Errorf("实例绑定的插件已不存在：%s。请在插件管理中重新绑定或清理残留绑定", strings.Join(missing, "、")))
+		}
+	}
 
 	log.Debug("实例插件期望集合",
 		logger.F("profile_id", profile.ProfileId),
@@ -417,6 +427,20 @@ func (m *Manager) effectiveProfileExtensionIDs(settings ProfileExtensionSettings
 func (m *Manager) profileUsesExtension(profileID string, extensionID string) bool {
 	settings, err := m.ExtensionDAO.GetProfileSettings(profileID)
 	if err != nil {
+		return false
+	}
+	extensionID = strings.TrimSpace(extensionID)
+	if extensionID == "" {
+		return false
+	}
+	// 手动绑定时按原始绑定宽松匹配：内置插件 ID 不一定是 32 位合法 Chrome ID，
+	// 走 uniqueExtensionIDs 的格式过滤会漏判，导致运行中实例占用检查对内置插件失效。
+	if settings.Configured {
+		for _, boundID := range settings.ExtensionIDs {
+			if strings.TrimSpace(boundID) == extensionID {
+				return true
+			}
+		}
 		return false
 	}
 	ids, err := m.effectiveProfileExtensionIDs(settings)
@@ -1872,4 +1896,32 @@ func safeExtensionPathSegment(value string) string {
 		return "unknown"
 	}
 	return builder.String()
+}
+
+// missingExtensionIDs 返回绑定里存在、但插件记录已丢失的 ID（保持绑定顺序、去重）。
+func missingExtensionIDs(bound []string, loaded []Extension) []string {
+	if len(bound) == 0 {
+		return nil
+	}
+	loadedSet := make(map[string]struct{}, len(loaded))
+	for _, item := range loaded {
+		loadedSet[strings.TrimSpace(item.ExtensionID)] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(bound))
+	var missing []string
+	for _, id := range bound {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := loadedSet[id]; ok {
+			continue
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		missing = append(missing, id)
+	}
+	return missing
 }
