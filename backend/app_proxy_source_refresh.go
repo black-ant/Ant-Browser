@@ -16,16 +16,16 @@ import (
 
 // ProxySourceRefreshResult 一次订阅源刷新的结果统计。
 type ProxySourceRefreshResult struct {
-	SourceId       string `json:"sourceId"`
-	SourceURL      string `json:"sourceUrl"`
-	Fetched        int    `json:"fetched"`        // 订阅解析出的节点数（已过滤忽略名单）
-	NameMatched    int    `json:"nameMatched"`    // 按名称匹配沿用旧 ID
-	CountryMatched int    `json:"countryMatched"` // 名称匹配不上时按同国家替换
-	EndpointMatched int   `json:"endpointMatched"` // 名称匹配不上但端点相同（服务器:端口:协议）= 改名节点，自动对齐
-	Added          int    `json:"added"`          // 全新节点
-	Pairs          []ProxyRefreshPair `json:"pairs,omitempty"` // 本次刷新的对齐明细（旧名→新名+匹配方式）
-	MarkedMissing  int    `json:"markedMissing"`  // 名称/国家都匹配不上，标记为异常的旧节点
-	Total          int    `json:"total"`          // 该源最终保留的节点数
+	SourceId        string             `json:"sourceId"`
+	SourceURL       string             `json:"sourceUrl"`
+	Fetched         int                `json:"fetched"`         // 订阅解析出的节点数（已过滤忽略名单）
+	NameMatched     int                `json:"nameMatched"`     // 按名称匹配沿用旧 ID
+	CountryMatched  int                `json:"countryMatched"`  // 名称匹配不上时按同国家替换
+	EndpointMatched int                `json:"endpointMatched"` // 名称匹配不上但端点相同（服务器:端口:协议）= 改名节点，自动对齐
+	Added           int                `json:"added"`           // 全新节点
+	Pairs           []ProxyRefreshPair `json:"pairs,omitempty"` // 本次刷新的对齐明细（旧名→新名+匹配方式）
+	MarkedMissing   int                `json:"markedMissing"`   // 名称/国家都匹配不上，标记为异常的旧节点
+	Total           int                `json:"total"`           // 该源最终保留的节点数
 }
 
 // ProxyRefreshPair 一次刷新中的对齐明细：旧节点名 → 新节点名及匹配方式。
@@ -875,10 +875,10 @@ func (a *App) markProxySourceRefreshFailed(meta proxySourceMeta, refreshErr erro
 		)
 	}
 	a.emitRuntimeEvent("proxy:sources:refresh:failed", map[string]interface{}{
-		"sourceId": meta.SourceID,
+		"sourceId":  meta.SourceID,
 		"sourceUrl": meta.SourceURL,
-		"error":    refreshErr.Error(),
-		"at":       time.Now().Format(time.RFC3339),
+		"error":     refreshErr.Error(),
+		"at":        time.Now().Format(time.RFC3339),
 	})
 }
 
@@ -897,10 +897,14 @@ func (a *App) BrowserProxySetSourceIgnoredNames(sourceId string, names []string)
 			cleaned = append(cleaned, trimmed)
 		}
 	}
+	// 改 map 与 yaml 序列化必须在同一个写锁内：yaml.Marshal 会遍历该 map，
+	// 与并发的写入同时发生会触发 concurrent map iteration and map write。
+	unlock := config.LockConfigWrite()
+	defer unlock()
 	a.proxySourceIgnoredMu.Lock()
 	a.setProxySourceIgnoredNamesLocked(sourceId, cleaned)
 	a.proxySourceIgnoredMu.Unlock()
-	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
+	if err := a.config.SaveLocked(a.resolveAppPath("config.yaml")); err != nil {
 		return fmt.Errorf("保存订阅源忽略名单失败: %w", err)
 	}
 	return nil
