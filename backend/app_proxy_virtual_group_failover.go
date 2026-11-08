@@ -101,12 +101,22 @@ func (a *App) handleVirtualGroupProxyFailure(profileID string, proxyID string, t
 		return
 	}
 
+	requestedProxyID := strings.TrimSpace(next.ProxyId)
+	groupKey := proxyVirtualGroupCursorKey(group.GroupId, group.GroupName)
+	if !a.setVirtualProxyCursor(groupKey, requestedProxyID, candidates.memberOrder, candidates.pool) {
+		log.Warn("虚拟分组故障切换未能固定目标成员，重启将按现有游标选点",
+			logger.F("profile_id", profileID),
+			logger.F("group_id", group.GroupId),
+			logger.F("requested_proxy_id", requestedProxyID),
+		)
+	}
+
 	log.Info("虚拟分组开始故障切换",
 		logger.F("profile_id", profileID),
 		logger.F("group_id", group.GroupId),
 		logger.F("virtual_group", group.GroupName),
 		logger.F("from_proxy_id", proxyID),
-		logger.F("to_proxy_id", next.ProxyId),
+		logger.F("to_proxy_id", requestedProxyID),
 		logger.F("attempt", attempt),
 		logger.F("trigger", trigger),
 	)
@@ -120,15 +130,21 @@ func (a *App) handleVirtualGroupProxyFailure(profileID string, proxyID string, t
 		return
 	}
 
+	// 重启路径可能因候选变化落到其他成员，事件必须上报实际生效的代理。
+	actualProxyID := a.bridgeProxyIDForProfile(profileID)
+	if actualProxyID == "" {
+		actualProxyID = requestedProxyID
+	}
 	a.emitRuntimeEvent("proxy:virtual-group:failover", map[string]interface{}{
-		"profileId":   profileID,
-		"groupId":     group.GroupId,
-		"groupName":   group.GroupName,
-		"fromProxyId": proxyID,
-		"toProxyId":   strings.TrimSpace(next.ProxyId),
-		"trigger":     trigger,
-		"attempt":     attempt,
-		"at":          time.Now().Format(time.RFC3339),
+		"profileId":        profileID,
+		"groupId":          group.GroupId,
+		"groupName":        group.GroupName,
+		"fromProxyId":      proxyID,
+		"toProxyId":        actualProxyID,
+		"requestedProxyId": requestedProxyID,
+		"trigger":          trigger,
+		"attempt":          attempt,
+		"at":               time.Now().Format(time.RFC3339),
 	})
 }
 

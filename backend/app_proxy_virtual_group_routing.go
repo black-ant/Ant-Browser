@@ -128,6 +128,42 @@ func (a *App) commitVirtualProxyCursor(groupKey string, selectedProxyID string, 
 	}
 }
 
+// setVirtualProxyCursor 把轮询游标固定到指定成员，让下一次启动优先选中它。
+//
+// 与 commitVirtualProxyCursor（选中后推进到下一个）不同，这里用于故障切换：
+// 重启必须落到新的健康成员，而不是依赖重启路径重新计算——健康开关关闭或状态
+// 写入滞后时，重启路径可能再次选中刚失败的节点。
+func (a *App) setVirtualProxyCursor(groupKey string, proxyID string, memberIDs []string, candidates []BrowserProxy) bool {
+	groupKey = strings.TrimSpace(groupKey)
+	proxyID = strings.ToLower(strings.TrimSpace(proxyID))
+	if groupKey == "" || proxyID == "" {
+		return false
+	}
+	orderedIDs := virtualProxyMemberOrder(memberIDs, candidates)
+	if len(orderedIDs) == 0 {
+		return false
+	}
+	index := -1
+	for i, memberID := range orderedIDs {
+		if memberID == proxyID {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return false
+	}
+	release := a.lockProxyVirtualGroup(groupKey)
+	defer release()
+	a.proxyVirtualGroupMu.Lock()
+	if a.proxyVirtualGroupCursor == nil {
+		a.proxyVirtualGroupCursor = make(map[string]int)
+	}
+	a.proxyVirtualGroupCursor[groupKey] = index
+	a.proxyVirtualGroupMu.Unlock()
+	return true
+}
+
 func virtualProxyMemberOrder(memberIDs []string, candidates []BrowserProxy) []string {
 	orderedIDs := make([]string, 0, len(memberIDs)+len(candidates))
 	seenIDs := make(map[string]struct{}, len(memberIDs)+len(candidates))
@@ -208,26 +244,28 @@ func (a *App) pickVirtualGroupStartProxies(group browser.ProxyVirtualGroup, prox
 
 	states := a.virtualGroupMemberStates(resolved.GroupId)
 	usable := make([]BrowserProxy, 0, len(candidates))
-	degradedCount := 0
+	retryable := make([]BrowserProxy, 0, len(candidates))
 	for _, candidate := range candidates {
+		// 降级/恢复观察成员一律不进候选：兜底只能重试“未观测或疑似”的成员。
+		if a.memberStateDegraded(candidate.ProxyId, states) {
+			continue
+		}
 		if a.virtualGroupMemberUsable(candidate, states) {
 			usable = append(usable, candidate)
 			continue
 		}
-		if a.memberStateDegraded(candidate.ProxyId, states) {
-			degradedCount++
-		}
+		retryable = append(retryable, candidate)
 	}
 
-	// 只有"每个成员都被明确降级"才拒绝；全部未观测属于首次使用，仍按旧逻辑重试。
-	if len(usable) == 0 && degradedCount == len(candidates) {
+	// 只有“每个成员都被明确降级”才拒绝；未观测/疑似成员保留旧的重试语义。
+	if len(usable) == 0 && len(retryable) == 0 {
 		a.reportVirtualGroupAllDegraded(resolved, profileID, candidates, states)
 		return virtualGroupStartCandidates{group: resolved, allDegraded: true}
 	}
 
 	pool := usable
 	if len(pool) == 0 {
-		pool = candidates
+		pool = retryable
 	}
 	ordered, memberOrder := a.orderVirtualProxyCandidates(groupKey, resolved, pool, proxies)
 	return virtualGroupStartCandidates{

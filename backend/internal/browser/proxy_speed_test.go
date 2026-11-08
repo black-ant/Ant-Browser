@@ -260,3 +260,51 @@ func TestProxySpeedSchedulerDoesNotRunAfterStop(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+// 降级退避窗口内的成员不应被定时探测。
+func TestProxySpeedSchedulerSkipsGatedProxies(t *testing.T) {
+	testedAt := time.Now().Add(-10 * time.Minute).Format(time.RFC3339)
+	dao := &proxySpeedSchedulerTestDAO{
+		proxies: []Proxy{
+			{ProxyId: "gated", ProxyConfig: "http://127.0.0.1:8080", LastTestedAt: testedAt},
+			{ProxyId: "open", ProxyConfig: "http://127.0.0.1:8081", LastTestedAt: testedAt},
+		},
+		updates: make(chan string, 4),
+	}
+	gateUntil := time.Now().Add(time.Hour)
+	var mu sync.Mutex
+	tested := map[string]int{}
+	scheduler := NewProxySpeedSchedulerWithRetry(dao, nil, 30*time.Minute, 5*time.Minute, 1)
+	scheduler.SetProxySpeedTestFunc(func(item Proxy) (bool, int64, string) {
+		mu.Lock()
+		tested[item.ProxyId]++
+		mu.Unlock()
+		return true, 30, ""
+	})
+	scheduler.SetProbeGateFunc(func(item Proxy, checkedAt time.Time) bool {
+		if item.ProxyId == "gated" {
+			return !checkedAt.Before(gateUntil)
+		}
+		return true
+	})
+	scheduler.RunOnce()
+
+	select {
+	case proxyID := <-dao.updates:
+		if proxyID != "open" {
+			t.Fatalf("probed proxy = %q, want only open", proxyID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("open proxy was not probed")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if tested["gated"] != 0 {
+		t.Fatalf("gated proxy was probed %d times, want 0", tested["gated"])
+	}
+	if tested["open"] != 1 {
+		t.Fatalf("open proxy probed %d times, want 1", tested["open"])
+	}
+	scheduler.Stop()
+}

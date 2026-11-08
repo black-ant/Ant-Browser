@@ -83,6 +83,7 @@ func (a *App) pruneProxyVirtualGroupMembers(proxies []BrowserProxy) error {
 			if err := a.browserMgr.ProxyVirtualGroupDAO.Upsert(group); err != nil {
 				return fmt.Errorf("清理虚拟代理分组「%s」失效关联失败: %w", group.GroupName, err)
 			}
+			a.pruneVirtualGroupMemberStates(group)
 		} else {
 			configChanged = true
 		}

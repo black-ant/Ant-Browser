@@ -132,27 +132,32 @@ func (a *App) selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy,
 		return []BrowserProxy{}, false
 	}
 
-	available := selectDynamicBrowserProxyCandidates(proxies, "", maxTestAge)
-	matched := make([]BrowserProxy, 0, len(memberIDs))
-	candidates := make([]BrowserProxy, 0, len(memberIDs))
+	// 降级判定覆盖全部成员：成员当前不可测速（结果过期/失败）并不等于它没有降级，
+	// 只按“可测速成员”计数会漏报全组降级，把明确拒绝退化成普通“没有可用节点”。
 	degradedCount := 0
+	for proxyID := range memberIDs {
+		if a.memberStateDegraded(proxyID, states) {
+			degradedCount++
+		}
+	}
+
+	available := selectDynamicBrowserProxyCandidates(proxies, "", maxTestAge)
+	candidates := make([]BrowserProxy, 0, len(memberIDs))
 	for _, candidate := range available {
 		if _, exists := memberIDs[strings.ToLower(strings.TrimSpace(candidate.ProxyId))]; !exists {
 			continue
 		}
-		matched = append(matched, candidate)
 		if a.memberStateDegraded(candidate.ProxyId, states) {
-			degradedCount++
 			continue
 		}
 		candidates = append(candidates, candidate)
 	}
 	// 只有"每个成员都被明确降级"才拒绝；全部未观测仍按旧逻辑尝试。
-	if len(candidates) == 0 && len(matched) > 0 && degradedCount == len(matched) {
+	if len(candidates) == 0 && degradedCount == len(memberIDs) {
 		logger.New("Browser").Warn("虚拟分组成员全部降级，动态代理拒绝使用该分组",
 			logger.F("group_id", group.GroupId),
 			logger.F("virtual_group", group.GroupName),
-			logger.F("member_count", len(matched)),
+			logger.F("member_count", len(memberIDs)),
 			logger.F("reason", "all_degraded"),
 		)
 		return []BrowserProxy{}, true

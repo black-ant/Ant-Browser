@@ -44,6 +44,8 @@ type ProxyVirtualGroupMemberStateDAO interface {
 	ListByGroup(groupId string) ([]ProxyVirtualGroupMemberState, error)
 	Upsert(state ProxyVirtualGroupMemberState) error
 	DeleteByGroup(groupId string) error
+	// DeleteByGroupExcept 删除分组内已不在成员列表中的残留状态，保留 keepProxyIds。
+	DeleteByGroupExcept(groupId string, keepProxyIds []string) error
 	// ResetByGroup 把整个分组重置为未观测，用于手动清除降级。
 	ResetByGroup(groupId string) error
 }

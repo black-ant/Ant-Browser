@@ -92,6 +92,7 @@ func (a *App) SaveBrowserProxyVirtualGroup(group BrowserProxyVirtualGroup) error
 		return fmt.Errorf("应用未初始化，无法保存虚拟代理分组")
 	}
 
+	a.pruneVirtualGroupMemberStates(group)
 	a.resetProxyVirtualGroupCursorByKey(previousCursorKey)
 	a.resetProxyVirtualGroupCursorForGroup(group)
 	a.invalidateVirtualGroupSnapshot()
@@ -132,6 +133,7 @@ func (a *App) DeleteBrowserProxyVirtualGroup(groupId string) error {
 				logger.F("error", err.Error()),
 			)
 		}
+		a.invalidateVirtualGroupMemberStateGate()
 	}
 	a.resetProxyVirtualGroupCursor(groupId)
 	a.invalidateVirtualGroupSnapshot()
@@ -231,6 +233,26 @@ func (a *App) rememberVirtualGroupSelection(group browser.ProxyVirtualGroup, pro
 	if err := a.config.Save(a.resolveAppPath("config.yaml")); err != nil {
 		logger.New("Browser").Warn("保存虚拟代理分组保持节点配置失败", logger.F("group_id", group.GroupId), logger.F("proxy_id", proxyID), logger.F("error", err))
 	}
+}
+
+// pruneVirtualGroupMemberStates 删除分组中已移除成员的残留健康状态。
+// 分组本身已保存成功，状态清理失败只记日志：回滚用户编辑的代价更高。
+func (a *App) pruneVirtualGroupMemberStates(group browser.ProxyVirtualGroup) {
+	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyVirtualGroupMemberStateDAO == nil {
+		return
+	}
+	groupID := strings.TrimSpace(group.GroupId)
+	if groupID == "" {
+		return
+	}
+	if err := a.browserMgr.ProxyVirtualGroupMemberStateDAO.DeleteByGroupExcept(groupID, group.MemberProxyIds); err != nil {
+		logger.New("Browser").Warn("清理虚拟分组成员健康状态失败",
+			logger.F("group_id", groupID),
+			logger.F("group_name", group.GroupName),
+			logger.F("error", err.Error()),
+		)
+	}
+	a.invalidateVirtualGroupMemberStateGate()
 }
 
 func (a *App) resetProxyVirtualGroupCursor(groupID string) {

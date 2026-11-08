@@ -151,3 +151,81 @@ func TestFirstVirtualGroupCandidateExcept(t *testing.T) {
 		t.Fatalf("仅剩失败节点时应返回 nil, got %#v", got)
 	}
 }
+
+// 故障切换必须能把下一次启动固定到指定成员。
+func TestSetVirtualProxyCursorPinsNextStart(t *testing.T) {
+	app := NewApp("")
+	group := browser.ProxyVirtualGroup{
+		GroupId:        "vg-pin",
+		GroupName:      "pin",
+		Strategy:       browser.ProxyVirtualGroupStrategyRoundRobin,
+		MemberProxyIds: []string{"proxy-a", "proxy-b", "proxy-c"},
+	}
+	candidates := []BrowserProxy{
+		{ProxyId: "proxy-a"},
+		{ProxyId: "proxy-b"},
+		{ProxyId: "proxy-c"},
+	}
+	key := proxyVirtualGroupCursorKey(group.GroupId, group.GroupName)
+	if !app.setVirtualProxyCursor(key, "proxy-c", nil, candidates) {
+		t.Fatal("固定到组内成员应成功")
+	}
+	ordered, _ := app.orderVirtualProxyCandidates(key, group, candidates, candidates)
+	if len(ordered) != 3 || ordered[0].ProxyId != "proxy-c" {
+		t.Fatalf("ordered = %#v, want proxy-c 优先", ordered)
+	}
+
+	if app.setVirtualProxyCursor(key, "proxy-missing", nil, candidates) {
+		t.Fatal("非成员不应固定成功")
+	}
+	ordered, _ = app.orderVirtualProxyCandidates(key, group, candidates, candidates)
+	if len(ordered) == 0 || ordered[0].ProxyId != "proxy-c" {
+		t.Fatalf("固定失败不应改变游标，实际 %#v", ordered)
+	}
+}
+
+// 桥接引用读取用于故障切换事件上报实际生效成员。
+func TestBridgeProxyIDForProfile(t *testing.T) {
+	app := NewApp("")
+	app.bindProfileProxyBridge("profile-1", newProfileProxyBridgeRef("xray", "bridge-key", "proxy-a"))
+	if got := app.bridgeProxyIDForProfile("profile-1"); got != "proxy-a" {
+		t.Fatalf("bridge proxy id = %q, want proxy-a", got)
+	}
+	app.releaseProfileProxyBridge("profile-1")
+	if got := app.bridgeProxyIDForProfile("profile-1"); got != "" {
+		t.Fatalf("released bridge proxy id = %q, want empty", got)
+	}
+}
+
+// 启动期桥接失败是弱信号：一次失败只进入 suspect，连续两次才降级。
+func TestStartBridgeFailureRequiresThresholdBeforeDegrade(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	if err := app.browserMgr.ProxyDAO.ReplaceAll([]BrowserProxy{
+		{ProxyId: "proxy-a", ProxyName: "A", ProxyConfig: "http://a:8080"},
+	}); err != nil {
+		t.Fatalf("seed proxies failed: %v", err)
+	}
+	group := browser.ProxyVirtualGroup{GroupId: "vg-start-fail", GroupName: "start-fail", MemberProxyIds: []string{"proxy-a"}}
+	if err := app.browserMgr.ProxyVirtualGroupDAO.Upsert(group); err != nil {
+		t.Fatalf("seed group failed: %v", err)
+	}
+	app.invalidateVirtualGroupSnapshot()
+
+	app.reportProxyBridgeFailure("profile-1", "profile", "proxy-a", profileProxyBridgeEngineXray, errors.New("dial failed"))
+	states, err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup(group.GroupId)
+	if err != nil {
+		t.Fatalf("ListByGroup returned error: %v", err)
+	}
+	if len(states) != 1 || states[0].State != browser.MemberStateSuspect {
+		t.Fatalf("state after first start failure = %#v, want suspect", states)
+	}
+
+	app.reportProxyBridgeFailure("profile-1", "profile", "proxy-a", profileProxyBridgeEngineXray, errors.New("dial failed"))
+	states, err = app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup(group.GroupId)
+	if err != nil {
+		t.Fatalf("ListByGroup returned error: %v", err)
+	}
+	if len(states) != 1 || states[0].State != browser.MemberStateDegraded {
+		t.Fatalf("state after second start failure = %#v, want degraded", states)
+	}
+}

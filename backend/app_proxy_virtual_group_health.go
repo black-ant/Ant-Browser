@@ -171,6 +171,88 @@ func (a *App) virtualGroupSnapshotData() ([]browser.ProxyVirtualGroup, map[strin
 	return resolved, byProxy
 }
 
+// virtualGroupMemberStateGateCache 缓存 proxyID → 最晚 NextProbeAt。
+//
+// 一个代理可能同时属于多个分组，探测结果会写入所有分组；退避必须等最晚的窗口结束，
+// 否则等于提前探测了另一个分组尚未到期的成员。
+type virtualGroupMemberStateGateCache struct {
+	mu        sync.Mutex
+	nextProbe map[string]time.Time
+	expiresAt time.Time
+}
+
+const virtualGroupMemberStateGateTTL = 15 * time.Second
+
+func (a *App) invalidateVirtualGroupMemberStateGate() {
+	if a == nil {
+		return
+	}
+	a.virtualGroupMemberStateGate.mu.Lock()
+	a.virtualGroupMemberStateGate.nextProbe = nil
+	a.virtualGroupMemberStateGate.expiresAt = time.Time{}
+	a.virtualGroupMemberStateGate.mu.Unlock()
+}
+
+// virtualGroupMemberNextProbe 返回该代理在所有分组中最晚的退避截止时间。
+func (a *App) virtualGroupMemberNextProbe(proxyID string) (time.Time, bool) {
+	proxyID = strings.ToLower(strings.TrimSpace(proxyID))
+	if proxyID == "" {
+		return time.Time{}, false
+	}
+	cache := &a.virtualGroupMemberStateGate
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	now := time.Now()
+	if cache.nextProbe == nil || !now.Before(cache.expiresAt) {
+		cache.nextProbe = a.loadVirtualGroupMemberNextProbes()
+		cache.expiresAt = now.Add(virtualGroupMemberStateGateTTL)
+	}
+	next, ok := cache.nextProbe[proxyID]
+	return next, ok
+}
+
+func (a *App) loadVirtualGroupMemberNextProbes() map[string]time.Time {
+	result := make(map[string]time.Time)
+	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyVirtualGroupMemberStateDAO == nil {
+		return result
+	}
+	rows, err := a.browserMgr.ProxyVirtualGroupMemberStateDAO.List()
+	if err != nil {
+		return result
+	}
+	for _, row := range rows {
+		proxyID := strings.ToLower(strings.TrimSpace(row.ProxyId))
+		if proxyID == "" {
+			continue
+		}
+		next, parseErr := time.Parse(time.RFC3339, strings.TrimSpace(row.NextProbeAt))
+		if parseErr != nil {
+			continue
+		}
+		if existing, ok := result[proxyID]; !ok || next.After(existing) {
+			result[proxyID] = next
+		}
+	}
+	return result
+}
+
+// virtualGroupProbeGate 降级/恢复观察成员在 NextProbeAt 之前不再被定时探测。
+// 返回 true 表示允许本轮探测；非分组成员、健康开关关闭时一律放行。
+func (a *App) virtualGroupProbeGate(proxyID string, checkedAt time.Time) bool {
+	if !a.virtualGroupHealthEnabled() {
+		return true
+	}
+	_, byProxy := a.virtualGroupSnapshotData()
+	if len(byProxy[strings.ToLower(strings.TrimSpace(proxyID))]) == 0 {
+		return true
+	}
+	next, ok := a.virtualGroupMemberNextProbe(proxyID)
+	if !ok {
+		return true
+	}
+	return !checkedAt.Before(next)
+}
+
 // ProxyVirtualGroupMemberHealth 单个成员的健康快照。
 type ProxyVirtualGroupMemberHealth struct {
 	ProxyId     string `json:"proxyId"`
@@ -186,19 +268,19 @@ type ProxyVirtualGroupMemberHealth struct {
 
 // ProxyVirtualGroupHealth 分组级聚合健康快照。
 type ProxyVirtualGroupHealth struct {
-	GroupId          string                        `json:"groupId"`
-	GroupName        string                        `json:"groupName"`
-	Strategy         string                        `json:"strategy"`
-	ActiveProxyId    string                        `json:"activeProxyId"`
-	PreferredProxyId string                        `json:"preferredProxyId"`
-	Total            int                           `json:"total"`
-	Healthy          int                           `json:"healthy"`
-	Suspect          int                           `json:"suspect"`
-	Degraded         int                           `json:"degraded"`
+	GroupId          string `json:"groupId"`
+	GroupName        string `json:"groupName"`
+	Strategy         string `json:"strategy"`
+	ActiveProxyId    string `json:"activeProxyId"`
+	PreferredProxyId string `json:"preferredProxyId"`
+	Total            int    `json:"total"`
+	Healthy          int    `json:"healthy"`
+	Suspect          int    `json:"suspect"`
+	Degraded         int    `json:"degraded"`
 	// AllDegraded 为 true 表示整组成员全部降级，启动会被直接拒绝。
-	AllDegraded bool                          `json:"allDegraded"`
+	AllDegraded bool                            `json:"allDegraded"`
 	Members     []ProxyVirtualGroupMemberHealth `json:"members"`
-	UpdatedAt   string                        `json:"updatedAt"`
+	UpdatedAt   string                          `json:"updatedAt"`
 }
 
 // ProxyVirtualGroupProbeResult 手动巡检结果。
@@ -306,6 +388,7 @@ func (a *App) BrowserProxyVirtualGroupResetHealth(groupId string) error {
 	if groupId == "" {
 		return fmt.Errorf("虚拟分组 ID 不能为空")
 	}
+	a.invalidateVirtualGroupMemberStateGate()
 	return a.browserMgr.ProxyVirtualGroupMemberStateDAO.ResetByGroup(groupId)
 }
 
@@ -327,9 +410,14 @@ func (a *App) BrowserProxyVirtualGroupProbe(groupId string) (ProxyVirtualGroupPr
 		return result, fmt.Errorf("虚拟分组「%s」没有可用成员代理", resolved.GroupName)
 	}
 	for _, member := range members {
-		a.testSharedProxySpeed(strings.TrimSpace(member.ProxyId), true)
+		// 立即巡检是用户显式动作，按手动测速的强信号处理：成功立即恢复健康。
+		// 走阈值状态机时一次成功只会落到 recovering，页面仍显示降级，与提示语义矛盾。
+		a.BrowserProxyTestSpeed(strings.TrimSpace(member.ProxyId))
 		result.Tested++
 	}
+	// 巡检会刷新测速结果，重新读取后再聚合，避免返回探测前的延迟与状态。
+	proxies = a.getLatestProxies()
+	resolved = browser.ResolveProxyVirtualGroup(group, proxies)
 	health := a.buildVirtualGroupHealth(resolved, proxies)
 	result.Healthy = health.Healthy
 	result.Degraded = health.Degraded
@@ -381,6 +469,8 @@ func (a *App) recordVirtualGroupMemberProbe(proxyID string, outcome browser.Memb
 			)
 			continue
 		}
+		// 每次写入都可能更新 NextProbeAt / 状态，缓存必须失效。
+		a.invalidateVirtualGroupMemberStateGate()
 		if previous.State != next.State {
 			logger.New("VirtualGroup").Info("虚拟分组成员健康状态变化",
 				logger.F("group_id", group.GroupId),
@@ -392,13 +482,13 @@ func (a *App) recordVirtualGroupMemberProbe(proxyID string, outcome browser.Memb
 				logger.F("error", next.LastError),
 			)
 			a.emitRuntimeEvent("proxy:virtual-group:health", map[string]interface{}{
-				"groupId":      group.GroupId,
-				"groupName":    group.GroupName,
-				"proxyId":      proxyID,
+				"groupId":       group.GroupId,
+				"groupName":     group.GroupName,
+				"proxyId":       proxyID,
 				"previousState": string(previous.State),
-				"state":        string(next.State),
-				"error":        next.LastError,
-				"at":           next.LastProbeAt,
+				"state":         string(next.State),
+				"error":         next.LastError,
+				"at":            next.LastProbeAt,
 			})
 		}
 	}
@@ -509,6 +599,7 @@ func (a *App) markVirtualGroupMemberHealthy(group browser.ProxyVirtualGroup, pro
 	if err := dao.Upsert(next); err != nil {
 		return
 	}
+	a.invalidateVirtualGroupMemberStateGate()
 	logger.New("VirtualGroup").Info("虚拟分组成员恢复健康",
 		logger.F("group_id", group.GroupId),
 		logger.F("group_name", group.GroupName),
@@ -560,6 +651,7 @@ func (a *App) markVirtualGroupMemberDegraded(group browser.ProxyVirtualGroup, pr
 	}
 	next.NextProbeAt = time.Now().Add(a.memberHealthPolicy().FailureRetry).Format(time.RFC3339)
 	_ = dao.Upsert(next)
+	a.invalidateVirtualGroupMemberStateGate()
 	a.emitRuntimeEvent("proxy:virtual-group:health", map[string]interface{}{
 		"groupId":       group.GroupId,
 		"groupName":     group.GroupName,

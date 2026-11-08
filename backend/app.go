@@ -41,31 +41,32 @@ type App struct {
 	appRoot                     string
 	version                     string
 
-	forceQuit                     bool
-	quitMode                      quitMode
-	quitMu                        sync.RWMutex
-	runtimeMu                     sync.RWMutex
-	runtimeStopped                bool
-	backgroundTaskCtx             context.Context
-	backgroundTaskCancel          context.CancelFunc
-	backgroundTasks               sync.WaitGroup
-	backgroundTasksBlocked        bool
-	maintenanceMu                 sync.Mutex
-	bridgeMu                      sync.Mutex
-	proxyVirtualGroupMu           sync.Mutex
-	proxyVirtualGroupCursor       map[string]int
-	proxyVirtualGroupLocks        map[string]*sync.Mutex
-	virtualGroupSnapshot          virtualGroupSnapshotCache
-	proxyFailoverMu               sync.Mutex
-	proxySourceIgnoredMu          sync.Mutex
+	forceQuit                   bool
+	quitMode                    quitMode
+	quitMu                      sync.RWMutex
+	runtimeMu                   sync.RWMutex
+	runtimeStopped              bool
+	backgroundTaskCtx           context.Context
+	backgroundTaskCancel        context.CancelFunc
+	backgroundTasks             sync.WaitGroup
+	backgroundTasksBlocked      bool
+	maintenanceMu               sync.Mutex
+	bridgeMu                    sync.Mutex
+	proxyVirtualGroupMu         sync.Mutex
+	proxyVirtualGroupCursor     map[string]int
+	proxyVirtualGroupLocks      map[string]*sync.Mutex
+	virtualGroupSnapshot        virtualGroupSnapshotCache
+	virtualGroupMemberStateGate virtualGroupMemberStateGateCache
+	proxyFailoverMu             sync.Mutex
+	proxySourceIgnoredMu        sync.Mutex
 	// proxySourceRefreshMu 串行化订阅刷新的"读池 → 合并 → 全量保存"过程。
 	// 前端手动刷新、前端自动刷新与后端调度器可能同时触发，非原子会导致后保存者覆盖先保存者的结果。
 	proxySourceRefreshMu sync.Mutex
 	proxyFailoverLastAt  map[string]time.Time
 	proxyFailoverCount   map[string]int
 	// instanceGate 实例并发启动闸门（安全控制），见 app_instance_launch_gate.go。
-	instanceGate     *instanceLaunchGate
-	instanceGateOnce sync.Once
+	instanceGate                  *instanceLaunchGate
+	instanceGateOnce              sync.Once
 	profileBridgeRefs             map[string]profileProxyBridgeRef
 	deferredStartTargetsMu        sync.Mutex
 	deferredStartTargets          map[string]deferredStartTargetsPlan

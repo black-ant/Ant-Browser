@@ -179,3 +179,40 @@ func TestMigrateToSQLiteAddsConfigVirtualGroupsWhenDAOHasExistingGroups(t *testi
 		t.Fatalf("config virtual group was not incrementally migrated: %#v", groups)
 	}
 }
+
+func TestSaveBrowserProxyVirtualGroupPrunesRemovedMemberState(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	if err := app.browserMgr.ProxyDAO.ReplaceAll([]BrowserProxy{
+		{ProxyId: "proxy-a", ProxyName: "A", ProxyConfig: "http://a:8080"},
+		{ProxyId: "proxy-b", ProxyName: "B", ProxyConfig: "http://b:8080"},
+	}); err != nil {
+		t.Fatalf("seed proxies failed: %v", err)
+	}
+	if err := app.browserMgr.ProxyVirtualGroupDAO.Upsert(browser.ProxyVirtualGroup{
+		GroupId:        "vg-prune",
+		GroupName:      "prune-check",
+		Strategy:       browser.ProxyVirtualGroupStrategyRoundRobin,
+		MemberProxyIds: []string{"proxy-a", "proxy-b"},
+	}); err != nil {
+		t.Fatalf("seed group failed: %v", err)
+	}
+	for _, proxyID := range []string{"proxy-a", "proxy-b"} {
+		seedMemberState(t, app, "vg-prune", proxyID, browser.MemberStateHealthy)
+	}
+
+	if err := app.SaveBrowserProxyVirtualGroup(BrowserProxyVirtualGroup{
+		GroupId:        "vg-prune",
+		GroupName:      "prune-check",
+		MemberProxyIds: []string{"proxy-a"},
+	}); err != nil {
+		t.Fatalf("SaveBrowserProxyVirtualGroup returned error: %v", err)
+	}
+
+	states, err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup("vg-prune")
+	if err != nil {
+		t.Fatalf("ListByGroup returned error: %v", err)
+	}
+	if len(states) != 1 || states[0].ProxyId != "proxy-a" {
+		t.Fatalf("member states after save = %#v, want only proxy-a", states)
+	}
+}

@@ -88,6 +88,42 @@ func (d *SQLiteProxyVirtualGroupMemberStateDAO) Upsert(state ProxyVirtualGroupMe
 	return nil
 }
 
+// DeleteByGroupExcept 删除分组内不在 keepProxyIds 中的成员状态。
+// 成员被移出分组后，旧状态不能再作为该成员的判定依据（会直接拒绝启动或跳过它），
+// 因此保存分组与清理悬空成员时都必须同步删除。
+func (d *SQLiteProxyVirtualGroupMemberStateDAO) DeleteByGroupExcept(groupId string, keepProxyIds []string) error {
+	groupId = strings.TrimSpace(groupId)
+	if groupId == "" {
+		return nil
+	}
+	args := make([]interface{}, 0, len(keepProxyIds)+1)
+	args = append(args, groupId)
+	placeholders := make([]string, 0, len(keepProxyIds))
+	seen := make(map[string]struct{}, len(keepProxyIds))
+	for _, rawProxyID := range keepProxyIds {
+		proxyID := strings.TrimSpace(rawProxyID)
+		if proxyID == "" {
+			continue
+		}
+		key := strings.ToLower(proxyID)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		placeholders = append(placeholders, "?")
+		// 占位符与 LOWER(proxy_id) 比较，必须用归一化后的小写值。
+		args = append(args, key)
+	}
+	query := `DELETE FROM browser_proxy_virtual_group_member_state WHERE group_id = ?`
+	if len(placeholders) > 0 {
+		query += ` AND LOWER(proxy_id) NOT IN (` + strings.Join(placeholders, ", ") + `)`
+	}
+	if _, err := d.db.Exec(query, args...); err != nil {
+		return fmt.Errorf("清理虚拟分组成员健康状态失败: %w", err)
+	}
+	return nil
+}
+
 func (d *SQLiteProxyVirtualGroupMemberStateDAO) DeleteByGroup(groupId string) error {
 	groupId = strings.TrimSpace(groupId)
 	if groupId == "" {

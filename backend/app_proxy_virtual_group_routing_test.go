@@ -395,4 +395,51 @@ func TestVirtualGroupStateIgnoredAcrossConnectorStack(t *testing.T) {
 	}
 }
 
+// 固定分组兜底：只有降级成员时不重试，未观测/疑似成员才允许旧逻辑重试。
+func TestPickVirtualGroupStartProxiesDoesNotRetryDegradedMembers(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	testedAt := time.Now().Format(time.RFC3339)
+	proxies := []BrowserProxy{
+		{ProxyId: "proxy-a", ProxyName: "A", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80},
+		{ProxyId: "proxy-b", ProxyName: "B", ProxyConfig: "http://b:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1},
+	}
+	group := browser.ProxyVirtualGroup{GroupId: "vg-retry", GroupName: "retry", MemberProxyIds: []string{"proxy-a", "proxy-b"}}
+	seedMemberState(t, app, group.GroupId, "proxy-a", browser.MemberStateDegraded)
 
+	candidates := app.pickVirtualGroupStartProxies(group, proxies, "profile-retry")
+	if candidates.empty() || candidates.allDegraded {
+		t.Fatalf("候选 = %#v, want 仅保留未观测的 proxy-b", candidates)
+	}
+	if len(candidates.ordered) != 1 || candidates.ordered[0].ProxyId != "proxy-b" {
+		t.Fatalf("ordered = %#v, want [proxy-b]", candidates.ordered)
+	}
+
+	// 全部明确降级 → 直接拒绝，不再兜底。
+	seedMemberState(t, app, group.GroupId, "proxy-b", browser.MemberStateDegraded)
+	allDegraded := app.pickVirtualGroupStartProxies(group, proxies, "profile-retry")
+	if !allDegraded.allDegraded || !allDegraded.empty() {
+		t.Fatalf("全部降级时 = %#v, want allDegraded 且无候选", allDegraded)
+	}
+}
+
+// 成员测速结果过期/失败时，全组降级仍必须按“全部降级”拒绝。
+func TestSelectVirtualDynamicCandidatesAllDegradedIgnoresTestFreshness(t *testing.T) {
+	testedAt := time.Now().Format(time.RFC3339)
+	proxies := []BrowserProxy{
+		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1},
+		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1},
+	}
+	group := browser.ProxyVirtualGroup{MemberProxyIds: []string{"proxy-a", "proxy-b"}}
+	states := map[string]browser.ProxyVirtualGroupMemberState{
+		"proxy-a": {ProxyId: "proxy-a", State: browser.MemberStateDegraded},
+		"proxy-b": {ProxyId: "proxy-b", State: browser.MemberStateRecovering},
+	}
+
+	candidates, allDegraded := NewApp("").selectVirtualDynamicBrowserProxyCandidates(proxies, group, defaultDynamicProxyMaxTestAge, states)
+	if !allDegraded {
+		t.Fatal("所有成员都明确降级时，测速结果不新鲜也必须标记全组降级")
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("candidates = %#v, want empty", candidates)
+	}
+}

@@ -147,3 +147,55 @@ func TestVirtualGroupPreferredProxyIDPersists(t *testing.T) {
 		t.Fatalf("stored preferred/selected = %q/%q, want proxy-1/proxy-2", stored.PreferredProxyId, stored.SelectedProxyId)
 	}
 }
+
+func TestSQLiteProxyVirtualGroupMemberStateDeleteByGroupExcept(t *testing.T) {
+	dao := newMemberStateTestDAO(t)
+
+	for _, proxyID := range []string{"proxy-1", "proxy-2", "proxy-3"} {
+		if err := dao.Upsert(ProxyVirtualGroupMemberState{
+			GroupId: "group-1",
+			ProxyId: proxyID,
+			State:   MemberStateHealthy,
+		}); err != nil {
+			t.Fatalf("seed %s failed: %v", proxyID, err)
+		}
+	}
+	if err := dao.Upsert(ProxyVirtualGroupMemberState{
+		GroupId: "group-2",
+		ProxyId: "proxy-3",
+		State:   MemberStateDegraded,
+	}); err != nil {
+		t.Fatalf("seed other group failed: %v", err)
+	}
+
+	// 大小写与重复项都要归一化，且只影响指定分组。
+	if err := dao.DeleteByGroupExcept("group-1", []string{" PROXY-1 ", "proxy-2", "proxy-2"}); err != nil {
+		t.Fatalf("DeleteByGroupExcept returned error: %v", err)
+	}
+	states, err := dao.ListByGroup("group-1")
+	if err != nil {
+		t.Fatalf("ListByGroup returned error: %v", err)
+	}
+	if len(states) != 2 || states[0].ProxyId != "proxy-1" || states[1].ProxyId != "proxy-2" {
+		t.Fatalf("states after prune = %#v, want proxy-1/proxy-2", states)
+	}
+	other, err := dao.ListByGroup("group-2")
+	if err != nil {
+		t.Fatalf("ListByGroup(group-2) returned error: %v", err)
+	}
+	if len(other) != 1 || other[0].State != MemberStateDegraded {
+		t.Fatalf("other group states = %#v, want untouched degraded row", other)
+	}
+
+	// 保留列表为空表示清空该分组（成员全部被移除）。
+	if err := dao.DeleteByGroupExcept("group-1", nil); err != nil {
+		t.Fatalf("DeleteByGroupExcept(nil) returned error: %v", err)
+	}
+	states, err = dao.ListByGroup("group-1")
+	if err != nil {
+		t.Fatalf("ListByGroup after clear returned error: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("states after clear = %#v, want empty", states)
+	}
+}

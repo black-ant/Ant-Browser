@@ -13,6 +13,9 @@ type SpeedTestFunc func(proxyId string) (ok bool, latencyMs int64, err string)
 type ProxySpeedTestFunc func(proxy Proxy) (ok bool, latencyMs int64, err string)
 type ProxySpeedResultCurrentFunc func(proxy Proxy, proxies []Proxy) bool
 
+// ProxySpeedProbeGateFunc 返回 false 表示本轮跳过该代理（如处于降级退避窗口）。
+type ProxySpeedProbeGateFunc func(proxy Proxy, checkedAt time.Time) bool
+
 // ProxySpeedScheduler 代理测速定时调度器
 type ProxySpeedScheduler struct {
 	dao           ProxyDAO
@@ -22,7 +25,9 @@ type ProxySpeedScheduler struct {
 	// priorityFn 值越大越先探测，用于让虚拟分组成员优先于全池。
 	priorityFn func(proxy Proxy) int
 	// intervalFn 返回单个代理的自定义探测间隔，<=0 表示沿用全局设置。
-	intervalFn    func(proxy Proxy) time.Duration
+	intervalFn func(proxy Proxy) time.Duration
+	// probeGateFn 返回 false 时本轮不探测该代理，用于执行成员级退避。
+	probeGateFn   ProxySpeedProbeGateFunc
 	persistResult bool
 	interval      time.Duration
 	failureRetry  time.Duration
@@ -111,6 +116,13 @@ func (s *ProxySpeedScheduler) SetPriorityFunc(fn func(proxy Proxy) int) {
 func (s *ProxySpeedScheduler) SetIntervalFunc(fn func(proxy Proxy) time.Duration) {
 	s.mu.Lock()
 	s.intervalFn = fn
+	s.mu.Unlock()
+}
+
+// SetProbeGateFunc 设置探测闸门；返回 false 的代理本轮跳过。
+func (s *ProxySpeedScheduler) SetProbeGateFunc(fn ProxySpeedProbeGateFunc) {
+	s.mu.Lock()
+	s.probeGateFn = fn
 	s.mu.Unlock()
 }
 
@@ -262,6 +274,7 @@ func (s *ProxySpeedScheduler) runAll() {
 	persistResult := s.persistResult
 	priorityFn := s.priorityFn
 	intervalFn := s.intervalFn
+	probeGateFn := s.probeGateFn
 	s.mu.Unlock()
 
 	if testFn == nil && proxyTestFn == nil {
@@ -296,6 +309,9 @@ func (s *ProxySpeedScheduler) runAll() {
 			due = true
 		}
 		if !due {
+			continue
+		}
+		if probeGateFn != nil && !probeGateFn(p, checkedAt) {
 			continue
 		}
 		priority := 0

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
 )
@@ -46,6 +47,18 @@ func (a *App) bindProfileProxyBridge(profileId string, ref profileProxyBridgeRef
 	}
 	a.profileBridgeRefs[profileId] = ref
 	a.bridgeMu.Unlock()
+}
+
+// bridgeProxyIDForProfile 返回实例当前桥接引用中的代理 ID。
+// 重启后用于如实上报故障切换结果；没有桥接引用（如直连）时返回空。
+func (a *App) bridgeProxyIDForProfile(profileId string) string {
+	profileId = strings.TrimSpace(profileId)
+	if profileId == "" {
+		return ""
+	}
+	a.bridgeMu.Lock()
+	defer a.bridgeMu.Unlock()
+	return strings.TrimSpace(a.profileBridgeRefs[profileId].ProxyID)
 }
 
 func (a *App) releaseProfileProxyBridge(profileId string) {
@@ -176,8 +189,21 @@ func (a *App) recordProxyBridgeFailure(proxyID string) {
 
 func (a *App) reportProxyBridgeFailure(profileID string, profileName string, proxyID string, engine string, cause error) {
 	a.recordProxyBridgeFailure(proxyID)
-	// 启动期桥接失败同样视为该成员不可用，后续候选选择直接跳过它。
-	a.markProxyDegradedInAllGroups(proxyID, cause)
+	// 启动期桥接失败可能是本机内核/端口抖动，不等于节点已死：
+	// 按普通探测失败计入阈值，避免一次失败就把该节点从所有分组里摘掉。
+	// 运行期桥接进程死亡仍是强信号，走 scheduleVirtualGroupProxyFailure。
+	message := "启动期桥接失败"
+	if cause != nil {
+		message = "启动期桥接失败：" + cause.Error()
+	}
+	a.recordVirtualGroupMemberProbe(proxyID, browser.MemberProbeOutcome{
+		Ok:            false,
+		LatencyMs:     -1,
+		Error:         message,
+		Engine:        engine,
+		ConnectorType: a.defaultProxyConnectorType(),
+		At:            time.Now(),
+	})
 	a.emitRuntimeEvent("proxy:bridge:failed", map[string]interface{}{
 		"profileId":   profileID,
 		"profileName": profileName,

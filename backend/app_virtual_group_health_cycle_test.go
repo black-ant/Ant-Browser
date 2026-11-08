@@ -277,3 +277,89 @@ func TestSaveProxyCheckSettingsPreservesVirtualGroupFields(t *testing.T) {
 		t.Fatal("虚拟分组健康开关被保存动作重置")
 	}
 }
+
+// 分组成员在 NextProbeAt 之前被闸门拦住；非成员、健康开关关闭时放行。
+func TestVirtualGroupProbeGateHonorsNextProbeAt(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	if err := app.browserMgr.ProxyDAO.ReplaceAll([]BrowserProxy{
+		{ProxyId: "proxy-a", ProxyName: "A", ProxyConfig: "http://a:8080"},
+	}); err != nil {
+		t.Fatalf("seed proxies failed: %v", err)
+	}
+	for _, group := range []browser.ProxyVirtualGroup{
+		{GroupId: "vg-gate", GroupName: "gate", MemberProxyIds: []string{"proxy-a"}},
+		{GroupId: "vg-gate-2", GroupName: "gate-2", MemberProxyIds: []string{"proxy-a"}},
+	} {
+		if err := app.browserMgr.ProxyVirtualGroupDAO.Upsert(group); err != nil {
+			t.Fatalf("seed group %s failed: %v", group.GroupId, err)
+		}
+	}
+	app.invalidateVirtualGroupSnapshot()
+	now := time.Now()
+
+	if !app.virtualGroupProbeGate("proxy-not-member", now) {
+		t.Fatal("非分组成员必须放行")
+	}
+	if !app.virtualGroupProbeGate("proxy-a", now) {
+		t.Fatal("没有状态行的成员必须放行")
+	}
+
+	// 同一代理属于两个分组：必须等最晚的退避窗口结束。
+	if err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.Upsert(browser.ProxyVirtualGroupMemberState{
+		GroupId: "vg-gate", ProxyId: "proxy-a", State: browser.MemberStateDegraded,
+		NextProbeAt: now.Add(5 * time.Minute).Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("seed state failed: %v", err)
+	}
+	if err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.Upsert(browser.ProxyVirtualGroupMemberState{
+		GroupId: "vg-gate-2", ProxyId: "proxy-a", State: browser.MemberStateDegraded,
+		NextProbeAt: now.Add(9 * time.Minute).Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("seed state failed: %v", err)
+	}
+	app.invalidateVirtualGroupMemberStateGate()
+	if app.virtualGroupProbeGate("proxy-a", now.Add(6*time.Minute)) {
+		t.Fatal("另一个分组的退避尚未结束，不应提前探测")
+	}
+	if !app.virtualGroupProbeGate("proxy-a", now.Add(10*time.Minute)) {
+		t.Fatal("所有分组退避结束后必须放行")
+	}
+
+	// 健康开关关闭时不再执行退避。
+	app.config.ProxyCheck.VirtualGroupHealthEnabled = boolPtrForTest(false)
+	if !app.virtualGroupProbeGate("proxy-a", now) {
+		t.Fatal("健康开关关闭时必须放行")
+	}
+}
+
+// 手动测速是强信号：一次成功必须直接把 degraded 恢复为 healthy。
+func TestApplyManualProxyProbeRestoresInOneShot(t *testing.T) {
+	app := newVirtualGroupHealthTestApp(t)
+	if err := app.browserMgr.ProxyDAO.ReplaceAll([]BrowserProxy{
+		{ProxyId: "proxy-a", ProxyName: "A", ProxyConfig: "http://a:8080"},
+	}); err != nil {
+		t.Fatalf("seed proxies failed: %v", err)
+	}
+	group := browser.ProxyVirtualGroup{GroupId: "vg-manual", GroupName: "manual", MemberProxyIds: []string{"proxy-a"}}
+	if err := app.browserMgr.ProxyVirtualGroupDAO.Upsert(group); err != nil {
+		t.Fatalf("seed group failed: %v", err)
+	}
+	app.invalidateVirtualGroupSnapshot()
+	seedMemberState(t, app, group.GroupId, "proxy-a", browser.MemberStateDegraded)
+
+	app.applyManualProxyProbe(ProxyTestResult{
+		ProxyId:       "proxy-a",
+		Ok:            true,
+		LatencyMs:     120,
+		Engine:        "xray",
+		connectorType: "xray",
+	})
+
+	states, err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup(group.GroupId)
+	if err != nil {
+		t.Fatalf("ListByGroup returned error: %v", err)
+	}
+	if len(states) != 1 || states[0].State != browser.MemberStateHealthy {
+		t.Fatalf("manual probe state = %#v, want healthy", states)
+	}
+}
