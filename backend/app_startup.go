@@ -99,6 +99,7 @@ func (a *App) startup(ctx context.Context) {
 	a.startupInitSpeedScheduler()
 	a.startupInitBackupScheduler()
 	a.startupInitProxySourceRefreshScheduler()
+	a.startupInitRuntimeCleanup()
 	a.emitRuntimeEvent("app:ready")
 
 	log.Info("应用启动成功")
@@ -307,6 +308,9 @@ func (a *App) ensureSpeedScheduler() {
 		})
 		a.speedScheduler.SetIntervalFunc(func(item browser.Proxy) time.Duration {
 			return a.virtualGroupProbeIntervalFor(item.ProxyId)
+		})
+		a.speedScheduler.SetProbeGateFunc(func(item browser.Proxy, checkedAt time.Time) bool {
+			return a.virtualGroupProbeGate(item.ProxyId, checkedAt)
 		})
 	}
 	a.speedScheduler.Start()

@@ -45,6 +45,10 @@ type AutomationConfig struct {
 	SystemNodePath        string `yaml:"system_node_path,omitempty"`
 	NodeVersion           string `yaml:"node_version,omitempty"`
 	PlaywrightCoreVersion string `yaml:"playwright_core_version,omitempty"`
+	// RunRetentionDays 自动化运行记录保留天数；<=0 使用默认值 7。
+	RunRetentionDays int `yaml:"run_retention_days,omitempty"`
+	// ArtifactRetentionDays 自动化产物（截图/图片等）保留天数；<=0 使用默认值 7。
+	ArtifactRetentionDays int `yaml:"artifact_retention_days,omitempty"`
 }
 
 // ProxySourceRefreshConfig 订阅源定时刷新（后端调度器）。
@@ -238,16 +242,16 @@ type BrowserBookmark struct {
 }
 
 type BrowserConfig struct {
-	UserDataRoot           string                     `yaml:"user_data_root"`
-	DefaultFingerprintArgs []string                   `yaml:"default_fingerprint_args"`
-	DefaultLaunchArgs      []string                   `yaml:"default_launch_args"`
-	DefaultStartURLs       []string                   `yaml:"default_start_urls"`
-	LightStartEnabled      *bool                      `yaml:"light_start_enabled,omitempty"`
-	RestoreLastSession     bool                       `yaml:"restore_last_session"`
-	StartReadyTimeoutMs    int                        `yaml:"start_ready_timeout_ms,omitempty"`
-	StartStableWindowMs    int                        `yaml:"start_stable_window_ms,omitempty"`
+	UserDataRoot           string   `yaml:"user_data_root"`
+	DefaultFingerprintArgs []string `yaml:"default_fingerprint_args"`
+	DefaultLaunchArgs      []string `yaml:"default_launch_args"`
+	DefaultStartURLs       []string `yaml:"default_start_urls"`
+	LightStartEnabled      *bool    `yaml:"light_start_enabled,omitempty"`
+	RestoreLastSession     bool     `yaml:"restore_last_session"`
+	StartReadyTimeoutMs    int      `yaml:"start_ready_timeout_ms,omitempty"`
+	StartStableWindowMs    int      `yaml:"start_stable_window_ms,omitempty"`
 	// MaxConcurrentInstances 同时运行实例数上限；0 表示不限制，超出后启动请求排队等待空闲名额。
-	MaxConcurrentInstances   int                        `yaml:"max_concurrent_instances,omitempty"`
+	MaxConcurrentInstances int                        `yaml:"max_concurrent_instances,omitempty"`
 	DefaultBookmarks       []BrowserBookmark          `yaml:"default_bookmarks,omitempty"`
 	DeletedBookmarkURLs    []string                   `yaml:"deleted_bookmark_urls,omitempty"`
 	Cores                  []BrowserCore              `yaml:"cores,omitempty"`
@@ -255,16 +259,18 @@ type BrowserConfig struct {
 	ProxyVirtualGroups     []BrowserProxyVirtualGroup `yaml:"proxy_virtual_groups,omitempty"`
 	Profiles               []BrowserProfileConfig     `yaml:"profiles,omitempty"`
 	// AlignRecords 订阅源对齐记录（sourceId -> 最近 3 条），由刷新自动对齐与对齐工作台写入。
-	AlignRecords map[string][]SourceAlignRecord `yaml:"align_records,omitempty" json:"align_records,omitempty"`
-	ChromeBinaryPath       string                     `yaml:"chrome_binary_path,omitempty"`
-	ClashBinaryPath        string                     `yaml:"clash_binary_path,omitempty"`
-	XrayBinaryPath         string                     `yaml:"xray_binary_path,omitempty"`
-	SingBoxBinaryPath      string                     `yaml:"singbox_binary_path,omitempty"`
-	MieruBinaryPath        string                     `yaml:"mieru_binary_path,omitempty"`
-	CoreRoot               string                     `yaml:"core_root,omitempty"`
-	DefaultCoreId          string                     `yaml:"default_core_id,omitempty"`
-	DefaultConnectorType   string                     `yaml:"default_connector_type,omitempty"`
-	Environments           []BrowserEnvironment       `yaml:"environments,omitempty"`
+	AlignRecords         map[string][]SourceAlignRecord `yaml:"align_records,omitempty" json:"align_records,omitempty"`
+	ChromeBinaryPath     string                         `yaml:"chrome_binary_path,omitempty"`
+	ClashBinaryPath      string                         `yaml:"clash_binary_path,omitempty"`
+	XrayBinaryPath       string                         `yaml:"xray_binary_path,omitempty"`
+	SingBoxBinaryPath    string                         `yaml:"singbox_binary_path,omitempty"`
+	MieruBinaryPath      string                         `yaml:"mieru_binary_path,omitempty"`
+	CoreRoot             string                         `yaml:"core_root,omitempty"`
+	DefaultCoreId        string                         `yaml:"default_core_id,omitempty"`
+	DefaultConnectorType string                         `yaml:"default_connector_type,omitempty"`
+	// ProxyWorkdirRetentionDays 代理内核工作目录保留天数；<=0 使用默认值 3。
+	ProxyWorkdirRetentionDays int                  `yaml:"proxy_workdir_retention_days,omitempty"`
+	Environments              []BrowserEnvironment `yaml:"environments,omitempty"`
 	// ProxySourceIgnoredNames 按 sourceId 记录订阅刷新时要跳过的节点名（导入预览里被用户取消勾选的节点）。
 	// 之前只存在前端 localStorage，后端定时刷新无法感知，导致被忽略节点反复“复活”。
 	ProxySourceIgnoredNames map[string][]string `yaml:"proxy_source_ignored_names,omitempty" json:"proxySourceIgnoredNames,omitempty"`

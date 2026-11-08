@@ -39,13 +39,17 @@ func cloneAutomationSelector(selector map[string]any) map[string]any {
 	return cloned
 }
 
-func (a *App) ensurePlaywrightTargetReady(selector map[string]any) (map[string]any, string, error) {
+// ensurePlaywrightTargetReady 预启动脚本目标实例。
+// startedByRun 表示实例是本次任务拉起来的（任务开始前未运行），任务结束时必须由后端负责停掉。
+func (a *App) ensurePlaywrightTargetReady(selector map[string]any) (map[string]any, string, bool, error) {
 	normalized := cloneAutomationSelector(selector)
 	profileID := automationSelectorProfileID(normalized)
 	code := automationSelectorCode(normalized)
 	if profileID == "" && code == "" {
-		return normalized, "", nil
+		return normalized, "", false, nil
 	}
+
+	startedByRun := !a.automationTargetRunning(profileID, code)
 
 	var (
 		profile *browser.Profile
@@ -58,10 +62,10 @@ func (a *App) ensurePlaywrightTargetReady(selector map[string]any) (map[string]a
 		profile, err = a.BrowserInstanceStartByCode(code)
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("预启动脚本目标实例失败: %w", err)
+		return nil, "", false, fmt.Errorf("预启动脚本目标实例失败: %w", err)
 	}
 	if profile == nil {
-		return nil, "", fmt.Errorf("预启动脚本目标实例失败：未返回实例")
+		return nil, "", false, fmt.Errorf("预启动脚本目标实例失败：未返回实例")
 	}
 
 	resolvedProfileID := strings.TrimSpace(profile.ProfileId)
@@ -77,7 +81,7 @@ func (a *App) ensurePlaywrightTargetReady(selector map[string]any) (map[string]a
 		normalized["code"] = resolvedCode
 	}
 
-	return normalized, resolvedProfileID, nil
+	return normalized, resolvedProfileID, startedByRun, nil
 }
 
 func automationScriptTaskKey(scriptID string, selector map[string]any) string {
@@ -87,7 +91,7 @@ func automationScriptTaskKey(scriptID string, selector map[string]any) string {
 	return "script:" + strings.TrimSpace(scriptID)
 }
 
-func (a *App) runPlaywrightScript(ctx context.Context, script automation.ScriptRecord, input automation.ScriptRunRequest) (string, string, string, string) {
+func (a *App) runPlaywrightScript(ctx context.Context, script automation.ScriptRecord, input automation.ScriptRunRequest) (resultText string, logText string, summary string, errText string) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -114,20 +118,31 @@ func (a *App) runPlaywrightScript(ctx context.Context, script automation.ScriptR
 
 	paramsText := resolveAutomationRunJSONText(input.ParamsText, script.ParamsText, input.UseScriptParams)
 
+	// 先校验 params 再预启动实例：参数不合法时不应该留下一个已经拉起的浏览器。
+	params, err := parseAutomationJSONObject(paramsText, false)
+	if err != nil {
+		return "", "", "脚本执行失败", err.Error()
+	}
+
 	selector, targetSummary, err := a.resolveAutomationEffectiveSelector(script, input, false)
 	if err != nil {
 		return "", "", "脚本执行失败", err.Error()
 	}
-	selector, taskProfileID, err := a.ensurePlaywrightTargetReady(selector)
+	selector, taskProfileID, startedByRun, err := a.ensurePlaywrightTargetReady(selector)
 	if err != nil {
 		return "", "", "脚本执行失败", err.Error()
+	}
+	// 收尾保证：任务自己拉起的实例必须在任务结束时停止并校验；脚本可用 keepProfileAfterRun 显式豁免。
+	if startedByRun && strings.TrimSpace(taskProfileID) != "" && !automationRunKeepProfile(params) {
+		defer func() {
+			if ok, detail := a.stopAutomationTargetProfile(taskProfileID); !ok {
+				errText = appendAutomationCleanupError(errText, detail)
+				summary = appendAutomationRunSummary(summary, "实例清理失败")
+			}
+		}()
 	}
 	if err := ctx.Err(); err != nil {
 		return "", "", "脚本执行失败", automationRunContextErrorMessage(err)
-	}
-	params, err := parseAutomationJSONObject(paramsText, false)
-	if err != nil {
-		return "", "", "脚本执行失败", err.Error()
 	}
 
 	baseURL, authHeader, authValue, err := a.automationDemoEndpoint()

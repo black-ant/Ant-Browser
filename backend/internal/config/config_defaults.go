@@ -32,14 +32,14 @@ const (
 
 const (
 	// 虚拟分组健康状态默认参数。
-	DefaultVirtualGroupProbeIntervalMinutes  = 5
-	DefaultDegradeFailureThreshold           = 2
-	DefaultRestoreSuccessThreshold           = 2
-	DefaultRuntimeFailoverCooldownMinutes    = 10
-	DefaultRuntimeFailoverMaxAttempts        = 3
-	MaxVirtualGroupHealthThreshold           = 5
-	MaxRuntimeFailoverCooldownMinutes        = 24 * 60
-	MaxRuntimeFailoverAttempts               = 10
+	DefaultVirtualGroupProbeIntervalMinutes = 5
+	DefaultDegradeFailureThreshold          = 2
+	DefaultRestoreSuccessThreshold          = 2
+	DefaultRuntimeFailoverCooldownMinutes   = 10
+	DefaultRuntimeFailoverMaxAttempts       = 3
+	MaxVirtualGroupHealthThreshold          = 5
+	MaxRuntimeFailoverCooldownMinutes       = 24 * 60
+	MaxRuntimeFailoverAttempts              = 10
 )
 
 // MaxVirtualGroupProbeIntervalMinutes 是虚拟分组成员核验间隔的硬上限。
@@ -161,6 +161,9 @@ func normalizeConfig(config *Config) {
 	}
 	if config.Browser.StartStableWindowMs <= 0 {
 		config.Browser.StartStableWindowMs = defaultConfig.Browser.StartStableWindowMs
+	}
+	if config.Browser.ProxyWorkdirRetentionDays <= 0 {
+		config.Browser.ProxyWorkdirRetentionDays = defaultConfig.Browser.ProxyWorkdirRetentionDays
 	}
 	config.Browser.DefaultConnectorType = NormalizeBrowserConnectorType(config.Browser.DefaultConnectorType)
 	if config.Browser.DefaultBookmarks == nil {
@@ -328,6 +331,12 @@ func normalizeConfig(config *Config) {
 			)
 		}
 	}
+	if config.Automation.RunRetentionDays <= 0 {
+		config.Automation.RunRetentionDays = defaultConfig.Automation.RunRetentionDays
+	}
+	if config.Automation.ArtifactRetentionDays <= 0 {
+		config.Automation.ArtifactRetentionDays = defaultConfig.Automation.ArtifactRetentionDays
+	}
 }
 
 func cloneInterceptorConfig(src InterceptorConfig) InterceptorConfig {
@@ -376,15 +385,16 @@ func DefaultConfig() *Config {
 			GCPercent:   100,
 		},
 		Browser: BrowserConfig{
-			UserDataRoot:           "data",
-			DefaultFingerprintArgs: defaultFingerprintArgsForOS(goruntime.GOOS),
-			DefaultLaunchArgs:      []string{"--disable-sync", "--no-first-run"},
-			DefaultStartURLs:       DefaultBrowserStartURLs(),
-			LightStartEnabled:      boolPtr(true),
-			RestoreLastSession:     false,
-			StartReadyTimeoutMs:    3000,
-			StartStableWindowMs:    1200,
-			DefaultConnectorType:   BrowserConnectorXray,
+			UserDataRoot:              "data",
+			DefaultFingerprintArgs:    defaultFingerprintArgsForOS(goruntime.GOOS),
+			DefaultLaunchArgs:         []string{"--disable-sync", "--no-first-run"},
+			DefaultStartURLs:          DefaultBrowserStartURLs(),
+			LightStartEnabled:         boolPtr(true),
+			RestoreLastSession:        false,
+			StartReadyTimeoutMs:       3000,
+			StartStableWindowMs:       1200,
+			DefaultConnectorType:      BrowserConnectorXray,
+			ProxyWorkdirRetentionDays: 3,
 		},
 		ProxySourceRefresh: ProxySourceRefreshConfig{
 			Enabled: boolPtr(true),
@@ -448,6 +458,8 @@ func DefaultConfig() *Config {
 			SystemNodePath:        "",
 			NodeVersion:           DefaultAutomationNodeVersion,
 			PlaywrightCoreVersion: DefaultAutomationPWVersion,
+			RunRetentionDays:      7,
+			ArtifactRetentionDays: 7,
 		},
 		Backup: BackupConfig{
 			Channels: BackupChannelsConfig{
