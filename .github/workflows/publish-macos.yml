@@ -7,9 +7,18 @@ on:
         description: Optional package version override, for example 1.9.0
         required: false
         type: string
+  push:
+    tags:
+      - "v*"
+      - "V*"
+      - "[0-9]*"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: publish-macos-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -46,9 +55,28 @@ jobs:
       - name: Add Go bin to PATH
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            version="${BASH_REMATCH[1]}"
+          fi
+          if [[ -z "$version" ]]; then
+            version="$(node -p "require('./wails.json').info.productVersion" 2>/dev/null || true)"
+          fi
+          if [[ -z "$version" ]]; then
+            echo "::error::无法从 ref '$GITHUB_REF_NAME' 解析版本号，请在 workflow_dispatch 中显式传 version"
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "package version: $version"
+
       - name: Build unsigned macOS package
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
           args=(--arch "${{ matrix.arch }}")
@@ -78,3 +106,25 @@ jobs:
             publish/output/AntBrowser-*-macos-${{ matrix.arch }}.app
             publish/output/AntBrowser-*-macos-${{ matrix.arch }}.zip
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || { gh release create "$TAG_NAME" --generate-notes || true; }
+          gh release upload "$TAG_NAME" release-artifacts/* --clobber

@@ -1,0 +1,165 @@
+name: Publish Windows Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional package version override, for example 1.9.0
+        required: false
+        type: string
+  push:
+    tags:
+      - "v*"
+      - "V*"
+      - "[0-9]*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Windows amd64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Add Go bin to PATH
+        shell: bash
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Verify runtime files
+        shell: bash
+        run: bash tools/runtime/verify-runtime.sh windows-amd64
+
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            version="${BASH_REMATCH[1]}"
+          fi
+          if [[ -z "$version" ]]; then
+            version="$(node -p "require('./wails.json').info.productVersion" 2>/dev/null || true)"
+          fi
+          if [[ -z "$version" ]]; then
+            echo "::error::无法从 ref '$GITHUB_REF_NAME' 解析版本号，请在 workflow_dispatch 中显式传 version"
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "package version: $version"
+
+      - name: Build frontend and app
+        shell: bash
+        env:
+          BROWSERSLIST_IGNORE_OLD_DATA: "1"
+        run: |
+          set -euo pipefail
+          (cd frontend && npm ci --prefer-offline --no-audit --no-fund)
+          (cd frontend && npm run build:clean)
+          wails build -s -platform windows/amd64 -o ant-chrome.exe
+          ls -l build/bin
+
+      - name: Assemble staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="publish/staging/windows"
+          rm -rf "$stage"
+          mkdir -p "$stage/bin" "$stage/chrome" "$stage/data/diagnostics"
+          cp build/bin/ant-chrome.exe "$stage/ant-chrome.exe"
+          cp publish/config.init.yaml "$stage/config.yaml"
+          cp bin/xray.exe "$stage/bin/xray.exe"
+          cp bin/sing-box.exe "$stage/bin/sing-box.exe"
+          cp chrome/README.md "$stage/chrome/README.md"
+          cp tools/ant-chrome-diagnostics-watcher.ps1 "$stage/data/diagnostics/"
+          cp tools/install-ant-chrome-diagnostics-watcher.ps1 "$stage/data/diagnostics/"
+          ls -R "$stage"
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          $nsis = "C:\Program Files (x86)\NSIS"
+          if (-not (Test-Path (Join-Path $nsis "makensis.exe"))) {
+            choco install nsis --no-progress -y
+          }
+          $nsis | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build installer
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          $staging = Join-Path $env:GITHUB_WORKSPACE "publish\staging\windows"
+          New-Item -ItemType Directory -Path "publish\output" -Force | Out-Null
+          & makensis "/DVERSION=$env:VERSION" "/DSTAGINGDIR=$staging" "publish\installer.nsi"
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed with exit code $LASTEXITCODE" }
+          Get-ChildItem "publish\output\AntBrowser-Setup-*.exe" | Format-Table Name,Length
+
+      - name: Build portable zip
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          $portableName = "AntBrowser-$env:VERSION-windows-amd64-portable"
+          $root = Join-Path $env:GITHUB_WORKSPACE "publish\staging\$portableName"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          Copy-Item "publish\staging\windows\*" $root -Recurse -Force
+          $zip = "publish\output\$portableName.zip"
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path $root -DestinationPath $zip -CompressionLevel Optimal
+          Get-Item $zip | Format-Table Name,Length
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ant-browser-windows-amd64
+          path: |
+            publish/output/AntBrowser-Setup-*.exe
+            publish/output/AntBrowser-*-windows-amd64-portable.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || { gh release create "$TAG_NAME" --generate-notes || true; }
+          gh release upload "$TAG_NAME" release-artifacts/* --clobber

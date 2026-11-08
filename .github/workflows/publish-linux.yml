@@ -10,6 +10,8 @@ on:
   push:
     tags:
       - "v*"
+      - "V*"
+      - "[0-9]*"
 
 permissions:
   contents: write
@@ -75,9 +77,28 @@ jobs:
       - name: Verify runtime files
         run: bash tools/runtime/verify-runtime.sh linux-${{ matrix.arch }}
 
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            version="${BASH_REMATCH[1]}"
+          fi
+          if [[ -z "$version" ]]; then
+            version="$(node -p "require('./wails.json').info.productVersion" 2>/dev/null || true)"
+          fi
+          if [[ -z "$version" ]]; then
+            echo "::error::无法从 ref '$GITHUB_REF_NAME' 解析版本号，请在 workflow_dispatch 中显式传 version"
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "package version: $version"
+
       - name: Build Linux packages
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.version.outputs.value }}
           BROWSERSLIST_IGNORE_OLD_DATA: "1"
         run: |
           set -euo pipefail
@@ -118,7 +139,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-24.04
 
@@ -135,5 +156,5 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || gh release create "$TAG_NAME" --generate-notes
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || { gh release create "$TAG_NAME" --generate-notes || true; }
           gh release upload "$TAG_NAME" release-artifacts/* --clobber
