@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +30,18 @@ const (
 	mieruBridgeStopTTL   = 3 * time.Second
 	mieruKernelEnvBinary = "MIERU_BINARY_PATH"
 	mieruConfigEnvVar    = "MIERU_CONFIG_JSON_FILE"
+
+	// 探活结果缓存：避免同一节点每次启动/重试都阻塞在 DNS + TCP 拨号上。
+	// 成功结果缓存久一点；失败结果短缓存，节点恢复后不至于长时间不可用。
+	mieruProbeCacheSuccessTTL = 5 * time.Minute
+	mieruProbeCacheFailureTTL = 30 * time.Second
 )
+
+// mieruProbeCacheEntry 保存一次域名探活的结果（ips 为空表示探测失败）。
+type mieruProbeCacheEntry struct {
+	ips       []string
+	expiresAt time.Time
+}
 
 type MieruBridge struct {
 	NodeKey    string
@@ -55,6 +67,9 @@ type MieruManager struct {
 	launchLocks map[string]*bridgeLaunchLock
 	stopCh      chan struct{}
 	stopOnce    sync.Once
+
+	probeMu    sync.Mutex
+	probeCache map[string]mieruProbeCacheEntry
 }
 
 func NewMieruManager(cfg *config.Config, appRoot string) *MieruManager {
@@ -186,16 +201,16 @@ func ParseMieruClashNode(src string) (map[string]interface{}, error) {
 // transport→protocol、username/password→user、multiplexing/handshake-mode 原样透传。
 // traffic-pattern 为 base64 protobuf 编码，JSON 需要对象形式，暂不透传（不影响基础连通性）。
 func buildMieruClientConfig(node map[string]interface{}, socksPort int, rpcPort int) (map[string]interface{}, error) {
+	return buildMieruClientConfigWithIPs(node, nil, socksPort, rpcPort)
+}
+
+// buildMieruClientConfigWithIPs 在优选探活得到可用 IP 时，把每个 IP 作为独立 server 入口写入，
+// mieru 内核会在这些入口间轮换，单个 IP 失联不再拖死整条节点。
+// reachableIPs 为空时回退为单一 server 条目（域名交由内核解析），行为与旧版一致。
+func buildMieruClientConfigWithIPs(node map[string]interface{}, reachableIPs []string, socksPort int, rpcPort int) (map[string]interface{}, error) {
 	server := strings.TrimSpace(getMapString(node, "server"))
 	if server == "" {
 		return nil, fmt.Errorf("mieru 节点缺少 server")
-	}
-
-	serverEntry := map[string]interface{}{}
-	if ip := net.ParseIP(server); ip != nil {
-		serverEntry["ipAddress"] = server
-	} else {
-		serverEntry["domainName"] = server
 	}
 
 	protocol := strings.ToUpper(strings.TrimSpace(getMapString(node, "transport")))
@@ -219,11 +234,29 @@ func buildMieruClientConfig(node map[string]interface{}, socksPort int, rpcPort 
 	if len(portBindings) == 0 {
 		return nil, fmt.Errorf("mieru 节点缺少有效端口")
 	}
-	serverEntry["portBindings"] = portBindings
+
+	serverEntries := make([]interface{}, 0, 1+len(reachableIPs))
+	if len(reachableIPs) > 0 {
+		for _, ip := range reachableIPs {
+			serverEntries = append(serverEntries, map[string]interface{}{
+				"ipAddress":     ip,
+				"portBindings":  portBindings,
+			})
+		}
+	} else {
+		serverEntry := map[string]interface{}{}
+		if ip := net.ParseIP(server); ip != nil {
+			serverEntry["ipAddress"] = server
+		} else {
+			serverEntry["domainName"] = server
+		}
+		serverEntry["portBindings"] = portBindings
+		serverEntries = append(serverEntries, serverEntry)
+	}
 
 	profile := map[string]interface{}{
 		"profileName": "default",
-		"servers":     []interface{}{serverEntry},
+		"servers":     serverEntries,
 	}
 	if username := strings.TrimSpace(getMapString(node, "username")); username != "" {
 		user := map[string]interface{}{"name": username}
@@ -337,6 +370,7 @@ func (m *MieruManager) ensureBridgeContext(ctx context.Context, proxyConfig stri
 	}
 
 	const maxRetries = 2
+	reachableIPs := m.mieruProbeServerIPs(ctx, log, node)
 	var lastErr error
 	attemptsUsed := 0
 	for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -350,10 +384,16 @@ func (m *MieruManager) ensureBridgeContext(ctx context.Context, proxyConfig stri
 			continue
 		}
 
-		bridge, err := m.launchBridgeOnPort(ctx, log, key, binaryPath, node, socksPort, rpcPort, attempt)
+		bridge, err := m.launchBridgeOnPort(ctx, log, key, binaryPath, node, mieruServerCandidate(reachableIPs, attempt), socksPort, rpcPort, attempt)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return "", "", ctxErr
+			}
+			if attempt == 1 && len(reachableIPs) > 0 {
+				log.Warn("mieru 优选 IP 入口启动失败，回退域名入口重试",
+					logger.F("key", shortBridgeKey(key)),
+					logger.F("ips", strings.Join(reachableIPs, ",")),
+					logger.F("error", err.Error()))
 			}
 			lastErr = err
 			continue
@@ -384,14 +424,108 @@ func shortBridgeKey(key string) string {
 	return key
 }
 
-func (m *MieruManager) launchBridgeOnPort(ctx context.Context, log *logger.Logger, key string, binaryPath string, node map[string]interface{}, socksPort int, rpcPort int, attempt int) (*MieruBridge, error) {
+// mieruProbeServerIPs 对域名节点做 TCP 探活优选（带缓存）。
+// 仅当 server 是域名且解析出可用 IP 时返回候选列表（按延迟升序）；
+// server 是 IP、探测失败或全部不可达时返回 nil，回退为内核自行解析域名。
+func (m *MieruManager) mieruProbeServerIPs(ctx context.Context, log *logger.Logger, node map[string]interface{}) []string {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	server := strings.TrimSpace(getMapString(node, "server"))
+	if server == "" || net.ParseIP(server) != nil {
+		return nil
+	}
+	port := getMapInt(node, "port")
+	if port <= 0 {
+		port = parsePortRangeStart(getMapString(node, "port-range"))
+	}
+	if port <= 0 {
+		return nil
+	}
+	cacheKey := strings.ToLower(server) + "|" + strconv.Itoa(port)
+	if ips, ok := m.loadProbeCache(cacheKey); ok {
+		log.Debug("mieru 节点探活命中缓存",
+			logger.F("server", server),
+			logger.F("ips", strings.Join(ips, ",")),
+		)
+		return ips
+	}
+	start := time.Now()
+	ips := pickReachableServerIPs(ctx, server, port)
+	m.storeProbeCache(cacheKey, ips)
+	if len(ips) == 0 {
+		log.Warn("mieru 节点域名未探活到可用 IP，回退由内核解析域名",
+			logger.F("server", server),
+			logger.F("cost_ms", time.Since(start).Milliseconds()),
+		)
+		return nil
+	}
+	log.Info("mieru 节点域名 IP 优选完成",
+		logger.F("server", server),
+		logger.F("ips", strings.Join(ips, ",")),
+		logger.F("cost_ms", time.Since(start).Milliseconds()),
+	)
+	return ips
+}
+
+// mieruServerCandidate 选择本次启动使用的 server 入口：
+// 首轮用优选 IP；失败后的重试回退域名，避免 IP 可拨通但服务端按域名路由时永远失败。
+func mieruServerCandidate(reachableIPs []string, attempt int) []string {
+	if attempt <= 1 {
+		return reachableIPs
+	}
+	return nil
+}
+
+// loadProbeCache 读取未过期的探活结果；失败结果（ips 为空）同样算命中。
+func (m *MieruManager) loadProbeCache(key string) ([]string, bool) {
+	if m == nil || key == "" {
+		return nil, false
+	}
+	m.probeMu.Lock()
+	defer m.probeMu.Unlock()
+	entry, ok := m.probeCache[key]
+	if !ok {
+		return nil, false
+	}
+	if time.Now().After(entry.expiresAt) {
+		delete(m.probeCache, key)
+		return nil, false
+	}
+	return append([]string(nil), entry.ips...), true
+}
+
+// storeProbeCache 写入探活结果，并顺手清理过期条目，避免长跑进程积累。
+func (m *MieruManager) storeProbeCache(key string, ips []string) {
+	if m == nil || key == "" {
+		return
+	}
+	ttl := mieruProbeCacheSuccessTTL
+	if len(ips) == 0 {
+		ttl = mieruProbeCacheFailureTTL
+	}
+	now := time.Now()
+	m.probeMu.Lock()
+	defer m.probeMu.Unlock()
+	if m.probeCache == nil {
+		m.probeCache = make(map[string]mieruProbeCacheEntry)
+	}
+	for existingKey, entry := range m.probeCache {
+		if now.After(entry.expiresAt) {
+			delete(m.probeCache, existingKey)
+		}
+	}
+	m.probeCache[key] = mieruProbeCacheEntry{ips: append([]string(nil), ips...), expiresAt: now.Add(ttl)}
+}
+
+func (m *MieruManager) launchBridgeOnPort(ctx context.Context, log *logger.Logger, key string, binaryPath string, node map[string]interface{}, reachableIPs []string, socksPort int, rpcPort int, attempt int) (*MieruBridge, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	clientConfig, err := buildMieruClientConfig(node, socksPort, rpcPort)
+	clientConfig, err := buildMieruClientConfigWithIPs(node, reachableIPs, socksPort, rpcPort)
 	if err != nil {
 		return nil, err
 	}
