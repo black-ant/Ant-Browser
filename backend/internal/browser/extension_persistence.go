@@ -410,7 +410,7 @@ func (m *Manager) effectiveProfileExtensionIDs(settings ProfileExtensionSettings
 	// 只要实例被手动配置过，就严格按配置执行；configured=true 且列表为空
 	// 表示用户主动选择了"零插件"，不能再回落到默认安装集合。
 	if settings.Configured {
-		return uniqueExtensionIDs(settings.ExtensionIDs), nil
+		return dedupeExtensionIDs(settings.ExtensionIDs), nil
 	}
 	extensions, err := m.ExtensionDAO.ListDefaultInstall()
 	if err != nil {
@@ -420,7 +420,27 @@ func (m *Manager) effectiveProfileExtensionIDs(settings ProfileExtensionSettings
 	for _, extension := range extensions {
 		ids = append(ids, extension.ExtensionID)
 	}
-	return uniqueExtensionIDs(ids), nil
+	return dedupeExtensionIDs(ids), nil
+}
+
+// dedupeExtensionIDs 仅去空白、去重并保持顺序，不做 Chrome ID 格式校验。
+// 实例绑定里会出现内置插件的非 32 位逻辑 ID，用格式过滤会把它们静默丢弃，
+// 导致运行中实例占用判断、保存时的差异清理都漏掉内置插件。
+func dedupeExtensionIDs(extensionIDs []string) []string {
+	seen := make(map[string]struct{}, len(extensionIDs))
+	result := make([]string, 0, len(extensionIDs))
+	for _, extensionID := range extensionIDs {
+		extensionID = strings.TrimSpace(extensionID)
+		if extensionID == "" {
+			continue
+		}
+		if _, exists := seen[extensionID]; exists {
+			continue
+		}
+		seen[extensionID] = struct{}{}
+		result = append(result, extensionID)
+	}
+	return result
 }
 
 // profileUsesExtension 该实例当前是否会加载这个插件（手动绑定优先，否则看默认安装）。
@@ -433,16 +453,8 @@ func (m *Manager) profileUsesExtension(profileID string, extensionID string) boo
 	if extensionID == "" {
 		return false
 	}
-	// 手动绑定时按原始绑定宽松匹配：内置插件 ID 不一定是 32 位合法 Chrome ID，
-	// 走 uniqueExtensionIDs 的格式过滤会漏判，导致运行中实例占用检查对内置插件失效。
-	if settings.Configured {
-		for _, boundID := range settings.ExtensionIDs {
-			if strings.TrimSpace(boundID) == extensionID {
-				return true
-			}
-		}
-		return false
-	}
+	// effectiveProfileExtensionIDs 保留原始绑定 ID（不过滤 Chrome ID 格式），
+	// 因此手动绑定与默认安装两条路径都能正确匹配内置插件的逻辑 ID。
 	ids, err := m.effectiveProfileExtensionIDs(settings)
 	if err != nil {
 		return false
