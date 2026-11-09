@@ -419,15 +419,19 @@ func NewDB(dbPath string) (*DB, error) {
 	conn.SetMaxIdleConns(1)
 
 	if err := conn.Ping(); err != nil {
+		_ = conn.Close()
 		return nil, fmt.Errorf("连接数据库失败: %w", err)
 	}
 
 	// WAL 模式：写不阻塞读
 	if _, err := conn.Exec(`PRAGMA journal_mode=WAL`); err != nil {
+		// 失败时必须关闭连接：否则 Windows 上库文件被占用，自愈重建无法移走原文件。
+		_ = conn.Close()
 		return nil, fmt.Errorf("设置 WAL 模式失败: %w", err)
 	}
 	// 开启外键约束
 	if _, err := conn.Exec(`PRAGMA foreign_keys=ON`); err != nil {
+		_ = conn.Close()
 		return nil, fmt.Errorf("开启外键约束失败: %w", err)
 	}
 
