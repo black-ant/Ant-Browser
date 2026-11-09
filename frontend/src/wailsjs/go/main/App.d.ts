@@ -366,6 +366,8 @@ export function GetProxyCheckSettings():Promise<config.ProxyCheckConfig>;
 
 export function GetRunningInstances():Promise<Array<browser.Profile>>;
 
+export function GetWebviewGPUStatus():Promise<backend.WebviewGPUStatus>;
+
 export function InstallAutomationRuntime():Promise<Record<string, any>>;
 
 export function ListGroups():Promise<Array<browser.GroupWithCount>>;

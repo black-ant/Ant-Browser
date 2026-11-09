@@ -298,6 +298,27 @@ func main() {
 			windowBounds.MinHeight,
 		)
 	}
+
+	// WebView 硬件加速：环境变量 > config.yaml(app.webview_gpu) > 默认开启。
+	// 该开关只在创建窗口前生效，改配置后需要重启应用；解析结果同时写 lifecycle 日志，
+	// 方便在“界面卡/白屏/退出挂起”三类问题上先确认当前用的是哪种渲染路径。
+	webviewGPU := backend.ResolveWebviewGPU(cfg.App)
+	lifecycle.Log(appRoot, "webview.gpu.resolved", map[string]interface{}{
+		"enabled":    webviewGPU.Enabled,
+		"applicable": webviewGPU.Applicable,
+		"source":     webviewGPU.Source,
+		"policy":     webviewGPU.Policy,
+		"platform":   webviewGPU.Platform,
+	})
+	if startupDebugEnabled {
+		log.Printf(
+			"WebView 硬件加速: enabled=%v applicable=%v source=%s policy=%s（修改后需重启应用）",
+			webviewGPU.Enabled,
+			webviewGPU.Applicable,
+			webviewGPU.Source,
+			webviewGPU.Policy,
+		)
+	}
 	err = wails.Run(&options.App{
 		Title:     cfg.App.Name,
 		Logger:    lifecycle.NewWailsLogger(appRoot),
@@ -366,13 +387,20 @@ func main() {
 		},
 		Linux: &linux.Options{
 			// Expose a real window icon to Linux desktop environments.
-			Icon:             linuxAppIcon,
-			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
+			Icon: linuxAppIcon,
+			// WebKitGTK 的硬件加速策略跟随 app.webview_gpu：
+			// 开启时用 OnDemand（有合成需求才上 GPU），关闭时保持 Never（历史行为）。
+			WebviewGpuPolicy: backend.WebviewGPUPolicy(webviewGPU.Enabled),
 		},
 		Windows: &windows.Options{
-			WebviewIsTransparent:                false,
-			WindowIsTranslucent:                 false,
-			WebviewGpuIsDisabled:                true,
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  false,
+			// 默认关闭（app.webview_gpu 默认 false），与 1.9.0 行为一致；
+			// 显式配置 true 才启用 WebView2 GPU 加速。关闭时前端会同时关闭
+			// 逐帧 backdrop-filter 动画，避免软件光栅下每帧重算全屏模糊。
+			WebviewGpuIsDisabled: !webviewGPU.Enabled,
+			// 保持关闭渲染器代码完整性校验：部分终端安全软件会注入未签名 DLL，
+			// 开启校验会直接终止 WebView2 进程（表现为白屏 / 启动即退）。
 			WebviewDisableRendererCodeIntegrity: true,
 		},
 		LogLevelProduction: wailslogger.ERROR,

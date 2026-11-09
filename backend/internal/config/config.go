@@ -221,6 +221,15 @@ type BackupScheduleConfig struct {
 type AppConfig struct {
 	Name   string       `yaml:"name"`
 	Window WindowConfig `yaml:"window"`
+
+	// WebviewGPU 控制管理面板 WebView 的硬件加速。
+	//
+	// 仅 Windows 与 Linux 生效：Windows 对应 WebView2 的 WebviewGpuIsDisabled，
+	// Linux 对应 WebKitGTK 的 WebviewGpuPolicy；macOS 的 GPU 策略由 WKWebView
+	// 按系统与硬件决定，本项不生效。
+	// nil 表示沿用默认值（DefaultWebviewGPUEnabled，当前为 false，即保持软件渲染），
+	// 显式 true 才启用硬件加速；用指针是为了区分“没配过”和“明确关闭”。
+	WebviewGPU *bool `yaml:"webview_gpu,omitempty"`
 }
 
 type WindowConfig struct {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 未发布
+
+- 界面卡顿（软件渲染路径）：遮罩层动画此前逐帧插值 `backdrop-filter: blur(0 → 2.5px)`，在软件光栅下等于每帧重算全屏模糊，弹窗开关和多实例列表重绘都会掉帧。现在 GPU 关闭时（默认即为此路径）通过 `<html data-webview-gpu="software">` 关掉全局 `backdrop-filter` 与遮罩层动画，只保留透明度/位移过渡。
+- WebView 硬件加速改为可配置：新增 `app.webview_gpu`，默认 `false`，与 1.9.0 及之前一致（Windows `WebviewGpuIsDisabled: true` / Linux `WebviewGpuPolicyNever`），升级不会改变现有用户的渲染路径。显式配置 `true` 后 Windows 启用 WebView2 GPU 加速、Linux 使用 `WebviewGpuPolicyOnDemand`，磨砂动效与列表重绘更流畅。该开关只在创建窗口前生效，改动后需要重启应用。
+- 平台差异：仅 Windows / Linux 生效；macOS 的 GPU 策略由 WKWebView 托管，状态接口返回 `applicable: false`、`policy: system-managed`，前端不会据此降级视觉。
+- 开关来源可见：启动时写 `data/logs/app-lifecycle.log`（事件 `webview.gpu.resolved`），记录 `enabled` / `applicable` / `source` / `policy` / `platform`。
+- 应急覆盖：环境变量 `ANT_BROWSER_WEBVIEW_GPU=0/1` 优先级高于 `config.yaml`，用于安装到 `Program Files` 等无法直接改配置的场景。
+- 新增只读接口 `GetWebviewGPUStatus`，返回是否启用、平台是否适用、取值来源、平台策略和 `restartRequired`。
+
 ## 1.9.1 - 2026-11-09
 
 - 虚拟分组：完善健康判定、探测节流与故障切换选点，全组降级时明确拒绝启动，避免实例挂在不可用节点上。

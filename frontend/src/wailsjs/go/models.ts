@@ -1490,6 +1490,28 @@ export namespace backend {
 	        this.filePath = source["filePath"];
 	    }
 	}
+	export class WebviewGPUStatus {
+	    enabled: boolean;
+	    applicable: boolean;
+	    source: string;
+	    policy: string;
+	    platform: string;
+	    restartRequired: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WebviewGPUStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.applicable = source["applicable"];
+	        this.source = source["source"];
+	        this.policy = source["policy"];
+	        this.platform = source["platform"];
+	        this.restartRequired = source["restartRequired"];
+	    }
+	}
 
 }
 

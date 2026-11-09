@@ -638,3 +638,26 @@ input, select, textarea {
 .animate-slide-in-bottom {
   animation: slideInBottom 0.3s ease-out;
 }
+
+/* ---------------------------------------------------------------------------
+ * 软件渲染降级（app.webview_gpu: false）
+ *
+ * 该模式下来 <html data-webview-gpu="software">，由 webviewGpuMode.ts 在启动时写入。
+ * 软件光栅下 backdrop-filter / filter 模糊是逐帧全屏重算的纯成本：
+ * 遮罩层动画（modalBackdropIn/Out）还会每帧改变模糊半径，因此这里直接去掉磨砂与
+ * 遮罩动画，只保留透明度与位移过渡，保证弹窗开关不再掉帧。
+ * ------------------------------------------------------------------------- */
+[data-webview-gpu="software"] * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+[data-webview-gpu="software"] .modal-backdrop {
+  will-change: auto;
+  background: rgb(15 23 42 / 0.42);
+}
+
+[data-webview-gpu="software"] .animate-modal-backdrop-in,
+[data-webview-gpu="software"] .animate-modal-backdrop-out {
+  animation: none !important;
+}

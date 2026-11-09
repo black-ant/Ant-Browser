@@ -714,6 +714,10 @@ export function GetRunningInstances() {
   return window['go']['main']['App']['GetRunningInstances']();
 }
 
+export function GetWebviewGPUStatus() {
+  return window['go']['main']['App']['GetWebviewGPUStatus']();
+}
+
 export function InstallAutomationRuntime() {
   return window['go']['main']['App']['InstallAutomationRuntime']();
 }

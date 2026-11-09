@@ -1,4 +1,4 @@
-﻿# Ant Browser
+# Ant Browser
 
 > 面向多账号隔离、代理绑定和本地环境管理的桌面浏览器工具（Windows / Linux / macOS unsigned）。
 
@@ -389,6 +389,17 @@ Windows 升级或卸载旧版本时，安装器会先将旧安装目录中的 `b
 ### 5. 备份凭据会不会写进配置文件？
 
 不会写入普通 `config.yaml`。OpenList Token 和 S3 访问凭据保存在应用用户配置目录中的本地文件 `backup.local.yaml`，界面读取时默认显示为脱敏值。
+
+### 6. 界面卡顿／白屏和 WebView 硬件加速有关吗？
+
+有关，这也是 `app.webview_gpu` 存在的原因。
+
+- 默认为 `false`：保持 1.9.0 及之前的软件渲染路径（Windows `WebviewGpuIsDisabled: true`、Linux `WebviewGpuPolicyNever`）。此时前端会关闭逐帧 `backdrop-filter` 与遮罩层动画，避免在 CPU 上每帧重算全屏模糊——这是默认配置下界面不再掉帧的原因。
+- 想保留完整磨砂动效且显卡驱动正常：把 `app.webview_gpu` 设为 `true`，Windows 启用 WebView2 GPU 加速、Linux 使用 `WebviewGpuPolicyOnDemand`。
+- 少数机器开 GPU 后会出现白屏、启动即退或退出挂起，那正是本项默认保持 `false` 的原因；遇到时不需要改代码，保持默认即可。
+- 平台差异：仅 Windows / Linux 生效，macOS 由 WKWebView 托管 GPU，`GetWebviewGPUStatus()` 会返回 `applicable: false`。
+- 判断当前生效路径：查看 `data/logs/app-lifecycle.log` 中的 `webview.gpu.resolved` 事件，或调用 `GetWebviewGPUStatus()` 看 `enabled` / `applicable` / `source` / `policy`。
+- 无法编辑 `config.yaml`（例如安装在 `Program Files`）时，可用环境变量 `ANT_BROWSER_WEBVIEW_GPU=1` 临时开启。该开关只在创建窗口前生效，改完需要重启应用。
 
 ## Roadmap
 
