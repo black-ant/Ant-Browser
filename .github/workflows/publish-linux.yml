@@ -1,20 +1,21 @@
 name: Publish Linux Packages
 
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: 版本号，例如 1.9.1；留空则读取 wails.json
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       version:
-        description: Optional package version override, for example 1.9.0
+        description: 版本号，例如 1.9.1；留空则读取 wails.json
         required: false
         type: string
-  push:
-    tags:
-      - "v*"
-      - "V*"
-      - "[0-9]*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: publish-linux-${{ github.ref }}
@@ -136,25 +137,3 @@ jobs:
             publish/output/*_${{ matrix.arch }}.deb
             publish/output/*-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
-
-  release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-          merge-multiple: true
-
-      - name: Upload release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || { gh release create "$TAG_NAME" --generate-notes || true; }
-          gh release upload "$TAG_NAME" release-artifacts/* --clobber

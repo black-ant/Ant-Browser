@@ -1,0 +1,115 @@
+name: Publish All Platforms
+
+# 一次性打包 Windows / Linux / macOS，全部成功后创建 tag 并发布 Release。
+# 手动触发：Actions -> Publish All Platforms -> Run workflow（version 留空则读 wails.json）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 版本号，例如 1.9.1；留空则读取 wails.json
+        required: false
+        type: string
+  push:
+    tags:
+      - "v*"
+      - "V*"
+      - "[0-9]*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-all-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      value: ${{ steps.resolve.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve package version
+        id: resolve
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION:-}"
+          version="${version#v}"
+          version="${version#V}"
+          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            version="${BASH_REMATCH[1]}"
+          fi
+          if [[ -z "$version" ]]; then
+            version="$(node -p "require('./wails.json').info.productVersion")"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::版本号格式无效: $version（期望 1.9.1 这种形式）"
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "package version: $version"
+
+  windows:
+    name: Build Windows
+    needs: version
+    uses: ./.github/workflows/publish-windows.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+
+  linux:
+    name: Build Linux
+    needs: version
+    uses: ./.github/workflows/publish-linux.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+
+  macos:
+    name: Build macOS
+    needs: version
+    uses: ./.github/workflows/publish-macos.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+
+  release:
+    name: Create tag and release
+    needs: [version, windows, linux, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create tag and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          files=()
+          for f in release-artifacts/*; do
+            [ -f "$f" ] && files+=("$f")
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::没有任何发布产物"
+            exit 1
+          fi
+          printf '待上传: %s\n' "${files[@]}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+              # tag 已存在（上次打包残留），直接复用，不移动指向
+              gh release create "$tag" --generate-notes --title "$tag"
+            else
+              gh release create "$tag" --target "$GITHUB_SHA" --generate-notes --title "$tag"
+            fi
+          fi
+          gh release upload "$tag" "${files[@]}" --clobber
