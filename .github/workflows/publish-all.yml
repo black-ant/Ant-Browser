@@ -91,6 +91,8 @@ jobs:
       - name: Create tag and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
+          # release job 不 checkout，gh 无法从 git remote 推断仓库，必须显式指定
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.version.outputs.value }}
         run: |
           set -euo pipefail
