@@ -9,6 +9,13 @@ app:
         height: 1000
         min_width: 1200
         min_height: 700
+    # WebView 硬件加速开关（仅 Windows / Linux 生效，macOS 由 WKWebView 托管；
+    # 改动后必须重启应用才生效）。
+    #   false（默认）：保持软件渲染，与 1.9.0 及之前一致；此时前端会关闭逐帧
+    #        backdrop-filter 与遮罩层动画，避免在 CPU 上每帧重算全屏模糊。
+    #   true：启用 GPU 加速，保留完整磨砂动效，适合显卡驱动正常的机器。
+    # 应急覆盖：环境变量 ANT_BROWSER_WEBVIEW_GPU=0/1 优先级高于本项。
+    webview_gpu: false
 runtime:
     max_memory_mb: 0
     gc_percent: 100
