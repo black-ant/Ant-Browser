@@ -82,18 +82,68 @@ jobs:
     needs: [version, windows, linux, macos]
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
           merge-multiple: true
 
+      - name: Extract release notes
+        id: notes
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          : > release-notes.md
+          notes_src=""
+          for candidate in "docs/changelogs/${VERSION}.md" "docs/changelogs/v${VERSION}.md"; do
+            if [ -f "$candidate" ]; then
+              notes_src="$candidate"
+              break
+            fi
+          done
+          if [ -n "$notes_src" ]; then
+            echo "使用 $notes_src"
+            tr -d '\r' < "$notes_src" | sed -e '/./,$!d' > release-notes.md
+          elif [ -f CHANGELOG.md ]; then
+            # 兼容：docs/changelogs 下没有该版本时，从 CHANGELOG.md 对应段落提取
+            echo "docs/changelogs/${VERSION}.md 不存在，尝试从 CHANGELOG.md 提取"
+            awk -v ver="$VERSION" '
+              {
+                if (!found) {
+                  if ($0 ~ /^##[ \t]+/) {
+                    title = $0
+                    sub(/^##[ \t]+/, "", title)
+                    sub(/[ \t].*$/, "", title)
+                    sub(/^[vV]/, "", title)
+                    if (title == ver || index(title, ver "-") == 1 || index(title, ver "+") == 1) { found = 1 }
+                  }
+                  next
+                }
+                if ($0 ~ /^##[ \t]+/) { exit }
+                print
+              }
+            ' CHANGELOG.md | tr -d '\r' | sed -e '/./,$!d' > release-notes.md
+          fi
+          if [ -z "$(tr -d '[:space:]' < release-notes.md)" ]; then
+            echo "::warning::没有找到 ${VERSION} 的更新日志，回退到 GitHub 自动生成"
+            rm -f release-notes.md
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "已读取 ${VERSION} 更新日志："
+            cat release-notes.md
+          fi
+
       - name: Create tag and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
-          # release job 不 checkout，gh 无法从 git remote 推断仓库，必须显式指定
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.version.outputs.value }}
+          NOTES_FOUND: ${{ steps.notes.outputs.found }}
         run: |
           set -euo pipefail
           tag="v${VERSION}"
@@ -106,12 +156,21 @@ jobs:
             exit 1
           fi
           printf '待上传: %s\n' "${files[@]}"
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-              # tag 已存在（上次打包残留），直接复用，不移动指向
-              gh release create "$tag" --generate-notes --title "$tag"
-            else
-              gh release create "$tag" --target "$GITHUB_SHA" --generate-notes --title "$tag"
+
+          notes_args=(--generate-notes)
+          if [ "$NOTES_FOUND" = "true" ]; then
+            notes_args=(--notes-file release-notes.md)
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # release 已存在（重跑），有 CHANGELOG 条目时刷新正文；gh release edit 不支持 --generate-notes
+            if [ "$NOTES_FOUND" = "true" ]; then
+              gh release edit "$tag" --notes-file release-notes.md
             fi
+          elif gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            # tag 已存在（上次打包残留），直接复用，不移动指向
+            gh release create "$tag" "${notes_args[@]}" --title "$tag"
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" "${notes_args[@]}" --title "$tag"
           fi
           gh release upload "$tag" "${files[@]}" --clobber

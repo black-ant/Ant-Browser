@@ -3,7 +3,7 @@ Public release tools.
 - `publish-public.bat`: one-click publish to public `master`
 - `publish-public.ps1`: manual entrypoint
 
-发布前请确认 `wails.json`、`frontend/package.json` 和 `frontend/package-lock.json` 使用同一个版本号。当前版本为 `1.9.0`。
+发布前请确认 `wails.json`、`frontend/package.json` 和 `frontend/package-lock.json` 使用同一个版本号。当前版本为 `1.9.2`。
 
 Release snapshot safety:
 
