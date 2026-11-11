@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/black-ant/Ant-Browser/releases)
 [![Issues](https://img.shields.io/github/issues/black-ant/Ant-Browser)](https://github.com/black-ant/Ant-Browser/issues)
 
-当前版本：`1.9.2` · 2026-11-11
+当前版本：`1.9.3` · 2026-11-11
 
 ## 推荐内核项目
 

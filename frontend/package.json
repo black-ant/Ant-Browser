@@ -1,7 +1,7 @@
 {
   "name": "ant-browser-frontend",
   "private": true,
-  "version": "1.9.2",
+  "version": "1.9.3",
   "type": "module",
   "scripts": {
     "ensure:native": "node ./scripts/ensure-rollup-native.mjs",

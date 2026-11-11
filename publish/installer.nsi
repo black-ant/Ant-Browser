@@ -1,10 +1,10 @@
 ﻿; Ant Browser NSIS Installer Script
-; Usage: makensis /DVERSION=1.9.2 /DSTAGINGDIR=C:\path\to\staging installer.nsi
+; Usage: makensis /DVERSION=1.9.3 /DSTAGINGDIR=C:\path\to\staging installer.nsi
 
 Unicode True
 
 !ifndef VERSION
-  !define VERSION "1.9.2"
+  !define VERSION "1.9.3"
 !endif
 !ifndef STAGINGDIR
   !define STAGINGDIR "..\publish\staging"
