@@ -164,98 +164,33 @@ input, select, textarea {
   animation: slideInRight 0.3s ease-out;
 }
 
+/* 遮罩只做透明度呼吸，不做全屏 backdrop-filter / 背景位移动画：
+   WebView2 在禁用 GPU 时会把整屏虚化逐帧重算，弹窗一出现就卡成幻灯片。 */
 @keyframes modalBackdropIn {
   from {
     opacity: 0;
-    background-position: 44% 56%;
-    -webkit-backdrop-filter: blur(0) saturate(1);
-    backdrop-filter: blur(0) saturate(1);
-  }
-  18% {
-    opacity: 0.08;
-    background-position: 45.5% 54.5%;
-    -webkit-backdrop-filter: blur(0.2px) saturate(0.999);
-    backdrop-filter: blur(0.2px) saturate(0.999);
-  }
-  42% {
-    opacity: 0.28;
-    background-position: 47.5% 52.5%;
-    -webkit-backdrop-filter: blur(0.8px) saturate(0.992);
-    backdrop-filter: blur(0.8px) saturate(0.992);
-  }
-  68% {
-    opacity: 0.64;
-    background-position: 49.2% 50.8%;
-    -webkit-backdrop-filter: blur(1.8px) saturate(0.982);
-    backdrop-filter: blur(1.8px) saturate(0.982);
-  }
-  88% {
-    opacity: 0.9;
-    background-position: 50% 50%;
-    -webkit-backdrop-filter: blur(2.3px) saturate(0.977);
-    backdrop-filter: blur(2.3px) saturate(0.977);
   }
   to {
     opacity: 1;
-    background-position: 50% 50%;
-    -webkit-backdrop-filter: blur(2.5px) saturate(0.975);
-    backdrop-filter: blur(2.5px) saturate(0.975);
   }
 }
 
 @keyframes modalBackdropOut {
   from {
     opacity: 1;
-    background-position: 50% 50%;
-    -webkit-backdrop-filter: blur(2.5px) saturate(0.975);
-    backdrop-filter: blur(2.5px) saturate(0.975);
-  }
-  18% {
-    opacity: 0.94;
-    background-position: 50.3% 49.7%;
-    -webkit-backdrop-filter: blur(2.2px) saturate(0.979);
-    backdrop-filter: blur(2.2px) saturate(0.979);
-  }
-  42% {
-    opacity: 0.72;
-    background-position: 51.1% 48.9%;
-    -webkit-backdrop-filter: blur(1.4px) saturate(0.988);
-    backdrop-filter: blur(1.4px) saturate(0.988);
-  }
-  68% {
-    opacity: 0.42;
-    background-position: 52% 48%;
-    -webkit-backdrop-filter: blur(0.7px) saturate(0.996);
-    backdrop-filter: blur(0.7px) saturate(0.996);
-  }
-  88% {
-    opacity: 0.14;
-    background-position: 52.7% 47.3%;
-    -webkit-backdrop-filter: blur(0.2px) saturate(1);
-    backdrop-filter: blur(0.2px) saturate(1);
   }
   to {
     opacity: 0;
-    background-position: 53% 47%;
-    -webkit-backdrop-filter: blur(0) saturate(1);
-    backdrop-filter: blur(0) saturate(1);
   }
 }
 
 @keyframes modalIn {
   from {
     opacity: 0;
-    filter: blur(1px);
     transform: translate3d(0, 10px, 0) scale(0.98);
-  }
-  45% {
-    opacity: 0.96;
-    filter: blur(0.2px);
-    transform: translate3d(0, 2px, 0) scale(0.995);
   }
   to {
     opacity: 1;
-    filter: blur(0);
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
@@ -263,29 +198,20 @@ input, select, textarea {
 @keyframes modalOut {
   from {
     opacity: 1;
-    filter: blur(0);
     transform: translate3d(0, 0, 0) scale(1);
-  }
-  45% {
-    opacity: 0.96;
-    filter: blur(0.05px);
-    transform: translate3d(0, 1px, 0) scale(0.998);
   }
   to {
     opacity: 0;
-    filter: blur(0.6px);
     transform: translate3d(0, 4px, 0) scale(0.99);
   }
 }
 
 .modal-backdrop {
-  background:
-    linear-gradient(135deg, rgb(15 23 42 / 0.16), rgb(0 0 0 / 0.46) 54%, rgb(15 23 42 / 0.52));
+  /* 渐变、尺寸、位置与原来完全一致，只去掉 backdrop-filter 虚化 */
+  background: linear-gradient(135deg, rgb(15 23 42 / 0.16), rgb(0 0 0 / 0.46) 54%, rgb(15 23 42 / 0.52));
   background-size: 180% 180%;
   background-position: 50% 50%;
-  -webkit-backdrop-filter: blur(2.5px) saturate(0.975);
-  backdrop-filter: blur(2.5px) saturate(0.975);
-  will-change: opacity, backdrop-filter, background-position;
+  will-change: opacity;
 }
 
 .animate-modal-backdrop-in {
@@ -339,7 +265,7 @@ input, select, textarea {
     var(--color-bg-elevated);
   isolation: isolate;
   overflow: hidden;
-  will-change: opacity, transform, filter;
+  will-change: opacity, transform;
 }
 
 .modal-surface::after {
@@ -370,12 +296,10 @@ input, select, textarea {
 @keyframes toastIn {
   from {
     opacity: 0;
-    filter: blur(1px);
     transform: translate3d(18px, -4px, 0) scale(0.97);
   }
   to {
     opacity: 1;
-    filter: blur(0);
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
@@ -394,69 +318,31 @@ input, select, textarea {
 @keyframes toastSuccessOut {
   from {
     opacity: 1;
-    filter: blur(0);
     transform: translate3d(0, 0, 0) scale(1);
   }
   to {
     opacity: 0;
-    filter: blur(0.8px);
     transform: translate3d(0, -2px, 0) scale(0.99);
   }
 }
 
+/* 焦点遮罩同理：模糊半径必须静态，动画只驱动 opacity，
+   否则每帧都要按新半径重算整屏虚化（GPU 关闭时代价极高） */
 @keyframes toastFocusIn {
   from {
     opacity: 0;
-    -webkit-backdrop-filter: blur(0) saturate(1);
-    backdrop-filter: blur(0) saturate(1);
-  }
-  30% {
-    opacity: 0.28;
-    -webkit-backdrop-filter: blur(0.5px) saturate(0.995);
-    backdrop-filter: blur(0.5px) saturate(0.995);
-  }
-  64% {
-    opacity: 0.76;
-    -webkit-backdrop-filter: blur(1px) saturate(0.985);
-    backdrop-filter: blur(1px) saturate(0.985);
-  }
-  86% {
-    opacity: 0.94;
-    -webkit-backdrop-filter: blur(1.5px) saturate(0.98);
-    backdrop-filter: blur(1.5px) saturate(0.98);
   }
   to {
     opacity: 1;
-    -webkit-backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
-    backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
   }
 }
 
 @keyframes toastFocusOut {
   from {
     opacity: 1;
-    -webkit-backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
-    backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
-  }
-  24% {
-    opacity: 0.94;
-    -webkit-backdrop-filter: blur(1.5px) saturate(0.985);
-    backdrop-filter: blur(1.5px) saturate(0.985);
-  }
-  56% {
-    opacity: 0.68;
-    -webkit-backdrop-filter: blur(0.8px) saturate(0.995);
-    backdrop-filter: blur(0.8px) saturate(0.995);
-  }
-  82% {
-    opacity: 0.28;
-    -webkit-backdrop-filter: blur(0.2px) saturate(1);
-    backdrop-filter: blur(0.2px) saturate(1);
   }
   to {
     opacity: 0;
-    -webkit-backdrop-filter: blur(0) saturate(1);
-    backdrop-filter: blur(0) saturate(1);
   }
 }
 
@@ -488,10 +374,10 @@ input, select, textarea {
 }
 .toast-card {
   border-color: var(--color-border-strong);
+  /* 背景是不透明的 --color-bg-surface，此前的 blur(14px) 只会被完全遮住，
+     属于纯软件渲染下的白付成本，已移除 */
   background: var(--color-bg-surface);
   box-shadow: 0 18px 42px rgb(15 23 42 / 0.14), 0 1px 0 rgb(255 255 255 / 0.72) inset;
-  -webkit-backdrop-filter: blur(14px) saturate(1.04);
-  backdrop-filter: blur(14px) saturate(1.04);
 }
 
 [data-theme='dark'] .toast-card {
@@ -529,16 +415,15 @@ input, select, textarea {
   animation: toastErrorRing 0.85s ease-out 0.04s both;
 }
 
+/* 通知聚焦遮罩：只做纯色变暗，不再对整屏做 backdrop-filter。
+   全屏虚化在关闭 GPU 的 WebView2 上是每次通知都付一次的整屏软件模糊，
+   而 alpha 只有 0.04~0.12，去掉后观感几乎无差别。 */
 .toast-focus-backdrop {
   --toast-focus-rgb: 15 23 42;
   --toast-focus-alpha: 0.04;
-  --toast-focus-blur: 2px;
-  --toast-focus-saturate: 0.96;
   background: rgb(var(--toast-focus-rgb) / var(--toast-focus-alpha));
-  -webkit-backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
-  backdrop-filter: blur(var(--toast-focus-blur)) saturate(var(--toast-focus-saturate));
   animation: toastFocusIn 0.56s cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: opacity, backdrop-filter;
+  will-change: opacity;
 }
 
 [data-theme='dark'] .toast-focus-backdrop {
@@ -555,26 +440,18 @@ input, select, textarea {
 
 .toast-focus-success {
   --toast-focus-alpha: 0.035;
-  --toast-focus-blur: 2px;
-  --toast-focus-saturate: 0.98;
 }
 
 .toast-focus-info {
   --toast-focus-alpha: 0.055;
-  --toast-focus-blur: 3px;
-  --toast-focus-saturate: 0.95;
 }
 
 .toast-focus-warning {
   --toast-focus-alpha: 0.085;
-  --toast-focus-blur: 5px;
-  --toast-focus-saturate: 0.91;
 }
 
 .toast-focus-error {
   --toast-focus-alpha: 0.12;
-  --toast-focus-blur: 7px;
-  --toast-focus-saturate: 0.88;
   animation-duration: 0.36s;
 }
 
