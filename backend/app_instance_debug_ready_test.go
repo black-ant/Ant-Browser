@@ -16,7 +16,7 @@ func TestStabilizeBrowserDebugPortFailsWhenFinalProbeFails(t *testing.T) {
 			return nil
 		}
 		return finalErr
-	})
+	}, nil)
 
 	if !errors.Is(err, finalErr) {
 		t.Fatalf("expected final probe error, got %v", err)
@@ -32,7 +32,7 @@ func TestStabilizeBrowserDebugPortSucceedsWhenFinalProbeSucceeds(t *testing.T) {
 	debugPort, err := stabilizeBrowserDebugPort(9222, 25*time.Millisecond, false, nil, func(_ int, _ time.Duration) error {
 		probeCalls++
 		return nil
-	})
+	}, nil)
 
 	if err != nil {
 		t.Fatalf("expected stable debug port, got %v", err)
@@ -42,5 +42,18 @@ func TestStabilizeBrowserDebugPortSucceedsWhenFinalProbeSucceeds(t *testing.T) {
 	}
 	if probeCalls < 2 {
 		t.Fatalf("expected final probe, got %d probe calls", probeCalls)
+	}
+}
+
+func TestWaitBrowserDebugPortReadyAbortsPromptly(t *testing.T) {
+	startedAt := time.Now()
+	_, err := waitBrowserDebugPortReady(0, t.TempDir(), time.Second, nil, func() bool {
+		return true
+	})
+	if !errors.Is(err, errBrowserStartCancelled) {
+		t.Fatalf("wait error = %v, want %v", err, errBrowserStartCancelled)
+	}
+	if elapsed := time.Since(startedAt); elapsed > 100*time.Millisecond {
+		t.Fatalf("abort took %s, want under 100ms", elapsed)
 	}
 }

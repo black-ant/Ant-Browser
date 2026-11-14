@@ -53,6 +53,7 @@ func TestProxySpeedResultIsCurrentFollowsTimeWindow(t *testing.T) {
 	fresh := BrowserProxy{
 		ProxyId: "proxy-1", ProxyConfig: "http://127.0.0.1:8080",
 		LastTestOk: true, LastLatencyMs: 40, LastTestedAt: time.Now().Format(time.RFC3339),
+		LastTestConnectorType: config.BrowserConnectorXray,
 	}
 	if !app.proxySpeedResultIsCurrent(fresh, []BrowserProxy{fresh}) {
 		t.Fatal("fresh speed result was not considered current")
@@ -136,8 +137,8 @@ func TestPersistProxySpeedResultWritesResult(t *testing.T) {
 	}
 }
 
-// 缺少连接栈来源的历史结果不能被当作当前连接栈下的新鲜结果。
-func TestReadFreshProxySpeedResultRejectsMissingConnectorType(t *testing.T) {
+// 历史结果缺少连接栈来源时按当前栈兼容；明确标记了其它栈的结果仍不采信。
+func TestReadFreshProxySpeedResultAcceptsLegacyResultWithoutConnectorType(t *testing.T) {
 	app := NewApp("")
 	app.config = config.DefaultConfig()
 	fresh := BrowserProxy{
@@ -146,8 +147,12 @@ func TestReadFreshProxySpeedResultRejectsMissingConnectorType(t *testing.T) {
 		LastTestedAt:          time.Now().Format(time.RFC3339),
 		LastTestConnectorType: "",
 	}
+	if _, ok := app.readFreshProxySpeedResult("proxy-1", config.BrowserConnectorXray, []BrowserProxy{fresh}); !ok {
+		t.Fatal("legacy result without connector type was rejected")
+	}
+	fresh.LastTestConnectorType = config.BrowserConnectorMihomo
 	if _, ok := app.readFreshProxySpeedResult("proxy-1", config.BrowserConnectorXray, []BrowserProxy{fresh}); ok {
-		t.Fatal("result without connector type was treated as fresh")
+		t.Fatal("other connector type result was treated as fresh")
 	}
 	fresh.LastTestConnectorType = config.BrowserConnectorXray
 	if _, ok := app.readFreshProxySpeedResult("proxy-1", config.BrowserConnectorXray, []BrowserProxy{fresh}); !ok {

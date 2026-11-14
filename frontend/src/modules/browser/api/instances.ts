@@ -91,10 +91,7 @@ export async function fetchBrowserTabs(profileId: string): Promise<BrowserTab[]>
   if (bindings?.BrowserInstanceGetTabs) {
     return (await bindings.BrowserInstanceGetTabs(profileId)) || []
   }
-  return [
-    { tabId: 'tab-1', title: '新标签页', url: 'about:blank', active: true },
-    { tabId: 'tab-2', title: '示例站点', url: 'https://example.com', active: false },
-  ]
+  return []
 }
 
 export async function openUserDataDir(userDataDir: string): Promise<boolean> {

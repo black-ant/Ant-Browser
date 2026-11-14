@@ -206,10 +206,10 @@ func (a *App) acquireBrowserProxyBridge(profileID string, profileName string, pr
 		if bridgeErr != nil {
 			startErr := fmt.Errorf("实例启动失败：mieru 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(mieru)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
-			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineMieru, bridgeErr)
+			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineMieru, connectorType, bridgeErr)
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineMieru, bridgeKey, proxyID), bridgeKey != "", nil
+		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineMieru, bridgeKey, proxyID, connectorType), bridgeKey != "", nil
 	case proxy.ProxyKernelMihomo:
 		if a.clashMgr == nil {
 			return "", profileProxyBridgeRef{}, false, fmt.Errorf("实例启动失败：mihomo 管理器未初始化，无法启动该协议代理。请先下载 Mihomo 内核。")
@@ -218,10 +218,10 @@ func (a *App) acquireBrowserProxyBridge(profileID string, profileName string, pr
 		if bridgeErr != nil {
 			startErr := fmt.Errorf("实例启动失败：mihomo 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(mihomo)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
-			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineMihomo, bridgeErr)
+			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineMihomo, connectorType, bridgeErr)
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		return proxyURL, newProfileProxyBridgeRef(profileProxyBridgeEngineMihomo, bridgeKey, proxyID), bridgeKey != "", nil
+		return proxyURL, newProfileProxyBridgeRef(profileProxyBridgeEngineMihomo, bridgeKey, proxyID, connectorType), bridgeKey != "", nil
 	case proxy.ProxyKernelSingBox:
 		if a.singboxMgr == nil {
 			return "", profileProxyBridgeRef{}, false, fmt.Errorf("实例启动失败：sing-box 管理器未初始化，无法启动该协议代理。请检查 sing-box 内核配置。")
@@ -230,10 +230,10 @@ func (a *App) acquireBrowserProxyBridge(profileID string, profileName string, pr
 		if bridgeErr != nil {
 			startErr := fmt.Errorf("实例启动失败：sing-box 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(sing-box)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
-			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineSingBox, bridgeErr)
+			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineSingBox, connectorType, bridgeErr)
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineSingBox, bridgeKey, proxyID), bridgeKey != "", nil
+		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineSingBox, bridgeKey, proxyID, connectorType), bridgeKey != "", nil
 	case proxy.ProxyKernelXray:
 		if a.xrayMgr == nil {
 			return "", profileProxyBridgeRef{}, false, fmt.Errorf("实例启动失败：xray 管理器未初始化，无法启动该协议代理。")
@@ -242,10 +242,10 @@ func (a *App) acquireBrowserProxyBridge(profileID string, profileName string, pr
 		if bridgeErr != nil {
 			startErr := fmt.Errorf("实例启动失败：Xray 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(xray)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
-			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineXray, bridgeErr)
+			a.reportProxyBridgeFailure(profileID, profileName, proxyID, profileProxyBridgeEngineXray, connectorType, bridgeErr)
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineXray, bridgeKey, proxyID), bridgeKey != "", nil
+		return socksURL, newProfileProxyBridgeRef(profileProxyBridgeEngineXray, bridgeKey, proxyID, connectorType), bridgeKey != "", nil
 	case proxy.ProxyKernelNative:
 		return proxyConfig, profileProxyBridgeRef{}, false, nil
 	default:

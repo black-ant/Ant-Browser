@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"ant-chrome/backend/internal/logger"
@@ -123,9 +124,62 @@ func (a *App) BrowserInstanceOpenUrl(profileId string, targetUrl string) (bool, 
 	return true, nil
 }
 
+type browserDebugTabTarget struct {
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
 func (a *App) BrowserInstanceGetTabs(profileId string) []BrowserTab {
-	return []BrowserTab{
-		{TabId: "tab-1", Title: "新标签页", Url: "about:blank", Active: true},
-		{TabId: "tab-2", Title: "示例站点", Url: "https://example.com", Active: false},
+	profileId = strings.TrimSpace(profileId)
+	if profileId == "" {
+		return []BrowserTab{}
 	}
+
+	a.browserMgr.Mutex.Lock()
+	profile, exists := a.browserMgr.Profiles[profileId]
+	if !exists || !profile.Running || !profile.DebugReady || profile.DebugPort <= 0 {
+		a.browserMgr.Mutex.Unlock()
+		return []BrowserTab{}
+	}
+	debugPort := profile.DebugPort
+	a.browserMgr.Mutex.Unlock()
+
+	var targets []browserDebugTabTarget
+	client := &http.Client{Timeout: cdpHTTPTimeout}
+	if err := fetchBrowserDebugJSON(client, debugPort, "/json/list", &targets); err != nil {
+		logger.New("Browser").Warn("读取实例标签页失败",
+			logger.F("profile_id", profileId),
+			logger.F("debug_port", debugPort),
+			logger.F("error", err.Error()),
+		)
+		return []BrowserTab{}
+	}
+
+	tabs := make([]BrowserTab, 0, len(targets))
+	for index, target := range targets {
+		if !strings.EqualFold(strings.TrimSpace(target.Type), "page") {
+			continue
+		}
+		tabID := strings.TrimSpace(target.ID)
+		if tabID == "" {
+			tabID = fmt.Sprintf("page-%d", index)
+		}
+		url := strings.TrimSpace(target.URL)
+		title := strings.TrimSpace(target.Title)
+		if title == "" {
+			title = url
+		}
+		if title == "" {
+			title = "未命名标签页"
+		}
+		tabs = append(tabs, BrowserTab{
+			TabId:  tabID,
+			Title:  title,
+			Url:    url,
+			Active: false,
+		})
+	}
+	return tabs
 }

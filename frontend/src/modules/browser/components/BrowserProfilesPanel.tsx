@@ -535,7 +535,7 @@ function BrowserProfileCard({
           <Button size="sm" variant="ghost" onClick={() => onOpenExtensions(profile)} title="插件配置" className="px-3" disabled={isBusy}><Puzzle className="w-4 h-4 mr-1.5" />插件</Button>
           <Link to={`/browser/edit/${profile.profileId}`}><Button size="sm" variant="ghost" title="配置" className="px-3" disabled={isBusy}><Settings className="w-4 h-4 mr-1.5" />配置</Button></Link>
           <Button size="sm" variant="ghost" onClick={() => onOpenCopy(profile)} title="克隆" className="px-3" disabled={isBusy}><Copy className="w-4 h-4 mr-1.5" />克隆</Button>
-          <Button size="sm" variant="ghost" onClick={() => onDelete(profile.profileId)} title="删除" className="px-3 text-red-500 hover:text-red-600 hover:bg-red-50" disabled={isBusy}><Trash2 className="w-4 h-4 mr-1.5" />删除</Button>
+          <Button size="sm" variant="ghost" onClick={() => onDelete(profile.profileId)} title={profile.running ? '请先停止实例再删除' : '删除'} className="px-3 text-red-500 hover:text-red-600 hover:bg-red-50" disabled={isBusy || profile.running}><Trash2 className="w-4 h-4 mr-1.5" />删除</Button>
         </div>
       </div>
 
@@ -757,7 +757,7 @@ export function BrowserProfilesPanel({
               onOpenDataDir={() => onOpenDataDir(record)}
               onExport={() => onExport(record)}
             />
-            <Button size="sm" variant="ghost" onClick={() => onDelete(record.profileId)} title="删除" disabled={isBusy}><Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
+            <Button size="sm" variant="ghost" onClick={() => onDelete(record.profileId)} title={record.running ? '请先停止实例再删除' : '删除'} disabled={isBusy || record.running}><Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
           </div>
         )
       },

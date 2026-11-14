@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,6 +69,39 @@ func TestPermanentlyDeleteRemovesUserDataDirAndWritesAudit(t *testing.T) {
 		if !strings.Contains(audit, expected) {
 			t.Fatalf("audit log missing %s: %s", expected, audit)
 		}
+	}
+}
+
+func TestPermanentlyDeleteRejectsDetectedRuntime(t *testing.T) {
+	appRoot := t.TempDir()
+	manager := NewManager(&config.Config{}, appRoot)
+	manager.Config.Browser.UserDataRoot = "data"
+	profile := &Profile{
+		ProfileId:   "profile-running-in-trash",
+		ProfileName: "运行中回收站实例",
+		UserDataDir: "profile-running-in-trash",
+		DeletedAt:   time.Now().Add(-4 * 24 * time.Hour).Format(time.RFC3339),
+	}
+	dao := &profileDeleteAuditTestDAO{profiles: map[string]*Profile{profile.ProfileId: profile}}
+	manager.ProfileDAO = dao
+	manager.ProfileRuntimeDetector = func(candidate *Profile) bool {
+		return candidate != nil && candidate.ProfileId == profile.ProfileId
+	}
+
+	userDataDir := filepath.Join(appRoot, "data", profile.UserDataDir)
+	if err := os.MkdirAll(userDataDir, 0755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+
+	err := manager.PermanentlyDelete(profile.ProfileId)
+	if !errors.Is(err, ErrProfileRunning) {
+		t.Fatalf("PermanentlyDelete() error = %v, want ErrProfileRunning", err)
+	}
+	if _, exists := dao.profiles[profile.ProfileId]; !exists {
+		t.Fatal("PermanentlyDelete() removed a profile with a detected runtime")
+	}
+	if _, err := os.Stat(userDataDir); err != nil {
+		t.Fatalf("user data directory was removed: %v", err)
 	}
 }
 

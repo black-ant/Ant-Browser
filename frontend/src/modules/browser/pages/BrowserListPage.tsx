@@ -451,8 +451,15 @@ export function BrowserListPage() {
     }
   }
 
+  const notifyRunningProfilesCannotBeDeleted = (profileIds: string[]) => {
+    if (!profileIds.some(profileId => profiles.find(profile => profile.profileId === profileId)?.running)) return false
+    toast.warning('请先停止实例再删除')
+    return true
+  }
+
   const openDeleteConfirm = (profileId: string) => {
     const profile = profiles.find(item => item.profileId === profileId)
+    if (notifyRunningProfilesCannotBeDeleted([profileId])) return
     setDeleteConfirm({
       open: true,
       mode: 'single',
@@ -511,6 +518,7 @@ export function BrowserListPage() {
   const openBatchDeleteConfirm = () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
+    if (notifyRunningProfilesCannotBeDeleted(ids)) return
     setDeleteConfirm({ open: true, mode: 'batch', count: ids.length })
   }
 
@@ -524,6 +532,7 @@ export function BrowserListPage() {
       ? Array.from(selectedIds)
       : deleteConfirm.profileId ? [deleteConfirm.profileId] : []
     if (ids.length === 0) return
+    if (notifyRunningProfilesCannotBeDeleted(ids)) return
     setBatchLoading(true)
     try {
       for (const id of ids) {

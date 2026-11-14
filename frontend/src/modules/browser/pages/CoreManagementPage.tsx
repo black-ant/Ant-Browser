@@ -204,27 +204,39 @@ export function CoreManagementPage() {
       key: 'actions',
       title: '操作',
       width: '220px',
-      render: (_, record) => (
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleOpenPath(record.corePath) }} title="打开目录">
-            <FolderOpen className="w-4 h-4" />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleEdit(record) }}>
-            编辑
-          </Button>
-          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleRedownload(record) }}>
-            重新下载
-          </Button>
-          {!record.isDefault && (
-            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleSetDefault(record.coreId) }}>
-              设为默认
+      render: (_, record) => {
+        const deleteReason = record.instanceCount > 0
+          ? `已有 ${record.instanceCount} 个实例使用此内核，不能删除`
+          : record.isDefault
+            ? '默认内核不能删除'
+            : ''
+        return (
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleOpenPath(record.corePath) }} title="打开目录">
+              <FolderOpen className="w-4 h-4" />
             </Button>
-          )}
-          <Button size="sm" variant="danger" onClick={(e) => { e.stopPropagation(); handleDeleteClick(record) }}>
-            删除
-          </Button>
-        </div>
-      ),
+            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleEdit(record) }}>
+              编辑
+            </Button>
+            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleRedownload(record) }}>
+              重新下载
+            </Button>
+            {!record.isDefault && (
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleSetDefault(record.coreId) }}>
+                设为默认
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={Boolean(deleteReason)}
+              onClick={(e) => { e.stopPropagation(); handleDeleteClick(record) }}
+            >
+              删除
+            </Button>
+          </div>
+        )
+      },
     },
   ]
 
@@ -365,6 +377,10 @@ export function CoreManagementPage() {
 
   // 删除点击
   const handleDeleteClick = (record: CoreDisplayInfo) => {
+	if (record.instanceCount > 0) {
+		toast.warning(`已有 ${record.instanceCount} 个实例使用此内核，不能删除`)
+		return
+	}
     if (record.isDefault) {
       toast.warning('默认内核不能删除')
       return

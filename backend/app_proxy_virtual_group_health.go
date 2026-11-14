@@ -104,8 +104,8 @@ func (a *App) memberHealthPolicy() browser.MemberHealthPolicy {
 // virtualGroupProbeInterval 分组成员的核验间隔。
 //
 // 优先级：虚拟分组专用间隔 → 全局测速间隔 → 默认值；得到的结果再做硬性封顶。
-// 这里绝不返回 0（0 在调度器里表示“跟随全局间隔”），因为全局间隔允许配置到 24 小时，
-// 会让“至少每 3 小时核验一次”失效。封顶值见 config.MaxVirtualGroupProbeIntervalMinutes。
+// 这里绝不返回 0（0 在调度器里表示"跟随全局间隔"），因为全局间隔允许配置到 24 小时，
+// 会让"至少每 3 小时核验一次"失效。封顶值见 config.MaxVirtualGroupProbeIntervalMinutes。
 func (a *App) virtualGroupProbeInterval() time.Duration {
 	minutes := config.DefaultVirtualGroupProbeIntervalMinutes
 	if a != nil && a.config != nil {
@@ -554,7 +554,7 @@ func (a *App) applyManualProxyProbe(result ProxyTestResult) {
 			a.markVirtualGroupMemberHealthy(group, proxyID, result.Engine, result.connectorType)
 			continue
 		}
-		a.markVirtualGroupMemberDegraded(group, proxyID, cause)
+		a.markVirtualGroupMemberDegraded(group, proxyID, cause, result.connectorType)
 	}
 }
 
@@ -573,7 +573,8 @@ func (a *App) markVirtualGroupMemberHealthy(group browser.ProxyVirtualGroup, pro
 		return
 	}
 	previous := previousMemberState(states, group.GroupId, proxyID)
-	if previous.State == browser.MemberStateHealthy {
+	connectorType = a.normalizeMemberStateConnectorType(connectorType)
+	if previous.State == browser.MemberStateHealthy && strings.EqualFold(strings.TrimSpace(previous.LastConnectorType), connectorType) {
 		return
 	}
 	next := previous
@@ -593,9 +594,7 @@ func (a *App) markVirtualGroupMemberHealthy(group browser.ProxyVirtualGroup, pro
 	if engine != "" {
 		next.LastEngine = engine
 	}
-	if connectorType != "" {
-		next.LastConnectorType = connectorType
-	}
+	next.LastConnectorType = connectorType
 	if err := dao.Upsert(next); err != nil {
 		return
 	}
@@ -616,8 +615,8 @@ func (a *App) markVirtualGroupMemberHealthy(group browser.ProxyVirtualGroup, pro
 	})
 }
 
-// markVirtualGroupMemberDegraded 强信号（桥接进程死亡）直接降级，跳过连续失败阈值。
-func (a *App) markVirtualGroupMemberDegraded(group browser.ProxyVirtualGroup, proxyID string, cause error) {
+// markVirtualGroupMemberDegraded 强信号（手动测速失败或桥接进程死亡）直接降级，跳过连续失败阈值。
+func (a *App) markVirtualGroupMemberDegraded(group browser.ProxyVirtualGroup, proxyID string, cause error, connectorType string) {
 	if a == nil || a.browserMgr == nil || a.browserMgr.ProxyVirtualGroupMemberStateDAO == nil {
 		return
 	}
@@ -631,7 +630,8 @@ func (a *App) markVirtualGroupMemberDegraded(group browser.ProxyVirtualGroup, pr
 		return
 	}
 	previous := previousMemberState(states, group.GroupId, proxyID)
-	if previous.State == browser.MemberStateDegraded {
+	connectorType = a.normalizeMemberStateConnectorType(connectorType)
+	if previous.State == browser.MemberStateDegraded && strings.EqualFold(strings.TrimSpace(previous.LastConnectorType), connectorType) {
 		return
 	}
 	next := previous
@@ -649,6 +649,7 @@ func (a *App) markVirtualGroupMemberDegraded(group browser.ProxyVirtualGroup, pr
 	if next.ConsecutiveFailures < 1 {
 		next.ConsecutiveFailures = 1
 	}
+	next.LastConnectorType = connectorType
 	next.NextProbeAt = time.Now().Add(a.memberHealthPolicy().FailureRetry).Format(time.RFC3339)
 	_ = dao.Upsert(next)
 	a.invalidateVirtualGroupMemberStateGate()
@@ -661,4 +662,12 @@ func (a *App) markVirtualGroupMemberDegraded(group browser.ProxyVirtualGroup, pr
 		"error":         next.LastError,
 		"at":            now,
 	})
+}
+
+func (a *App) normalizeMemberStateConnectorType(connectorType string) string {
+	connectorType = strings.TrimSpace(connectorType)
+	if connectorType == "" {
+		return a.defaultProxyConnectorType()
+	}
+	return config.NormalizeBrowserConnectorType(connectorType)
 }

@@ -190,13 +190,31 @@ func TestVirtualGroupHealthResetRestoresCandidates(t *testing.T) {
 func TestManualProbeImmediatelyDegradesAndRestores(t *testing.T) {
 	app, group := newStickyHealthGroup(t)
 
-	app.applyManualProxyProbe(ProxyTestResult{ProxyId: "proxy-a", Ok: false, Error: "timeout"})
+	app.applyManualProxyProbe(ProxyTestResult{
+		ProxyId:       "proxy-a",
+		Ok:            false,
+		Error:         "timeout",
+		connectorType: app.defaultProxyConnectorType(),
+	})
+	states, err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup(group.GroupId)
+	if err != nil {
+		t.Fatalf("ListByGroup returned error: %v", err)
+	}
+	if len(states) != 1 || states[0].State != browser.MemberStateDegraded || states[0].LastConnectorType != app.defaultProxyConnectorType() {
+		t.Fatalf("manual failure state = %#v, want current-stack degraded state", states)
+	}
 	candidates := currentStartMember(t, app, group)
 	if candidates.allDegraded || candidates.empty() || candidates.ordered[0].ProxyId != "proxy-b" {
 		t.Fatalf("手动测速失败后首选 = %#v, want proxy-b（一次失败即降级）", candidates.ordered)
 	}
 
-	app.applyManualProxyProbe(ProxyTestResult{ProxyId: "proxy-a", Ok: true, LatencyMs: 120, Engine: "xray"})
+	app.applyManualProxyProbe(ProxyTestResult{
+		ProxyId:       "proxy-a",
+		Ok:            true,
+		LatencyMs:     120,
+		Engine:        "xray",
+		connectorType: app.defaultProxyConnectorType(),
+	})
 	candidates = currentStartMember(t, app, group)
 	if candidates.empty() || candidates.ordered[0].ProxyId != "proxy-a" {
 		t.Fatalf("手动测速成功后首选 = %#v, want proxy-a（一次成功即恢复）", candidates.ordered)

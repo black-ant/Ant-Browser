@@ -10,7 +10,7 @@ import (
 // 直到有实例停止腾出名额后自动放行。等待期间不持有任何其它锁，
 // 停止实例不会被排队阻塞，避免"等名额→但名额只能靠停止释放→停止被锁"的死锁。
 //
-// 占用计数只统计"经本闸门获准启动、尚未停止"的实例；释放统一挂在
+// 占用计数统计"经本闸门获准启动或已恢复的运行实例"；释放统一挂在
 // markProfileStoppedLocked（全部停止路径的总汇：手动停止/状态巡检/备份恢复/关机）。
 type instanceLaunchGate struct {
 	mu        sync.Mutex
@@ -52,6 +52,14 @@ func (g *instanceLaunchGate) release(profileId string) {
 	g.mu.Unlock()
 }
 
+func (g *instanceLaunchGate) retain(profileId string) {
+	g.mu.Lock()
+	if g.admitted[profileId] == 0 {
+		g.admitted[profileId] = 1
+	}
+	g.mu.Unlock()
+}
+
 func (a *App) instanceLaunchLimit() int {
 	if a == nil || a.config == nil {
 		return 0
@@ -77,18 +85,44 @@ func (a *App) releaseInstanceLaunchSlot(profileId string) {
 	a.instanceGate.release(profileId)
 }
 
+// retainInstanceLaunchSlot 将已在运行的恢复实例计入并发上限。
+func (a *App) retainInstanceLaunchSlot(profileId string) {
+	if a == nil || profileId == "" || a.instanceLaunchLimit() <= 0 {
+		return
+	}
+	a.launchGate().retain(profileId)
+}
+
+func (a *App) reconcileInstanceLaunchSlots() {
+	if a == nil || a.browserMgr == nil || a.instanceLaunchLimit() <= 0 {
+		return
+	}
+	a.browserMgr.Mutex.Lock()
+	defer a.browserMgr.Mutex.Unlock()
+	for profileId, profile := range a.browserMgr.Profiles {
+		if profile != nil && profile.Running {
+			a.retainInstanceLaunchSlot(profileId)
+		}
+	}
+}
+
 // acquireInstanceLaunchSlot 返回名额释放函数。
 // queued=true 表示该请求经历 过排队（前端据此提示"已进入启动队列"）。
 // 同一实例重复的启动请求不重复占名额（启动逻辑内部会按"已在运行"处理）。
 func (a *App) acquireInstanceLaunchSlot(profileId string) (release func(), queued bool) {
 	gate := a.launchGate()
-	limit := a.instanceLaunchLimit()
 	noop := func() {}
-	if limit <= 0 {
-		return noop, false
-	}
 	queued = false
 	for {
+		limit := a.instanceLaunchLimit()
+		if limit <= 0 {
+			if queued {
+				gate.mu.Lock()
+				gate.waiting--
+				gate.mu.Unlock()
+			}
+			return noop, queued
+		}
 		gate.mu.Lock()
 		if gate.admitted[profileId] > 0 {
 			gate.mu.Unlock()
@@ -106,10 +140,11 @@ func (a *App) acquireInstanceLaunchSlot(profileId string) (release func(), queue
 		if !queued {
 			queued = true
 			gate.waiting++
+			position := gate.waiting
 			gate.mu.Unlock()
 			a.emitRuntimeEvent("instance:launch:queued", map[string]interface{}{
 				"profileId": profileId,
-				"position":  gate.waiting,
+				"position":  position,
 				"limit":     limit,
 			})
 		} else {

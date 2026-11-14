@@ -35,7 +35,7 @@ func (a *App) runtimeFailoverMaxAttempts() int {
 }
 
 // scheduleVirtualGroupProxyFailure 桥接失效后的异步处置入口：降级失败成员并尝试切到健康成员重启实例。
-func (a *App) scheduleVirtualGroupProxyFailure(profileID string, proxyID string, trigger string, cause error) {
+func (a *App) scheduleVirtualGroupProxyFailure(profileID string, proxyID string, trigger string, cause error, connectorType string) {
 	if a == nil || a.config == nil {
 		return
 	}
@@ -47,8 +47,9 @@ func (a *App) scheduleVirtualGroupProxyFailure(profileID string, proxyID string,
 	if profileID == "" || proxyID == "" {
 		return
 	}
+	connectorType = a.normalizeMemberStateConnectorType(connectorType)
 	if err := a.startBackgroundTask(func(ctx context.Context) {
-		a.handleVirtualGroupProxyFailure(profileID, proxyID, trigger, cause)
+		a.handleVirtualGroupProxyFailure(profileID, proxyID, trigger, cause, connectorType)
 	}); err != nil {
 		logger.New("VirtualGroup").Warn("提交虚拟分组故障切换任务失败",
 			logger.F("profile_id", profileID),
@@ -60,10 +61,10 @@ func (a *App) scheduleVirtualGroupProxyFailure(profileID string, proxyID string,
 
 // handleVirtualGroupProxyFailure 只在实例当前绑定的虚拟分组内做故障切换。
 // 非虚拟分组绑定、没有其他健康成员、处于冷却窗口时都直接跳过。
-func (a *App) handleVirtualGroupProxyFailure(profileID string, proxyID string, trigger string, cause error) {
+func (a *App) handleVirtualGroupProxyFailure(profileID string, proxyID string, trigger string, cause error, connectorType string) {
 	log := logger.New("VirtualGroup")
 	// 节点确实挂了：无论实例是否在跑，都先降级，避免下一次启动再撞上它。
-	a.markProxyDegradedInAllGroups(proxyID, cause)
+	a.markProxyDegradedInAllGroups(proxyID, cause, connectorType)
 
 	group, ok := a.virtualGroupBoundToProfile(profileID)
 	if !ok {
@@ -225,14 +226,14 @@ func (a *App) beginRuntimeFailover(profileID string) (int, bool) {
 
 // markProxyDegradedInAllGroups 把某个代理在其所属的所有虚拟分组里直接降级。
 // 桥接进程死亡是强信号，不再等待连续失败阈值。
-func (a *App) markProxyDegradedInAllGroups(proxyID string, cause error) {
+func (a *App) markProxyDegradedInAllGroups(proxyID string, cause error, connectorType string) {
 	proxyID = strings.TrimSpace(proxyID)
 	if proxyID == "" || a == nil {
 		return
 	}
 	_, byProxy := a.virtualGroupSnapshotData()
 	for _, group := range byProxy[strings.ToLower(proxyID)] {
-		a.markVirtualGroupMemberDegraded(group, proxyID, cause)
+		a.markVirtualGroupMemberDegraded(group, proxyID, cause, connectorType)
 	}
 }
 

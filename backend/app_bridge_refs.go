@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"ant-chrome/backend/internal/proxy"
 )
@@ -18,20 +19,22 @@ const (
 )
 
 type profileProxyBridgeRef struct {
-	Engine  string
-	Key     string
-	ProxyID string
+	Engine        string
+	Key           string
+	ProxyID       string
+	ConnectorType string
 }
 
 func (ref profileProxyBridgeRef) valid() bool {
 	return strings.TrimSpace(ref.Engine) != "" && strings.TrimSpace(ref.Key) != ""
 }
 
-func newProfileProxyBridgeRef(engine string, key string, proxyID string) profileProxyBridgeRef {
+func newProfileProxyBridgeRef(engine string, key string, proxyID string, connectorType string) profileProxyBridgeRef {
 	return profileProxyBridgeRef{
-		Engine:  strings.TrimSpace(engine),
-		Key:     strings.TrimSpace(key),
-		ProxyID: strings.TrimSpace(proxyID),
+		Engine:        strings.TrimSpace(engine),
+		Key:           strings.TrimSpace(key),
+		ProxyID:       strings.TrimSpace(proxyID),
+		ConnectorType: config.NormalizeBrowserConnectorType(connectorType),
 	}
 }
 
@@ -122,6 +125,7 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 	profileIDs := make([]string, 0)
 	proxyIDs := make(map[string]string)
 	profileProxyIDs := make(map[string]string)
+	profileConnectorTypes := make(map[string]string)
 	a.bridgeMu.Lock()
 	for profileID, ref := range a.profileBridgeRefs {
 		if !strings.EqualFold(strings.TrimSpace(ref.Engine), engine) || strings.TrimSpace(ref.Key) != key {
@@ -131,6 +135,7 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 		if proxyID := strings.TrimSpace(ref.ProxyID); proxyID != "" {
 			proxyIDs[strings.ToLower(proxyID)] = proxyID
 			profileProxyIDs[profileID] = proxyID
+			profileConnectorTypes[profileID] = strings.TrimSpace(ref.ConnectorType)
 		}
 	}
 	a.bridgeMu.Unlock()
@@ -166,7 +171,7 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 		if proxyID == "" {
 			continue
 		}
-		a.scheduleVirtualGroupProxyFailure(profileID, proxyID, "bridge_died", err)
+		a.scheduleVirtualGroupProxyFailure(profileID, proxyID, "bridge_died", err, profileConnectorTypes[profileID])
 	}
 }
 
@@ -187,7 +192,7 @@ func (a *App) recordProxyBridgeFailure(proxyID string) {
 	}
 }
 
-func (a *App) reportProxyBridgeFailure(profileID string, profileName string, proxyID string, engine string, cause error) {
+func (a *App) reportProxyBridgeFailure(profileID string, profileName string, proxyID string, engine string, connectorType string, cause error) {
 	a.recordProxyBridgeFailure(proxyID)
 	// 启动期桥接失败可能是本机内核/端口抖动，不等于节点已死：
 	// 按普通探测失败计入阈值，避免一次失败就把该节点从所有分组里摘掉。
@@ -201,7 +206,7 @@ func (a *App) reportProxyBridgeFailure(profileID string, profileName string, pro
 		LatencyMs:     -1,
 		Error:         message,
 		Engine:        engine,
-		ConnectorType: a.defaultProxyConnectorType(),
+		ConnectorType: a.normalizeMemberStateConnectorType(connectorType),
 		At:            time.Now(),
 	})
 	a.emitRuntimeEvent("proxy:bridge:failed", map[string]interface{}{

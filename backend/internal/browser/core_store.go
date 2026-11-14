@@ -96,6 +96,16 @@ func (m *Manager) DeleteCore(coreId string) error {
 	if coreId == "" {
 		return fmt.Errorf("内核ID不能为空")
 	}
+	if _, found := m.GetCore(coreId); !found {
+		return fmt.Errorf("内核不存在: %s", coreId)
+	}
+	instanceCount, err := m.countPersistedInstanceReferences(coreId)
+	if err != nil {
+		return err
+	}
+	if instanceCount > 0 {
+		return fmt.Errorf("内核正在被 %d 个实例使用，不能删除", instanceCount)
+	}
 
 	if m.CoreDAO != nil {
 		if err := m.CoreDAO.Delete(coreId); err != nil {
@@ -124,6 +134,37 @@ func (m *Manager) DeleteCore(coreId string) error {
 	}
 	log.Info("内核配置删除（文件）", logger.F("core_id", coreId))
 	return m.Config.Save(m.ResolveRelativePath("config.yaml"))
+}
+
+// countPersistedInstanceReferences 查询实例数据源，避免内存实例尚未加载时遗漏内核引用。
+func (m *Manager) countPersistedInstanceReferences(coreId string) (int, error) {
+	if m.ProfileDAO == nil {
+		return m.CountInstancesByCore(coreId), nil
+	}
+
+	profiles, err := m.ProfileDAO.List()
+	if err != nil {
+		return 0, fmt.Errorf("查询实例内核引用失败，不能删除: %w", err)
+	}
+
+	defaultCore, hasDefaultCore := m.GetDefaultCore()
+	count := 0
+	for _, profile := range profiles {
+		if profile == nil {
+			continue
+		}
+		profileCoreId := normalizeProfileCoreID(profile.CoreId)
+		if profileCoreId == "" {
+			if hasDefaultCore && strings.EqualFold(defaultCore.CoreId, coreId) {
+				count++
+			}
+			continue
+		}
+		if strings.EqualFold(profileCoreId, coreId) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // SetDefaultCore 设置默认内核

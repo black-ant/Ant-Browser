@@ -26,7 +26,7 @@ func (a *App) resolveDynamicBrowserStartProxy(profileID string, profile *Browser
 	maxTestAge := a.dynamicProxyMaxTestAge()
 	groupName := browser.NormalizeProxyGroupName(profile.ProxyGroupName)
 	virtualGroup, isVirtualGroup := a.findProxyVirtualGroup(groupName)
-	candidates := selectDynamicBrowserProxyCandidates(proxies, groupName, maxTestAge)
+	candidates := selectDynamicBrowserProxyCandidates(proxies, groupName, maxTestAge, a.defaultProxyConnectorType())
 	allDegraded := false
 	if isVirtualGroup {
 		virtualGroup = browser.ResolveProxyVirtualGroup(virtualGroup, proxies)
@@ -141,7 +141,7 @@ func (a *App) selectVirtualDynamicBrowserProxyCandidates(proxies []BrowserProxy,
 		}
 	}
 
-	available := selectDynamicBrowserProxyCandidates(proxies, "", maxTestAge)
+	available := selectDynamicBrowserProxyCandidates(proxies, "", maxTestAge, a.defaultProxyConnectorType())
 	candidates := make([]BrowserProxy, 0, len(memberIDs))
 	for _, candidate := range available {
 		if _, exists := memberIDs[strings.ToLower(strings.TrimSpace(candidate.ProxyId))]; !exists {
@@ -177,7 +177,7 @@ func (a *App) memberStateDegraded(proxyID string, states map[string]browser.Prox
 	return row.State == browser.MemberStateDegraded || row.State == browser.MemberStateRecovering
 }
 
-func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName string, maxTestAge time.Duration) []BrowserProxy {
+func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName string, maxTestAge time.Duration, connectorType string) []BrowserProxy {
 	if maxTestAge <= 0 {
 		maxTestAge = defaultDynamicProxyMaxTestAge
 	}
@@ -192,7 +192,7 @@ func selectDynamicBrowserProxyCandidates(proxies []BrowserProxy, groupName strin
 		if groupName != "" && !strings.EqualFold(strings.TrimSpace(item.GroupName), groupName) {
 			continue
 		}
-		if !item.LastTestOk || item.LastLatencyMs < 0 || !isDynamicProxyTestFresh(item.LastTestedAt, checkedAt, maxTestAge) {
+		if !item.LastTestOk || item.LastLatencyMs < 0 || !proxySpeedResultMatchesConnector(item, connectorType) || !isDynamicProxyTestFresh(item.LastTestedAt, checkedAt, maxTestAge) {
 			continue
 		}
 		candidates = append(candidates, item)

@@ -108,7 +108,7 @@ func (a *App) readFreshProxySpeedResult(proxyID string, connectorType string, pr
 		if !strings.EqualFold(strings.TrimSpace(item.ProxyId), proxyID) {
 			continue
 		}
-		if item.LastTestConnectorType != connectorType || !isProxySpeedResultFresh(item.LastTestedAt, time.Now(), a.proxySpeedResultMaxAge()) {
+		if !proxySpeedResultMatchesConnector(item, connectorType) || !isProxySpeedResultFresh(item.LastTestedAt, time.Now(), a.proxySpeedResultMaxAge()) {
 			return ProxyTestResult{}, false
 		}
 		return ProxyTestResult{
@@ -118,6 +118,15 @@ func (a *App) readFreshProxySpeedResult(proxyID string, connectorType string, pr
 		}, true
 	}
 	return ProxyTestResult{}, false
+}
+
+func proxySpeedResultMatchesConnector(item BrowserProxy, connectorType string) bool {
+	recorded := strings.TrimSpace(item.LastTestConnectorType)
+	if recorded == "" {
+		// 升级前的历史结果没有连接栈来源，按当前栈兼容，避免全池被迫重测。
+		return true
+	}
+	return strings.EqualFold(recorded, config.NormalizeBrowserConnectorType(connectorType))
 }
 
 func isProxySpeedResultFresh(testedAt string, checkedAt time.Time, maxAge time.Duration) bool {
@@ -157,7 +166,8 @@ func (a *App) persistProxySpeedResult(result ProxyTestResult) error {
 
 func (a *App) proxySpeedResultIsCurrent(item BrowserProxy, proxies []BrowserProxy) bool {
 	_ = proxies
-	return isProxySpeedResultFresh(item.LastTestedAt, time.Now(), a.proxySpeedResultMaxAge())
+	return proxySpeedResultMatchesConnector(item, a.defaultProxyConnectorType()) &&
+		isProxySpeedResultFresh(item.LastTestedAt, time.Now(), a.proxySpeedResultMaxAge())
 }
 
 func (a *App) proxySpeedConcurrencyLimit() int {

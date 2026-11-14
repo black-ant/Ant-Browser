@@ -1,5 +1,9 @@
 package backend
 
+import "errors"
+
+var errBrowserStartRuntimeStopped = errors.New("应用正在关闭，不能启动实例")
+
 func (a *App) BrowserInstanceStart(profileId string) (*BrowserProfile, error) {
 	return a.browserInstanceStartInternal(profileId, nil, nil, false, false, false, "", "")
 }
@@ -19,7 +23,29 @@ func (a *App) BrowserInstanceStartWithParams(profileId string, extraLaunchArgs [
 	return a.browserInstanceStartInternal(profileId, extraLaunchArgs, startURLs, skipDefaultStartURLs, preferVisibleWindow, false, "", "")
 }
 
+func (a *App) browserInstanceStartAllowed() bool {
+	if a == nil {
+		return false
+	}
+	a.runtimeMu.RLock()
+	defer a.runtimeMu.RUnlock()
+	return !a.runtimeStopped
+}
+
+func (a *App) shouldAbortBrowserStartForShutdown() bool {
+	if a == nil {
+		return true
+	}
+	a.runtimeMu.RLock()
+	runtimeStopped := a.runtimeStopped
+	a.runtimeMu.RUnlock()
+	return runtimeStopped && a.shouldStopRuntimeServicesOnShutdown()
+}
+
 func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []string, startURLs []string, skipDefaultStartURLs bool, preferVisibleWindow bool, forceDirectProxy bool, proxyId string, proxyConfig string) (*BrowserProfile, error) {
+	if !a.browserInstanceStartAllowed() {
+		return nil, errBrowserStartRuntimeStopped
+	}
 	release, _ := a.acquireInstanceLaunchSlot(profileId)
 	admissionKept := false
 	defer func() {
@@ -38,6 +64,9 @@ func (a *App) browserInstanceStartInternal(profileId string, extraLaunchArgs []s
 }
 
 func (a *App) browserInstanceStartFreshInternal(profileId string, extraLaunchArgs []string, startURLs []string, skipDefaultStartURLs bool, preferVisibleWindow bool, forceDirectProxy bool, proxyId string, proxyConfig string) (*BrowserProfile, error) {
+	if !a.browserInstanceStartAllowed() {
+		return nil, errBrowserStartRuntimeStopped
+	}
 	release, _ := a.acquireInstanceLaunchSlot(profileId)
 	admissionKept := false
 	defer func() {
@@ -58,6 +87,9 @@ func (a *App) browserInstanceStartFreshInternal(profileId string, extraLaunchArg
 func (a *App) startBrowserInstanceWithInput(input browserStartInput) (*BrowserProfile, error) {
 	a.browserMgr.Mutex.Lock()
 	defer a.browserMgr.Mutex.Unlock()
+	if !a.browserInstanceStartAllowed() {
+		return nil, errBrowserStartRuntimeStopped
+	}
 
 	profile, handled, err := a.resolveBrowserStartProfile(input)
 	if err != nil || handled {

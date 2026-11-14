@@ -97,6 +97,7 @@ func (a *App) markProfileRunningLocked(profileId string, profile *BrowserProfile
 	if cmd != nil {
 		a.browserMgr.BrowserProcesses[profileId] = cmd
 	}
+	a.retainInstanceLaunchSlot(profileId)
 	a.startProfileWindowMarkerLocked(profileId, profile)
 	if debugReady && a.launchServer != nil {
 		a.launchServer.SetActiveProfile(profile)

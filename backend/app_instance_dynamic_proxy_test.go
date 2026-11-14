@@ -17,7 +17,10 @@ func TestSelectDynamicBrowserProxyCandidatesFiltersAndSorts(t *testing.T) {
 		{ProxyId: "fast", ProxyConfig: "http://fast:8080", GroupName: "mobile", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 100},
 		{ProxyId: "other-group", ProxyConfig: "http://other:8080", GroupName: "desktop", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 50},
 	}
-	candidates := selectDynamicBrowserProxyCandidates(proxies, " MOBILE ", defaultDynamicProxyMaxTestAge)
+	for index := range proxies {
+		proxies[index].LastTestConnectorType = config.BrowserConnectorXray
+	}
+	candidates := selectDynamicBrowserProxyCandidates(proxies, " MOBILE ", defaultDynamicProxyMaxTestAge, config.BrowserConnectorXray)
 	if len(candidates) != 2 || candidates[0].ProxyId != "fast" || candidates[1].ProxyId != "slow" {
 		t.Fatalf("dynamic candidates = %#v, want [fast slow]", candidates)
 	}
@@ -33,15 +36,31 @@ func TestDynamicProxyCandidatesUseConfiguredSpeedInterval(t *testing.T) {
 		LastTestOk:    true,
 		LastLatencyMs: 50,
 		LastTestedAt:  time.Now().Add(-45 * time.Minute).Format(time.RFC3339),
+		LastTestConnectorType: config.BrowserConnectorXray,
 	}}
 
-	if got := selectDynamicBrowserProxyCandidates(proxies, "", app.dynamicProxyMaxTestAge()); len(got) != 1 {
+	if got := selectDynamicBrowserProxyCandidates(proxies, "", app.dynamicProxyMaxTestAge(), app.defaultProxyConnectorType()); len(got) != 1 {
 		t.Fatalf("configured 120-minute interval rejected a 45-minute result: %#v", got)
 	}
 
 	app.config.ProxyCheck.SpeedIntervalMinutes = 30
-	if got := selectDynamicBrowserProxyCandidates(proxies, "", app.dynamicProxyMaxTestAge()); len(got) != 0 {
+	if got := selectDynamicBrowserProxyCandidates(proxies, "", app.dynamicProxyMaxTestAge(), app.defaultProxyConnectorType()); len(got) != 0 {
 		t.Fatalf("configured 30-minute interval accepted a 45-minute result: %#v", got)
+	}
+}
+
+func TestSelectDynamicBrowserProxyCandidatesRejectsOtherConnector(t *testing.T) {
+	proxies := []BrowserProxy{{
+		ProxyId:               "proxy-1",
+		ProxyConfig:           "http://127.0.0.1:8080",
+		LastTestOk:            true,
+		LastLatencyMs:         50,
+		LastTestedAt:          time.Now().Format(time.RFC3339),
+		LastTestConnectorType: config.BrowserConnectorMihomo,
+	}}
+
+	if candidates := selectDynamicBrowserProxyCandidates(proxies, "", defaultDynamicProxyMaxTestAge, config.BrowserConnectorXray); len(candidates) != 0 {
+		t.Fatalf("other connector result was selected: %#v", candidates)
 	}
 }
 

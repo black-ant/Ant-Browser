@@ -38,9 +38,10 @@ func boolPtrForTest(value bool) *bool {
 func seedMemberState(t *testing.T, app *App, groupID string, proxyID string, state browser.MemberHealthState) {
 	t.Helper()
 	if err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.Upsert(browser.ProxyVirtualGroupMemberState{
-		GroupId: groupID,
-		ProxyId: proxyID,
-		State:   state,
+		GroupId:           groupID,
+		ProxyId:           proxyID,
+		State:             state,
+		LastConnectorType: app.defaultProxyConnectorType(),
 	}); err != nil {
 		t.Fatalf("seed member state failed: %v", err)
 	}
@@ -49,9 +50,9 @@ func seedMemberState(t *testing.T, app *App, groupID string, proxyID string, sta
 func TestSelectVirtualDynamicBrowserProxyCandidates(t *testing.T) {
 	testedAt := time.Now().Format(time.RFC3339)
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-slow", ProxyConfig: "http://slow:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 300},
-		{ProxyId: "proxy-failed", ProxyConfig: "http://failed:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: 10},
-		{ProxyId: "proxy-fast", ProxyConfig: "http://fast:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 100},
+		{ProxyId: "proxy-slow", ProxyConfig: "http://slow:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 300, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-failed", ProxyConfig: "http://failed:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: 10, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-fast", ProxyConfig: "http://fast:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 100, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	group := browser.ProxyVirtualGroup{MemberProxyIds: []string{"proxy-slow", "proxy-failed", "proxy-fast"}}
 	candidates, allDegraded := NewApp("").selectVirtualDynamicBrowserProxyCandidates(proxies, group, defaultDynamicProxyMaxTestAge, nil)
@@ -217,8 +218,8 @@ func TestPickVirtualGroupStartProxyPrefersHealthyMembers(t *testing.T) {
 		MemberProxyIds: []string{"proxy-dead", "proxy-alive"},
 	}
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-dead", ProxyConfig: "http://dead:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: 0},
-		{ProxyId: "proxy-alive", ProxyConfig: "http://alive:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 120},
+		{ProxyId: "proxy-dead", ProxyConfig: "http://dead:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: 0, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-alive", ProxyConfig: "http://alive:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 120, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	for i := 0; i < 3; i++ {
 		memberID, _, ok := app.pickVirtualGroupStartProxy(group, proxies, "profile-healthy")
@@ -252,8 +253,8 @@ func TestVirtualGroupDegradedMemberExcludedFromStart(t *testing.T) {
 		MemberProxyIds: []string{"proxy-a", "proxy-b"},
 	}
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80},
-		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90},
+		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	seedMemberState(t, app, group.GroupId, "proxy-a", browser.MemberStateDegraded)
 
@@ -276,8 +277,8 @@ func TestVirtualGroupAllDegradedRejectsStart(t *testing.T) {
 		MemberProxyIds: []string{"proxy-a", "proxy-b"},
 	}
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80},
-		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90},
+		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	seedMemberState(t, app, group.GroupId, "proxy-a", browser.MemberStateDegraded)
 	seedMemberState(t, app, group.GroupId, "proxy-b", browser.MemberStateDegraded)
@@ -307,8 +308,8 @@ func TestVirtualGroupStickyPrefersPreferredMember(t *testing.T) {
 		MemberProxyIds:   []string{"proxy-a", "proxy-b"},
 	}
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80},
-		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90},
+		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	seedMemberState(t, app, group.GroupId, "proxy-a", browser.MemberStateHealthy)
 	seedMemberState(t, app, group.GroupId, "proxy-b", browser.MemberStateHealthy)
@@ -323,12 +324,12 @@ func TestVirtualGroupStickyPrefersPreferredMember(t *testing.T) {
 func TestSelectVirtualDynamicCandidatesExcludesDegraded(t *testing.T) {
 	testedAt := time.Now().Format(time.RFC3339)
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80},
-		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90},
+		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	group := browser.ProxyVirtualGroup{MemberProxyIds: []string{"proxy-a", "proxy-b"}}
 	states := map[string]browser.ProxyVirtualGroupMemberState{
-		"proxy-a": {ProxyId: "proxy-a", State: browser.MemberStateDegraded},
+		"proxy-a": {ProxyId: "proxy-a", State: browser.MemberStateDegraded, LastConnectorType: config.BrowserConnectorXray},
 	}
 
 	candidates, allDegraded := NewApp("").selectVirtualDynamicBrowserProxyCandidates(proxies, group, defaultDynamicProxyMaxTestAge, states)
@@ -344,13 +345,13 @@ func TestSelectVirtualDynamicCandidatesExcludesDegraded(t *testing.T) {
 func TestSelectVirtualDynamicCandidatesRejectsAllDegraded(t *testing.T) {
 	testedAt := time.Now().Format(time.RFC3339)
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80},
-		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90},
+		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 90, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	group := browser.ProxyVirtualGroup{MemberProxyIds: []string{"proxy-a", "proxy-b"}}
 	states := map[string]browser.ProxyVirtualGroupMemberState{
-		"proxy-a": {ProxyId: "proxy-a", State: browser.MemberStateDegraded},
-		"proxy-b": {ProxyId: "proxy-b", State: browser.MemberStateDegraded},
+		"proxy-a": {ProxyId: "proxy-a", State: browser.MemberStateDegraded, LastConnectorType: config.BrowserConnectorXray},
+		"proxy-b": {ProxyId: "proxy-b", State: browser.MemberStateDegraded, LastConnectorType: config.BrowserConnectorXray},
 	}
 
 	candidates, allDegraded := NewApp("").selectVirtualDynamicBrowserProxyCandidates(proxies, group, defaultDynamicProxyMaxTestAge, states)
@@ -400,8 +401,8 @@ func TestPickVirtualGroupStartProxiesDoesNotRetryDegradedMembers(t *testing.T) {
 	app := newVirtualGroupHealthTestApp(t)
 	testedAt := time.Now().Format(time.RFC3339)
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-a", ProxyName: "A", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80},
-		{ProxyId: "proxy-b", ProxyName: "B", ProxyConfig: "http://b:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1},
+		{ProxyId: "proxy-a", ProxyName: "A", ProxyConfig: "http://a:8080", LastTestOk: true, LastTestedAt: testedAt, LastLatencyMs: 80, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-b", ProxyName: "B", ProxyConfig: "http://b:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	group := browser.ProxyVirtualGroup{GroupId: "vg-retry", GroupName: "retry", MemberProxyIds: []string{"proxy-a", "proxy-b"}}
 	seedMemberState(t, app, group.GroupId, "proxy-a", browser.MemberStateDegraded)
@@ -426,13 +427,13 @@ func TestPickVirtualGroupStartProxiesDoesNotRetryDegradedMembers(t *testing.T) {
 func TestSelectVirtualDynamicCandidatesAllDegradedIgnoresTestFreshness(t *testing.T) {
 	testedAt := time.Now().Format(time.RFC3339)
 	proxies := []BrowserProxy{
-		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1},
-		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1},
+		{ProxyId: "proxy-a", ProxyConfig: "http://a:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1, LastTestConnectorType: config.BrowserConnectorXray},
+		{ProxyId: "proxy-b", ProxyConfig: "http://b:8080", LastTestOk: false, LastTestedAt: testedAt, LastLatencyMs: -1, LastTestConnectorType: config.BrowserConnectorXray},
 	}
 	group := browser.ProxyVirtualGroup{MemberProxyIds: []string{"proxy-a", "proxy-b"}}
 	states := map[string]browser.ProxyVirtualGroupMemberState{
-		"proxy-a": {ProxyId: "proxy-a", State: browser.MemberStateDegraded},
-		"proxy-b": {ProxyId: "proxy-b", State: browser.MemberStateRecovering},
+		"proxy-a": {ProxyId: "proxy-a", State: browser.MemberStateDegraded, LastConnectorType: config.BrowserConnectorXray},
+		"proxy-b": {ProxyId: "proxy-b", State: browser.MemberStateRecovering, LastConnectorType: config.BrowserConnectorXray},
 	}
 
 	candidates, allDegraded := NewApp("").selectVirtualDynamicBrowserProxyCandidates(proxies, group, defaultDynamicProxyMaxTestAge, states)

@@ -2,6 +2,7 @@ package browser
 
 import (
 	"ant-chrome/backend/internal/logger"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 )
 
 const profileTrashRetention = 72 * time.Hour
+
+var ErrProfileRunning = errors.New("实例正在运行或启动中，不能删除，请先停止实例")
 
 // Delete 将配置移入回收站
 func (m *Manager) Delete(profileId string) error {
@@ -22,6 +25,10 @@ func (m *Manager) Delete(profileId string) error {
 	if !exists {
 		log.Error("浏览器配置不存在", logger.F("profile_id", profileId))
 		return fmt.Errorf("profile not found")
+	}
+	if profile.Running || m.BrowserProcesses[profileId] != nil || m.profileHasRuntime(profile) {
+		log.Warn("拒绝删除运行中的浏览器实例", logger.F("profile_id", profileId))
+		return ErrProfileRunning
 	}
 	deletedAt := time.Now().Format(time.RFC3339)
 	if m.ProfileDAO != nil {
@@ -145,6 +152,10 @@ func (m *Manager) PermanentlyDelete(profileId string) error {
 	if strings.TrimSpace(profile.DeletedAt) == "" {
 		return fmt.Errorf("只能彻底删除回收站内的实例")
 	}
+	if m.BrowserProcesses[profileId] != nil || m.profileHasRuntime(profile) {
+		log.Warn("拒绝彻底删除运行中的浏览器实例", logger.F("profile_id", profileId))
+		return ErrProfileRunning
+	}
 	resolvedDir := m.ResolveUserDataDir(profile)
 	dataDirExistedBefore := pathExists(resolvedDir)
 	if err := m.deleteProfileRelatedDataLocked(log, profile); err != nil {
@@ -213,6 +224,13 @@ func (m *Manager) cleanupExpiredTrashLocked(log *logger.Logger) error {
 	}
 	cleaned := 0
 	for _, profile := range expired {
+		if profile == nil {
+			continue
+		}
+		if m.BrowserProcesses[profile.ProfileId] != nil || m.profileHasRuntime(profile) {
+			log.Warn("跳过清理仍在运行的回收站实例", logger.F("profile_id", profile.ProfileId))
+			continue
+		}
 		resolvedDir := m.ResolveUserDataDir(profile)
 		dataDirExistedBefore := pathExists(resolvedDir)
 		if err := m.deleteProfileRelatedDataLocked(log, profile); err != nil {

@@ -135,6 +135,14 @@ func (d *SQLiteProxyVirtualGroupMemberStateDAO) DeleteByGroup(groupId string) er
 	return nil
 }
 
+// DeleteAll 清除全部虚拟分组成员健康状态。
+func (d *SQLiteProxyVirtualGroupMemberStateDAO) DeleteAll() error {
+	if _, err := d.db.Exec(`DELETE FROM browser_proxy_virtual_group_member_state`); err != nil {
+		return fmt.Errorf("清除虚拟分组成员健康状态失败: %w", err)
+	}
+	return nil
+}
+
 func (d *SQLiteProxyVirtualGroupMemberStateDAO) ResetByGroup(groupId string) error {
 	groupId = strings.TrimSpace(groupId)
 	if groupId == "" {

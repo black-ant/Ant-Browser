@@ -2,6 +2,7 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/logger"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -63,7 +64,17 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 
 	var lastStartErr error
 	for attempt := 1; attempt <= plan.maxStartAttempts; attempt++ {
-		stableDebugPort, readyErr := waitBrowserDebugPortStable(plan.assignedDebugPort, plan.userDataDir, plan.startReadyTimeout, plan.startStableWindow, monitor)
+		stableDebugPort, readyErr := waitBrowserDebugPortStable(plan.assignedDebugPort, plan.userDataDir, plan.startReadyTimeout, plan.startStableWindow, monitor, a.shouldAbortBrowserStartForShutdown)
+		if errors.Is(readyErr, errBrowserStartCancelled) {
+			if stopErr := a.stopProcessCmd(cmd); stopErr != nil {
+				log.Warn("应用退出时结束启动中的浏览器失败",
+					logger.F("profile_id", input.ProfileID),
+					logger.F("error", stopErr.Error()),
+				)
+			}
+			profile.LastError = errBrowserStartRuntimeStopped.Error()
+			return profile, errBrowserStartRuntimeStopped
+		}
 		if readyErr == nil {
 			a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, stableDebugPort, true, joinBrowserStartWarnings(profile.RuntimeWarning, plan.extensionWarning))
 			a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
@@ -90,12 +101,7 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 			// Chrome 137+ 已移除 --load-extension，插件只能靠 CDP 的
 			// Extensions.loadUnpacked 补加载；旧内核走这一支会直接跳过。
 			if extensionWarning := a.ensureProfileExtensionsLoaded(input.ProfileID, stableDebugPort, plan.extensionPaths); extensionWarning != "" {
-				a.browserMgr.Mutex.Lock()
-				if current, ok := a.browserMgr.Profiles[input.ProfileID]; ok && current != nil {
-					current.RuntimeWarning = joinBrowserStartWarnings(current.RuntimeWarning, extensionWarning)
-					profile.RuntimeWarning = current.RuntimeWarning
-				}
-				a.browserMgr.Mutex.Unlock()
+				a.appendProfileRuntimeWarningLocked(input.ProfileID, profile, extensionWarning)
 				log.Warn("实例已启动，但插件加载不完整",
 					logger.F("profile_id", input.ProfileID),
 					logger.F("debug_port", stableDebugPort),
@@ -203,4 +209,16 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 	startErr := fmt.Errorf("实例启动失败：浏览器在等待窗口内仍未就绪")
 	profile.LastError = startErr.Error()
 	return profile, startErr
+}
+
+func (a *App) appendProfileRuntimeWarningLocked(profileID string, profile *BrowserProfile, warning string) {
+	if a == nil || a.browserMgr == nil || profile == nil || strings.TrimSpace(warning) == "" {
+		return
+	}
+	if current, ok := a.browserMgr.Profiles[profileID]; ok && current != nil {
+		current.RuntimeWarning = joinBrowserStartWarnings(current.RuntimeWarning, warning)
+		profile.RuntimeWarning = current.RuntimeWarning
+		return
+	}
+	profile.RuntimeWarning = joinBrowserStartWarnings(profile.RuntimeWarning, warning)
 }

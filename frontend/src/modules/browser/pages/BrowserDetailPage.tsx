@@ -197,13 +197,6 @@ export function BrowserDetailPage() {
   const tabsColumns: TableColumn<BrowserTab>[] = [
     { key: 'title', title: '标题' },
     { key: 'url', title: '地址' },
-    {
-      key: 'active',
-      title: '状态',
-      render: value => (
-        <Badge variant={value ? 'success' : 'default'}>{value ? '当前' : '后台'}</Badge>
-      ),
-    },
   ]
 
   const isStarting = pendingAction === 'starting'
@@ -390,7 +383,16 @@ export function BrowserDetailPage() {
           </Card>
 
           <Card title="标签页列表">
-            <Table columns={tabsColumns} data={tabs} rowKey="tabId" />
+            <Table
+              columns={tabsColumns}
+              data={tabs}
+              rowKey="tabId"
+              emptyText={!profile.running
+                ? '实例未运行'
+                : !profile.debugReady
+                  ? '浏览器调试接口尚未就绪'
+                  : undefined}
+            />
           </Card>
 
           <CookieManagerCard

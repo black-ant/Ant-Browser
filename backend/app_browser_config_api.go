@@ -30,6 +30,7 @@ func (a *App) GetBrowserSettings() BrowserSettings {
 
 func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	log := logger.New("Browser")
+	previousConnectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
 	a.config.Browser.UserDataRoot = strings.TrimSpace(settings.UserDataRoot)
 	a.config.Browser.DefaultFingerprintArgs = append([]string{}, settings.DefaultFingerprintArgs...)
 	a.config.Browser.DefaultLaunchArgs = append([]string{}, settings.DefaultLaunchArgs...)
@@ -41,7 +42,8 @@ func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	lightStartEnabled := settings.LightStartEnabled
 	a.config.Browser.LightStartEnabled = &lightStartEnabled
 	a.config.Browser.RestoreLastSession = settings.RestoreLastSession
-	a.config.Browser.DefaultConnectorType = config.NormalizeBrowserConnectorType(settings.DefaultConnectorType)
+	connectorType := config.NormalizeBrowserConnectorType(settings.DefaultConnectorType)
+	a.config.Browser.DefaultConnectorType = connectorType
 	a.config.Browser.MaxConcurrentInstances = settings.MaxConcurrentInstances
 	if a.config.Browser.MaxConcurrentInstances < 0 {
 		a.config.Browser.MaxConcurrentInstances = 0
@@ -60,6 +62,17 @@ func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 		log.Error("浏览器配置保存失败", logger.F("error", err))
 		return err
 	}
+	if previousConnectorType != connectorType {
+		if err := a.invalidateProxyConnectorRuntimeState(); err != nil {
+			log.Warn("连接栈已切换，但运行时健康状态清理失败", logger.F("error", err))
+			return fmt.Errorf("连接栈已切换，但运行时健康状态清理失败: %w", err)
+		}
+		log.Info("浏览器代理连接栈已切换，运行时健康状态已清理",
+			logger.F("previous_connector_type", previousConnectorType),
+			logger.F("connector_type", connectorType),
+		)
+	}
+	a.reconcileInstanceLaunchSlots()
 	return nil
 }
 

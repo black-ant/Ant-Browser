@@ -323,7 +323,8 @@ func (a *App) virtualGroupMemberUsable(candidate BrowserProxy, states map[string
 	if !candidate.LastTestOk || candidate.LastLatencyMs < 0 {
 		return false
 	}
-	return isDynamicProxyTestFresh(candidate.LastTestedAt, time.Now(), a.dynamicProxyMaxTestAge())
+	return proxySpeedResultMatchesConnector(candidate, a.defaultProxyConnectorType()) &&
+		isDynamicProxyTestFresh(candidate.LastTestedAt, time.Now(), a.dynamicProxyMaxTestAge())
 }
 
 // reportVirtualGroupAllDegraded 全组降级：记录明确告警并拒绝使用，不再兜底重试。

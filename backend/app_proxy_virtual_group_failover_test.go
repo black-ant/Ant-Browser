@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/config"
 	"errors"
 	"testing"
 	"time"
@@ -81,7 +82,7 @@ func TestMarkProxyDegradedInAllGroups(t *testing.T) {
 	}
 	app.invalidateVirtualGroupSnapshot()
 
-	app.markProxyDegradedInAllGroups("proxy-a", errors.New("bridge exited"))
+	app.markProxyDegradedInAllGroups("proxy-a", errors.New("bridge exited"), config.BrowserConnectorXray)
 
 	states, err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup(group.GroupId)
 	if err != nil {
@@ -93,9 +94,12 @@ func TestMarkProxyDegradedInAllGroups(t *testing.T) {
 	if states[0].LastError != "bridge exited" {
 		t.Fatalf("last error = %q", states[0].LastError)
 	}
+	if states[0].LastConnectorType != config.BrowserConnectorXray {
+		t.Fatalf("connector type = %q, want %q", states[0].LastConnectorType, config.BrowserConnectorXray)
+	}
 
 	// 再次标记不应重复写事件或翻转计数。
-	app.markProxyDegradedInAllGroups("proxy-a", errors.New("bridge exited"))
+	app.markProxyDegradedInAllGroups("proxy-a", errors.New("bridge exited"), config.BrowserConnectorXray)
 }
 
 func TestVirtualGroupBoundToProfile(t *testing.T) {
@@ -187,7 +191,7 @@ func TestSetVirtualProxyCursorPinsNextStart(t *testing.T) {
 // 桥接引用读取用于故障切换事件上报实际生效成员。
 func TestBridgeProxyIDForProfile(t *testing.T) {
 	app := NewApp("")
-	app.bindProfileProxyBridge("profile-1", newProfileProxyBridgeRef("xray", "bridge-key", "proxy-a"))
+	app.bindProfileProxyBridge("profile-1", newProfileProxyBridgeRef("xray", "bridge-key", "proxy-a", config.BrowserConnectorXray))
 	if got := app.bridgeProxyIDForProfile("profile-1"); got != "proxy-a" {
 		t.Fatalf("bridge proxy id = %q, want proxy-a", got)
 	}
@@ -211,7 +215,7 @@ func TestStartBridgeFailureRequiresThresholdBeforeDegrade(t *testing.T) {
 	}
 	app.invalidateVirtualGroupSnapshot()
 
-	app.reportProxyBridgeFailure("profile-1", "profile", "proxy-a", profileProxyBridgeEngineXray, errors.New("dial failed"))
+	app.reportProxyBridgeFailure("profile-1", "profile", "proxy-a", profileProxyBridgeEngineXray, config.BrowserConnectorXray, errors.New("dial failed"))
 	states, err := app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup(group.GroupId)
 	if err != nil {
 		t.Fatalf("ListByGroup returned error: %v", err)
@@ -220,7 +224,7 @@ func TestStartBridgeFailureRequiresThresholdBeforeDegrade(t *testing.T) {
 		t.Fatalf("state after first start failure = %#v, want suspect", states)
 	}
 
-	app.reportProxyBridgeFailure("profile-1", "profile", "proxy-a", profileProxyBridgeEngineXray, errors.New("dial failed"))
+	app.reportProxyBridgeFailure("profile-1", "profile", "proxy-a", profileProxyBridgeEngineXray, config.BrowserConnectorXray, errors.New("dial failed"))
 	states, err = app.browserMgr.ProxyVirtualGroupMemberStateDAO.ListByGroup(group.GroupId)
 	if err != nil {
 		t.Fatalf("ListByGroup returned error: %v", err)

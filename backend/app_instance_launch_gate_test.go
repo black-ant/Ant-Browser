@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -99,4 +101,98 @@ func TestInstanceLaunchGateGuards(t *testing.T) {
 		t.Fatal("重复释放后名额应正常回收")
 	}
 	releaseB()
+}
+
+func TestInstanceLaunchGateAppliesUpdatedLimitToQueuedRequest(t *testing.T) {
+	app := &App{config: &config.Config{}}
+	app.config.Browser.MaxConcurrentInstances = 1
+
+	releaseFirst, _ := app.acquireInstanceLaunchSlot("first")
+	defer releaseFirst()
+
+	type acquireResult struct {
+		release func()
+		queued  bool
+	}
+	granted := make(chan acquireResult, 1)
+	go func() {
+		release, queued := app.acquireInstanceLaunchSlot("second")
+		granted <- acquireResult{release: release, queued: queued}
+	}()
+
+	select {
+	case <-granted:
+		t.Fatal("second instance should queue at the original limit")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	app.config.Browser.MaxConcurrentInstances = 2
+	select {
+	case result := <-granted:
+		if !result.queued {
+			t.Fatal("second instance should report queued before the limit changed")
+		}
+		result.release()
+	case <-time.After(time.Second):
+		t.Fatal("queued instance was not released after raising the limit")
+	}
+}
+
+func TestQueuedInstanceStartRejectedAfterRuntimeStops(t *testing.T) {
+	app := NewApp(t.TempDir())
+	app.config = config.DefaultConfig()
+	app.config.Browser.MaxConcurrentInstances = 1
+	app.browserMgr = browser.NewManager(app.config, t.TempDir())
+
+	releaseRunning, queued := app.acquireInstanceLaunchSlot("running")
+	if queued {
+		t.Fatal("首个实例启动不应排队")
+	}
+
+	type startResult struct {
+		profile *BrowserProfile
+		err     error
+	}
+	started := make(chan startResult, 1)
+	go func() {
+		profile, err := app.browserInstanceStartInternal("queued", nil, nil, false, false, false, "", "")
+		started <- startResult{profile: profile, err: err}
+	}()
+
+	gate := app.launchGate()
+	deadline := time.Now().Add(time.Second)
+	for {
+		gate.mu.Lock()
+		waiting := gate.waiting
+		gate.mu.Unlock()
+		if waiting == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("排队启动请求未进入闸门等待")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	app.stopRuntimeEvents()
+	releaseRunning()
+
+	select {
+	case result := <-started:
+		if result.profile != nil {
+			t.Fatalf("关闭期间排队启动不应返回实例: %#v", result.profile)
+		}
+		if !errors.Is(result.err, errBrowserStartRuntimeStopped) {
+			t.Fatalf("排队启动错误 = %v, want %v", result.err, errBrowserStartRuntimeStopped)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("关闭后排队启动未及时返回")
+	}
+
+	gate.mu.Lock()
+	occupied := gate.occupied()
+	gate.mu.Unlock()
+	if occupied != 0 {
+		t.Fatalf("关闭后的闸门占用 = %d, want 0", occupied)
+	}
 }

@@ -96,8 +96,10 @@ func (m *Manager) ResolveChromeBinary(profile *Profile) (string, error) {
 
 	if coreId != "" {
 		core, found = m.GetCore(coreId)
-	}
-	if !found {
+		if !found {
+			return "", fmt.Errorf("实例绑定的浏览器内核不存在：%s。请在“内核管理”中重新绑定有效内核", coreId)
+		}
+	} else {
 		core, found = m.GetDefaultCore()
 	}
 	if !found {

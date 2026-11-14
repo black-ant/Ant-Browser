@@ -13,9 +13,16 @@ import (
 const browserStartReadyTimeout = 10 * time.Second
 const browserStartStableWindow = 1200 * time.Millisecond
 
-var errBrowserDebugPortPending = errors.New("browser debug port pending")
+var (
+	errBrowserDebugPortPending = errors.New("browser debug port pending")
+	errBrowserStartCancelled   = errors.New("browser startup cancelled")
+)
 
-func waitBrowserDebugPortReady(initialDebugPort int, userDataDir string, timeout time.Duration, monitor *browserProcessMonitor) (int, error) {
+func browserStartAbortRequested(shouldAbort func() bool) bool {
+	return shouldAbort != nil && shouldAbort()
+}
+
+func waitBrowserDebugPortReady(initialDebugPort int, userDataDir string, timeout time.Duration, monitor *browserProcessMonitor, shouldAbort func() bool) (int, error) {
 	deadline := time.Now().Add(timeout)
 	allowDetachedGrace := initialDebugPort > 0
 	var lastErr error
@@ -23,6 +30,9 @@ func waitBrowserDebugPortReady(initialDebugPort int, userDataDir string, timeout
 	exitObserved := false
 
 	for time.Now().Before(deadline) {
+		if browserStartAbortRequested(shouldAbort) {
+			return 0, errBrowserStartCancelled
+		}
 		debugPort, resolveErr := resolveBrowserDebugPort(initialDebugPort, userDataDir, monitor)
 		if resolveErr == nil {
 			if err := probeBrowserDebugPort(debugPort, browserDebugProbeTimeout); err == nil {
@@ -56,6 +66,9 @@ func waitBrowserDebugPortReady(initialDebugPort int, userDataDir string, timeout
 		}
 		postExitDeadline := time.Now().Add(browserLauncherDetachGraceWindow)
 		for time.Now().Before(postExitDeadline) {
+			if browserStartAbortRequested(shouldAbort) {
+				return 0, errBrowserStartCancelled
+			}
 			if debugPort, resolveErr := resolveBrowserDebugPort(initialDebugPort, userDataDir, monitor); resolveErr == nil {
 				if err := probeBrowserDebugPort(debugPort, browserDebugProbeTimeout); err == nil {
 					return debugPort, nil
@@ -86,8 +99,8 @@ func waitBrowserDebugPortReady(initialDebugPort int, userDataDir string, timeout
 	return 0, fmt.Errorf("浏览器进程未在 %s 内完成启动，尚未获取调试端口", timeout.Round(time.Second))
 }
 
-func waitBrowserDebugPortStable(initialDebugPort int, userDataDir string, timeout time.Duration, stableFor time.Duration, monitor *browserProcessMonitor) (int, error) {
-	debugPort, err := waitBrowserDebugPortReady(initialDebugPort, userDataDir, timeout, monitor)
+func waitBrowserDebugPortStable(initialDebugPort int, userDataDir string, timeout time.Duration, stableFor time.Duration, monitor *browserProcessMonitor, shouldAbort func() bool) (int, error) {
+	debugPort, err := waitBrowserDebugPortReady(initialDebugPort, userDataDir, timeout, monitor, shouldAbort)
 	if err != nil {
 		return 0, err
 	}
@@ -95,14 +108,17 @@ func waitBrowserDebugPortStable(initialDebugPort int, userDataDir string, timeou
 		return debugPort, nil
 	}
 	allowDetachedGrace := initialDebugPort > 0
-	return stabilizeBrowserDebugPort(debugPort, stableFor, allowDetachedGrace, monitor, probeBrowserDebugPort)
+	return stabilizeBrowserDebugPort(debugPort, stableFor, allowDetachedGrace, monitor, probeBrowserDebugPort, shouldAbort)
 }
 
-func stabilizeBrowserDebugPort(debugPort int, stableFor time.Duration, allowDetachedGrace bool, monitor *browserProcessMonitor, probe func(int, time.Duration) error) (int, error) {
+func stabilizeBrowserDebugPort(debugPort int, stableFor time.Duration, allowDetachedGrace bool, monitor *browserProcessMonitor, probe func(int, time.Duration) error, shouldAbort func() bool) (int, error) {
 	deadline := time.Now().Add(stableFor)
 	consecutiveFailures := 0
 	const maxStableProbeFailures = 2
 	for {
+		if browserStartAbortRequested(shouldAbort) {
+			return 0, errBrowserStartCancelled
+		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			break
@@ -136,6 +152,9 @@ func stabilizeBrowserDebugPort(debugPort int, stableFor time.Duration, allowDeta
 		time.Sleep(sleepFor)
 	}
 
+	if browserStartAbortRequested(shouldAbort) {
+		return 0, errBrowserStartCancelled
+	}
 	if monitor != nil && monitor.HasExited() && !allowDetachedGrace {
 		return 0, newBrowserStartupExitError(monitor.Result())
 	}

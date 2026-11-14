@@ -202,6 +202,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) error {
 	}
 
 	a.browserMgr.InitData()
+	a.recoverBrowserRuntimeStates()
 	if err := a.browserMgr.SyncBuiltinExtensions(); err != nil {
 		logger.New("Browser").Error("初始化内置插件失败", logger.F("error", err))
 	}
@@ -336,12 +337,14 @@ func (a *App) proxySpeedSchedule() (time.Duration, time.Duration, int) {
 }
 
 func (a *App) restartSpeedScheduler() {
-	if a == nil {
+	a.stopSpeedScheduler()
+	a.ensureSpeedScheduler()
+}
+
+func (a *App) stopSpeedScheduler() {
+	if a == nil || a.speedScheduler == nil {
 		return
 	}
-	if a.speedScheduler != nil {
-		a.speedScheduler.Stop()
-		a.speedScheduler = nil
-	}
-	a.ensureSpeedScheduler()
+	a.speedScheduler.Stop()
+	a.speedScheduler = nil
 }
