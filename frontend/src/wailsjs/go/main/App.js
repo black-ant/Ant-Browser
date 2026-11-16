@@ -526,6 +526,10 @@ export function BrowserProxyCheckIPHealth(arg1) {
   return window['go']['main']['App']['BrowserProxyCheckIPHealth'](arg1);
 }
 
+export function BrowserProxyCleanupMissing(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProxyCleanupMissing'](arg1, arg2);
+}
+
 export function BrowserProxyCoreDownload(arg1) {
   return window['go']['main']['App']['BrowserProxyCoreDownload'](arg1);
 }

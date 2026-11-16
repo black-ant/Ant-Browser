@@ -1267,6 +1267,67 @@ export namespace backend {
 		    return a;
 		}
 	}
+	export class ProxyMissingCleanupSkip {
+	    proxyId: string;
+	    proxyName: string;
+	    sourceId: string;
+	    reason: string;
+	    detail: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyMissingCleanupSkip(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.proxyId = source["proxyId"];
+	        this.proxyName = source["proxyName"];
+	        this.sourceId = source["sourceId"];
+	        this.reason = source["reason"];
+	        this.detail = source["detail"];
+	    }
+	}
+	export class ProxyMissingCleanupResult {
+	    sourceId: string;
+	    scanned: number;
+	    deletable: number;
+	    deleted: number;
+	    skipped: ProxyMissingCleanupSkip[];
+	    dryRun: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyMissingCleanupResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceId = source["sourceId"];
+	        this.scanned = source["scanned"];
+	        this.deletable = source["deletable"];
+	        this.deleted = source["deleted"];
+	        this.skipped = this.convertValues(source["skipped"], ProxyMissingCleanupSkip);
+	        this.dryRun = source["dryRun"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class ProxyRefreshPair {
 	    oldName: string;
 	    newName: string;

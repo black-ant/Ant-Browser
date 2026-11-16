@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ConfirmModal, toast } from '../../../shared/components'
 import type { SortOrder } from '../../../shared/components/Table'
-import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyIPHealthResult } from '../types'
-import { fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies, updateProxySourceConfig } from '../api'
+import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyIPHealthResult, ProxyMissingCleanupResult } from '../types'
+import { cleanupMissingProxies, fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies, updateProxySourceConfig } from '../api'
 import {
   buildChainImportCandidate,
   buildDirectImportCandidate,
@@ -287,6 +287,47 @@ export function ProxyPoolPage() {
     removeSelectedId,
   } = useProxySelection({ proxies, filteredList, saveProxies })
 
+  const [cleanupPreview, setCleanupPreview] = useState<ProxyMissingCleanupResult | null>(null)
+  const [cleaningMissing, setCleaningMissing] = useState(false)
+  const missingCount = useMemo(() => proxies.filter(proxy => proxy.sourceMissing).length, [proxies])
+
+  const handleCleanupMissingClick = async () => {
+    try {
+      const preview = await cleanupMissingProxies('', true)
+      if (preview.scanned === 0) {
+        toast.info('当前没有标记为异常的订阅节点')
+        return
+      }
+      if (preview.deletable === 0) {
+        toast.warning(`异常节点全部被实例或虚拟分组引用（共 ${preview.scanned} 个），请先重新绑定后再清理`)
+        return
+      }
+      setCleanupPreview(preview)
+    } catch (error: any) {
+      toast.error(error?.message || '检查异常节点失败')
+    }
+  }
+
+  const handleCleanupMissingConfirm = async () => {
+    setCleaningMissing(true)
+    try {
+      const result = await cleanupMissingProxies('', false)
+      const message = result.skipped.length > 0
+        ? `已清理 ${result.deleted} 个异常节点，${result.skipped.length} 个仍被实例/分组引用已跳过`
+        : `已清理 ${result.deleted} 个异常节点`
+      if (result.deleted > 0) {
+        toast.success(message)
+      } else {
+        toast.warning(message)
+      }
+      await reloadPoolState()
+    } catch (error: any) {
+      toast.error(error?.message || '清理异常节点失败')
+    } finally {
+      setCleaningMissing(false)
+    }
+  }
+
   const updateChainEditHop = (hop: 'first' | 'second', field: keyof ChainImportForm['first'], value: string) => {
     setChainEditForm(prev => ({
       ...prev,
@@ -411,9 +452,12 @@ export function ProxyPoolPage() {
       />
       <ProxyPoolHeader
         checkingAllIPHealth={checkingAllIPHealth}
+        cleaningMissing={cleaningMissing}
         currentConnectorStatus={currentCoreStatus?.message || '未知'}
         hasURLImportSources={hasURLImportSources}
+        missingCount={missingCount}
         onCheckAllIPHealth={() => void handleCheckAllIPHealth(filteredList.filter(record => !record.isVirtual))}
+        onCleanupMissing={() => void handleCleanupMissingClick()}
         onOpenSettings={() => void openCheckSettings()}
         onOpenSourceManager={() => setSourceManagerOpen(true)}
         onOpenUsageGuide={() => setUsageGuideOpen(true)}
@@ -632,6 +676,38 @@ export function ProxyPoolPage() {
 
       <ConfirmModal open={batchDeleteConfirmOpen} onClose={() => setBatchDeleteConfirmOpen(false)} onConfirm={handleBatchDeleteConfirm}
         title="批量删除" content={`确定要删除选中的 ${selectedCount} 个代理吗？此操作不可恢复。`} confirmText="删除" danger />
+
+      <ConfirmModal
+        open={!!cleanupPreview}
+        onClose={() => setCleanupPreview(null)}
+        onConfirm={() => void handleCleanupMissingConfirm()}
+        title="清理异常节点"
+        confirmText="删除"
+        danger
+        content={cleanupPreview ? (
+          <div className="space-y-2 text-sm">
+            <p>
+              将删除 <span className="font-medium text-red-500">{cleanupPreview.deletable}</span> 个标记为「异常」的订阅节点（订阅刷新后已不存在）。
+            </p>
+            {cleanupPreview.skipped.length > 0 && (
+              <div className="max-h-40 overflow-y-auto rounded-lg bg-[var(--color-bg-muted)] px-3 py-2 text-xs text-[var(--color-text-muted)]">
+                <p className="font-medium text-[var(--color-text-primary)]">
+                  以下 {cleanupPreview.skipped.length} 个节点仍被实例或虚拟分组引用，将跳过：
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {cleanupPreview.skipped.map(item => (
+                    <li key={item.proxyId} className="truncate" title={item.proxyName || item.proxyId}>
+                      {item.proxyName || item.proxyId}
+                      {item.reason === 'instance' ? `（实例：${item.detail}）` : `（虚拟分组：${item.detail}）`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-xs text-[var(--color-text-muted)]">实例与虚拟分组绑定的节点不会被删除；删除后不可恢复。</p>
+          </div>
+        ) : null}
+      />
     </div>
   )
 }

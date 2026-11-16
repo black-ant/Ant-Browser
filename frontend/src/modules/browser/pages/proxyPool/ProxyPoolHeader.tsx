@@ -1,9 +1,12 @@
 import { Button, Card } from '../../../../shared/components'
 interface ProxyPoolHeaderProps {
   checkingAllIPHealth: boolean
+  cleaningMissing: boolean
   currentConnectorStatus: string
   hasURLImportSources: boolean
+  missingCount: number
   onCheckAllIPHealth: () => void
+  onCleanupMissing: () => void
   onOpenImport: () => void
   onOpenVirtualGroups: () => void
   onOpenCoreDownload: () => void
@@ -18,9 +21,12 @@ interface ProxyPoolHeaderProps {
 }
 export function ProxyPoolHeader({
   checkingAllIPHealth,
+  cleaningMissing,
   currentConnectorStatus,
   hasURLImportSources,
+  missingCount,
   onCheckAllIPHealth,
+  onCleanupMissing,
   onOpenImport,
   onOpenVirtualGroups,
   onOpenCoreDownload,
@@ -87,6 +93,15 @@ export function ProxyPoolHeader({
           </Button>
           <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
           <Button size='sm' variant='secondary' onClick={onOpenVirtualGroups}>虚拟节点</Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onCleanupMissing}
+            loading={cleaningMissing}
+            disabled={missingCount === 0}
+          >
+            清理异常{missingCount > 0 ? ` (${missingCount})` : ''}
+          </Button>
           <Button size="sm" onClick={onOpenImport}>导入代理</Button>
           <span className="h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
           <Button size="sm" variant="secondary" onClick={onOpenUsageGuide}>

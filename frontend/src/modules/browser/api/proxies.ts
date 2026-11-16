@@ -1,4 +1,4 @@
-﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySourceRefreshResult, ProxySpeedTestResult, ProxyVirtualGroupHealth, ProxyVirtualGroupProbeResult, SourceAlignRecord } from '../types'
+﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxyMissingCleanupResult, ProxySourceRefreshResult, ProxySpeedTestResult, ProxyVirtualGroupHealth, ProxyVirtualGroupProbeResult, SourceAlignRecord } from '../types'
 import { getBindings, getGoApp, getMockProxies, nowISOString, setMockProxies } from './runtime'
 
 import type { BrowserProxyVirtualGroup } from '../types'
@@ -252,6 +252,31 @@ export async function saveBrowserProxies(proxies: BrowserProxy[]): Promise<boole
   }
   setMockProxies(proxies)
   return true
+}
+
+/**
+ * 清理订阅刷新后标记为异常的节点。
+ * dryRun=true 只做引用检查与统计，不落盘；后端会跳过仍被实例绑定或虚拟分组引用的行。
+ */
+export async function cleanupMissingProxies(sourceId = '', dryRun = false): Promise<ProxyMissingCleanupResult> {
+  const bindings: any = await getBindings()
+  const trimmed = sourceId.trim()
+  const emptyResult: ProxyMissingCleanupResult = {
+    sourceId: trimmed,
+    scanned: 0,
+    deletable: 0,
+    deleted: 0,
+    skipped: [],
+    dryRun,
+  }
+  if (bindings?.BrowserProxyCleanupMissing) {
+    return (await withBackendStartupRetry(() => bindings.BrowserProxyCleanupMissing(trimmed, dryRun))) || emptyResult
+  }
+  const goApp = getGoApp()
+  if (goApp?.BrowserProxyCleanupMissing) {
+    return (await withBackendStartupRetry(() => goApp.BrowserProxyCleanupMissing(trimmed, dryRun))) || emptyResult
+  }
+  throw new Error('当前环境不支持清理异常节点')
 }
 
 /** 刷新订阅源：后端统一匹配（名称 → 同国家 → 标记异常），与定时刷新同一条链路 */

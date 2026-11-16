@@ -345,6 +345,25 @@ export interface ProxySourceRefreshResult {
   total: number
 }
 
+/** 清理异常节点时被跳过的行：仍被实例绑定或虚拟分组引用 */
+export interface ProxyMissingCleanupSkip {
+  proxyId: string
+  proxyName: string
+  sourceId: string
+  /** instance = 被实例绑定 / virtual_group = 被虚拟分组引用 */
+  reason: string
+  detail: string
+}
+
+export interface ProxyMissingCleanupResult {
+  sourceId: string
+  scanned: number
+  deletable: number
+  deleted: number
+  skipped: ProxyMissingCleanupSkip[]
+  dryRun: boolean
+}
+
 export interface BrowserProxyVirtualGroup {
   groupId: string
   groupName: string

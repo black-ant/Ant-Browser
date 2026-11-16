@@ -272,6 +272,8 @@ export function BrowserProxyBuildDiagnostic(arg1:string,arg2:string):Promise<pro
 
 export function BrowserProxyCheckIPHealth(arg1:string):Promise<backend.ProxyIPHealthResult>;
 
+export function BrowserProxyCleanupMissing(arg1:string,arg2:boolean):Promise<backend.ProxyMissingCleanupResult>;
+
 export function BrowserProxyCoreDownload(arg1:backend.ProxyCoreDownloadRequest):Promise<void>;
 
 export function BrowserProxyCoreDownloadInfo(arg1:backend.ProxyCoreDownloadRequest):Promise<backend.ProxyCoreDownloadInfoResult>;
