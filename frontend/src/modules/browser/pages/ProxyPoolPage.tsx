@@ -698,7 +698,11 @@ export function ProxyPoolPage() {
                   {cleanupPreview.skipped.map(item => (
                     <li key={item.proxyId} className="truncate" title={item.proxyName || item.proxyId}>
                       {item.proxyName || item.proxyId}
-                      {item.reason === 'instance' ? `（实例：${item.detail}）` : `（虚拟分组：${item.detail}）`}
+                      {item.reason === 'instance'
+                        ? `（实例：${item.detail}）`
+                        : item.reason === 'fetch_proxy'
+                          ? `（订阅拉取代理：${item.detail}）`
+                          : `（虚拟分组：${item.detail}）`}
                     </li>
                   ))}
                 </ul>

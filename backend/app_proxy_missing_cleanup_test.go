@@ -19,7 +19,7 @@ func TestPlanProxyMissingCleanupDeletesUnreferenced(t *testing.T) {
 		cleanupTestRow("proxy-miss-2", "异常节点 2", "src-1", "https://sub.example.com/list?a=1", true),
 	}
 
-	remaining, result := planProxyMissingCleanup(pool, "", map[string]string{}, map[string]string{})
+	remaining, result := planProxyMissingCleanup(pool, "", map[string]string{}, map[string]string{}, map[string]string{})
 
 	if result.Scanned != 2 || result.Deletable != 2 || len(result.Skipped) != 0 {
 		t.Fatalf("result = %+v", result)
@@ -36,7 +36,7 @@ func TestPlanProxyMissingCleanupSkipsInstanceReference(t *testing.T) {
 	}
 	instanceRefs := map[string]string{"proxy-miss-1": "Muse"}
 
-	remaining, result := planProxyMissingCleanup(pool, "", instanceRefs, map[string]string{})
+	remaining, result := planProxyMissingCleanup(pool, "", instanceRefs, map[string]string{}, map[string]string{})
 
 	if result.Scanned != 2 || result.Deletable != 1 || len(result.Skipped) != 1 {
 		t.Fatalf("result = %+v", result)
@@ -57,7 +57,7 @@ func TestPlanProxyMissingCleanupSkipsVirtualGroupReference(t *testing.T) {
 	// 引用键按小写匹配，代理行 ID 大写也必须命中。
 	groupRefs := map[string]string{"proxy-miss-1": "US"}
 
-	remaining, result := planProxyMissingCleanup(pool, "", map[string]string{}, groupRefs)
+	remaining, result := planProxyMissingCleanup(pool, "", map[string]string{}, groupRefs, map[string]string{})
 
 	if result.Deletable != 0 || len(result.Skipped) != 1 {
 		t.Fatalf("result = %+v", result)
@@ -76,7 +76,7 @@ func TestPlanProxyMissingCleanupFiltersBySource(t *testing.T) {
 		cleanupTestRow("proxy-b", "源 B 异常", "src-b", "https://b.example.com/list", true),
 	}
 
-	remaining, result := planProxyMissingCleanup(pool, "src-a", map[string]string{}, map[string]string{})
+	remaining, result := planProxyMissingCleanup(pool, "src-a", map[string]string{}, map[string]string{}, map[string]string{})
 
 	if result.Scanned != 1 || result.Deletable != 1 {
 		t.Fatalf("result = %+v", result)
@@ -86,7 +86,7 @@ func TestPlanProxyMissingCleanupFiltersBySource(t *testing.T) {
 	}
 
 	// 用订阅 URL 定位源，与前端传 sourceUrl 的口径一致。
-	remaining, result = planProxyMissingCleanup(pool, "https://b.example.com/list", map[string]string{}, map[string]string{})
+	remaining, result = planProxyMissingCleanup(pool, "https://b.example.com/list", map[string]string{}, map[string]string{}, map[string]string{})
 	if result.Scanned != 1 || result.Deletable != 1 {
 		t.Fatalf("by url result = %+v", result)
 	}
@@ -100,12 +100,32 @@ func TestPlanProxyMissingCleanupKeepsRowsWithoutID(t *testing.T) {
 		cleanupTestRow("", "无主键异常行", "src-1", "https://sub.example.com/list", true),
 	}
 
-	remaining, result := planProxyMissingCleanup(pool, "", map[string]string{}, map[string]string{})
+	remaining, result := planProxyMissingCleanup(pool, "", map[string]string{}, map[string]string{}, map[string]string{})
 
 	if result.Scanned != 1 || result.Deletable != 0 {
 		t.Fatalf("result = %+v", result)
 	}
 	if len(remaining) != 1 {
 		t.Fatalf("缺少 proxyId 的行不得删除: %+v", remaining)
+	}
+}
+
+func TestPlanProxyMissingCleanupSkipsFetchProxy(t *testing.T) {
+	pool := []BrowserProxy{
+		cleanupTestRow("proxy-miss-1", "订阅拉取代理", "src-1", "https://sub.example.com/list", true),
+	}
+	pool[0].SourceFetchProxyID = "proxy-miss-1"
+	fetchRefs := map[string]string{"proxy-miss-1": "src-1"}
+
+	remaining, result := planProxyMissingCleanup(pool, "", map[string]string{}, map[string]string{}, fetchRefs)
+
+	if result.Deletable != 0 || len(result.Skipped) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.Skipped[0].Reason != proxyMissingSkipFetchProxy || result.Skipped[0].Detail != "src-1" {
+		t.Fatalf("skip = %+v", result.Skipped[0])
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("订阅拉取代理必须保留: %+v", remaining)
 	}
 }

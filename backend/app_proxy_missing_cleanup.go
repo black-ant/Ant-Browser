@@ -13,6 +13,7 @@ import (
 const (
 	proxyMissingSkipInstance     = "instance"
 	proxyMissingSkipVirtualGroup = "virtual_group"
+	proxyMissingSkipFetchProxy   = "fetch_proxy"
 )
 
 // ProxyMissingCleanupSkip 清理异常节点时被跳过的行及引用来源。
@@ -52,8 +53,8 @@ func (a *App) BrowserProxyCleanupMissing(sourceId string, dryRun bool) (ProxyMis
 	defer a.proxySourceRefreshMu.Unlock()
 
 	pool := a.getLatestProxies()
-	instanceRefs, groupRefs := a.collectProxyMissingReferences(pool)
-	remaining, result := planProxyMissingCleanup(pool, sourceId, instanceRefs, groupRefs)
+	instanceRefs, groupRefs, fetchRefs := a.collectProxyMissingReferences(pool)
+	remaining, result := planProxyMissingCleanup(pool, sourceId, instanceRefs, groupRefs, fetchRefs)
 	result.SourceId = sourceId
 	result.DryRun = dryRun
 
@@ -86,6 +87,7 @@ func planProxyMissingCleanup(
 	sourceId string,
 	instanceRefs map[string]string,
 	groupRefs map[string]string,
+	fetchRefs map[string]string,
 ) ([]BrowserProxy, ProxyMissingCleanupResult) {
 	result := ProxyMissingCleanupResult{Skipped: []ProxyMissingCleanupSkip{}}
 	remaining := make([]BrowserProxy, 0, len(pool))
@@ -122,17 +124,47 @@ func planProxyMissingCleanup(
 			remaining = append(remaining, row)
 			continue
 		}
+		if name, ok := fetchRefs[key]; ok {
+			result.Skipped = append(result.Skipped, ProxyMissingCleanupSkip{
+				ProxyId: row.ProxyId, ProxyName: row.ProxyName, SourceId: row.SourceID,
+				Reason: proxyMissingSkipFetchProxy, Detail: name,
+			})
+			remaining = append(remaining, row)
+			continue
+		}
 		result.Deletable++
 	}
 	return remaining, result
 }
 
-// collectProxyMissingReferences 收集代理 ID 的引用来源：实例名与虚拟分组名。
+// collectProxyMissingReferences 收集代理 ID 的引用来源：实例、虚拟分组、订阅拉取代理。
 // 分组引用必须用 ExpandProxyVirtualGroup 展开：成员既可能来自 MemberProxyIds，
 // 也可能来自 MemberGroupNames（按代理分组名批量纳入），只查前者会漏判。
-func (a *App) collectProxyMissingReferences(proxies []BrowserProxy) (instanceRefs map[string]string, groupRefs map[string]string) {
+// 拉取代理同样必须收集：定时/手动刷新都用它建客户端，删掉会让订阅彻底刷不动。
+func (a *App) collectProxyMissingReferences(proxies []BrowserProxy) (instanceRefs map[string]string, groupRefs map[string]string, fetchRefs map[string]string) {
 	instanceRefs = make(map[string]string)
 	groupRefs = make(map[string]string)
+	fetchRefs = make(map[string]string)
+
+	for _, row := range proxies {
+		id := strings.TrimSpace(row.SourceFetchProxyID)
+		if id == "" {
+			continue
+		}
+		key := strings.ToLower(id)
+		if _, exists := fetchRefs[key]; exists {
+			continue
+		}
+		label := strings.TrimSpace(row.SourceID)
+		if label == "" {
+			label = strings.TrimSpace(row.SourceURL)
+		}
+		if label == "" {
+			label = strings.TrimSpace(row.ProxyName)
+		}
+		fetchRefs[key] = label
+	}
+
 	if a == nil || a.browserMgr == nil {
 		return
 	}
