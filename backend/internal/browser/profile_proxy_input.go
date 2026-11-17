@@ -85,23 +85,13 @@ func (m *Manager) resolveProfileProxyInput(input ProfileInput) (resolvedProfileP
 }
 
 // getProxyVirtualGroupByIDOrName 按分组 ID（或名称）识别虚拟分组绑定。
-// DAO 与 config 两种存储都要支持：config 模式下 DAO 为 nil，此前直接返回 false
-// 会让虚拟分组绑定被误判为失效代理。
 func (m *Manager) getProxyVirtualGroupByIDOrName(key string) (ProxyVirtualGroup, bool) {
 	key = strings.TrimSpace(key)
-	if key == "" || m == nil {
+	if key == "" || m == nil || m.ProxyVirtualGroupDAO == nil {
 		return ProxyVirtualGroup{}, false
 	}
-	var groups []ProxyVirtualGroup
-	if m.ProxyVirtualGroupDAO != nil {
-		listed, err := m.ProxyVirtualGroupDAO.List()
-		if err != nil {
-			return ProxyVirtualGroup{}, false
-		}
-		groups = listed
-	} else if m.Config != nil {
-		groups = append(groups, m.Config.Browser.ProxyVirtualGroups...)
-	} else {
+	groups, err := m.ProxyVirtualGroupDAO.List()
+	if err != nil {
 		return ProxyVirtualGroup{}, false
 	}
 	for _, group := range groups {
