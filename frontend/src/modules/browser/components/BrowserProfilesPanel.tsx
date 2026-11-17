@@ -152,6 +152,9 @@ function selectDynamicProxyCandidate(
 }
 
 function formatProxyLabel(profile: BrowserProfile, proxy?: BrowserProxy, virtualGroups?: BrowserProxyVirtualGroup[]): string {
+  if (profile.proxyBindError?.trim()) {
+    return profile.proxyBindError.trim()
+  }
   if (isDynamicProfile(profile)) {
     return profile.proxyGroupName?.trim() ? `动态代理 · ${profile.proxyGroupName.trim()}` : '动态代理'
   }
@@ -259,9 +262,10 @@ function ProxyInlineActions({
     if (!isProxySpeedResultFresh(match.testedAt, now, speedResultMaxAgeMs)) return null
     return match
   }, [speedResults, speedTargetProxyId, speedTargetKey, virtualGroupMemberIds, now, speedResultMaxAgeMs])
-  const canTest = isDynamic
+  const bindError = (profile.proxyBindError || '').trim()
+  const canTest = !bindError && (isDynamic
     ? !!dynamicProxy
-    : !!profile.proxyId || !!profile.proxyConfig.trim()
+    : !!profile.proxyId || !!profile.proxyConfig.trim())
 
   const handleTest = async () => {
     if (testing || !canTest) return
@@ -282,7 +286,9 @@ function ProxyInlineActions({
 
   return (
     <div className={`inline-flex ${maxWidthClass} items-center gap-1.5 text-xs`} title={formatProxyLabel(profile, proxy, virtualGroups)}>
-      <span className="min-w-0 truncate text-[var(--color-text-primary)]">{formatProxyLabel(profile, proxy, virtualGroups)}</span>
+      <span className={`min-w-0 truncate ${bindError ? 'text-red-500' : 'text-[var(--color-text-primary)]'}`}>
+        {bindError ? '代理已失效' : formatProxyLabel(profile, proxy, virtualGroups)}
+      </span>
       <button
         type="button"
         className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
@@ -301,7 +307,9 @@ function ProxyInlineActions({
       >
         {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
       </button>
-      <ProxyLatency result={displayResult} />
+      {bindError
+        ? <span className="text-xs text-red-500">需重选</span>
+        : <ProxyLatency result={displayResult} />}
     </div>
   )
 }

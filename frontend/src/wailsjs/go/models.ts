@@ -1328,6 +1328,22 @@ export namespace backend {
 		}
 	}
 	
+	export class ProxyReferenceHealReport {
+	    profileBindingsCleared: number;
+	    fetchProxiesCleared: number;
+	    profileGroupsCleared: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyReferenceHealReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.profileBindingsCleared = source["profileBindingsCleared"];
+	        this.fetchProxiesCleared = source["fetchProxiesCleared"];
+	        this.profileGroupsCleared = source["profileGroupsCleared"];
+	    }
+	}
 	export class ProxyRefreshPair {
 	    oldName: string;
 	    newName: string;
@@ -1898,6 +1914,7 @@ export namespace browser {
 	    proxyBindSourceUrl: string;
 	    proxyBindName: string;
 	    proxyBindUpdatedAt: string;
+	    proxyBindError: string;
 	    memoryLimitMb: number;
 	    launchArgs: string[];
 	    lastLaunchArgs: string[];
@@ -1938,6 +1955,7 @@ export namespace browser {
 	        this.proxyBindSourceUrl = source["proxyBindSourceUrl"];
 	        this.proxyBindName = source["proxyBindName"];
 	        this.proxyBindUpdatedAt = source["proxyBindUpdatedAt"];
+	        this.proxyBindError = source["proxyBindError"];
 	        this.memoryLimitMb = source["memoryLimitMb"];
 	        this.launchArgs = source["launchArgs"];
 	        this.lastLaunchArgs = source["lastLaunchArgs"];

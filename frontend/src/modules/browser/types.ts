@@ -13,6 +13,7 @@
   proxyBindSourceUrl?: string
   proxyBindName?: string
   proxyBindUpdatedAt?: string
+  proxyBindError?: string
   memoryLimitMb: number
   launchArgs: string[]
   lastLaunchArgs?: string[]

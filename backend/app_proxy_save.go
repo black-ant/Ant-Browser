@@ -26,10 +26,12 @@ func (a *App) SaveBrowserProxies(proxies []BrowserProxy) error {
 		}
 	}
 	a.config.Browser.Proxies = normalized
-	a.reconcileProfileProxyBindings()
+	a.healProfileProxyBindings()
 	if err := a.pruneProxyVirtualGroupMembers(normalized); err != nil {
 		return err
 	}
+	// 代理被删后，订阅的拉取代理引用也要立即清理（不是等下次刷新）。
+	a.healFetchProxyReferences()
 	return nil
 }
 
@@ -54,6 +56,9 @@ func (a *App) pruneProxyVirtualGroupMembers(proxies []BrowserProxy) error {
 	configChanged := false
 	for _, group := range groups {
 		group = browser.NormalizeProxyVirtualGroup(group)
+		// 动态分组（MemberGroupNames）的成员由代理池实时展开，不能把展开结果写回
+		// MemberProxyIds，否则下次刷新时动态组会退化成静态快照。
+		isDynamicMembers := len(group.MemberGroupNames) > 0
 		filteredIDs := make([]string, 0, len(group.MemberProxyIds))
 		for _, memberProxyID := range group.MemberProxyIds {
 			if canonicalID, exists := validProxyIDs[strings.ToLower(strings.TrimSpace(memberProxyID))]; exists {
@@ -64,13 +69,29 @@ func (a *App) pruneProxyVirtualGroupMembers(proxies []BrowserProxy) error {
 		_, selectedExists := validProxyIDs[selectedProxyID]
 		preferredProxyID := strings.ToLower(strings.TrimSpace(group.PreferredProxyId))
 		_, preferredExists := validProxyIDs[preferredProxyID]
-		if len(filteredIDs) == len(group.MemberProxyIds) &&
-			(selectedProxyID == "" || selectedExists) &&
-			(preferredProxyID == "" || preferredExists) {
+		changed := len(filteredIDs) != len(group.MemberProxyIds) ||
+			(selectedProxyID != "" && !selectedExists) ||
+			(preferredProxyID != "" && !preferredExists)
+		if !changed {
+			// 动态组即使成员列表未变，也要按展开结果清理孤儿状态行。
+			if isDynamicMembers {
+				effective := browser.ExpandProxyVirtualGroup(group, proxies)
+				stateGroup := group
+				stateGroup.MemberProxyIds = make([]string, 0, len(effective))
+				for _, item := range effective {
+					stateGroup.MemberProxyIds = append(stateGroup.MemberProxyIds, item.ProxyId)
+				}
+				a.pruneVirtualGroupMemberStates(stateGroup)
+			}
 			configGroups = append(configGroups, group)
 			continue
 		}
-		group.MemberProxyIds = filteredIDs
+		if isDynamicMembers {
+			// 保留空 MemberProxyIds，让 ResolveProxyVirtualGroup 继续按组名动态展开。
+			group.MemberProxyIds = nil
+		} else {
+			group.MemberProxyIds = filteredIDs
+		}
 		if !selectedExists {
 			group.SelectedProxyId = ""
 		}
@@ -83,7 +104,15 @@ func (a *App) pruneProxyVirtualGroupMembers(proxies []BrowserProxy) error {
 			if err := a.browserMgr.ProxyVirtualGroupDAO.Upsert(group); err != nil {
 				return fmt.Errorf("清理虚拟代理分组「%s」失效关联失败: %w", group.GroupName, err)
 			}
-			a.pruneVirtualGroupMemberStates(group)
+			stateGroup := group
+			if isDynamicMembers {
+				effective := browser.ExpandProxyVirtualGroup(group, proxies)
+				stateGroup.MemberProxyIds = make([]string, 0, len(effective))
+				for _, item := range effective {
+					stateGroup.MemberProxyIds = append(stateGroup.MemberProxyIds, item.ProxyId)
+				}
+			}
+			a.pruneVirtualGroupMemberStates(stateGroup)
 		} else {
 			configChanged = true
 		}

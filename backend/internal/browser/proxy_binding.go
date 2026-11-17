@@ -90,6 +90,11 @@ func BindProfileToProxy(profile *Profile, proxy Proxy, syncProxyConfig bool) boo
 		profile.ProxyBindName = proxyName
 		changed = true
 	}
+	// 重新绑定成功后清理失效错误态，避免前端一直显示"代理已失效"。
+	if profile.ProxyBindError != "" {
+		profile.ProxyBindError = ""
+		changed = true
+	}
 	if changed {
 		profile.ProxyBindUpdatedAt = time.Now().Format(time.RFC3339)
 	}

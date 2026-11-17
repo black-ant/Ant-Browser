@@ -229,6 +229,7 @@ export async function createBrowserProfile(input: BrowserProfileInput): Promise<
     debugReady: false,
     pid: 0,
     runtimeWarning: '',
+    proxyBindError: '',
     lastError: '',
     createdAt: nowISOString(),
     updatedAt: nowISOString(),
@@ -350,6 +351,7 @@ export async function copyBrowserProfile(
     running: false,
     debugReady: false,
     runtimeWarning: '',
+    proxyBindError: '',
     createdAt: nowISOString(),
     updatedAt: nowISOString(),
   }

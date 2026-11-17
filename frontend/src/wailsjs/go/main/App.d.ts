@@ -386,6 +386,8 @@ export function OpenUserDataRoot():Promise<void>;
 
 export function QuitAppOnly():Promise<void>;
 
+export function ReconcileProxyReferences():Promise<backend.ProxyReferenceHealReport>;
+
 export function ReloadConfig():Promise<void>;
 
 export function ResetManagedSettings():Promise<void>;

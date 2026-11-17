@@ -31,7 +31,7 @@ func (a *App) ReloadConfig() error {
 			}
 			return err
 		}
-		a.reconcileProfileProxyBindings()
+		a.ReconcileProxyReferences()
 	}
 	if a.xrayMgr != nil {
 		a.xrayMgr.Config = cfg

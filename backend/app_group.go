@@ -95,6 +95,8 @@ func (a *App) DeleteGroup(groupId string) error {
 		return err
 	}
 	log.Info("分组已删除", logger.F("group_id", groupId))
+	// 删分组后实例的 GroupId 可能悬空；不拦截删除，事后清理成未分组明确态。
+	a.healProfileGroupRefs()
 	return nil
 }
 

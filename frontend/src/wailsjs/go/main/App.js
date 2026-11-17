@@ -754,6 +754,10 @@ export function QuitAppOnly() {
   return window['go']['main']['App']['QuitAppOnly']();
 }
 
+export function ReconcileProxyReferences() {
+  return window['go']['main']['App']['ReconcileProxyReferences']();
+}
+
 export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }

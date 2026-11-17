@@ -49,6 +49,7 @@ let mockProfiles: BrowserProfile[] = [
     debugReady: false,
     pid: 0,
     runtimeWarning: '',
+    proxyBindError: '',
     lastError: '',
     createdAt: nowISOString(),
     updatedAt: nowISOString(),

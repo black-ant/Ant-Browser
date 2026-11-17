@@ -841,6 +841,8 @@ func (a *App) refreshProxySourceWithMeta(pool []BrowserProxy, meta proxySourceMe
 		"total":          plan.result.Total,
 		"at":             time.Now().Format(time.RFC3339),
 	})
+	// 刷新后清理失效的拉取代理引用（清空字段 + 写明确失败原因）。
+	a.healFetchProxyReferences()
 	return plan.result, nil
 }
 

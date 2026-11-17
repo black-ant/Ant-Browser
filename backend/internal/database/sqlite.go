@@ -398,6 +398,13 @@ var migrations = []migration{
 			)`,
 		},
 	},
+	{
+		version: 34,
+		desc:    "实例表持久化代理绑定失效原因",
+		stmts: []string{
+			`ALTER TABLE browser_profiles ADD COLUMN proxy_bind_error TEXT NOT NULL DEFAULT ''`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

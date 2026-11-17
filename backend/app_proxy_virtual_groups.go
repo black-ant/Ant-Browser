@@ -137,6 +137,8 @@ func (a *App) DeleteBrowserProxyVirtualGroup(groupId string) error {
 	}
 	a.resetProxyVirtualGroupCursor(groupId)
 	a.invalidateVirtualGroupSnapshot()
+	// 删分组后实例可能仍固定绑定该分组 ID；不拦截删除，事后把悬空绑定清理成明确态。
+	a.healProfileProxyBindings()
 	return nil
 }
 

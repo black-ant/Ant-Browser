@@ -216,7 +216,7 @@ func (a *App) startupInitManagers(cfg *config.Config, db *database.DB) error {
 	if err := a.loadProxies(); err != nil {
 		return err
 	}
-	a.reconcileProfileProxyBindings()
+	a.ReconcileProxyReferences()
 	return nil
 }
 

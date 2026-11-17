@@ -25,6 +25,7 @@ type Profile struct {
 	ProxyBindSourceURL string   `json:"proxyBindSourceUrl"`
 	ProxyBindName      string   `json:"proxyBindName"`
 	ProxyBindUpdatedAt string   `json:"proxyBindUpdatedAt"`
+	ProxyBindError     string   `json:"proxyBindError"`
 	MemoryLimitMB      int      `json:"memoryLimitMb"`
 	LaunchArgs         []string `json:"launchArgs"`
 	LastLaunchArgs     []string `json:"lastLaunchArgs"`
