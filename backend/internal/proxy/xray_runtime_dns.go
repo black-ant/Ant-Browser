@@ -92,16 +92,18 @@ func buildDnsDiagnosticSummary(raw string) DnsDiagnosticSummary {
 	}
 	summary := DnsDiagnosticSummary{HasConfig: true, SourceFormat: "list"}
 	type clashDns struct {
-		Enable       bool     `yaml:"enable"`
-		EnhancedMode string   `yaml:"enhanced-mode"`
-		Nameserver   []string `yaml:"nameserver"`
-		Fallback     []string `yaml:"fallback"`
+		Enable                bool     `yaml:"enable"`
+		EnhancedMode          string   `yaml:"enhanced-mode"`
+		DefaultNameserver     []string `yaml:"default-nameserver"`
+		Nameserver            []string `yaml:"nameserver"`
+		ProxyServerNameserver []string `yaml:"proxy-server-nameserver"`
+		Fallback              []string `yaml:"fallback"`
 	}
 	type clashDnsWrapper struct {
 		Dns clashDns `yaml:"dns"`
 	}
 	var wrapper clashDnsWrapper
-	if err := yaml.Unmarshal([]byte(raw), &wrapper); err == nil && (len(wrapper.Dns.Nameserver) > 0 || len(wrapper.Dns.Fallback) > 0 || wrapper.Dns.EnhancedMode != "") {
+	if err := yaml.Unmarshal([]byte(raw), &wrapper); err == nil && (len(wrapper.Dns.Nameserver) > 0 || len(wrapper.Dns.ProxyServerNameserver) > 0 || len(wrapper.Dns.DefaultNameserver) > 0 || len(wrapper.Dns.Fallback) > 0 || wrapper.Dns.EnhancedMode != "") {
 		summary.SourceFormat = "clash"
 		summary.EnhancedMode = strings.TrimSpace(wrapper.Dns.EnhancedMode)
 		summary.NameserverCount = len(wrapper.Dns.Nameserver)

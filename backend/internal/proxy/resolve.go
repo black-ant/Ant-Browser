@@ -21,3 +21,16 @@ func resolveProxyConfig(proxyConfig string, proxies []config.BrowserProxy, proxy
 	}
 	return src
 }
+
+func resolveProxyDNSServers(proxies []config.BrowserProxy, proxyId string) string {
+	proxyId = strings.TrimSpace(proxyId)
+	if proxyId == "" {
+		return ""
+	}
+	for _, item := range proxies {
+		if strings.EqualFold(item.ProxyId, proxyId) {
+			return strings.TrimSpace(item.DnsServers)
+		}
+	}
+	return ""
+}

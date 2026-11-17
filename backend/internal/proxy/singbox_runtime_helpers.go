@@ -80,10 +80,16 @@ func (m *SingBoxManager) resolveBinary() (string, error) {
 }
 
 func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}, port int) (string, error) {
+	return m.buildConfigWithDNS(key, outbound, port, "")
+}
+
+func (m *SingBoxManager) buildConfigWithDNS(key string, outbound map[string]interface{}, port int, dnsServers string) (string, error) {
 	baseDir := m.resolveWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return "", err
 	}
+
+	dnsCfg, defaultResolverTag := buildSingBoxDNSConfig(dnsServers)
 
 	cfg := map[string]interface{}{
 		"log": map[string]interface{}{
@@ -91,7 +97,7 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 			"output":    filepath.Join(baseDir, "singbox.log"),
 			"timestamp": true,
 		},
-		"dns": defaultSingBoxDNSConfig(),
+		"dns": dnsCfg,
 		"inbounds": []interface{}{
 			map[string]interface{}{
 				"type":        "socks",
@@ -108,7 +114,7 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 			},
 		},
 		"route": map[string]interface{}{
-			"default_domain_resolver": "public-dns",
+			"default_domain_resolver": defaultResolverTag,
 			"rules": []interface{}{
 				map[string]interface{}{
 					"protocol": "dns",

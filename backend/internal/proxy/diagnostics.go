@@ -150,7 +150,7 @@ func buildMihomoDiagnostic(src string, manager *ClashManager, result *ProxyBuild
 		return
 	}
 	result.Ok = true
-	result.NodeKey = computeNodeKey(src + "\x00mihomo")
+	result.NodeKey = ComputeBridgeKey(src, result.DnsServers, ProxyKernelMihomo)
 	result.Outbound = sanitizeDiagnosticMap(node)
 	if manager != nil {
 		workDir := manager.resolveMihomoWorkdir(result.NodeKey)
@@ -167,7 +167,7 @@ func buildSingBoxDiagnostic(src string, manager *SingBoxManager, result *ProxyBu
 		return
 	}
 	result.Ok = true
-	result.NodeKey = computeNodeKey(src)
+	result.NodeKey = ComputeBridgeKey(src, result.DnsServers, ProxyKernelSingBox)
 	result.Outbound = sanitizeDiagnosticMap(outbound)
 	if manager != nil {
 		workDir := manager.resolveWorkdir(result.NodeKey)
