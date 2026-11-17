@@ -5,12 +5,7 @@ import (
 	"testing"
 
 	"ant-chrome/backend/internal/browser"
-	"ant-chrome/backend/internal/config"
 )
-
-func newHealManager() *browser.Manager {
-	return browser.NewManager(config.DefaultConfig(), "")
-}
 
 func TestBindProfileToProxyClearsProxyBindError(t *testing.T) {
 	profile := &browser.Profile{
@@ -37,5 +32,52 @@ func TestBindProfileToProxyClearsProxyBindError(t *testing.T) {
 func TestHealBindErrorPrefix(t *testing.T) {
 	if !strings.Contains(proxyBindClearedPrefix, "代理绑定已清理") {
 		t.Fatalf("错误文案前缀不正确: %q", proxyBindClearedPrefix)
+	}
+}
+
+func TestHealFetchProxyOnlyClearsRowWithInvalidFetchID(t *testing.T) {
+	app := &App{}
+	pool := []BrowserProxy{
+		{
+			ProxyId:                "proxy-a",
+			SourceID:               "src-1",
+			SourceURL:              "https://sub.example.com/list",
+			ProxyName:              "节点A",
+			SourceFetchProxyID:     "gone-proxy",
+			SourceLastRefreshError: "",
+		},
+		{
+			ProxyId:                "proxy-b",
+			SourceID:               "src-1",
+			SourceURL:              "https://sub.example.com/list",
+			ProxyName:              "节点B",
+			SourceFetchProxyID:     "proxy-a",
+			SourceLastRefreshError: "",
+		},
+	}
+
+	cleared, changed := app.healFetchProxyReferences(pool)
+
+	if cleared != 1 || !changed {
+		t.Fatalf("cleared=%d changed=%v", cleared, changed)
+	}
+	if pool[0].SourceFetchProxyID != "" || pool[0].SourceLastRefreshError == "" {
+		t.Fatalf("失效行应清空并写错误: %+v", pool[0])
+	}
+	if pool[1].SourceFetchProxyID != "proxy-a" || pool[1].SourceLastRefreshError != "" {
+		t.Fatalf("同源有效行不应被误清或写假错误: %+v", pool[1])
+	}
+}
+
+func TestClearProfileProxyBindingClearsBindError(t *testing.T) {
+	profile := &browser.Profile{
+		ProxyMode:      browser.ProxyModeDynamic,
+		ProxyBindError: "代理绑定已清理：旧节点已删除",
+	}
+	if !browser.ClearProfileProxyBinding(profile) {
+		t.Fatal("期望清理变更")
+	}
+	if profile.ProxyBindError != "" {
+		t.Fatalf("动态模式切换后应清除历史错误: %q", profile.ProxyBindError)
 	}
 }

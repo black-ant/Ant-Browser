@@ -744,6 +744,9 @@ func (a *App) BrowserProxyUpdateSourceConfig(sourceId string, autoRefresh bool, 
 		pool[index].SourceAutoRefresh = autoRefresh
 		pool[index].SourceRefreshIntervalM = intervalM
 		pool[index].SourceFetchProxyID = fetchProxyId
+		// 重选拉取代理后立即清掉上次「拉取代理已删除」的错误态，
+		// 不等到下一次刷新成功才消失。
+		pool[index].SourceLastRefreshError = ""
 		changed++
 	}
 	if !metaFound {
@@ -841,8 +844,6 @@ func (a *App) refreshProxySourceWithMeta(pool []BrowserProxy, meta proxySourceMe
 		"total":          plan.result.Total,
 		"at":             time.Now().Format(time.RFC3339),
 	})
-	// 刷新后清理失效的拉取代理引用（清空字段 + 写明确失败原因）。
-	a.healFetchProxyReferences()
 	return plan.result, nil
 }
 

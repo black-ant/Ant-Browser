@@ -356,6 +356,7 @@ type BrowserProfileConfig struct {
 	ProxyBindSourceURL string   `yaml:"proxy_bind_source_url,omitempty" json:"proxyBindSourceUrl,omitempty"`
 	ProxyBindName      string   `yaml:"proxy_bind_name,omitempty" json:"proxyBindName,omitempty"`
 	ProxyBindUpdatedAt string   `yaml:"proxy_bind_updated_at,omitempty" json:"proxyBindUpdatedAt,omitempty"`
+	ProxyBindError     string   `yaml:"proxy_bind_error,omitempty" json:"proxyBindError,omitempty"`
 	MemoryLimitMB      int      `yaml:"memory_limit_mb,omitempty" json:"memoryLimitMb,omitempty"`
 	LaunchArgs         []string `yaml:"launch_args" json:"launchArgs"`
 	Tags               []string `yaml:"tags" json:"tags"`

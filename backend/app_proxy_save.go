@@ -12,6 +12,8 @@ import (
 func (a *App) SaveBrowserProxies(proxies []BrowserProxy) error {
 	log := logger.New("Browser")
 	normalized := proxy.NormalizeBrowserProxies(proxies, generateUUID)
+	// 在持久化前完成拉取代理自愈：一次 ReplaceAll 写回，避免二次全量写与竞态窗口。
+	a.healFetchProxyReferences(normalized)
 
 	if a.browserMgr.ProxyDAO != nil {
 		if err := a.browserMgr.ProxyDAO.ReplaceAll(normalized); err != nil {
@@ -30,8 +32,6 @@ func (a *App) SaveBrowserProxies(proxies []BrowserProxy) error {
 	if err := a.pruneProxyVirtualGroupMembers(normalized); err != nil {
 		return err
 	}
-	// 代理被删后，订阅的拉取代理引用也要立即清理（不是等下次刷新）。
-	a.healFetchProxyReferences()
 	return nil
 }
 

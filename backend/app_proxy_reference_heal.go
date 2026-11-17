@@ -38,7 +38,13 @@ func (a *App) ReconcileProxyReferences() ProxyReferenceHealReport {
 	}
 
 	report.ProfileBindingsCleared = a.healProfileProxyBindings()
-	report.FetchProxiesCleared = a.healFetchProxyReferences()
+	// 拉取代理自愈只修改传入的池；由本入口负责持久化。
+	// SaveBrowserProxies 内已包含同样的自愈，这里只在启动/重载路径需要通过总入口触发。
+	pool := a.getLatestProxies()
+	report.FetchProxiesCleared, _ = a.healFetchProxyReferences(pool)
+	if report.FetchProxiesCleared > 0 {
+		_ = a.saveProxiesWithoutHeal(pool)
+	}
 	report.ProfileGroupsCleared = a.healProfileGroupRefs()
 
 	if report.ProfileBindingsCleared > 0 || report.FetchProxiesCleared > 0 || report.ProfileGroupsCleared > 0 {
@@ -78,6 +84,12 @@ func (a *App) healProfileProxyBindings() int {
 			continue
 		}
 		if browser.IsDynamicProxyMode(profile.ProxyMode) || strings.EqualFold(strings.TrimSpace(profile.ProxyMode), browser.ProxyModeLocal) {
+			// 模式已切走固定代理时，历史失效错误态不再适用。
+			if profile.ProxyBindError != "" {
+				profile.ProxyBindError = ""
+				profile.UpdatedAt = nowRFC3339()
+				changedCount++
+			}
 			continue
 		}
 		currentID := strings.TrimSpace(profile.ProxyId)
@@ -142,8 +154,7 @@ func (a *App) healProfileProxyBindings() int {
 
 // healFetchProxyReferences 清理失效的订阅拉取代理。
 // 拉取代理只影响订阅内容获取，回退直连是安全的；失败原因写入 SourceLastRefreshError。
-func (a *App) healFetchProxyReferences() int {
-	pool := a.getLatestProxies()
+func (a *App) healFetchProxyReferences(pool []BrowserProxy) (int, bool) {
 	proxyIDs := make(map[string]struct{}, len(pool))
 	for _, row := range pool {
 		id := strings.ToLower(strings.TrimSpace(row.ProxyId))
@@ -152,8 +163,7 @@ func (a *App) healFetchProxyReferences() int {
 		}
 	}
 
-	clearedSources := map[string]bool{}
-	changed := false
+	clearedCount := 0
 	for index, row := range pool {
 		fetchID := strings.TrimSpace(row.SourceFetchProxyID)
 		if fetchID == "" {
@@ -162,45 +172,21 @@ func (a *App) healFetchProxyReferences() int {
 		if _, exists := proxyIDs[strings.ToLower(fetchID)]; exists {
 			continue
 		}
+		// 只清理本行自己的失效引用：同源各行可能配置了不同的拉取代理，
+		// 不能按 sourceKey 连带清空其它行的有效配置或写假错误。
 		sourceKey := proxySourceKey(row)
 		if sourceKey == "" {
 			sourceKey = strings.TrimSpace(row.SourceURL)
 		}
-		clearedSources[sourceKey] = true
+		pool[index].SourceFetchProxyID = ""
+		pool[index].SourceLastRefreshError = "拉取代理已删除，已回退直连拉取；如订阅无法访问请重新选择拉取代理"
+		clearedCount++
 		logger.New("ProxySource").Info("订阅拉取代理已失效，回退直连",
 			logger.F("source", sourceKey),
 			logger.F("fetch_proxy_id", fetchID),
 		)
-		_ = index
 	}
-	if len(clearedSources) == 0 {
-		return 0
-	}
-
-	for index, row := range pool {
-		sourceKey := proxySourceKey(row)
-		if sourceKey == "" {
-			sourceKey = strings.TrimSpace(row.SourceURL)
-		}
-		if !clearedSources[sourceKey] {
-			continue
-		}
-		if strings.TrimSpace(row.SourceFetchProxyID) != "" {
-			pool[index].SourceFetchProxyID = ""
-			changed = true
-		}
-		if strings.TrimSpace(row.SourceLastRefreshError) == "" {
-			pool[index].SourceLastRefreshError = "拉取代理已删除，已回退直连拉取；如订阅无法访问请重新选择拉取代理"
-			changed = true
-		}
-	}
-	if changed {
-		if err := a.saveProxiesWithoutHeal(pool); err != nil {
-			logger.New("ProxySource").Error("订阅拉取代理自愈持久化失败", logger.F("error", err.Error()))
-			return 0
-		}
-	}
-	return len(clearedSources)
+	return clearedCount, clearedCount > 0
 }
 
 // healProfileGroupRefs 清理实例上指向已删业务分组的 GroupId。

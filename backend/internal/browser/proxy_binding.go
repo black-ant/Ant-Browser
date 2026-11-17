@@ -119,6 +119,12 @@ func ClearProfileProxyBinding(profile *Profile) bool {
 		profile.ProxyBindName = ""
 		changed = true
 	}
+	// 绑定快照被整体清空时，持久化的失效错误态也必须清掉，
+	// 否则动态/本地模式还会显示上一次固定代理的失效提示。
+	if profile.ProxyBindError != "" {
+		profile.ProxyBindError = ""
+		changed = true
+	}
 	if changed {
 		profile.ProxyBindUpdatedAt = time.Now().Format(time.RFC3339)
 	}
