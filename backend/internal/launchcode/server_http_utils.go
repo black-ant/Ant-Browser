@@ -26,7 +26,12 @@ func (s *LaunchServer) localhostMiddleware(next http.Handler) http.Handler {
 }
 
 // handleCDPProxy 将统一端口上的非 /api 请求转发到当前活动实例的 CDP 端口。
+// 开启 API 认证时同样要求 key：拿到 CDP 就等于拿到整个浏览器。
 func (s *LaunchServer) handleCDPProxy(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeAPIKey(w, r) {
+		return
+	}
+
 	debugPort, profileID, profileName := s.activeTarget()
 	if debugPort <= 0 {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
