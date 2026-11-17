@@ -398,6 +398,16 @@ var migrations = []migration{
 			)`,
 		},
 	},
+	{
+		// 上游主线已用到 33，这里取下一个号。早先按 33 落地本迁移的库会跳过上游的 33，
+		// 缺的表和列由启动期 Reconcile 按迁移语句补齐；本迁移重跑时列已存在会被忽略。
+		version: 34,
+		desc:    "内核表添加后端类型与环境变量字段",
+		stmts: []string{
+			`ALTER TABLE browser_cores ADD COLUMN core_backend TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE browser_cores ADD COLUMN core_env TEXT NOT NULL DEFAULT '[]'`,
+		},
+	},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,
