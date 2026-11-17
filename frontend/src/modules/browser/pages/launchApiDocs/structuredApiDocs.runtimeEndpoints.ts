@@ -287,4 +287,41 @@ export const RUNTIME_API_ENDPOINT_DOCS: StructuredApiEndpointDoc[] = [
       '先调 runtime/session，再连 WS。',
     ],
   },
+  {
+    id: 'api-cdp-profile-detail',
+    parentId: 'api-runtime',
+    label: '按实例 CDP 入口',
+    method: 'GET',
+    path: '/cdp/{实例名或ID}/...',
+    purpose: '直接连接指定实例的 CDP，不依赖也不改变当前活动实例。',
+    description: '把 /cdp/<实例>/ 当作 CDP 地址使用，HTTP 与 WebSocket 都转发到该实例自己的调试端口。实例没在运行时按它自己的配置拉起并等待调试端口就绪，同一实例的并发请求只拉起一次。/json/version、/json/list 返回里的地址会改写成带 /cdp/<实例ID>/ 前缀、使用请求 Host 的地址。',
+    fields: [
+      { name: '实例名或ID', type: 'string', required: true, location: 'Path', description: '先按实例 ID 精确匹配，再按名称匹配；名称需 URL 编码。' },
+    ],
+    requestExample: {
+      language: 'javascript',
+      code: ({ launchBaseUrl, authHeader }) => `const browser = await chromium.connectOverCDP("${launchBaseUrl}/cdp/buyer-001", {
+  headers: { "${authHeader}": "<your-api-key>" }
+});`,
+    },
+    responseExample: {
+      language: 'json',
+      code: ({ launchBaseUrl }) => `{
+  "Browser": "Chrome/<version>",
+  "webSocketDebuggerUrl": "${launchBaseUrl.replace(/^http/i, 'ws')}/cdp/550e8400-e29b-41d4-a716-446655440000/devtools/browser/<id>"
+}`,
+    },
+    responseCodes: [
+      { code: '200 / 101', description: '转发成功（HTTP / WebSocket 升级）。' },
+      { code: '401', description: '开启 API 认证时未带或带错 key。' },
+      { code: '404', description: '实例不存在。' },
+      { code: '409', description: '名称匹配到多个实例，返回 candidates，请改用实例 ID。' },
+      { code: '502', description: '实例拉起失败。' },
+      { code: '504', description: '等待调试端口就绪超时（60 秒）。' },
+    ],
+    notes: [
+      '不会切换 "/" 统一入口绑定的活动实例，也不影响其他实例。',
+      '开启 API 认证时，HTTP 请求和 WebSocket 升级都要带同一个请求头。',
+    ],
+  },
 ]

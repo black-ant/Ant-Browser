@@ -16,6 +16,7 @@ func (s *LaunchServer) buildMux() *http.ServeMux {
 	mux.Handle("/api/runtime/session", s.trackLaunchTask(http.HandlerFunc(s.handleRuntimeSession)))
 	mux.Handle("/api/runtime/status", s.trackLaunchTask(http.HandlerFunc(s.handleRuntimeStatus)))
 	mux.Handle("/api/runtime/stop", s.trackLaunchTask(http.HandlerFunc(s.handleRuntimeStop)))
+	mux.HandleFunc(cdpProfilePrefix, s.handleProfileCDP)
 	mux.Handle("/api/launch", s.trackLaunchTask(http.HandlerFunc(s.handleLaunchWithBody)))
 	mux.HandleFunc("/api/launch/logs", s.handleLaunchLogs)
 	mux.HandleFunc("/api/launch/tasks", s.handleLaunchTasks)

@@ -118,6 +118,7 @@ type LaunchServer struct {
 	taskMu      sync.Mutex
 	activeTasks map[string]*launchTaskState
 	nextTaskID  uint64
+	cdpProfiles cdpProfileRoutes
 	activeMu    sync.RWMutex
 	activePort  int
 	activeID    string
@@ -278,6 +279,10 @@ func (s *LaunchServer) ActiveDebugPort() int {
 // SetActiveProfile 将统一入口切换到指定实例的调试端口。
 func (s *LaunchServer) SetActiveProfile(profile *browser.Profile) {
 	if profile == nil || profile.DebugPort <= 0 || !profile.DebugReady {
+		return
+	}
+	// /cdp/<实例> 拉起实例时，App 层的启动流程也会调到这里；按实例挡掉，不改 "/" 的绑定。
+	if s.cdpProfiles.activationHeld(profile.ProfileId) {
 		return
 	}
 

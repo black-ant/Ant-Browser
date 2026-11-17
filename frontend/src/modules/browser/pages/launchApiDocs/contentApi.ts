@@ -142,6 +142,7 @@ export const DOC_API_RUNTIME = `# 运行态与接管
 | \`GET\` | \`/json/version\` | 统一 CDP 入口 |
 | \`GET\` | \`/json/list\` | 统一 CDP 入口 |
 | \`WS\` | \`/devtools/...\` | CDP WebSocket 接管 |
+| \`GET/WS\` | \`/cdp/{实例名或ID}/...\` | 按实例的 CDP 入口 |
 
 ## 查询当前活动实例
 
@@ -220,12 +221,23 @@ const data = await res.json();
 const browser = await chromium.connectOverCDP(data.cdpUrl);
 \`\`\`
 
+## 按实例连接
+
+不经过统一入口，直接把 \`/cdp/<实例名或ID>\` 当作 CDP 地址；实例没运行会自动拉起，不改变活动实例。
+
+\`\`\`javascript
+const browser = await chromium.connectOverCDP("http://127.0.0.1:19876/cdp/buyer-001", {
+  headers: { "X-Ant-Api-Key": "<your-api-key>" } // 未开启 API 认证可省略
+});
+\`\`\`
+
 ## 记住这几个规则
 
 \`\`\`text
 runtime/status 和 runtime/stop 不支持 matchMode=all
 attach 前先看 active / debugReady / cdpUrl
 统一入口只指向一个活动实例
+/cdp/<实例> 按实例连接，名称重复时改用实例 ID
 \`\`\`
 `
 
