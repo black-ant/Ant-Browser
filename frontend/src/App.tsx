@@ -9,6 +9,7 @@ import { lazyNamed } from "./routes/lazyNamed";
 import { useNotificationStore } from "./store/notificationStore";
 import { useBackupStore } from "./store/backupStore";
 import { installWailsOperationLogger } from "./utils/wailsOperationLogger";
+import { applyWebviewGpuMode } from "./utils/webviewGpuMode";
 import {
   ForceQuit as ForceQuitApp,
   QuitAppOnly as QuitAppOnlyApp,
@@ -349,6 +350,7 @@ function CloseConfirmModal() {
 function App() {
   useEffect(() => {
     installWailsOperationLogger();
+    void applyWebviewGpuMode();
   }, []);
   useWailsNotifications();
   useGlobalErrorNotifications();

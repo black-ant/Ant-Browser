@@ -379,6 +379,7 @@ func DefaultConfig() *Config {
 				MinWidth:  1200,
 				MinHeight: 700,
 			},
+			WebviewGPU: boolPtr(DefaultWebviewGPUEnabled),
 		},
 		Runtime: RuntimeConfig{
 			MaxMemoryMB: 0,
