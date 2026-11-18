@@ -101,7 +101,11 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 			// Chrome 137+ 已移除 --load-extension，插件只能靠 CDP 的
 			// Extensions.loadUnpacked 补加载；旧内核走这一支会直接跳过。
 			if extensionWarning := a.ensureProfileExtensionsLoaded(input.ProfileID, stableDebugPort, plan.extensionPaths); extensionWarning != "" {
+				// 函数名带 Locked，约定由调用方持锁；启动执行路径不持锁，必须在此加锁，
+				// 否则会与状态巡检/停止路径并发读写 Profiles 与 RuntimeWarning。
+				a.browserMgr.Mutex.Lock()
 				a.appendProfileRuntimeWarningLocked(input.ProfileID, profile, extensionWarning)
+				a.browserMgr.Mutex.Unlock()
 				log.Warn("实例已启动，但插件加载不完整",
 					logger.F("profile_id", input.ProfileID),
 					logger.F("debug_port", stableDebugPort),
