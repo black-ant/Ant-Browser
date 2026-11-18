@@ -29,6 +29,27 @@ type ProxyReferenceHealReport struct {
 	ProfileGroupsCleared   int `json:"profileGroupsCleared"`
 }
 
+// loadProxyPoolForHeal 读取用于引用自愈的代理池。
+// 读取失败时返回 ok=false：此时"空池"不代表代理真的被删除，
+// 绝不能据此清空实例绑定或拉取代理，否则数据库瞬时故障会抹掉全部绑定配置。
+func (a *App) loadProxyPoolForHeal() ([]BrowserProxy, bool) {
+	if a == nil || a.browserMgr == nil {
+		return nil, false
+	}
+	if a.browserMgr.ProxyDAO != nil {
+		list, err := a.browserMgr.ProxyDAO.List()
+		if err != nil {
+			logger.New("Browser").Error("读取代理目录失败，跳过代理引用自愈", logger.F("error", err.Error()))
+			return nil, false
+		}
+		return list, true
+	}
+	if a.config == nil {
+		return nil, false
+	}
+	return a.config.Browser.Proxies, true
+}
+
 // ReconcileProxyReferences 幂等地把指向已删除对象的引用修复成明确态。
 // 不拦截删除、不回退直连、不猜测替代节点；先按快照重绑，失败才清理并写持久错误。
 func (a *App) ReconcileProxyReferences() ProxyReferenceHealReport {
@@ -40,10 +61,11 @@ func (a *App) ReconcileProxyReferences() ProxyReferenceHealReport {
 	report.ProfileBindingsCleared = a.healProfileProxyBindings()
 	// 拉取代理自愈只修改传入的池；由本入口负责持久化。
 	// SaveBrowserProxies 内已包含同样的自愈，这里只在启动/重载路径需要通过总入口触发。
-	pool := a.getLatestProxies()
-	report.FetchProxiesCleared, _ = a.healFetchProxyReferences(pool)
-	if report.FetchProxiesCleared > 0 {
-		_ = a.saveProxiesWithoutHeal(pool)
+	if pool, ok := a.loadProxyPoolForHeal(); ok {
+		report.FetchProxiesCleared, _ = a.healFetchProxyReferences(pool)
+		if report.FetchProxiesCleared > 0 {
+			_ = a.saveProxiesWithoutHeal(pool)
+		}
 	}
 	report.ProfileGroupsCleared = a.healProfileGroupRefs()
 
@@ -68,7 +90,10 @@ func (a *App) healProfileProxyBindings() int {
 	a.browserMgr.Mutex.Lock()
 	defer a.browserMgr.Mutex.Unlock()
 
-	pool := a.getLatestProxies()
+	pool, ok := a.loadProxyPoolForHeal()
+	if !ok {
+		return 0
+	}
 	proxyIDs := make(map[string]struct{}, len(pool))
 	for _, row := range pool {
 		id := strings.ToLower(strings.TrimSpace(row.ProxyId))
