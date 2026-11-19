@@ -45,7 +45,7 @@ func (m *SingBoxManager) restartBridgeOnSamePort(log *logger.Logger, key string,
 		logger.F("key", key[:8]),
 		logger.F("port", bridge.Port),
 	)
-	restarted, err := m.launchBridgeOnPort(log, key, binaryPath, cloneStringInterfaceMap(bridge.Outbound), bridge.Port, 1)
+	restarted, err := m.launchBridgeOnPort(log, key, binaryPath, cloneStringInterfaceMap(bridge.Outbound), bridge.DNSServers, bridge.Port, 1)
 	if err != nil {
 		return err
 	}

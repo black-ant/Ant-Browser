@@ -22,13 +22,16 @@ func computeNodeKey(src string) string {
 
 func ComputeBridgeKey(proxyConfig string, dnsServers string, engine string) string {
 	src := normalizeNodeScheme(proxyConfig)
+	dns := strings.TrimSpace(dnsServers)
+	// 所有引擎的桥接键都必须包含订阅 DNS：DNS 变更后必须重建桥接，
+	// 否则旧进程会继续用旧解析结果连接节点（issue #85）。
 	switch strings.ToLower(strings.TrimSpace(engine)) {
 	case ProxyKernelXray:
-		return computeNodeKey(src + string(rune(0)) + strings.TrimSpace(dnsServers))
+		return computeNodeKey(src + string(rune(0)) + dns)
 	case ProxyKernelSingBox:
-		return computeNodeKey(src)
+		return computeNodeKey(src + string(rune(0)) + dns + string(rune(0)) + ProxyKernelSingBox)
 	case ProxyKernelMihomo:
-		return computeNodeKey(src + string(rune(0)) + "mihomo")
+		return computeNodeKey(src + string(rune(0)) + dns + string(rune(0)) + "mihomo")
 	case ProxyKernelMieru:
 		return computeNodeKey(src + string(rune(0)) + "mieru")
 	default:

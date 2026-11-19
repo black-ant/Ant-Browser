@@ -79,10 +79,18 @@ func (m *SingBoxManager) resolveBinary() (string, error) {
 	return "", fmt.Errorf("未找到 sing-box 可执行文件。请将 sing-box 放到 bin/%s/ 或 bin/ 目录，或在配置中设置 SingBoxBinaryPath", platformDir)
 }
 
-func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}, port int) (string, error) {
+func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}, port int, dnsServers string) (string, error) {
 	baseDir := m.resolveWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return "", err
+	}
+
+	// 订阅 DNS 转换：proxy-server-nameserver 映射为节点 outbound 的 domain_resolver，
+	// 保证节点域名用订阅指定 DNS 解析（否则会落到公共 DNS）。
+	dnsSection, resolverTag := buildSingBoxDNSConfig(dnsServers)
+	if resolverTag != "" {
+		outbound = cloneStringInterfaceMap(outbound)
+		outbound["domain_resolver"] = resolverTag
 	}
 
 	cfg := map[string]interface{}{
@@ -91,7 +99,7 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 			"output":    filepath.Join(baseDir, "singbox.log"),
 			"timestamp": true,
 		},
-		"dns": defaultSingBoxDNSConfig(),
+		"dns": dnsSection,
 		"inbounds": []interface{}{
 			map[string]interface{}{
 				"type":        "socks",

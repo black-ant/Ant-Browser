@@ -26,15 +26,7 @@ func (m *XrayManager) ensureBridgeContext(ctx context.Context, proxyConfig strin
 		return "", "", err
 	}
 	src := resolveProxyConfig(proxyConfig, proxies, proxyId)
-	dnsServers := ""
-	if proxyId != "" {
-		for _, item := range proxies {
-			if strings.EqualFold(item.ProxyId, proxyId) {
-				dnsServers = item.DnsServers
-				break
-			}
-		}
-	}
+	dnsServers := proxyDNSServersFor(proxyConfig, proxies, proxyId)
 	if src == "" {
 		return "", "", fmt.Errorf("未找到代理节点")
 	}

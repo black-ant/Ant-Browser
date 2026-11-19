@@ -260,15 +260,7 @@ func speedTestRuntimeError(engine string, src string, proxies []config.BrowserPr
 	if engine != ProxyKernelXray || xrayMgr == nil {
 		return ""
 	}
-	dnsServers := ""
-	if proxyId != "" {
-		for _, item := range proxies {
-			if strings.EqualFold(item.ProxyId, proxyId) {
-				dnsServers = item.DnsServers
-				break
-			}
-		}
-	}
+	dnsServers := proxyDNSServersFor(src, proxies, proxyId)
 	key := ComputeBridgeKey(src, dnsServers, ProxyKernelXray)
 	return latestXrayErrorSummary(filepath.Join(xrayMgr.resolveWorkdir(key), "xray-error.log"))
 }

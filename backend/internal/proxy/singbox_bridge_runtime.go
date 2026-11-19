@@ -72,7 +72,9 @@ func (m *SingBoxManager) ensureBridgeContext(ctx context.Context, proxyConfig st
 		return "", "", err
 	}
 
-	key := ComputeBridgeKey(src, "", ProxyKernelSingBox)
+	// 订阅 DNS 参与桥接键与配置，保证 proxy-server-nameserver 变更后重建桥接
+	dnsServers := proxyDNSServersFor(proxyConfig, proxies, proxyId)
+	key := ComputeBridgeKey(src, dnsServers, ProxyKernelSingBox)
 
 	if socksURL, reused := m.tryReuseBridge(key, pin); reused {
 		log.Info("复用 sing-box 桥接", logger.F("engine", "sing-box"), logger.F("key", key[:8]), logger.F("socks_url", socksURL))
@@ -109,7 +111,7 @@ func (m *SingBoxManager) ensureBridgeContext(ctx context.Context, proxyConfig st
 			continue
 		}
 
-		bridge, err := m.launchBridgeOnPortContext(ctx, log, key, binaryPath, outbound, port, attempt)
+		bridge, err := m.launchBridgeOnPortContext(ctx, log, key, binaryPath, outbound, dnsServers, port, attempt)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return "", "", ctxErr
@@ -139,18 +141,18 @@ func (m *SingBoxManager) ensureBridgeContext(ctx context.Context, proxyConfig st
 	return "", "", fmt.Errorf("sing-box 启动失败（已尝试 %d 次）: %w", attemptsUsed, lastErr)
 }
 
-func (m *SingBoxManager) launchBridgeOnPort(log *logger.Logger, key string, binaryPath string, outbound map[string]interface{}, port int, attempt int) (*SingBoxBridge, error) {
-	return m.launchBridgeOnPortContext(context.Background(), log, key, binaryPath, outbound, port, attempt)
+func (m *SingBoxManager) launchBridgeOnPort(log *logger.Logger, key string, binaryPath string, outbound map[string]interface{}, dnsServers string, port int, attempt int) (*SingBoxBridge, error) {
+	return m.launchBridgeOnPortContext(context.Background(), log, key, binaryPath, outbound, dnsServers, port, attempt)
 }
 
-func (m *SingBoxManager) launchBridgeOnPortContext(ctx context.Context, log *logger.Logger, key string, binaryPath string, outbound map[string]interface{}, port int, attempt int) (*SingBoxBridge, error) {
+func (m *SingBoxManager) launchBridgeOnPortContext(ctx context.Context, log *logger.Logger, key string, binaryPath string, outbound map[string]interface{}, dnsServers string, port int, attempt int) (*SingBoxBridge, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	cfgPath, err := m.buildConfig(key, outbound, port)
+	cfgPath, err := m.buildConfig(key, outbound, port, dnsServers)
 	if err != nil {
 		return nil, fmt.Errorf("sing-box 配置生成失败: %w", err)
 	}
@@ -191,6 +193,7 @@ func (m *SingBoxManager) launchBridgeOnPortContext(ctx context.Context, log *log
 		Pid:        cmd.Process.Pid,
 		Running:    true,
 		Outbound:   cloneStringInterfaceMap(outbound),
+		DNSServers: dnsServers,
 		LastUsedAt: time.Now(),
 	}
 	bridge.startExitWatcher()
