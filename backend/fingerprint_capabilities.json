@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "updatedAt": "2026-11-19",
   "notes": [
-    "证据来源：上游内核 136–150 各版本说明与参数表，以及项目内 144 实测记录。",
-    "彩色为实测结论，蓝色为文档明确，灰色为策略推断，问号为未验证。"
+    "证据来源：上游主分支参数表、各版本新特性说明，以及项目内 144 实测记录。",
+    "彩色为实测结论，蓝色为文档明确，灰色为策略推断，问号为未验证。",
+    "未标注引入版本的参数按策略保留，不声明低版本内核支持。"
   ],
   "versions": [
     {
@@ -11,8 +12,8 @@
       "label": "130 及以下",
       "minMajor": 0,
       "maxMajor": 130,
-      "source": "文档依据",
-      "note": "品牌参数 131 才引入，GPU 参数 139 才引入"
+      "source": "文档推断",
+      "note": "上游最低发布为 132；本区间按各参数引入版本推断"
     },
     {
       "key": "v131",
@@ -211,42 +212,42 @@
           "label": "语言",
           "sample": "--lang=en-US",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         },
         {
           "arg": "--accept-lang",
           "label": "语言列表",
           "sample": "--accept-lang=en-US,en",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         },
         {
           "arg": "--timezone",
           "label": "时区",
           "sample": "--timezone=America/New_York",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         }
       ]
     },
@@ -259,14 +260,14 @@
           "label": "CPU 核心数",
           "sample": "--fingerprint-hardware-concurrency=8",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         },
         {
           "arg": "--fingerprint-device-memory",
@@ -349,14 +350,14 @@
           "label": "指纹种子",
           "sample": "--fingerprint=424242",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         },
         {
           "arg": "--fingerprint-brand",
@@ -391,28 +392,28 @@
           "label": "平台",
           "sample": "--fingerprint-platform=windows",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         },
         {
           "arg": "--fingerprint-platform-version",
           "label": "系统版本",
           "sample": "--fingerprint-platform-version=10.0.0",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         },
         {
           "arg": "--fingerprinting-canvas-image-data-noise",
@@ -520,14 +521,14 @@
           "label": "WebRTC",
           "sample": "--disable-non-proxied-udp",
           "support": {
-            "v130": "supported_documented",
-            "v131": "supported_documented",
-            "v139": "supported_documented",
-            "v142": "supported_documented",
-            "v144": "supported_documented",
-            "v150": "supported_documented"
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
+            "v144": "supported_policy",
+            "v150": "supported_policy"
           },
-          "note": "官方参数表列出"
+          "note": "官方参数表列出，但未标注引入版本；低版本支持情况未验证"
         },
         {
           "arg": "--webrtc-ip-handling-policy",
