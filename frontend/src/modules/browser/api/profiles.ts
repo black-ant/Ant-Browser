@@ -3,6 +3,7 @@ import { buildBrowserProfileCopyName } from '../copyName'
 import type {
   BrowserProfile,
   BrowserFingerprintCapabilityReport,
+  BrowserFingerprintCapabilityTable,
   BrowserFingerprintCheckResult,
   BrowserProfileCopyOptions,
   BrowserProfileInput,
@@ -48,6 +49,26 @@ export async function fetchBrowserProfileFingerprintMatrix(
       note: '当前环境未连接后端，无法读取内核版本矩阵',
     })),
     warnings: ['当前环境未连接后端，矩阵仅展示原始参数'],
+  }
+}
+
+export async function fetchBrowserFingerprintCapabilityTable(
+  profileId: string,
+  coreId: string,
+): Promise<BrowserFingerprintCapabilityTable> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProfileFingerprintCapabilityTable) {
+    return await bindings.BrowserProfileFingerprintCapabilityTable(profileId, coreId)
+  }
+  return {
+    schemaVersion: 0,
+    updatedAt: '',
+    notes: [],
+    currentVersionKey: '',
+    currentMajor: 0,
+    versions: [],
+    groups: [],
+    warnings: ['当前环境未连接后端，能力表不可用'],
   }
 }
 

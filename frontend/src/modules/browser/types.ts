@@ -135,6 +135,43 @@ export interface BrowserFingerprintCapabilityReport {
   warnings: string[]
 }
 
+export type BrowserFingerprintCapabilitySupport = 'supported' | 'unsupported' | 'converted' | 'unknown'
+
+export interface BrowserFingerprintCapabilityVersion {
+  key: string
+  label: string
+  minMajor: number
+  maxMajor: number
+  source: string
+  note: string
+}
+
+export interface BrowserFingerprintCapabilityItem {
+  arg: string
+  label: string
+  sample: string
+  runtimeArg: string
+  support: Record<string, BrowserFingerprintCapabilitySupport>
+  note: string
+}
+
+export interface BrowserFingerprintCapabilityGroup {
+  key: string
+  label: string
+  items: BrowserFingerprintCapabilityItem[]
+}
+
+export interface BrowserFingerprintCapabilityTable {
+  schemaVersion: number
+  updatedAt: string
+  notes: string[]
+  currentVersionKey: string
+  currentMajor: number
+  versions: BrowserFingerprintCapabilityVersion[]
+  groups: BrowserFingerprintCapabilityGroup[]
+  warnings: string[]
+}
+
 export interface BrowserProfilePackageExportResult {
   cancelled: boolean
   zipPath: string

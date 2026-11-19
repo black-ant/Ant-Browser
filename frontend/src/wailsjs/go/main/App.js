@@ -426,6 +426,10 @@ export function BrowserProfileExtensionSave(arg1, arg2, arg3) {
   return window['go']['main']['App']['BrowserProfileExtensionSave'](arg1, arg2, arg3);
 }
 
+export function BrowserProfileFingerprintCapabilityTable(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProfileFingerprintCapabilityTable'](arg1, arg2);
+}
+
 export function BrowserProfileFingerprintCheck(arg1) {
   return window['go']['main']['App']['BrowserProfileFingerprintCheck'](arg1);
 }

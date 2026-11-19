@@ -222,6 +222,8 @@ export function BrowserProfileExtensionGet(arg1:string):Promise<browser.ProfileE
 
 export function BrowserProfileExtensionSave(arg1:string,arg2:Array<string>,arg3:boolean):Promise<browser.ProfileExtensionSettings>;
 
+export function BrowserProfileFingerprintCapabilityTable(arg1:string,arg2:string):Promise<any>;
+
 export function BrowserProfileFingerprintCheck(arg1:string):Promise<backend.BrowserFingerprintCheckResult>;
 
 export function BrowserProfileFingerprintMatrix(arg1:string,arg2:string,arg3:Array<string>):Promise<backend.BrowserFingerprintCapabilityReport>;
