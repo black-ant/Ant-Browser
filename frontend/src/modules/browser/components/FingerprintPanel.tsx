@@ -286,28 +286,21 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
 
   const advancedText = serialize(config).join('\n')
   const validation = validateFingerprintArgs(value)
-  const validationTone = validation.issues.some(issue => issue.level === 'error')
-    ? 'border-red-200 bg-red-50 text-red-700'
-    : validation.issues.some(issue => issue.level === 'warning')
-      ? 'border-amber-200 bg-amber-50 text-amber-700'
-      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  const validationTitle = validation.valid
-    ? validation.issues.some(issue => issue.level === 'warning') ? '配置可用，有提示' : '配置有效'
-    : '配置需要修正'
+  const validationErrors = validation.issues.filter(issue => issue.level === 'error')
 
   return (
     <div className="space-y-4">
-      <div className={`rounded-lg border px-3 py-2 text-sm ${validationTone}`}>
-        <div className="font-medium">{validationTitle}</div>
-        {validation.issues.length > 0 && (
+      {validationErrors.length > 0 && (
+        <div className="rounded-lg border px-3 py-2 text-sm border-red-200 bg-red-50 text-red-700">
+          <div className="font-medium">配置需要修正</div>
           <ul className="mt-1 space-y-1">
-            {validation.issues.slice(0, 4).map((issue, index) => (
-              <li key={`${issue.level}-${index}`} className="text-xs">{issue.message}</li>
+            {validationErrors.slice(0, 4).map((issue, index) => (
+              <li key={`error-${index}`} className="text-xs">{issue.message}</li>
             ))}
-            {validation.issues.length > 4 && <li className="text-xs">还有 {validation.issues.length - 4} 项，请在高级模式中检查</li>}
+            {validationErrors.length > 4 && <li className="text-xs">还有 {validationErrors.length - 4} 项错误</li>}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="p-3 rounded-lg bg-[var(--color-bg-hover)] border border-[var(--color-border)] space-y-2">
         <div className="flex items-center justify-between gap-3">
