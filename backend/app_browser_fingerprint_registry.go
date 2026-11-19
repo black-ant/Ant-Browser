@@ -16,12 +16,16 @@ import (
 var fingerprintCapabilityData []byte
 
 const (
-	fingerprintSupportSupported         = "supported"
-	fingerprintSupportSupportedPolicy   = "supported_policy"
-	fingerprintSupportUnsupported       = "unsupported"
-	fingerprintSupportUnsupportedPolicy = "unsupported_policy"
-	fingerprintSupportConverted         = "converted"
-	fingerprintSupportUnknown           = "unknown"
+	fingerprintSupportSupported             = "supported"
+	fingerprintSupportSupportedMeasured     = "supported_measured"
+	fingerprintSupportSupportedDocumented   = "supported_documented"
+	fingerprintSupportSupportedPolicy       = "supported_policy"
+	fingerprintSupportUnsupported           = "unsupported"
+	fingerprintSupportUnsupportedMeasured   = "unsupported_measured"
+	fingerprintSupportUnsupportedDocumented = "unsupported_documented"
+	fingerprintSupportUnsupportedPolicy     = "unsupported_policy"
+	fingerprintSupportConverted             = "converted"
+	fingerprintSupportUnknown               = "unknown"
 )
 
 type BrowserFingerprintCapabilityTable struct {
@@ -207,7 +211,7 @@ func validateFingerprintCapabilityTable(table BrowserFingerprintCapabilityTable)
 					return fmt.Errorf("参数 %s 缺少版本 %s 的支持状态", arg, key)
 				}
 				switch status {
-				case fingerprintSupportSupported, fingerprintSupportSupportedPolicy, fingerprintSupportUnsupported, fingerprintSupportUnsupportedPolicy, fingerprintSupportConverted, fingerprintSupportUnknown:
+				case fingerprintSupportSupported, fingerprintSupportSupportedMeasured, fingerprintSupportSupportedDocumented, fingerprintSupportSupportedPolicy, fingerprintSupportUnsupported, fingerprintSupportUnsupportedMeasured, fingerprintSupportUnsupportedDocumented, fingerprintSupportUnsupportedPolicy, fingerprintSupportConverted, fingerprintSupportUnknown:
 				default:
 					return fmt.Errorf("参数 %s 的版本 %s 状态非法: %s", arg, key, status)
 				}

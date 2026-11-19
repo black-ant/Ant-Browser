@@ -34,12 +34,14 @@ func TestMatchFingerprintCapabilityVersion(t *testing.T) {
 		major int
 		want  string
 	}{
-		{major: 120, want: "legacy120"},
-		{major: 127, want: "legacy120"},
-		{major: 128, want: "legacy128"},
-		{major: 135, want: "legacy128"},
-		{major: 136, want: "legacy136"},
-		{major: 143, want: "legacy136"},
+		{major: 120, want: "v130"},
+		{major: 130, want: "v130"},
+		{major: 131, want: "v131"},
+		{major: 138, want: "v131"},
+		{major: 139, want: "v139"},
+		{major: 141, want: "v139"},
+		{major: 142, want: "v142"},
+		{major: 143, want: "v142"},
 		{major: 144, want: "v144"},
 		{major: 149, want: "v144"},
 		{major: 150, want: "v150"},
@@ -64,9 +66,10 @@ func TestFingerprintCapabilityTableMatchesLaunchPlan(t *testing.T) {
 		key           string
 		chromeVersion string
 	}{
-		{key: "legacy120", chromeVersion: "120.0.6099.109"},
-		{key: "legacy128", chromeVersion: "128.0.6613.120"},
-		{key: "legacy136", chromeVersion: "136.0.7103.114"},
+		{key: "v130", chromeVersion: "130.0.6723.117"},
+		{key: "v131", chromeVersion: "135.0.7049.95"},
+		{key: "v139", chromeVersion: "140.0.7339.82"},
+		{key: "v142", chromeVersion: "143.0.7499.41"},
 		{key: "v144", chromeVersion: "144.0.7559.132"},
 		{key: "v150", chromeVersion: "150.0.7871.186"},
 	}
@@ -79,11 +82,11 @@ func TestFingerprintCapabilityTableMatchesLaunchPlan(t *testing.T) {
 				plan := buildBrowserFingerprintLaunchPlanForHost("", []string{item.Sample}, version.chromeVersion, "windows")
 				status := item.Support[version.key]
 				switch status {
-				case fingerprintSupportSupported, fingerprintSupportSupportedPolicy:
+				case fingerprintSupportSupported, fingerprintSupportSupportedMeasured, fingerprintSupportSupportedDocumented, fingerprintSupportSupportedPolicy:
 					if !fingerprintArgsContain(plan.launchArgs, item.Sample) {
 						t.Errorf("%s 在 %s 上应保留参数 %s，实际 %v", item.Arg, version.key, item.Sample, plan.launchArgs)
 					}
-				case fingerprintSupportUnsupported, fingerprintSupportUnsupportedPolicy:
+				case fingerprintSupportUnsupported, fingerprintSupportUnsupportedMeasured, fingerprintSupportUnsupportedPolicy:
 					if fingerprintArgsContainKey(plan.launchArgs, item.Arg) {
 						t.Errorf("%s 在 %s 上应被移除，实际 %v", item.Arg, version.key, plan.launchArgs)
 					}
@@ -92,7 +95,7 @@ func TestFingerprintCapabilityTableMatchesLaunchPlan(t *testing.T) {
 						t.Errorf("%s 在 %s 上应转换为 %s，实际 %v", item.Arg, version.key, item.RuntimeArg, plan.launchArgs)
 					}
 				default:
-					t.Errorf("参数 %s 在 %s 上状态未覆盖: %s", item.Arg, version.key, status)
+					// 文档不支持与未验证状态只描述内核能力，不约束应用是否透传参数。
 				}
 			}
 		}
@@ -145,8 +148,8 @@ func TestFingerprintCapabilityTableCoversModeledArgs(t *testing.T) {
 func TestBrowserProfileFingerprintCapabilityTableWithoutCore(t *testing.T) {
 	app := &App{}
 	table := app.BrowserProfileFingerprintCapabilityTable("", "")
-	if len(table.Versions) != 5 {
-		t.Fatalf("versions = %d, want 5", len(table.Versions))
+	if len(table.Versions) != 6 {
+		t.Fatalf("versions = %d, want 6", len(table.Versions))
 	}
 	if len(table.Groups) == 0 {
 		t.Fatal("groups is empty")

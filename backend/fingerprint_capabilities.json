@@ -2,50 +2,57 @@
   "schemaVersion": 1,
   "updatedAt": "2026-11-19",
   "notes": [
-    "本表按内核主版本区间描述指纹启动参数的处理方式，随安装包内置，不是实时探测结果。",
-    "彩色勾/叉表示有实测记录；灰色勾/叉表示按启动策略推断，尚未逐项实测；灰色问号表示未验证。",
-    "144 以下仅在启动时保留参数，内核是否真正生效未逐版验证。"
+    "证据来源：上游内核 136–150 各版本说明与参数表，以及项目内 144 实测记录。",
+    "彩色为实测结论，蓝色为文档明确，灰色为策略推断，问号为未验证。"
   ],
   "versions": [
     {
-      "key": "legacy120",
-      "label": "120 及以下",
+      "key": "v130",
+      "label": "130 及以下",
       "minMajor": 0,
-      "maxMajor": 127,
-      "source": "策略保留，未实测",
-      "note": "启动时原样保留参数，内核是否生效未验证"
+      "maxMajor": 130,
+      "source": "文档依据",
+      "note": "品牌参数 131 才引入，GPU 参数 139 才引入"
     },
     {
-      "key": "legacy128",
-      "label": "128–135",
-      "minMajor": 128,
-      "maxMajor": 135,
-      "source": "策略保留，未实测",
-      "note": "启动时原样保留参数，内核是否生效未验证"
+      "key": "v131",
+      "label": "131–138",
+      "minMajor": 131,
+      "maxMajor": 138,
+      "source": "文档依据",
+      "note": "品牌参数可用，GPU 独立参数尚未引入"
     },
     {
-      "key": "legacy136",
-      "label": "136–143",
-      "minMajor": 136,
+      "key": "v139",
+      "label": "139–141",
+      "minMajor": 139,
+      "maxMajor": 141,
+      "source": "文档依据",
+      "note": "GPU 厂商与渲染器参数可用"
+    },
+    {
+      "key": "v142",
+      "label": "142–143",
+      "minMajor": 142,
       "maxMajor": 143,
-      "source": "策略保留，未实测",
-      "note": "启动时原样保留参数，内核是否生效未验证"
+      "source": "文档依据",
+      "note": "GPU 伪装开关可用"
     },
     {
       "key": "v144",
       "label": "144–149",
       "minMajor": 144,
       "maxMajor": 149,
-      "source": "本机实测 + 策略",
-      "note": "部分参数为本机实测，其余按启动策略推断"
+      "source": "文档 + 实测",
+      "note": "GPU 三参数移除，关闭伪装新增，屏幕与字体实测无效"
     },
     {
       "key": "v150",
       "label": "150 及以上",
       "minMajor": 150,
       "maxMajor": 0,
-      "source": "反馈实测 + 策略",
-      "note": "仅屏幕、缩放、色深、字体有反馈实测，其余按同一策略推断"
+      "source": "文档 + 反馈",
+      "note": "延续 144；canvas 噪声有崩溃与越界反馈"
     }
   ],
   "groups": [
@@ -58,104 +65,112 @@
           "label": "屏幕宽度",
           "sample": "--fingerprint-screen-width=1920",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unsupported_measured"
           },
-          "note": "144 及以上内核不改变实际屏幕宽高，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-screen-height",
           "label": "屏幕高度",
           "sample": "--fingerprint-screen-height=1080",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unsupported_measured"
           },
-          "note": "144 及以上内核不改变实际屏幕宽高，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-device-scale-factor",
           "label": "缩放比",
           "sample": "--fingerprint-device-scale-factor=1.25",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unsupported_measured"
           },
-          "note": "144 及以上内核不改变实际缩放比，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-color-depth",
           "label": "色深",
           "sample": "--fingerprint-color-depth=24",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unsupported_measured"
           },
-          "note": "144 及以上内核不改变实际色深，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-gpu-vendor",
           "label": "GPU 厂商",
           "sample": "--fingerprint-gpu-vendor=Google Inc.",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported_policy",
-            "v150": "unsupported_policy"
+            "v130": "unsupported_documented",
+            "v131": "unsupported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "unsupported_documented",
+            "v150": "unsupported_documented"
           },
-          "note": "144 及以上内核改由指纹种子统一处理 GPU 指纹"
+          "note": "官方 139 起支持，144 移除；139 之前未声明"
         },
         {
           "arg": "--fingerprint-gpu-renderer",
           "label": "GPU 渲染器",
           "sample": "--fingerprint-gpu-renderer=ANGLE (Intel)",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported_policy",
-            "v150": "unsupported_policy"
+            "v130": "unsupported_documented",
+            "v131": "unsupported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "unsupported_documented",
+            "v150": "unsupported_documented"
           },
-          "note": "144 及以上内核改由指纹种子统一处理 GPU 指纹"
+          "note": "官方 139 起支持，144 移除；139 之前未声明"
         },
         {
           "arg": "--fingerprint-webgl-vendor",
           "label": "WebGL 厂商",
           "sample": "--fingerprint-webgl-vendor=Google Inc.",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变 WebGL 读数，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-webgl-renderer",
           "label": "WebGL 渲染器",
           "sample": "--fingerprint-webgl-renderer=ANGLE (Intel)",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变 WebGL 读数，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         }
       ]
     },
@@ -168,65 +183,70 @@
           "label": "字体列表（旧参数）",
           "sample": "--fingerprint-fonts=Arial,Segoe UI",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unsupported_measured"
           },
-          "note": "144 及以上内核不改变可用字体检测结果，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-font-list",
           "label": "字体列表",
           "sample": "--fingerprint-font-list=Arial,Segoe UI",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unsupported_measured"
           },
-          "note": "144 及以上内核不改变可用字体检测结果，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--lang",
           "label": "语言",
           "sample": "--lang=en-US",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留；未配语言列表时后端会自动补齐"
+          "note": "官方参数表列出"
         },
         {
           "arg": "--accept-lang",
           "label": "语言列表",
           "sample": "--accept-lang=en-US,en",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方参数表列出"
         },
         {
           "arg": "--timezone",
           "label": "时区",
           "sample": "--timezone=America/New_York",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方参数表列出"
         }
       ]
     },
@@ -239,78 +259,84 @@
           "label": "CPU 核心数",
           "sample": "--fingerprint-hardware-concurrency=8",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方参数表列出"
         },
         {
           "arg": "--fingerprint-device-memory",
           "label": "设备内存",
           "sample": "--fingerprint-device-memory=8",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变内存读数，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-touch-points",
           "label": "触控点",
           "sample": "--fingerprint-touch-points=0",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变触控读数，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-media-devices",
           "label": "媒体设备",
           "sample": "--fingerprint-media-devices=2",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变媒体设备列表，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-audio-noise",
           "label": "音频噪声",
           "sample": "--fingerprint-audio-noise=0.1",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变音频指纹，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--fingerprint-location",
           "label": "地理位置",
           "sample": "--fingerprint-location=40.7,-74.0",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核不再使用该参数，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         }
       ]
     },
@@ -323,78 +349,84 @@
           "label": "指纹种子",
           "sample": "--fingerprint=424242",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "144 及以上随机指纹的统一入口，稳定参数"
+          "note": "官方参数表列出"
         },
         {
           "arg": "--fingerprint-brand",
           "label": "浏览器品牌",
           "sample": "--fingerprint-brand=Chrome",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "unsupported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方参数表从 131 才引入，131 起支持"
         },
         {
           "arg": "--fingerprint-brand-version",
           "label": "品牌版本",
           "sample": "--fingerprint-brand-version=150",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "unsupported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方参数表从 131 才引入，131 起支持"
         },
         {
           "arg": "--fingerprint-platform",
           "label": "平台",
           "sample": "--fingerprint-platform=windows",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数；目标平台与宿主不同时后端会关闭字体伪装"
+          "note": "官方参数表列出"
         },
         {
           "arg": "--fingerprint-platform-version",
           "label": "系统版本",
           "sample": "--fingerprint-platform-version=10.0.0",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方参数表列出"
         },
         {
           "arg": "--fingerprinting-canvas-image-data-noise",
           "label": "Canvas 图像噪声",
           "sample": "--fingerprinting-canvas-image-data-noise=true",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
             "v144": "supported_policy",
             "v150": "supported_policy"
           },
-          "note": "144 及以上使用的现行参数名"
+          "note": "上游文档未列出；144 实测内核接受，148/150 有崩溃与越界反馈"
         },
         {
           "arg": "--fingerprint-canvas-noise",
@@ -402,26 +434,28 @@
           "sample": "--fingerprint-canvas-noise=1",
           "runtimeArg": "--fingerprinting-canvas-image-data-noise",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
             "v144": "converted",
             "v150": "converted"
           },
-          "note": "144 及以上启动时自动转换为现行参数名"
+          "note": "上游文档未列出；应用在 144 及以上会转换为现行参数名"
         },
         {
           "arg": "--fingerprinting-client-rects-noise",
           "label": "ClientRects 噪声",
           "sample": "--fingerprinting-client-rects-noise=true",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
             "v144": "supported_policy",
             "v150": "supported_policy"
           },
-          "note": "144 及以上使用的现行参数名"
+          "note": "上游文档未列出；144 实测内核接受，148/150 有崩溃与越界反馈"
         },
         {
           "arg": "--fingerprint-client-rects-noise",
@@ -429,39 +463,42 @@
           "sample": "--fingerprint-client-rects-noise=1",
           "runtimeArg": "--fingerprinting-client-rects-noise",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
             "v144": "converted",
             "v150": "converted"
           },
-          "note": "144 及以上启动时自动转换为现行参数名"
+          "note": "上游文档未列出；应用在 144 及以上会转换为现行参数名"
         },
         {
           "arg": "--fingerprinting-canvas-measuretext-noise",
           "label": "Canvas 测宽噪声",
           "sample": "--fingerprinting-canvas-measuretext-noise=true",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变测宽结果，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         },
         {
           "arg": "--disable-spoofing",
           "label": "排除伪装",
           "sample": "--disable-spoofing=font",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "unsupported_documented",
+            "v131": "unsupported_documented",
+            "v139": "unsupported_documented",
+            "v142": "unsupported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方 144 新增；可关闭 font/audio/canvas/clientrects/gpu"
         },
         {
           "arg": "--disable-gpu-fingerprint",
@@ -469,65 +506,70 @@
           "sample": "--disable-gpu-fingerprint",
           "runtimeArg": "--disable-spoofing=gpu",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "converted",
-            "v150": "converted"
+            "v130": "unsupported_documented",
+            "v131": "unsupported_documented",
+            "v139": "unsupported_documented",
+            "v142": "supported_documented",
+            "v144": "unsupported_documented",
+            "v150": "unsupported_documented"
           },
-          "note": "144 及以上合并到排除伪装参数"
+          "note": "官方 142 起支持，144 移除；142 之前未声明"
         },
         {
           "arg": "--disable-non-proxied-udp",
           "label": "WebRTC",
           "sample": "--disable-non-proxied-udp",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "supported_policy",
-            "v150": "supported_policy"
+            "v130": "supported_documented",
+            "v131": "supported_documented",
+            "v139": "supported_documented",
+            "v142": "supported_documented",
+            "v144": "supported_documented",
+            "v150": "supported_documented"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "官方参数表列出"
         },
         {
           "arg": "--webrtc-ip-handling-policy",
           "label": "WebRTC 策略",
           "sample": "--webrtc-ip-handling-policy=disable_non_proxied_udp",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
             "v144": "supported_policy",
             "v150": "supported_policy"
           },
-          "note": "稳定参数，全版本保留"
+          "note": "浏览器标准参数，非指纹补丁"
         },
         {
           "arg": "--window-size",
           "label": "窗口大小",
           "sample": "--window-size=1280,720",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
+            "v130": "supported_policy",
+            "v131": "supported_policy",
+            "v139": "supported_policy",
+            "v142": "supported_policy",
             "v144": "supported_policy",
             "v150": "supported_policy"
           },
-          "note": "稳定参数；影响外层窗口尺寸，不等于屏幕分辨率"
+          "note": "浏览器标准参数，非指纹补丁"
         },
         {
           "arg": "--fingerprint-do-not-track",
           "label": "Do Not Track",
           "sample": "--fingerprint-do-not-track=1",
           "support": {
-            "legacy120": "supported_policy",
-            "legacy128": "supported_policy",
-            "legacy136": "supported_policy",
-            "v144": "unsupported",
-            "v150": "unsupported_policy"
+            "v130": "unknown",
+            "v131": "unknown",
+            "v139": "unknown",
+            "v142": "unknown",
+            "v144": "unsupported_measured",
+            "v150": "unknown"
           },
-          "note": "144 及以上内核实测不改变 DNT 读数，启动前会被移除"
+          "note": "上游文档从未列出；144 本机实测无效，150 仅屏幕与字体有反馈"
         }
       ]
     }
