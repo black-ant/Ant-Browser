@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -162,6 +163,26 @@ func validateFingerprintCapabilityTable(table BrowserFingerprintCapabilityTable)
 			return fmt.Errorf("指纹能力表版本区间非法: %s", key)
 		}
 		versionKeys[key] = struct{}{}
+	}
+
+	ranges := append([]BrowserFingerprintCapabilityVersion{}, table.Versions...)
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].MinMajor < ranges[j].MinMajor })
+	if ranges[0].MinMajor != 0 {
+		return fmt.Errorf("指纹能力表版本区间必须从 0 开始")
+	}
+	for index := 0; index < len(ranges); index++ {
+		if index == len(ranges)-1 {
+			if ranges[index].MaxMajor != 0 {
+				return fmt.Errorf("指纹能力表版本区间缺少无上限收尾段")
+			}
+			break
+		}
+		if ranges[index].MaxMajor == 0 {
+			return fmt.Errorf("指纹能力表版本区间存在无限上限但不在末尾: %s", ranges[index].Key)
+		}
+		if ranges[index].MaxMajor+1 != ranges[index+1].MinMajor {
+			return fmt.Errorf("指纹能力表版本区间不连续或重叠: %s -> %s", ranges[index].Key, ranges[index+1].Key)
+		}
 	}
 
 	seenArgs := make(map[string]struct{})

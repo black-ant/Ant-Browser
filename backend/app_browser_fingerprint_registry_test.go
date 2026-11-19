@@ -34,10 +34,16 @@ func TestMatchFingerprintCapabilityVersion(t *testing.T) {
 		major int
 		want  string
 	}{
-		{major: 120, want: "legacy"},
-		{major: 143, want: "legacy"},
+		{major: 120, want: "legacy120"},
+		{major: 127, want: "legacy120"},
+		{major: 128, want: "legacy128"},
+		{major: 135, want: "legacy128"},
+		{major: 136, want: "legacy136"},
+		{major: 143, want: "legacy136"},
 		{major: 144, want: "v144"},
-		{major: 150, want: "v144"},
+		{major: 149, want: "v144"},
+		{major: 150, want: "v150"},
+		{major: 200, want: "v150"},
 		{major: 0, want: ""},
 	}
 	for _, test := range tests {
@@ -58,8 +64,11 @@ func TestFingerprintCapabilityTableMatchesLaunchPlan(t *testing.T) {
 		key           string
 		chromeVersion string
 	}{
-		{key: "v144", chromeVersion: "150.0.7871.186"},
-		{key: "legacy", chromeVersion: "120.0.6099.109"},
+		{key: "legacy120", chromeVersion: "120.0.6099.109"},
+		{key: "legacy128", chromeVersion: "128.0.6613.120"},
+		{key: "legacy136", chromeVersion: "136.0.7103.114"},
+		{key: "v144", chromeVersion: "144.0.7559.132"},
+		{key: "v150", chromeVersion: "150.0.7871.186"},
 	}
 	for _, version := range versions {
 		for _, group := range table.Groups {
@@ -136,8 +145,8 @@ func TestFingerprintCapabilityTableCoversModeledArgs(t *testing.T) {
 func TestBrowserProfileFingerprintCapabilityTableWithoutCore(t *testing.T) {
 	app := &App{}
 	table := app.BrowserProfileFingerprintCapabilityTable("", "")
-	if len(table.Versions) != 2 {
-		t.Fatalf("versions = %d, want 2", len(table.Versions))
+	if len(table.Versions) != 5 {
+		t.Fatalf("versions = %d, want 5", len(table.Versions))
 	}
 	if len(table.Groups) == 0 {
 		t.Fatal("groups is empty")

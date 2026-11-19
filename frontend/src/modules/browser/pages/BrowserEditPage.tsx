@@ -296,6 +296,7 @@ function FingerprintCapabilityTableReport({ table }: { table: BrowserFingerprint
                 >
                   {version.label}
                   {version.key === table.currentVersionKey && <div className="text-[10px] font-normal">当前</div>}
+                  {version.key !== table.currentVersionKey && version.source && <div className="text-[10px] font-normal">{version.source}</div>}
                 </th>
               ))}
               <th className="px-3 py-2 text-left font-medium min-w-[240px]">说明</th>
