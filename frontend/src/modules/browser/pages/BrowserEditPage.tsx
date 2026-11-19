@@ -241,7 +241,9 @@ function FingerprintMatrixReport({ report }: { report: BrowserFingerprintCapabil
 
 const capabilitySupportLabels: Record<string, string> = {
   supported: '✓',
+  supported_policy: '✓',
   unsupported: '✗',
+  unsupported_policy: '✗',
   converted: '转',
   unknown: '?',
 }
@@ -250,7 +252,7 @@ function capabilitySupportClass(status: string) {
   if (status === 'supported') return 'text-emerald-600'
   if (status === 'unsupported') return 'text-rose-600'
   if (status === 'converted') return 'text-amber-600'
-  return 'text-[var(--color-text-muted)]'
+  return 'text-slate-400'
 }
 
 function FingerprintCapabilityTableReport({ table }: { table: BrowserFingerprintCapabilityTable | null }) {
@@ -322,6 +324,9 @@ function FingerprintCapabilityTableReport({ table }: { table: BrowserFingerprint
                           className={`px-3 py-2 text-center align-top ${version.key === table.currentVersionKey ? 'bg-[var(--color-bg-hover)]' : ''}`}
                         >
                           <span className={`text-base font-semibold ${capabilitySupportClass(status)}`}>{capabilitySupportLabels[status] || '?'}</span>
+                          {(status === 'supported_policy' || status === 'unsupported_policy') && (
+                            <div className="mt-1 text-[10px] text-[var(--color-text-muted)]">策略</div>
+                          )}
                           {status === 'converted' && item.runtimeArg && (
                             <div className="mt-1 font-mono text-[10px] break-all text-[var(--color-text-muted)]">{item.runtimeArg}</div>
                           )}
@@ -337,7 +342,7 @@ function FingerprintCapabilityTableReport({ table }: { table: BrowserFingerprint
         </table>
       </div>
       <div className="px-3 py-2 border-t border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
-        ✓ 支持 · ✗ 不支持（启动前移除）· 转 转换后使用 · ? 未收录
+        <span className="text-emerald-600">✓</span> 实测生效 · <span className="text-slate-400">✓</span> 策略保留（未验证） · <span className="text-rose-600">✗</span> 实测不生效 · <span className="text-slate-400">✗</span> 策略移除（未单独验证） · <span className="text-amber-600">转</span> 自动转换
       </div>
     </div>
   )

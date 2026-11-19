@@ -135,7 +135,7 @@ export interface BrowserFingerprintCapabilityReport {
   warnings: string[]
 }
 
-export type BrowserFingerprintCapabilitySupport = 'supported' | 'unsupported' | 'converted' | 'unknown'
+export type BrowserFingerprintCapabilitySupport = 'supported' | 'supported_policy' | 'unsupported' | 'unsupported_policy' | 'converted' | 'unknown'
 
 export interface BrowserFingerprintCapabilityVersion {
   key: string

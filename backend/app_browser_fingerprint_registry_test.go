@@ -79,11 +79,11 @@ func TestFingerprintCapabilityTableMatchesLaunchPlan(t *testing.T) {
 				plan := buildBrowserFingerprintLaunchPlanForHost("", []string{item.Sample}, version.chromeVersion, "windows")
 				status := item.Support[version.key]
 				switch status {
-				case fingerprintSupportSupported:
+				case fingerprintSupportSupported, fingerprintSupportSupportedPolicy:
 					if !fingerprintArgsContain(plan.launchArgs, item.Sample) {
 						t.Errorf("%s 在 %s 上应保留参数 %s，实际 %v", item.Arg, version.key, item.Sample, plan.launchArgs)
 					}
-				case fingerprintSupportUnsupported:
+				case fingerprintSupportUnsupported, fingerprintSupportUnsupportedPolicy:
 					if fingerprintArgsContainKey(plan.launchArgs, item.Arg) {
 						t.Errorf("%s 在 %s 上应被移除，实际 %v", item.Arg, version.key, plan.launchArgs)
 					}
