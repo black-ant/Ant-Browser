@@ -35,13 +35,17 @@ func extractExtensionIDFromURL(rawURL string) string {
 }
 
 func downloadChromeExtensionCRX(ctx context.Context, extensionID string, client *http.Client) ([]byte, error) {
+	return downloadChromeExtensionCRXWithVersion(ctx, extensionID, defaultChromeDownloadVersion, client)
+}
+
+func downloadChromeExtensionCRXWithVersion(ctx context.Context, extensionID string, chromeVersion string, client *http.Client) ([]byte, error) {
 	if client == nil {
 		client = &http.Client{Timeout: extensionDownloadTimeout}
 	}
-	downloadURL := BuildChromeExtensionDownloadURL(extensionID)
+	downloadURL := BuildChromeExtensionDownloadURLWithVersion(extensionID, chromeVersion)
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		data, err := downloadChromeExtensionCRXOnce(ctx, client, downloadURL)
+		data, err := downloadChromeExtensionCRXOnce(ctx, client, downloadURL, chromeVersion)
 		if err == nil {
 			return data, nil
 		}
@@ -58,18 +62,25 @@ func downloadChromeExtensionCRX(ctx context.Context, extensionID string, client 
 	return nil, formatExtensionDownloadError(lastErr)
 }
 
-func downloadChromeExtensionCRXOnce(ctx context.Context, client *http.Client, downloadURL string) ([]byte, error) {
+func downloadChromeExtensionCRXOnce(ctx context.Context, client *http.Client, downloadURL string, chromeVersion string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("User-Agent", "Mozilla/5.0 AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36")
+	version := normalizeChromeVersion(chromeVersion)
+	if version == "" {
+		version = defaultChromeDownloadVersion
+	}
+	request.Header.Set("User-Agent", fmt.Sprintf("Mozilla/5.0 AppleWebKit/537.36 Chrome/%s Safari/537.36", version))
 	request.Header.Set("Accept", "*/*")
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("下载插件失败: %w", err)
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusNoContent {
+		return nil, fmt.Errorf("Chrome 应用商店未返回插件安装包 (HTTP 204 No Content)，可能因该插件已下架、不支持当前 Chrome 版本或已被商店限制")
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("下载插件失败: HTTP %d", response.StatusCode)
 	}
@@ -77,6 +88,9 @@ func downloadChromeExtensionCRXOnce(ctx context.Context, client *http.Client, do
 	data, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, fmt.Errorf("读取插件包失败: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("Chrome 应用商店返回的插件安装包为空，可能因该插件已下架或不支持当前版本")
 	}
 	if len(data) > extensionMaxPackageBytes {
 		return nil, fmt.Errorf("插件包超过限制")
@@ -89,6 +103,9 @@ func isRetryableExtensionDownloadError(err error) bool {
 		return false
 	}
 	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "204") || strings.Contains(message, "已下架") || strings.Contains(message, "为空") {
+		return false
+	}
 	return strings.Contains(message, "eof") ||
 		strings.Contains(message, "connection reset") ||
 		strings.Contains(message, "connection refused") ||
