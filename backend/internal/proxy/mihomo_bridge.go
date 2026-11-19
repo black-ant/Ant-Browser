@@ -97,7 +97,8 @@ func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig 
 		return "direct://", "", nil
 	}
 
-	key := ComputeBridgeKey(src, "", ProxyKernelMihomo)
+	dnsServers := resolveProxyDNSServers(proxies, proxyId)
+	key := ComputeBridgeKey(src, dnsServers, ProxyKernelMihomo)
 	unlock := m.lockLaunchForKey(key)
 	defer unlock()
 
@@ -127,7 +128,7 @@ func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig 
 	if err != nil {
 		return "", "", err
 	}
-	cfgPath, err := m.buildMihomoNodeConfig(key, node, port, controllerPort)
+	cfgPath, err := m.buildMihomoNodeConfig(key, node, port, controllerPort, dnsServers)
 	if err != nil {
 		return "", "", err
 	}
@@ -276,7 +277,8 @@ func (m *ClashManager) TestNodeDelay(proxyId string, proxies []config.BrowserPro
 	if _, err := m.EnsureNodeBridge(src, proxies, proxyId); err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: "mihomo", Error: err.Error()}
 	}
-	key := ComputeBridgeKey(src, "", ProxyKernelMihomo)
+	dnsServers := resolveProxyDNSServers(proxies, proxyId)
+	key := ComputeBridgeKey(src, dnsServers, ProxyKernelMihomo)
 	m.mu.Lock()
 	bridge := m.NodeBridges[key]
 	m.mu.Unlock()
@@ -393,7 +395,7 @@ func (m *ClashManager) lockLaunchForKey(key string) func() {
 	}
 }
 
-func (m *ClashManager) buildMihomoNodeConfig(key string, node map[string]interface{}, port int, controllerPort int) (string, error) {
+func (m *ClashManager) buildMihomoNodeConfig(key string, node map[string]interface{}, port int, controllerPort int, dnsServers string) (string, error) {
 	baseDir := m.resolveMihomoWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return "", err
@@ -421,6 +423,9 @@ func (m *ClashManager) buildMihomoNodeConfig(key string, node map[string]interfa
 			},
 		},
 		"rules": []interface{}{"MATCH,proxy-out"},
+	}
+	if dnsCfg := buildMihomoDNSConfig(dnsServers); dnsCfg != nil {
+		payload["dns"] = dnsCfg
 	}
 	cfgPath := filepath.Join(baseDir, "mihomo-config.yaml")
 	data, err := yaml.Marshal(payload)

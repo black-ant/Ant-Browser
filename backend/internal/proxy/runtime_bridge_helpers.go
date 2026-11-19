@@ -22,13 +22,20 @@ func computeNodeKey(src string) string {
 
 func ComputeBridgeKey(proxyConfig string, dnsServers string, engine string) string {
 	src := normalizeNodeScheme(proxyConfig)
+	dns := strings.TrimSpace(dnsServers)
 	switch strings.ToLower(strings.TrimSpace(engine)) {
 	case ProxyKernelXray:
-		return computeNodeKey(src + string(rune(0)) + strings.TrimSpace(dnsServers))
+		return computeNodeKey(src + string(rune(0)) + dns)
 	case ProxyKernelSingBox:
-		return computeNodeKey(src)
+		if dns == "" {
+			return computeNodeKey(src)
+		}
+		return computeNodeKey(src + string(rune(0)) + "sing-box" + string(rune(0)) + dns)
 	case ProxyKernelMihomo:
-		return computeNodeKey(src + string(rune(0)) + "mihomo")
+		if dns == "" {
+			return computeNodeKey(src + string(rune(0)) + "mihomo")
+		}
+		return computeNodeKey(src + string(rune(0)) + "mihomo" + string(rune(0)) + dns)
 	case ProxyKernelMieru:
 		return computeNodeKey(src + string(rune(0)) + "mieru")
 	default:

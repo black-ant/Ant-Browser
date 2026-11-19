@@ -22,6 +22,7 @@ type SingBoxBridge struct {
 	Stopping     bool
 	LastError    string
 	Outbound     map[string]interface{}
+	DNSServers   string
 	RefCount     int
 	LastUsedAt   time.Time
 	Restarting   bool
