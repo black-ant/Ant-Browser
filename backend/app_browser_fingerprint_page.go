@@ -530,6 +530,7 @@ const fingerprintCheckHTML = `<!doctype html>
       <div class="meta" id="meta">正在检测当前浏览器真实指纹...</div>
     </div>
     <div class="actions">
+      <button class="secondary" id="langToggleBtn">EN</button>
       <button class="secondary" id="resetBaselineBtn">重建基线</button>
       <button class="secondary" id="saveBeforeBtn">保存修改前快照</button>
       <button class="secondary" id="clearBeforeBtn">清除修改前快照</button>
@@ -554,7 +555,17 @@ var fingerprintCheckRunning = false;
 var latestBeforeSnapshot = null;
 var FINGERPRINT_AUTO_REFRESH_MS = 60 * 60 * 1000;
 var FINGERPRINT_AUTO_REFRESH_CHECK_MS = 60 * 1000;
-var currentUILang = latestContext && latestContext.uiLanguage === 'en' ? 'en' : 'zh';
+var FINGERPRINT_LANG_STORAGE_KEY = 'ant-fingerprint-check-lang';
+function readSavedUILanguage() {
+  try {
+    var value = localStorage.getItem(FINGERPRINT_LANG_STORAGE_KEY);
+    return value === 'en' || value === 'zh' ? value : '';
+  } catch (e) {
+    return '';
+  }
+}
+var savedUILang = readSavedUILanguage();
+var currentUILang = savedUILang || (latestContext && latestContext.uiLanguage === 'en' ? 'en' : 'zh');
 var UI_ZH = {
   'Ant Fingerprint Check': 'Ant 指纹检测',
   'Checking current browser fingerprint...': '正在检测当前浏览器真实指纹...',
@@ -743,6 +754,8 @@ function platformUsesEnglish(value) {
   return normalized.indexOf('linux') >= 0 || normalized.indexOf('x11') >= 0 || normalized.indexOf('mac') >= 0 || normalized.indexOf('darwin') >= 0;
 }
 function resolveUILanguage(context, report) {
+  var saved = readSavedUILanguage();
+  if (saved) return saved;
   var expected = context && context.expected ? context.expected : {};
   var identity = report && report.identity ? report.identity : {};
   var uaData = identity.userAgentData || {};
@@ -773,6 +786,20 @@ function applyStaticText() {
     } else {
       flow.innerHTML = '<div class="flow-step"><strong>1 保存修改前</strong>旧配置启动后检测，点保存修改前快照。</div><div class="flow-step"><strong>2 修改并重启</strong>改 Seed 或指纹配置后，关闭实例再启动。</div><div class="flow-step"><strong>3 重新检测</strong>进入本页点重新检测，看修改前后变化。</div>';
     }
+  }
+  updateLangButton();
+}
+function updateLangButton() {
+  var button = document.getElementById('langToggleBtn');
+  if (button) button.textContent = currentUILang === 'zh' ? 'EN' : '中文';
+}
+function toggleUILanguage() {
+  currentUILang = currentUILang === 'zh' ? 'en' : 'zh';
+  try { localStorage.setItem(FINGERPRINT_LANG_STORAGE_KEY, currentUILang); } catch (e) {}
+  if (latestReport) {
+    render(latestReport);
+  } else {
+    applyStaticText();
   }
 }
 function updateUILanguage(report) {
@@ -1825,6 +1852,7 @@ document.getElementById('resetBaselineBtn').onclick = function () { resetFingerp
 document.getElementById('saveBeforeBtn').onclick = function () { saveBeforeSnapshot(latestContext, latestReport); renderChangeComparison(latestReport); };
 document.getElementById('clearBeforeBtn').onclick = function () { clearBeforeSnapshot(latestContext); renderChangeComparison(latestReport); };
 document.getElementById('refreshBtn').onclick = run;
+document.getElementById('langToggleBtn').onclick = toggleUILanguage;
 document.getElementById('copyBtn').onclick = function () {
   if (!latestReport) return;
   navigator.clipboard.writeText(JSON.stringify(latestReport, null, 2)).catch(function () {});
