@@ -97,18 +97,20 @@ func (m *Manager) loadProfiles() {
 	log.Debug("浏览器配置从文件加载完成", logger.F("count", len(m.Profiles)))
 }
 
-// SaveProfiles 保存所有实例配置（DAO 模式：逐条 upsert）
+// SaveProfiles 保存所有实例配置（DAO 模式：单事务批量 upsert）
 func (m *Manager) SaveProfiles() error {
 	log := logger.New("Browser")
 	if m.ProfileDAO != nil {
+		profiles := make([]*Profile, 0, len(m.Profiles))
 		for _, profile := range m.Profiles {
 			profile.CoreId = normalizeProfileCoreID(profile.CoreId)
-			if err := m.ProfileDAO.Upsert(profile); err != nil {
-				log.Error("实例配置持久化失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
-				return err
-			}
+			profiles = append(profiles, profile)
 		}
-		log.Info("实例配置持久化成功", logger.F("count", len(m.Profiles)))
+		if err := m.ProfileDAO.UpsertMany(profiles); err != nil {
+			log.Error("实例配置持久化失败", logger.F("count", len(profiles)), logger.F("error", err))
+			return err
+		}
+		log.Info("实例配置持久化成功", logger.F("count", len(profiles)))
 		return nil
 	}
 
@@ -143,5 +145,45 @@ func (m *Manager) SaveProfiles() error {
 		return err
 	}
 	log.Info("浏览器配置持久化成功（文件）", logger.F("count", len(profiles)))
+	return nil
+}
+
+// saveProfile 持久化单个实例配置。
+// DAO 模式只写目标记录，避免"改一个实例却重写全库"；文件模式仍必须全量落盘。
+func (m *Manager) saveProfile(profile *Profile) error {
+	log := logger.New("Browser")
+	if profile == nil {
+		return nil
+	}
+	profile.CoreId = normalizeProfileCoreID(profile.CoreId)
+	if m.ProfileDAO != nil {
+		if err := m.ProfileDAO.Upsert(profile); err != nil {
+			log.Error("实例配置持久化失败", logger.F("profile_id", profile.ProfileId), logger.F("error", err))
+			return err
+		}
+		return nil
+	}
+	return m.SaveProfiles()
+}
+
+// addProfile 持久化新实例后再纳入内存；失败时回滚，避免出现"内存有、库里没有"的幽灵实例。
+func (m *Manager) addProfile(profile *Profile) error {
+	if profile == nil {
+		return nil
+	}
+	if m.ProfileDAO != nil {
+		if err := m.saveProfile(profile); err != nil {
+			return err
+		}
+		m.Profiles[profile.ProfileId] = profile
+		return nil
+	}
+	previous := m.Config.Browser.Profiles
+	m.Profiles[profile.ProfileId] = profile
+	if err := m.SaveProfiles(); err != nil {
+		delete(m.Profiles, profile.ProfileId)
+		m.Config.Browser.Profiles = previous
+		return err
+	}
 	return nil
 }

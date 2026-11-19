@@ -14,6 +14,8 @@ type ProfileDAO interface {
 	ListDeleted() ([]*Profile, error)
 	GetById(profileId string) (*Profile, error)
 	Upsert(profile *Profile) error
+	// UpsertMany 在单个事务内批量写入，避免逐条提交（每条一次 fsync）随实例数线性变慢。
+	UpsertMany(profiles []*Profile) error
 	Delete(profileId string) error
 	SoftDelete(profileId string, deletedAt string) error
 	Restore(profileId string) error
@@ -108,8 +110,47 @@ func (d *SQLiteProfileDAO) GetById(profileId string) (*Profile, error) {
 	return p, err
 }
 
+// profileExecer 抽象 *sql.DB 与 *sql.Tx，让单条写入与事务批量写入复用同一段 SQL。
+type profileExecer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
 // Upsert 新增或更新实例配置
 func (d *SQLiteProfileDAO) Upsert(profile *Profile) error {
+	return upsertProfileRow(d.db, profile)
+}
+
+// UpsertMany 在单个事务内批量写入实例配置。
+// 逐条 Upsert 是每条一个隐式事务，SQLite(WAL) 每次提交都要 fsync；实例上千时创建/保存会慢到几十秒。
+func (d *SQLiteProfileDAO) UpsertMany(profiles []*Profile) error {
+	if len(profiles) == 0 {
+		return nil
+	}
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("开启实例配置写入事务失败: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	for _, profile := range profiles {
+		if profile == nil {
+			continue
+		}
+		if err := upsertProfileRow(tx, profile); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交实例配置写入事务失败: %w", err)
+	}
+	return nil
+}
+
+func upsertProfileRow(execer profileExecer, profile *Profile) error {
+	if profile == nil {
+		return fmt.Errorf("保存实例配置失败: 实例为空")
+	}
 	fingerprintArgs, _ := json.Marshal(profile.FingerprintArgs)
 	launchArgs, _ := json.Marshal(profile.LaunchArgs)
 	tags, _ := json.Marshal(profile.Tags)
@@ -123,7 +164,7 @@ func (d *SQLiteProfileDAO) Upsert(profile *Profile) error {
 		profile.UpdatedAt = now
 	}
 
-	_, err := d.db.Exec(`
+	_, err := execer.Exec(`
 		INSERT INTO browser_profiles
 		  (profile_id, profile_name, user_data_dir, core_id, fingerprint_args,
 		   proxy_id, proxy_config, proxy_mode, proxy_group_name, proxy_bind_source_id, proxy_bind_source_url, proxy_bind_name, proxy_bind_updated_at, proxy_bind_error,

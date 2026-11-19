@@ -125,12 +125,11 @@ func (m *Manager) copyProfile(profileId string, newName string, fingerprintResol
 		UpdatedAt:          nowText,
 	}
 
-	m.Profiles[newId] = profile
-	log.Info("实例复制成功", logger.F("src_id", profileId), logger.F("new_id", newId), logger.F("new_name", profileName))
-
-	if err := m.SaveProfiles(); err != nil {
+	// 与新建一致：只写新增的这条记录，避免随实例总数全量重写。
+	if err := m.addProfile(profile); err != nil {
 		return nil, err
 	}
+	log.Info("实例复制成功", logger.F("src_id", profileId), logger.F("new_id", newId), logger.F("new_name", profileName))
 
 	m.ensureProfileLaunchCode(profile)
 	return profile, nil

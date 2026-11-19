@@ -65,9 +65,9 @@ func (m *Manager) Create(input ProfileInput) (*Profile, error) {
 	} else if resolvedProxy.FallbackToDirect {
 		_ = m.bindProfileToDirectProxy(profile)
 	}
-	m.Profiles[profileId] = profile
 	log.Info("浏览器配置创建", logger.F("profile_id", profileId), logger.F("profile_name", input.ProfileName))
-	if err := m.SaveProfiles(); err != nil {
+	// 只写新增的这条记录：全量保存会随已有实例数量线性变慢（每条一次 SQLite 事务提交）。
+	if err := m.addProfile(profile); err != nil {
 		return nil, err
 	}
 	m.ensureProfileLaunchCode(profile)

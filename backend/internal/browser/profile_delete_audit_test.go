@@ -126,6 +126,15 @@ func (d *profileDeleteAuditTestDAO) Upsert(profile *Profile) error {
 	return nil
 }
 
+func (d *profileDeleteAuditTestDAO) UpsertMany(profiles []*Profile) error {
+	for _, profile := range profiles {
+		if err := d.Upsert(profile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (d *profileDeleteAuditTestDAO) Delete(profileId string) error {
 	delete(d.profiles, profileId)
 	return nil

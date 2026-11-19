@@ -55,7 +55,8 @@ func (m *Manager) Update(profileId string, input ProfileInput) (*Profile, error)
 	profile.UpdatedAt = time.Now().Format(time.RFC3339)
 
 	log.Info("浏览器配置更新", logger.F("profile_id", profileId), logger.F("profile_name", input.ProfileName))
-	if err := m.SaveProfiles(); err != nil {
+	// 单条更新：不重写全库，避免实例量大时保存变慢。
+	if err := m.saveProfile(profile); err != nil {
 		return nil, err
 	}
 	return profile, nil
@@ -76,7 +77,7 @@ func (m *Manager) SetKeywords(profileId string, keywords []string) (*Profile, er
 	profile.UpdatedAt = time.Now().Format(time.RFC3339)
 
 	log.Info("关键字更新", logger.F("profile_id", profileId))
-	if err := m.SaveProfiles(); err != nil {
+	if err := m.saveProfile(profile); err != nil {
 		return nil, err
 	}
 	return profile, nil
