@@ -129,12 +129,21 @@ func (s *LaunchServer) handleRuntimeSession(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *LaunchServer) prepareRuntimeSession(profile *browser.Profile, timeout time.Duration) (*browser.Profile, bool, error) {
+	return s.waitRuntimeDebugReady(profile, timeout, s.SetActiveProfile)
+}
+
+// waitRuntimeDebugReady 等实例调试端口就绪，最多等 timeout。
+// onReady 非空时在确认就绪的那一刻回调（runtime session 用它切换统一入口的活动实例）。
+func (s *LaunchServer) waitRuntimeDebugReady(profile *browser.Profile, timeout time.Duration, onReady func(*browser.Profile)) (*browser.Profile, bool, error) {
+	if onReady == nil {
+		onReady = func(*browser.Profile) {}
+	}
 	normalized := s.normalizeRuntimeProfile(profile)
 	if normalized == nil {
 		return nil, false, nil
 	}
 	if normalized.DebugReady {
-		s.SetActiveProfile(normalized)
+		onReady(normalized)
 		return normalized, true, nil
 	}
 	if timeout <= 0 {
@@ -150,7 +159,7 @@ func (s *LaunchServer) prepareRuntimeSession(profile *browser.Profile, timeout t
 			normalized = s.normalizeRuntimeProfile(waited)
 		}
 		if normalized != nil && ready && normalized.DebugReady {
-			s.SetActiveProfile(normalized)
+			onReady(normalized)
 			return normalized, true, nil
 		}
 		return normalized, normalized != nil && normalized.DebugReady, nil
@@ -166,7 +175,7 @@ func (s *LaunchServer) prepareRuntimeSession(profile *browser.Profile, timeout t
 			normalized = snapshot
 		}
 		if normalized != nil && normalized.DebugReady {
-			s.SetActiveProfile(normalized)
+			onReady(normalized)
 			return normalized, true, nil
 		}
 		if time.Now().After(deadline) {

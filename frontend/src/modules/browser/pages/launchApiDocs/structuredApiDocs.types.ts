@@ -23,6 +23,7 @@ export type StructuredApiDocId =
   | 'api-cdp-version-detail'
   | 'api-cdp-list-detail'
   | 'api-cdp-ws-detail'
+  | 'api-cdp-profile-detail'
   | 'api-automation-list-detail'
   | 'api-automation-script-detail'
   | 'api-automation-run-detail'
