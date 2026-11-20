@@ -215,6 +215,7 @@ export const RUNTIME_API_ENDPOINT_DOCS: StructuredApiEndpointDoc[] = [
     },
     responseCodes: [
       { code: '200', description: '返回当前 active target 的版本信息。' },
+      { code: '401', description: '开启 API 认证时未带或带错 key（WebSocket 升级请求同样校验）。' },
       { code: '503', description: '当前没有可透传的 active target。' },
     ],
     notes: [
@@ -249,6 +250,7 @@ export const RUNTIME_API_ENDPOINT_DOCS: StructuredApiEndpointDoc[] = [
     },
     responseCodes: [
       { code: '200', description: '返回当前活动实例的 target 列表。' },
+      { code: '401', description: '开启 API 认证时未带或带错 key（WebSocket 升级请求同样校验）。' },
       { code: '503', description: '当前没有可透传的 active target。' },
     ],
     notes: [
@@ -278,6 +280,7 @@ export const RUNTIME_API_ENDPOINT_DOCS: StructuredApiEndpointDoc[] = [
     },
     responseCodes: [
       { code: '101', description: 'WebSocket 升级成功。' },
+      { code: '401', description: '开启 API 认证时未带或带错 key（WebSocket 升级请求同样校验）。' },
       { code: '503', description: '当前没有可透传的 active target。' },
     ],
     notes: [
