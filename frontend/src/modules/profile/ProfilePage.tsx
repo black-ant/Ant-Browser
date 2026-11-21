@@ -10,11 +10,24 @@ import {
   Terminal,
   ExternalLink,
   RefreshCw,
+  Download,
+  AlertTriangle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Badge, Button, Card } from '../../shared/components'
-import { checkForUpdates, createDefaultProfilePageData, loadCurrentAppVersion, loadProfilePageData } from './api'
-import type { AppUpdateCheckResult, IconKey, ProfilePageData } from './types'
+import { Badge, Button, Card, ConfirmModal, Progress, toast } from '../../shared/components'
+import { EventsOff, EventsOn, Quit } from '../../wailsjs/runtime/runtime'
+import {
+  applyAppUpdate,
+  applyPendingAppUpdate,
+  checkAppUpdate,
+  clearPendingAppUpdate,
+  createDefaultProfilePageData,
+  downloadAppUpdate,
+  getPendingAppUpdate,
+  loadCurrentAppVersion,
+  loadProfilePageData,
+} from './api'
+import type { AppUpdateInfo, IconKey, ProfilePageData, UpdatePendingInfo, UpdateProgress } from './types'
 
 const ICON_MAP = {
   'book-open': BookOpen,
@@ -36,8 +49,13 @@ const CHANNEL_ICON_CLASS: Partial<Record<IconKey, string>> = {
 export function ProfilePage() {
   const [pageData, setPageData] = useState<ProfilePageData>(() => createDefaultProfilePageData())
   const [appVersion, setAppVersion] = useState('')
-  const [updateCheck, setUpdateCheck] = useState<AppUpdateCheckResult | null>(null)
+  const [updateCheck, setUpdateCheck] = useState<AppUpdateInfo | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
+  const [pendingUpdate, setPendingUpdate] = useState<UpdatePendingInfo | null>(null)
+  const [confirmInstall, setConfirmInstall] = useState(false)
+  const [installing, setInstalling] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -58,8 +76,34 @@ export function ProfilePage() {
         if (active) setAppVersion('')
       })
 
+    EventsOn('app:update:progress', (payload: UpdateProgress) => {
+      if (!active || !payload) return
+      setUpdateProgress(payload)
+      if (payload.phase === 'done' || payload.phase === 'error') {
+        setDownloading(false)
+        if (payload.phase === 'error') {
+          toast.error(payload.message || '更新下载失败')
+        } else {
+          // 新包已就绪：清掉旧 pending，避免确认时走“重新打开旧安装包”分支
+          void clearPendingAppUpdate().then(() => setPendingUpdate(null))
+        }
+      }
+    })
+    EventsOn('app:update:pending', (payload: UpdatePendingInfo) => {
+      if (active && payload) setPendingUpdate(payload)
+    })
+    EventsOn('app:update:available', (payload: AppUpdateInfo) => {
+      if (active && payload) setUpdateCheck(payload)
+    })
+    void getPendingAppUpdate()
+      .then((pending) => { if (active) setPendingUpdate(pending) })
+      .catch(() => {})
+
     return () => {
       active = false
+      EventsOff('app:update:progress')
+      EventsOff('app:update:pending')
+      EventsOff('app:update:available')
     }
   }, [])
 
@@ -71,7 +115,7 @@ export function ProfilePage() {
     if (checkingUpdate) return
     setCheckingUpdate(true)
     try {
-      setUpdateCheck(await checkForUpdates())
+      setUpdateCheck(await checkAppUpdate())
     } catch (error: any) {
       setUpdateCheck({
         ok: false,
@@ -79,11 +123,57 @@ export function ProfilePage() {
         latestVersion: '',
         updateAvailable: false,
         releaseUrl: '',
+        notesUrl: '',
+        force: false,
+        assets: {},
         error: error?.message || '检查更新失败',
       })
     } finally {
       setCheckingUpdate(false)
     }
+  }
+
+  const handleDownloadUpdate = async () => {
+    if (downloading) return
+    setDownloading(true)
+    setUpdateProgress({ phase: 'resolving', progress: 0, message: '准备下载更新包' })
+    try {
+      const started = await downloadAppUpdate('', '')
+      if (!started) {
+        toast.error('当前环境不支持应用内更新')
+        setDownloading(false)
+      }
+    } catch (error: any) {
+      toast.error(error?.message || '启动下载失败')
+      setDownloading(false)
+    }
+  }
+
+  const handleApplyUpdate = async () => {
+    setConfirmInstall(false)
+    setInstalling(true)
+    try {
+      const started = await applyAppUpdate(pendingUpdate?.version || '', '')
+      if (!started) {
+        toast.error('当前环境不支持自动安装')
+        return
+      }
+      toast.success('即将退出并安装更新')
+      window.setTimeout(() => Quit(), 800)
+    } catch (error: any) {
+      toast.error(error?.message || '准备安装失败')
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  const handlePendingInstall = async () => {
+    const started = await applyPendingAppUpdate()
+    if (!started) {
+      toast.error('当前环境不支持自动安装')
+      return
+    }
+    setConfirmInstall(true)
   }
 
   const authorInfo = pageData.author
@@ -223,6 +313,18 @@ export function ProfilePage() {
         padding="lg"
       >
         <div className="space-y-4 text-[15px] leading-8 text-[var(--color-text-secondary)]">
+          {pendingUpdate ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-3 py-2 text-sm">
+              <div className="flex items-center gap-2 text-[var(--color-text-primary)]">
+                <AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />
+                上次下载的安装包尚未安装（v{pendingUpdate.version || '未知'}）
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => { void handlePendingInstall() }}>重新打开安装</Button>
+                <Button size="sm" variant="ghost" onClick={() => { void clearPendingAppUpdate().then(() => setPendingUpdate(null)) }}>忽略</Button>
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-3 border-b border-[var(--color-border-muted)] pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="font-semibold text-[var(--color-text-primary)]">
@@ -231,6 +333,15 @@ export function ProfilePage() {
               {updateCheck?.ok ? (
                 <p className="text-sm text-[var(--color-text-muted)]">
                   {updateCheck.updateAvailable ? `发现新版本 v${updateCheck.latestVersion}` : '已是最新版本'}
+                  {updateCheck.updateAvailable && updateCheck.notesUrl ? (
+                    <button
+                      type="button"
+                      className="ml-2 underline underline-offset-2 hover:text-[var(--color-accent)]"
+                      onClick={() => openExternal(updateCheck.notesUrl)}
+                    >
+                      查看更新说明
+                    </button>
+                  ) : null}
                 </p>
               ) : updateCheck ? (
                 <p className="text-sm text-[var(--color-error)]">{updateCheck.error || '检查更新失败'}</p>
@@ -241,6 +352,18 @@ export function ProfilePage() {
                 <RefreshCw className="h-4 w-4" />
                 检查更新
               </Button>
+              {updateCheck?.ok && updateCheck.updateAvailable ? (
+                updateProgress?.phase === 'done' ? (
+                  <Button size="sm" onClick={() => setConfirmInstall(true)} loading={installing}>
+                    退出并安装
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => { void handleDownloadUpdate() }} loading={downloading}>
+                    <Download className="h-4 w-4" />
+                    下载更新
+                  </Button>
+                )
+              ) : null}
               {updateCheck?.ok && updateCheck.updateAvailable && updateCheck.releaseUrl ? (
                 <Button variant="ghost" size="sm" onClick={() => openExternal(updateCheck.releaseUrl)}>
                   打开下载页
@@ -249,6 +372,16 @@ export function ProfilePage() {
               ) : null}
             </div>
           </div>
+          {updateProgress && (downloading || updateProgress.phase === 'done' || updateProgress.phase === 'error') ? (
+            <div className="rounded-lg border border-[var(--color-border-muted)] px-3 py-2">
+              <Progress
+                percent={updateProgress.progress}
+                status={updateProgress.phase === 'error' ? 'error' : updateProgress.phase === 'done' ? 'success' : 'normal'}
+                size="sm"
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{updateProgress.message}</p>
+            </div>
+          ) : null}
           <p>
             <Badge className="mr-1 rounded-xl px-3 py-1">{projectInfo.introBadge}</Badge>
             {projectInfo.introText}
@@ -280,6 +413,23 @@ export function ProfilePage() {
           </div>
         </div>
       </Card>
+
+      <ConfirmModal
+        open={confirmInstall}
+        title="退出并安装更新"
+        content="应用将立即退出，随后自动打开已下载的安装包。系统可能弹出权限确认，请按提示完成安装。"
+        confirmText="退出并安装"
+        onConfirm={() => {
+          if (pendingUpdate) {
+            // pending 场景已由 handlePendingInstall 启动 waiter，这里只负责退出
+            toast.success('即将退出并安装更新')
+            window.setTimeout(() => Quit(), 800)
+            return
+          }
+          void handleApplyUpdate()
+        }}
+        onClose={() => setConfirmInstall(false)}
+      />
     </div>
   )
 }

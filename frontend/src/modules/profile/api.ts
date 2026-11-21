@@ -1,5 +1,5 @@
 import profilePageConfig from '../../config/profile.config'
-import type { AppUpdateCheckResult, AuthorProfile, IconKey, ProfileChannel, ProfilePageData, ProfileProject } from './types'
+import type { AppUpdateCheckResult, AppUpdateInfo, AuthorProfile, IconKey, ProfileChannel, ProfilePageData, ProfileProject, UpdatePendingInfo } from './types'
 
 const PROFILE_ICON_KEYS: IconKey[] = [
   'book-open',
@@ -79,6 +79,83 @@ export async function loadCurrentAppVersion(): Promise<string> {
     return typeof config?.version === 'string' ? config.version.trim() : ''
   }
   return ''
+}
+
+export async function checkAppUpdate(): Promise<AppUpdateInfo> {
+  const fallback: AppUpdateInfo = {
+    ok: false,
+    currentVersion: '',
+    latestVersion: '',
+    updateAvailable: false,
+    releaseUrl: '',
+    notesUrl: '',
+    force: false,
+    assets: {},
+    error: '当前环境不支持更新检查',
+  }
+  const bindings: any = await getBindings()
+  const goApp = (window as any).go?.main?.App
+  let raw: any
+  if (bindings?.CheckAppUpdate) {
+    raw = await bindings.CheckAppUpdate()
+  } else if (goApp?.CheckAppUpdate) {
+    raw = await goApp.CheckAppUpdate()
+  } else {
+    return fallback
+  }
+  return {
+    ok: raw?.ok === true,
+    currentVersion: typeof raw?.currentVersion === 'string' ? raw.currentVersion.trim() : '',
+    latestVersion: typeof raw?.latestVersion === 'string' ? raw.latestVersion.trim() : '',
+    updateAvailable: raw?.updateAvailable === true,
+    releaseUrl: typeof raw?.releaseUrl === 'string' ? raw.releaseUrl.trim() : '',
+    notesUrl: typeof raw?.notesUrl === 'string' ? raw.notesUrl.trim() : '',
+    force: raw?.force === true,
+    assets: raw?.assets && typeof raw.assets === 'object' ? raw.assets : {},
+    error: typeof raw?.error === 'string' ? raw.error.trim() : '',
+  }
+}
+
+async function invokeUpdateMethod(name: string, ...args: any[]): Promise<boolean> {
+  const bindings: any = await getBindings()
+  const goApp = (window as any).go?.main?.App
+  if (bindings?.[name]) {
+    await bindings[name](...args)
+    return true
+  }
+  if (goApp?.[name]) {
+    await goApp[name](...args)
+    return true
+  }
+  return false
+}
+
+export async function downloadAppUpdate(version: string, assetKey: string): Promise<boolean> {
+  return invokeUpdateMethod('DownloadAppUpdate', version, assetKey)
+}
+
+export async function applyAppUpdate(version: string, assetKey: string): Promise<boolean> {
+  return invokeUpdateMethod('ApplyAppUpdate', version, assetKey)
+}
+
+export async function applyPendingAppUpdate(): Promise<boolean> {
+  return invokeUpdateMethod('ApplyPendingAppUpdate')
+}
+
+export async function getPendingAppUpdate(): Promise<UpdatePendingInfo | null> {
+  const bindings: any = await getBindings()
+  const goApp = (window as any).go?.main?.App
+  let raw: any
+  if (bindings?.GetPendingAppUpdate) {
+    raw = await bindings.GetPendingAppUpdate()
+  } else if (goApp?.GetPendingAppUpdate) {
+    raw = await goApp.GetPendingAppUpdate()
+  }
+  return raw?.installerPath ? raw as UpdatePendingInfo : null
+}
+
+export async function clearPendingAppUpdate(): Promise<boolean> {
+  return invokeUpdateMethod('ClearPendingAppUpdate')
 }
 
 export async function checkForUpdates(): Promise<AppUpdateCheckResult> {

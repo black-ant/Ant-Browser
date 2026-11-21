@@ -2,8 +2,12 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,6 +90,52 @@ func TestCheckForUpdatesDoesNotRequestWithUnknownCurrentVersion(t *testing.T) {
 	}
 	if requested {
 		t.Fatal("update check requested release data with unknown current version")
+	}
+}
+
+func TestFetchAppUpdateInfoParsesManifestAssets(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(request.URL.Path, "/manifest") {
+			_, _ = writer.Write([]byte(`{"version":"1.9.6","notesUrl":"https://example.com/notes","force":true,"assets":{"windows-amd64":{"name":"setup.exe","sha256":"abc123"}}}`))
+			return
+		}
+		base := strings.TrimSuffix(server.URL, "/")
+		_, _ = writer.Write([]byte(fmt.Sprintf(
+			`{"tag_name":"v1.9.6","html_url":"https://example.com/release","assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"},{"name":"update-manifest.json","browser_download_url":"%s/manifest"}]}`,
+			base, base,
+		)))
+	}))
+	defer server.Close()
+
+	info := fetchAppUpdateInfo(context.Background(), "1.9.5", server.URL, server.Client())
+	if !info.OK || !info.UpdateAvailable {
+		t.Fatalf("update info = %+v", info)
+	}
+	asset, ok := info.Assets["windows-amd64"]
+	if !ok || asset.Name != "setup.exe" || asset.SHA256 != "abc123" {
+		t.Fatalf("windows asset = %+v, want setup.exe/abc123", asset)
+	}
+	if !strings.HasSuffix(asset.URL, "/setup.exe") {
+		t.Fatalf("asset url = %q", asset.URL)
+	}
+	if !info.Force || info.NotesURL != "https://example.com/notes" {
+		t.Fatalf("manifest flags = force:%v notes:%q", info.Force, info.NotesURL)
+	}
+}
+
+func TestSHA256File(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "payload.bin")
+	if err := os.WriteFile(path, []byte("abc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := sha256File(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" {
+		t.Fatalf("sha256 = %q", sum)
 	}
 }
 

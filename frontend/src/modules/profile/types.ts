@@ -31,3 +31,28 @@ export interface AppUpdateCheckResult {
   releaseUrl: string
   error: string
 }
+
+export interface AppUpdateAsset {
+  name: string
+  url: string
+  sha256: string
+}
+
+export interface AppUpdateInfo extends AppUpdateCheckResult {
+  notesUrl: string
+  force: boolean
+  assets: Record<string, AppUpdateAsset>
+}
+
+export interface UpdateProgress {
+  phase: string
+  progress: number
+  message: string
+}
+
+export interface UpdatePendingInfo {
+  version: string
+  installerPath: string
+  pid: number
+  createdAt: string
+}

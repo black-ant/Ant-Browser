@@ -61,6 +61,38 @@ func (c ProxySourceRefreshConfig) IsEnabled() bool {
 	return c.Enabled == nil || *c.Enabled
 }
 
+// UpdateConfig 应用更新检查与安装。
+type UpdateConfig struct {
+	Enabled            *bool  `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	AutoCheck          *bool  `yaml:"auto_check,omitempty" json:"autoCheck,omitempty"`
+	CheckIntervalHours int    `yaml:"check_interval_hours,omitempty" json:"checkIntervalHours,omitempty"`
+	Repo               string `yaml:"repo,omitempty" json:"repo,omitempty"`
+	Proxy              string `yaml:"proxy,omitempty" json:"proxy,omitempty"`
+	VerifyChecksum     *bool  `yaml:"verify_checksum,omitempty" json:"verifyChecksum,omitempty"`
+}
+
+// IsEnabled 未显式配置时默认开启更新检查。
+func (c UpdateConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
+// ShouldAutoCheck 未显式配置时默认开启自动检查。
+func (c UpdateConfig) ShouldAutoCheck() bool {
+	return c.AutoCheck == nil || *c.AutoCheck
+}
+
+// VerifySHA256 未显式配置时默认校验下载包。
+func (c UpdateConfig) VerifySHA256() bool {
+	return c.VerifyChecksum == nil || *c.VerifyChecksum
+}
+
+func (c UpdateConfig) IntervalHours() int {
+	if c.CheckIntervalHours <= 0 {
+		return 24
+	}
+	return c.CheckIntervalHours
+}
+
 // Config 应用配置
 type Config struct {
 	Database           DatabaseConfig           `yaml:"database"`
@@ -73,6 +105,7 @@ type Config struct {
 	LaunchServer       LaunchServerConfig       `yaml:"launch_server"`
 	Automation         AutomationConfig         `yaml:"automation"`
 	Backup             BackupConfig             `yaml:"backup"`
+	Update             UpdateConfig             `yaml:"update,omitempty"`
 }
 
 // SourceAlignPair 一次对齐明细：旧节点名 → 新节点名及匹配方式。

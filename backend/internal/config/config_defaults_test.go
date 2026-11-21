@@ -132,6 +132,27 @@ func TestBridgeCustomDNSYAMLRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNormalizeConfigUpdateDefaults(t *testing.T) {
+	config := &Config{}
+	normalizeConfig(config)
+	if config.Update.Repo != "black-ant/Ant-Browser" {
+		t.Fatalf("update repo = %q", config.Update.Repo)
+	}
+	if config.Update.CheckIntervalHours != 24 {
+		t.Fatalf("update interval = %d, want 24", config.Update.CheckIntervalHours)
+	}
+	if !config.Update.IsEnabled() || !config.Update.ShouldAutoCheck() || !config.Update.VerifySHA256() {
+		t.Fatal("update defaults should be enabled with checksum verification")
+	}
+
+	off := false
+	custom := &Config{Update: UpdateConfig{Enabled: &off, AutoCheck: &off, VerifyChecksum: &off}}
+	normalizeConfig(custom)
+	if custom.Update.IsEnabled() || custom.Update.ShouldAutoCheck() || custom.Update.VerifySHA256() {
+		t.Fatal("explicitly disabled update settings must not be overridden")
+	}
+}
+
 func assertStringSliceContains(t *testing.T, values []string, expected string) {
 	t.Helper()
 	for _, value := range values {

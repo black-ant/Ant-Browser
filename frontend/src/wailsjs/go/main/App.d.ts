@@ -10,6 +10,10 @@ import {logger} from '../models';
 import {launchcode} from '../models';
 import {time} from '../models';
 
+export function ApplyAppUpdate(arg1:string,arg2:string):Promise<void>;
+
+export function ApplyPendingAppUpdate():Promise<void>;
+
 export function AutomationDemoCreateProfile():Promise<Record<string, any>>;
 
 export function AutomationDemoCreateProfileWithOptions(arg1:string):Promise<Record<string, any>>;
@@ -330,15 +334,21 @@ export function BrowserSnapshotList(arg1:string):Promise<Array<backend.SnapshotI
 
 export function BrowserSnapshotRestore(arg1:string,arg2:string):Promise<void>;
 
+export function CheckAppUpdate():Promise<backend.AppUpdateInfo>;
+
 export function CheckForUpdates():Promise<Record<string, any>>;
 
 export function ClearAppLogs():Promise<void>;
+
+export function ClearPendingAppUpdate():Promise<void>;
 
 export function CreateGroup(arg1:browser.GroupInput):Promise<browser.Group>;
 
 export function DeleteBrowserProxyVirtualGroup(arg1:string):Promise<void>;
 
 export function DeleteGroup(arg1:string):Promise<void>;
+
+export function DownloadAppUpdate(arg1:string,arg2:string):Promise<void>;
 
 export function FetchRemoteAuthorProfile(arg1:string,arg2:number):Promise<Record<string, any>>;
 
@@ -366,6 +376,8 @@ export function GetLogLevel():Promise<string>;
 
 export function GetMemoryStats():Promise<Record<string, any>>;
 
+export function GetPendingAppUpdate():Promise<backend.UpdatePendingInfo>;
+
 export function GetProxyCheckSettings():Promise<config.ProxyCheckConfig>;
 
 export function GetRunningInstances():Promise<Array<browser.Profile>>;
@@ -375,6 +387,8 @@ export function InstallAutomationRuntime():Promise<Record<string, any>>;
 export function ListGroups():Promise<Array<browser.GroupWithCount>>;
 
 export function MoveInstancesToGroup(arg1:Array<string>,arg2:string):Promise<void>;
+
+export function NotifyPendingAppUpdate():Promise<void>;
 
 export function OpenBackupPath(arg1:string):Promise<void>;
 

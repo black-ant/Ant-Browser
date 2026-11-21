@@ -84,6 +84,8 @@ func (a *App) startup(ctx context.Context) {
 	a.startupInitBackupScheduler()
 	a.startupInitProxySourceRefreshScheduler()
 	a.startupInitRuntimeCleanup()
+	a.NotifyPendingAppUpdate()
+	a.startupInitAutoUpdateCheck()
 	a.emitRuntimeEvent("app:ready")
 
 	log.Info("应用启动成功")
@@ -165,10 +167,10 @@ func (a *App) reportDatabaseRecovery(log *logger.Logger, recovery database.Recov
 		logger.F("backup", recovery.BrokenBackupPath),
 		logger.F("parked", recovery.BrokenParkedPath))
 	a.emitRuntimeEvent("app:db-recovered", map[string]any{
-		"reason":       recovery.Reason,
-		"backup_path":  recovery.BrokenBackupPath,
-		"parked_path":  recovery.BrokenParkedPath,
-		"recovered":    true,
+		"reason":      recovery.Reason,
+		"backup_path": recovery.BrokenBackupPath,
+		"parked_path": recovery.BrokenParkedPath,
+		"recovered":   true,
 	})
 }
 

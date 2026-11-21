@@ -247,6 +247,22 @@ func normalizeConfig(config *Config) {
 	if config.ProxySourceRefresh.Enabled == nil {
 		config.ProxySourceRefresh.Enabled = defaultConfig.ProxySourceRefresh.Enabled
 	}
+	if config.Update.Enabled == nil {
+		config.Update.Enabled = defaultConfig.Update.Enabled
+	}
+	if config.Update.AutoCheck == nil {
+		config.Update.AutoCheck = defaultConfig.Update.AutoCheck
+	}
+	if config.Update.VerifyChecksum == nil {
+		config.Update.VerifyChecksum = defaultConfig.Update.VerifyChecksum
+	}
+	if config.Update.CheckIntervalHours <= 0 {
+		config.Update.CheckIntervalHours = defaultConfig.Update.CheckIntervalHours
+	}
+	if strings.TrimSpace(config.Update.Repo) == "" {
+		config.Update.Repo = defaultConfig.Update.Repo
+	}
+	config.Update.Proxy = strings.TrimSpace(config.Update.Proxy)
 	config.Browser.ProxySourceIgnoredNames = normalizeSourceIgnoredNames(config.Browser.ProxySourceIgnoredNames)
 
 	if config.LaunchServer.Port <= 0 {
@@ -398,6 +414,13 @@ func DefaultConfig() *Config {
 		},
 		ProxySourceRefresh: ProxySourceRefreshConfig{
 			Enabled: boolPtr(true),
+		},
+		Update: UpdateConfig{
+			Enabled:            boolPtr(true),
+			AutoCheck:          boolPtr(true),
+			CheckIntervalHours: 24,
+			Repo:               "black-ant/Ant-Browser",
+			VerifyChecksum:     boolPtr(true),
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,
