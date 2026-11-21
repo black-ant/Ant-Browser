@@ -14,7 +14,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Badge, Button, Card, ConfirmModal, Progress, toast } from '../../shared/components'
+import { Alert, Badge, Button, Card, ConfirmModal, Progress, toast } from '../../shared/components'
 import { EventsOff, EventsOn, Quit } from '../../wailsjs/runtime/runtime'
 import {
   applyAppUpdate,
@@ -400,21 +400,29 @@ export function ProfilePage() {
               <p className="font-semibold text-[var(--color-text-primary)]">
                 当前版本 {appVersion ? `v${appVersion}` : '未知'}
               </p>
-              {updateCheck?.ok ? (
-                <p className="text-sm text-[var(--color-text-muted)]">
-                  {updateCheck.updateAvailable ? `发现新版本 v${updateCheck.latestVersion}` : '已是最新版本'}
-                  {updateCheck.updateAvailable && updateCheck.notesUrl ? (
-                    <button
-                      type="button"
-                      className="ml-2 underline underline-offset-2 hover:text-[var(--color-accent)]"
-                      onClick={() => openExternal(updateCheck.notesUrl)}
-                    >
-                      查看更新说明
-                    </button>
-                  ) : null}
-                </p>
+              {updateCheck?.ok && updateCheck.updateAvailable ? (
+                <Alert
+                  type="warning"
+                  title={`发现新版本 v${updateCheck.latestVersion}`}
+                  message={
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>当前版本 v{appVersion || updateCheck.currentVersion || '未知'}，建议更新以获得最新功能与修复。</span>
+                      {updateCheck.notesUrl ? (
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 hover:text-[var(--color-accent)]"
+                          onClick={() => openExternal(updateCheck.notesUrl)}
+                        >
+                          查看更新说明
+                        </button>
+                      ) : null}
+                    </div>
+                  }
+                />
+              ) : updateCheck?.ok ? (
+                <p className="text-sm text-[var(--color-text-muted)]">已是最新版本</p>
               ) : updateCheck ? (
-                <p className="text-sm text-[var(--color-error)]">{updateCheck.error || '检查更新失败'}</p>
+                <Alert type="error" title="检查更新失败" message={updateCheck.error || '检查更新失败'} />
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
