@@ -137,10 +137,7 @@ export function ProfilePage() {
   const handleDownloadUpdate = async () => {
     if (downloading) return
     if (testMode) {
-      setUpdateProgress({ phase: 'downloading', progress: 60, message: '测试模式：模拟下载中' })
-      window.setTimeout(() => {
-        setUpdateProgress({ phase: 'done', progress: 100, message: '测试模式：下载完成' })
-      }, 800)
+      runSimulatedDownload(true)
       return
     }
     setDownloading(true)
@@ -188,6 +185,17 @@ export function ProfilePage() {
     setConfirmInstall(true)
   }
 
+  const runSimulatedDownload = (autoConfirm = false) => {
+    setUpdateProgress({ phase: 'resolving', progress: 0, message: '准备下载更新包' })
+    window.setTimeout(() => {
+      setUpdateProgress({ phase: 'downloading', progress: 60, message: '测试模式：模拟下载中' })
+    }, 300)
+    window.setTimeout(() => {
+      setUpdateProgress({ phase: 'done', progress: 100, message: '测试模式：下载完成' })
+      if (autoConfirm) setConfirmInstall(true)
+    }, 1200)
+  }
+
   const handleSimulateUpdate = () => {
     setTestMode(true)
     setPendingUpdate(null)
@@ -202,7 +210,7 @@ export function ProfilePage() {
       assets: {},
       error: '',
     })
-    setUpdateProgress(null)
+    runSimulatedDownload(true)
     toast.success('已模拟发现新版本 v99.0.0-test')
   }
 
@@ -216,6 +224,7 @@ export function ProfilePage() {
       pid: 0,
       createdAt: '',
     })
+    setConfirmInstall(true)
     toast.success('已模拟待安装状态')
   }
 
