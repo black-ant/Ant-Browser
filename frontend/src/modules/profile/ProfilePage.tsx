@@ -56,6 +56,7 @@ export function ProfilePage() {
   const [pendingUpdate, setPendingUpdate] = useState<UpdatePendingInfo | null>(null)
   const [confirmInstall, setConfirmInstall] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const [testMode, setTestMode] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -135,6 +136,13 @@ export function ProfilePage() {
 
   const handleDownloadUpdate = async () => {
     if (downloading) return
+    if (testMode) {
+      setUpdateProgress({ phase: 'downloading', progress: 60, message: '测试模式：模拟下载中' })
+      window.setTimeout(() => {
+        setUpdateProgress({ phase: 'done', progress: 100, message: '测试模式：下载完成' })
+      }, 800)
+      return
+    }
     setDownloading(true)
     setUpdateProgress({ phase: 'resolving', progress: 0, message: '准备下载更新包' })
     try {
@@ -168,12 +176,56 @@ export function ProfilePage() {
   }
 
   const handlePendingInstall = async () => {
+    if (testMode) {
+      setConfirmInstall(true)
+      return
+    }
     const started = await applyPendingAppUpdate()
     if (!started) {
       toast.error('当前环境不支持自动安装')
       return
     }
     setConfirmInstall(true)
+  }
+
+  const handleSimulateUpdate = () => {
+    setTestMode(true)
+    setPendingUpdate(null)
+    setUpdateCheck({
+      ok: true,
+      currentVersion: appVersion || '1.9.5',
+      latestVersion: '99.0.0-test',
+      updateAvailable: true,
+      releaseUrl: '',
+      notesUrl: '',
+      force: false,
+      assets: {},
+      error: '',
+    })
+    setUpdateProgress(null)
+    toast.success('已模拟发现新版本 v99.0.0-test')
+  }
+
+  const handleSimulatePending = () => {
+    setTestMode(true)
+    setUpdateCheck(null)
+    setUpdateProgress(null)
+    setPendingUpdate({
+      version: '99.0.0-test',
+      installerPath: '',
+      pid: 0,
+      createdAt: '',
+    })
+    toast.success('已模拟待安装状态')
+  }
+
+  const handleClearTest = () => {
+    setTestMode(false)
+    setUpdateCheck(null)
+    setUpdateProgress(null)
+    setPendingUpdate(null)
+    setConfirmInstall(false)
+    toast.success('已清除测试状态')
   }
 
   const authorInfo = pageData.author
@@ -306,6 +358,15 @@ export function ProfilePage() {
         </div>
       </Card>
 
+      <Card title="更新链路测试" className="rounded-[24px]" padding="lg">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={handleSimulateUpdate}>模拟发现新版本</Button>
+          <Button variant="secondary" size="sm" onClick={handleSimulatePending}>模拟待安装</Button>
+          <Button variant="ghost" size="sm" onClick={handleClearTest}>清除测试状态</Button>
+          <span className="text-xs text-[var(--color-text-muted)]">仅模拟界面状态，不触发真实下载或退出</span>
+        </div>
+      </Card>
+
       <Card
         title="关于本项目"
         actions={<Coffee className="h-4 w-4 text-[var(--color-text-muted)]" />}
@@ -420,6 +481,11 @@ export function ProfilePage() {
         content="应用将立即退出，随后自动打开已下载的安装包。系统可能弹出权限确认，请按提示完成安装。"
         confirmText="退出并安装"
         onConfirm={() => {
+          if (testMode) {
+            setConfirmInstall(false)
+            toast.success('测试模式：跳过退出')
+            return
+          }
           if (pendingUpdate) {
             // pending 场景已由 handlePendingInstall 启动 waiter，这里只负责退出
             toast.success('即将退出并安装更新')
