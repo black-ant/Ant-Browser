@@ -14,7 +14,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Alert, Badge, Button, Card, ConfirmModal, Progress, toast } from '../../shared/components'
+import { Alert, Badge, Button, Card, ConfirmModal, FormItem, Input, Modal, Progress, Select, toast } from '../../shared/components'
 import { EventsOff, EventsOn, Quit } from '../../wailsjs/runtime/runtime'
 import {
   applyAppUpdate,
@@ -22,11 +22,13 @@ import {
   checkAppUpdate,
   clearPendingAppUpdate,
   createDefaultProfilePageData,
-  downloadAppUpdate,
+  downloadAppUpdateWithProxy,
   getPendingAppUpdate,
   loadCurrentAppVersion,
   loadProfilePageData,
 } from './api'
+import { fetchBrowserProxies } from '../browser/api'
+import type { BrowserProxy } from '../browser/types'
 import type { AppUpdateInfo, IconKey, ProfilePageData, UpdatePendingInfo, UpdateProgress } from './types'
 
 const ICON_MAP = {
@@ -57,6 +59,11 @@ export function ProfilePage() {
   const [confirmInstall, setConfirmInstall] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [testMode, setTestMode] = useState(false)
+  const [downloadProxyOpen, setDownloadProxyOpen] = useState(false)
+  const [proxyMode, setProxyMode] = useState<'direct' | 'pool' | 'custom'>('direct')
+  const [proxyId, setProxyId] = useState('')
+  const [customProxy, setCustomProxy] = useState('')
+  const [proxyOptions, setProxyOptions] = useState<BrowserProxy[]>([])
 
   useEffect(() => {
     let active = true
@@ -68,6 +75,12 @@ export function ProfilePage() {
     }
 
     void syncProfile()
+
+    void fetchBrowserProxies()
+      .then(list => {
+        if (active) setProxyOptions(list.filter(item => item.proxyId && item.proxyId !== '__direct__'))
+      })
+      .catch(() => {})
 
     void loadCurrentAppVersion()
       .then((version) => {
@@ -140,10 +153,27 @@ export function ProfilePage() {
       runSimulatedDownload(true)
       return
     }
+    setDownloadProxyOpen(true)
+  }
+
+  const handleConfirmDownloadProxy = async () => {
+    setDownloadProxyOpen(false)
+    let proxyConfig = ''
+    if (proxyMode === 'pool') {
+      const selected = proxyOptions.find(item => item.proxyId === proxyId)
+      proxyConfig = selected?.proxyConfig?.trim() || proxyId
+    } else if (proxyMode === 'custom') {
+      proxyConfig = customProxy.trim()
+    }
+
     setDownloading(true)
-    setUpdateProgress({ phase: 'resolving', progress: 0, message: '准备下载更新包' })
+    setUpdateProgress({
+      phase: 'resolving',
+      progress: 0,
+      message: proxyConfig ? '准备下载（使用指定代理）' : '准备下载（直连）',
+    })
     try {
-      const started = await downloadAppUpdate('', '')
+      const started = await downloadAppUpdateWithProxy('', '', proxyConfig)
       if (!started) {
         toast.error('当前环境不支持应用内更新')
         setDownloading(false)
@@ -491,6 +521,51 @@ export function ProfilePage() {
           </div>
         </div>
       </Card>
+
+      <Modal
+        open={downloadProxyOpen}
+        onClose={() => setDownloadProxyOpen(false)}
+        title="下载更新 · 选择代理"
+        width="520px"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDownloadProxyOpen(false)}>取消</Button>
+            <Button onClick={() => { void handleConfirmDownloadProxy() }}>开始下载</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <FormItem label="下载代理">
+            <Select
+              value={proxyMode}
+              onChange={event => setProxyMode(event.target.value as 'direct' | 'pool' | 'custom')}
+              options={[
+                { value: 'direct', label: '直连' },
+                { value: 'pool', label: '使用代理池节点' },
+                { value: 'custom', label: '自定义代理地址' },
+              ]}
+            />
+          </FormItem>
+          {proxyMode === 'pool' ? (
+            <FormItem label="代理节点">
+              <Select
+                value={proxyId}
+                onChange={event => setProxyId(event.target.value)}
+                options={proxyOptions.map(item => ({ value: item.proxyId, label: item.proxyName || item.proxyId }))}
+              />
+            </FormItem>
+          ) : null}
+          {proxyMode === 'custom' ? (
+            <FormItem label="代理地址" hint="例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080">
+              <Input
+                value={customProxy}
+                onChange={event => setCustomProxy(event.target.value)}
+                placeholder="socks5://127.0.0.1:7890"
+              />
+            </FormItem>
+          ) : null}
+        </div>
+      </Modal>
 
       <ConfirmModal
         open={confirmInstall}

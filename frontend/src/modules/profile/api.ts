@@ -138,6 +138,10 @@ export async function applyAppUpdate(version: string, assetKey: string): Promise
   return invokeUpdateMethod('ApplyAppUpdate', version, assetKey)
 }
 
+export async function downloadAppUpdateWithProxy(version: string, assetKey: string, proxyConfig: string): Promise<boolean> {
+  return invokeUpdateMethod('DownloadAppUpdateWithProxy', version, assetKey, proxyConfig)
+}
+
 export async function applyPendingAppUpdate(): Promise<boolean> {
   return invokeUpdateMethod('ApplyPendingAppUpdate')
 }

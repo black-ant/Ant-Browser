@@ -682,6 +682,10 @@ export function DownloadAppUpdate(arg1, arg2) {
   return window['go']['main']['App']['DownloadAppUpdate'](arg1, arg2);
 }
 
+export function DownloadAppUpdateWithProxy(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DownloadAppUpdateWithProxy'](arg1, arg2, arg3);
+}
+
 export function FetchRemoteAuthorProfile(arg1, arg2) {
   return window['go']['main']['App']['FetchRemoteAuthorProfile'](arg1, arg2);
 }

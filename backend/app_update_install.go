@@ -56,7 +56,7 @@ func (a *App) emitUpdateProgress(ctx context.Context, phase string, progress int
 	a.emitRuntimeEventWithContext(ctx, updateProgressEvent, payload)
 }
 
-func (a *App) updateAsset(version string, assetKey string) (AppUpdateAsset, string, error) {
+func (a *App) updateAsset(version string, assetKey string, proxyConfig string) (AppUpdateAsset, string, error) {
 	if a == nil || a.config == nil || !a.config.Update.IsEnabled() {
 		return AppUpdateAsset{}, "", fmt.Errorf("更新检查已关闭")
 	}
@@ -65,7 +65,7 @@ func (a *App) updateAsset(version string, assetKey string) (AppUpdateAsset, stri
 	if assetKey == "" {
 		assetKey = updateAssetKey()
 	}
-	info := fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), a.updateHTTPClient())
+	info := fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), a.updateHTTPClientFor(proxyConfig))
 	if !info.OK {
 		return AppUpdateAsset{}, "", fmt.Errorf("获取更新信息失败: %s", info.Error)
 	}
@@ -82,9 +82,18 @@ func (a *App) updateAsset(version string, assetKey string) (AppUpdateAsset, stri
 	return asset, version, nil
 }
 
-// DownloadAppUpdate 后台下载指定版本的更新包并校验 SHA256。
+// DownloadAppUpdate 使用配置里的代理后台下载更新包。
 func (a *App) DownloadAppUpdate(version string, assetKey string) error {
-	asset, version, err := a.updateAsset(version, assetKey)
+	return a.downloadAppUpdate(version, assetKey, a.updateProxyConfig())
+}
+
+// DownloadAppUpdateWithProxy 允许前端临时指定代理下载更新包，不写入配置。
+func (a *App) DownloadAppUpdateWithProxy(version string, assetKey string, proxyConfig string) error {
+	return a.downloadAppUpdate(version, assetKey, proxyConfig)
+}
+
+func (a *App) downloadAppUpdate(version string, assetKey string, proxyConfig string) error {
+	asset, version, err := a.updateAsset(version, assetKey, proxyConfig)
 	if err != nil {
 		return err
 	}
@@ -110,7 +119,7 @@ func (a *App) DownloadAppUpdate(version string, assetKey string) error {
 		}
 		defer out.Close()
 
-		client := a.updateHTTPClient()
+		client := a.updateHTTPClientFor(proxyConfig)
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.URL, nil)
 		if err != nil {
 			emit("error", 0, "创建下载请求失败: "+err.Error())
@@ -274,7 +283,7 @@ func (a *App) NotifyPendingAppUpdate() {
 
 // ApplyAppUpdate 写入安装标记并拉起脱离主进程的等待脚本；调用方随后退出应用。
 func (a *App) ApplyAppUpdate(version string, assetKey string) error {
-	asset, version, err := a.updateAsset(version, assetKey)
+	asset, version, err := a.updateAsset(version, assetKey, a.updateProxyConfig())
 	if err != nil {
 		return err
 	}

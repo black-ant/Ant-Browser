@@ -76,12 +76,19 @@ func (a *App) updateReleaseAPIURL() string {
 	return fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 }
 
-func (a *App) updateHTTPClient() *http.Client {
-	proxyConfig := ""
-	if a != nil && a.config != nil {
-		proxyConfig = strings.TrimSpace(a.config.Update.Proxy)
+func (a *App) updateProxyConfig() string {
+	if a == nil || a.config == nil {
+		return ""
 	}
-	client, _, err := a.unifiedProxyCoreHTTPClient(updateCheckTimeout, proxyConfig)
+	return strings.TrimSpace(a.config.Update.Proxy)
+}
+
+func (a *App) updateHTTPClient() *http.Client {
+	return a.updateHTTPClientFor(a.updateProxyConfig())
+}
+
+func (a *App) updateHTTPClientFor(proxyConfig string) *http.Client {
+	client, _, err := a.unifiedProxyCoreHTTPClient(updateCheckTimeout, strings.TrimSpace(proxyConfig))
 	if err != nil || client == nil {
 		return &http.Client{Timeout: updateCheckTimeout}
 	}
