@@ -140,8 +140,13 @@ func (a *App) handleProxyBridgeDied(engine string, key string, err error) {
 	}
 	a.bridgeMu.Unlock()
 	if a.browserMgr != nil && a.config != nil {
+		customDNS := config.BridgeCustomDNSValue(a.config)
 		for _, item := range a.getLatestProxies() {
-			if proxy.ComputeBridgeKey(item.ProxyConfig, item.DnsServers, engine) != key {
+			dnsServers := customDNS
+			if dnsServers == "" {
+				dnsServers = strings.TrimSpace(item.DnsServers)
+			}
+			if proxy.ComputeBridgeKey(item.ProxyConfig, dnsServers, engine) != key {
 				continue
 			}
 			proxyID := strings.TrimSpace(item.ProxyId)

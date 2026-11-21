@@ -37,6 +37,15 @@ func (c clashBridgeDNS) hasServers() bool {
 		len(c.DefaultNameserver) > 0 || len(c.Fallback) > 0
 }
 
+// BridgeDNSServers 返回可注入桥接配置的 DNS。
+// 优先级：全局自定义 DNS（browser.bridge_custom_dns）> 节点自带订阅 DNS > 空（回退系统/公共 DNS）。
+func BridgeDNSServers(cfg *config.Config, proxyConfig string, proxies []config.BrowserProxy, proxyId string) string {
+	if custom := config.BridgeCustomDNSValue(cfg); custom != "" {
+		return custom
+	}
+	return proxyDNSServersFor(proxyConfig, proxies, proxyId)
+}
+
 // proxyDNSServersFor 返回节点绑定的订阅 DNS。
 // 先按 proxyId 精确匹配；proxyId 为空时按节点配置文本反查，避免桥接丢失订阅 DNS。
 func proxyDNSServersFor(proxyConfig string, proxies []config.BrowserProxy, proxyId string) string {
@@ -82,6 +91,10 @@ func parseClashBridgeDNS(raw string) clashBridgeDNS {
 		if filter, ok := wrapper.DNS["fallback-filter"].(map[string]interface{}); ok {
 			cfg.FallbackFilter = filter
 		}
+		// dns.enable: false 明确表示不启用，mihomo / sing-box 统一不使用这段配置
+		if cfg.Enable != nil && !*cfg.Enable {
+			return clashBridgeDNS{}
+		}
 		if cfg.hasServers() {
 			return cfg
 		}
@@ -126,7 +139,9 @@ func stringListYAMLValue(value interface{}) []string {
 }
 
 func splitDNSList(raw string) []string {
-	parts := strings.Split(raw, ",")
+	parts := strings.FieldsFunc(raw, func(char rune) bool {
+		return char == ',' || char == '\n' || char == '\r'
+	})
 	return trimDNSList(parts)
 }
 
@@ -146,6 +161,11 @@ func trimDNSList(items []string) []string {
 // listen / fake-ip 等字段会带来端口占用与解析行为偏差，不下发。
 func buildMihomoDNSConfig(raw string) map[string]interface{} {
 	cfg := parseClashBridgeDNS(raw)
+	// 过滤无法下发的地址：填错 DNS 时宁可不用，也不能让桥接配置被内核拒绝
+	cfg.DefaultNameserver = usableDNSList(cfg.DefaultNameserver)
+	cfg.Nameserver = usableDNSList(cfg.Nameserver)
+	cfg.Fallback = usableDNSList(cfg.Fallback)
+	cfg.ProxyServerNameserver = usableDNSList(cfg.ProxyServerNameserver)
 	if !cfg.hasServers() {
 		return nil
 	}
@@ -322,6 +342,26 @@ func convertSingBoxDNSServer(raw string, tag string, bootstrapTag string) map[st
 		}
 	}
 	return server
+}
+
+// usableDNSList 过滤掉桥接内核无法识别的 DNS 地址，避免错误配置导致桥接启动失败。
+func usableDNSList(list []string) []string {
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		if convertSingBoxDNSServer(item, "check", "") != nil {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// HasUsableDNS 判断输入的 DNS 是否至少含一个可下发到桥接内核的地址，用于保存前校验。
+func HasUsableDNS(raw string) bool {
+	cfg := parseClashBridgeDNS(raw)
+	return len(usableDNSList(cfg.DefaultNameserver)) > 0 ||
+		len(usableDNSList(cfg.Nameserver)) > 0 ||
+		len(usableDNSList(cfg.Fallback)) > 0 ||
+		len(usableDNSList(cfg.ProxyServerNameserver)) > 0
 }
 
 func splitDNSHostPort(value string) (string, string) {

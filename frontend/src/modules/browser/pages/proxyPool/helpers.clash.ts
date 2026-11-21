@@ -67,6 +67,7 @@ export function toDisplayList(proxies: BrowserProxy[]): ProxyDisplayInfo[] {
       speedTestFingerprint: proxy.speedTestFingerprint || '',
       preferredKernel: proxy.preferredKernel || 'auto',
       groupName: proxy.groupName || '',
+      dnsServers: proxy.dnsServers || '',
       sourceId: proxy.sourceId || '',
       sourceUrl: proxy.sourceUrl || '',
       sourceAutoRefresh: !!proxy.sourceAutoRefresh,

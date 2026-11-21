@@ -22,6 +22,7 @@ const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
   startReadyTimeoutMs: 3000,
   startStableWindowMs: 1200,
   defaultConnectorType: 'xray',
+  bridgeCustomDns: '',
 }
 
 export function useBrowserListSettings() {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ant-chrome/backend/internal/config"
@@ -160,5 +161,136 @@ func TestComputeBridgeKeyIncludesDNSForEveryEngine(t *testing.T) {
 		if ComputeBridgeKey(src, "dns-a", engine) == ComputeBridgeKey(src, "dns-b", engine) {
 			t.Fatalf("%s bridge key ignored subscription DNS", engine)
 		}
+	}
+}
+
+func TestBridgeDNSServersPrefersCustomDNS(t *testing.T) {
+	wantNodeDNS := strings.TrimSpace(issue85DNSYAML)
+	proxies := []config.BrowserProxy{{ProxyId: "p1", DnsServers: issue85DNSYAML}}
+
+	// 未配置自定义：走节点/订阅 DNS
+	if got := BridgeDNSServers(nil, "", proxies, "p1"); got != wantNodeDNS {
+		t.Fatalf("未配置自定义时应使用订阅 DNS，got %q", got)
+	}
+	if got := BridgeDNSServers(&config.Config{}, "", proxies, "p1"); got != wantNodeDNS {
+		t.Fatalf("空配置应使用订阅 DNS，got %q", got)
+	}
+
+	// 配置了自定义：自定义优先
+	custom := "1.1.1.1\nhttps://doh.example.com/dns-query"
+	customCfg := &config.Config{Browser: config.BrowserConfig{BridgeCustomDNS: custom}}
+	if got := BridgeDNSServers(customCfg, "", proxies, "p1"); got != custom {
+		t.Fatalf("自定义 DNS 应覆盖订阅 DNS，got %q", got)
+	}
+
+	// 既无自定义也无节点 DNS：空（桥接回退公共/系统 DNS）
+	if got := BridgeDNSServers(&config.Config{}, "", nil, ""); got != "" {
+		t.Fatalf("无任何 DNS 时应返回空，got %q", got)
+	}
+}
+
+func TestParseClashBridgeDNSAcceptsMultilineList(t *testing.T) {
+	cfg := parseClashBridgeDNS("1.1.1.1\nhttps://doh.example.com/dns-query")
+	if len(cfg.Nameserver) != 2 || cfg.Nameserver[0] != "1.1.1.1" || cfg.Nameserver[1] != "https://doh.example.com/dns-query" {
+		t.Fatalf("多行 DNS 列表解析失败: %#v", cfg.Nameserver)
+	}
+}
+
+func TestBuildMihomoDNSConfigEmptyWhenNoSubscriptionDNS(t *testing.T) {
+	if dns := buildMihomoDNSConfig(""); dns != nil {
+		t.Fatalf("无订阅 DNS 时不应生成 dns 段: %#v", dns)
+	}
+}
+
+func TestHasUsableDNS(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want bool
+	}{
+		{"", false},
+		{"abc", false},
+		{"1.1.1.1", true},
+		{"https://doh.example.com/dns-query", true},
+		{"dns:\n  enable: false\n  nameserver:\n    - 1.1.1.1", false},
+		{"dns:\n  nameserver:\n    - bad-host\n  proxy-server-nameserver:\n    - https://doh.example.com/dns-query", true},
+	}
+	for _, tc := range cases {
+		if got := HasUsableDNS(tc.raw); got != tc.want {
+			t.Fatalf("HasUsableDNS(%q) = %v, want %v", tc.raw, got, tc.want)
+		}
+	}
+}
+
+func TestBuildMihomoDNSConfigFiltersInvalidAddresses(t *testing.T) {
+	dns := buildMihomoDNSConfig("dns:\n  nameserver:\n    - bad-host\n    - 1.1.1.1")
+	if dns == nil {
+		t.Fatal("有效的 DNS 项应保留")
+	}
+	servers, ok := dns["nameserver"].([]string)
+	if !ok || len(servers) != 1 || servers[0] != "1.1.1.1" {
+		t.Fatalf("nameserver = %#v, want [1.1.1.1]", dns["nameserver"])
+	}
+	if got := buildMihomoDNSConfig("abc"); got != nil {
+		t.Fatalf("全部无效时不应生成 dns 段: %#v", got)
+	}
+}
+
+func TestDNSConfigDisabledWhenEnableFalse(t *testing.T) {
+	raw := "dns:\n  enable: false\n  nameserver:\n    - 1.1.1.1\n  proxy-server-nameserver:\n    - https://doh.example.com/dns-query"
+	if got := buildMihomoDNSConfig(raw); got != nil {
+		t.Fatalf("enable:false 不应注入 mihomo dns 段: %#v", got)
+	}
+	cfg, resolver := buildSingBoxDNSConfig(raw)
+	if resolver != "" || cfg["final"] != singBoxPublicDNSTag {
+		t.Fatalf("enable:false 不应影响 sing-box 节点解析: resolver=%q cfg=%#v", resolver, cfg)
+	}
+}
+
+func TestBuildDnsDiagnosticSummaryCountsProxyServerNameserver(t *testing.T) {
+	raw := "dns:\n  nameserver:\n    - 223.5.5.5\n  proxy-server-nameserver:\n    - https://doh.example.com/dns-query"
+	summary := buildDnsDiagnosticSummary(raw)
+	if summary.SourceFormat != "clash" {
+		t.Fatalf("source format = %q, want clash", summary.SourceFormat)
+	}
+	if summary.ProxyServerNameserverCount != 1 {
+		t.Fatalf("proxy-server-nameserver count = %d, want 1", summary.ProxyServerNameserverCount)
+	}
+	if summary.XrayServerCount != 2 {
+		t.Fatalf("xray server count = %d, want 2 (nameserver + proxy-server-nameserver)", summary.XrayServerCount)
+	}
+}
+
+func TestComputeBridgeKeyFallsBackToLegacyKeyWithoutDNS(t *testing.T) {
+	src := "anytls://pw@node.example.com:443"
+	if got, want := ComputeBridgeKey(src, "", ProxyKernelMihomo), computeNodeKey(src+"\x00mihomo"); got != want {
+		t.Fatalf("mihomo legacy key = %q, want %q", got, want)
+	}
+	if got, want := ComputeBridgeKey(src, "", ProxyKernelSingBox), computeNodeKey(src); got != want {
+		t.Fatalf("sing-box legacy key = %q, want %q", got, want)
+	}
+}
+
+func TestBuildProxyDiagnosticNodeKeyMatchesBridgeKey(t *testing.T) {
+	src := "anytls://pw@node.example.com:443?sni=node.example.com"
+	proxies := []config.BrowserProxy{{
+		ProxyId:         "p1",
+		ProxyConfig:     src,
+		DnsServers:      issue85DNSYAML,
+		PreferredKernel: ProxyKernelMihomo,
+	}}
+
+	diag := BuildProxyDiagnostic("", proxies, "p1", BuildDiagnosticOptions{ConnectorType: config.BrowserConnectorMihomo})
+	if diag.NodeKey != ComputeBridgeKey(src, issue85DNSYAML, ProxyKernelMihomo) {
+		t.Fatalf("诊断 NodeKey 与桥接 key 不一致（开启）: %q", diag.NodeKey)
+	}
+
+	customDNS := "1.1.1.1"
+	customCfg := &config.Config{Browser: config.BrowserConfig{BridgeCustomDNS: customDNS}}
+	diagCustom := BuildProxyDiagnostic("", proxies, "p1", BuildDiagnosticOptions{
+		ConnectorType: config.BrowserConnectorMihomo,
+		Config:        customCfg,
+	})
+	if diagCustom.NodeKey != ComputeBridgeKey(src, customDNS, ProxyKernelMihomo) {
+		t.Fatalf("诊断 NodeKey 未使用自定义 DNS: %q", diagCustom.NodeKey)
 	}
 }

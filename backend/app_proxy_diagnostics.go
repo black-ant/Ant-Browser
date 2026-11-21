@@ -15,6 +15,7 @@ func (a *App) BrowserProxyBuildDiagnostic(proxyId string, proxyConfig string) Pr
 		ClashMgr:      a.clashMgr,
 		MieruMgr:      a.mieruMgr,
 		ConnectorType: a.defaultProxyConnectorType(),
+		Config:        a.config,
 	})
 }
 

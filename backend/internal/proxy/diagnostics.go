@@ -15,6 +15,8 @@ type BuildDiagnosticOptions struct {
 	ClashMgr      *ClashManager
 	MieruMgr      *MieruManager
 	ConnectorType string
+	// Config 用于判定"订阅 DNS 注入桥接"开关，保证诊断的 NodeKey 与真实桥接一致。
+	Config *config.Config
 }
 
 // ProxyBuildDiagnostic 是不启动桥接进程的代理构建诊断结果。
@@ -92,15 +94,17 @@ func BuildProxyDiagnostic(proxyConfig string, proxies []config.BrowserProxy, pro
 		result.Errors = append(result.Errors, err.Error())
 		return result
 	}
+	// 与 ensureNodeBridge 同口径计算桥接 DNS，否则诊断里的 NodeKey/Runtime 会指向错误目录
+	dnsServers := BridgeDNSServers(options.Config, src, proxies, proxyId)
 	switch resolution.Kernel {
 	case ProxyKernelMihomo:
-		buildMihomoDiagnostic(src, options.ClashMgr, &result)
+		buildMihomoDiagnostic(src, dnsServers, options.ClashMgr, &result)
 		return result
 	case ProxyKernelSingBox:
-		buildSingBoxDiagnostic(src, options.SingBoxMgr, &result)
+		buildSingBoxDiagnostic(src, dnsServers, options.SingBoxMgr, &result)
 		return result
 	case ProxyKernelXray:
-		buildXrayDiagnostic(src, proxies, proxyId, options.XrayMgr, &result)
+		buildXrayDiagnostic(src, dnsServers, options.XrayMgr, &result)
 		return result
 	case ProxyKernelMieru:
 		buildMieruDiagnostic(src, options.MieruMgr, &result)
@@ -142,7 +146,7 @@ func buildMieruDiagnostic(src string, manager *MieruManager, result *ProxyBuildD
 	result.Runtime = buildRuntimeDiagnostic(manager.resolveWorkdir(result.NodeKey), "client.json", "mieru-stderr.log", "", "")
 }
 
-func buildMihomoDiagnostic(src string, manager *ClashManager, result *ProxyBuildDiagnostic) {
+func buildMihomoDiagnostic(src string, dnsServers string, manager *ClashManager, result *ProxyBuildDiagnostic) {
 	result.Engine = "mihomo"
 	node, err := buildMihomoNode(src)
 	if err != nil {
@@ -150,7 +154,7 @@ func buildMihomoDiagnostic(src string, manager *ClashManager, result *ProxyBuild
 		return
 	}
 	result.Ok = true
-	result.NodeKey = computeNodeKey(src + "\x00mihomo")
+	result.NodeKey = ComputeBridgeKey(src, dnsServers, ProxyKernelMihomo)
 	result.Outbound = sanitizeDiagnosticMap(node)
 	if manager != nil {
 		workDir := manager.resolveMihomoWorkdir(result.NodeKey)
@@ -159,7 +163,7 @@ func buildMihomoDiagnostic(src string, manager *ClashManager, result *ProxyBuild
 	}
 }
 
-func buildSingBoxDiagnostic(src string, manager *SingBoxManager, result *ProxyBuildDiagnostic) {
+func buildSingBoxDiagnostic(src string, dnsServers string, manager *SingBoxManager, result *ProxyBuildDiagnostic) {
 	result.Engine = "sing-box"
 	outbound, err := BuildSingBoxOutbound(src)
 	if err != nil {
@@ -167,7 +171,7 @@ func buildSingBoxDiagnostic(src string, manager *SingBoxManager, result *ProxyBu
 		return
 	}
 	result.Ok = true
-	result.NodeKey = computeNodeKey(src)
+	result.NodeKey = ComputeBridgeKey(src, dnsServers, ProxyKernelSingBox)
 	result.Outbound = sanitizeDiagnosticMap(outbound)
 	if manager != nil {
 		workDir := manager.resolveWorkdir(result.NodeKey)
@@ -176,9 +180,8 @@ func buildSingBoxDiagnostic(src string, manager *SingBoxManager, result *ProxyBu
 	}
 }
 
-func buildXrayDiagnostic(src string, proxies []config.BrowserProxy, proxyId string, manager *XrayManager, result *ProxyBuildDiagnostic) {
+func buildXrayDiagnostic(src string, dnsServers string, manager *XrayManager, result *ProxyBuildDiagnostic) {
 	result.Engine = "xray"
-	var preferredKeySource string
 	if IsChainSocks5Proxy(src) {
 		chainCfg, err := ParseChainSocks5Config(src)
 		if err != nil {
@@ -218,8 +221,7 @@ func buildXrayDiagnostic(src string, proxies []config.BrowserProxy, proxyId stri
 
 	result.Ok = true
 	result.Inbound = buildXrayDiagnosticInbound()
-	preferredKeySource = src + "\x00" + dnsServersForDiagnostic(proxies, proxyId)
-	result.NodeKey = computeNodeKey(preferredKeySource)
+	result.NodeKey = ComputeBridgeKey(src, dnsServers, ProxyKernelXray)
 	if manager != nil {
 		workDir := manager.resolveWorkdir(result.NodeKey)
 		result.Runtime = buildRuntimeDiagnostic(workDir, "xray-config.json", "xray-stderr.log", "", "xray-error.log")
@@ -312,14 +314,6 @@ func findProxyForDiagnostic(proxies []config.BrowserProxy, proxyId string) (conf
 		}
 	}
 	return config.BrowserProxy{}, false
-}
-
-func dnsServersForDiagnostic(proxies []config.BrowserProxy, proxyId string) string {
-	item, ok := findProxyForDiagnostic(proxies, proxyId)
-	if !ok {
-		return ""
-	}
-	return item.DnsServers
 }
 
 func sanitizeDiagnosticMap(src map[string]interface{}) map[string]interface{} {

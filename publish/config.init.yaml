@@ -36,6 +36,8 @@ logging:
       - secret
 browser:
   user_data_root: data
+  # 全局自定义桥接 DNS：留空则使用节点/订阅 DNS；可填写每行一个地址，或整段 Clash dns: YAML
+  bridge_custom_dns: ""
   default_fingerprint_args:
     - --fingerprint-brand=Chrome
     - --fingerprint-platform=windows

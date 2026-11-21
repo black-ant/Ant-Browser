@@ -18,6 +18,7 @@ export interface CoreSettingsForm {
   restoreLastSession: boolean
   startReadyTimeoutMs: number
   startStableWindowMs: number
+  bridgeCustomDns: string
 }
 
 export interface CoreEditForm {

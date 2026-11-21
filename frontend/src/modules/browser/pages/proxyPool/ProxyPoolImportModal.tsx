@@ -465,7 +465,7 @@ export function ProxyPoolImportModal({
               placeholder={`dns:\n  enable: true\n  nameserver:\n    - 119.29.29.29\n    - 223.5.5.5`}
             />
             <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              留空则不配置 DNS，填写后将应用到本次导入的所有代理
+              留空则不配置 DNS，填写后将应用到本次导入的所有代理；订阅刷新会同步该源 DNS，想固定请用全局「自定义桥接 DNS」
             </p>
           </FormItem>
         )}

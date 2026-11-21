@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ConfirmModal, toast } from '../../../shared/components'
 import type { SortOrder } from '../../../shared/components/Table'
 import type { BrowserProxy, BrowserProxyVirtualGroup, ProxyIPHealthResult, ProxyMissingCleanupResult } from '../types'
-import { cleanupMissingProxies, fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, saveBrowserProxies, updateProxySourceConfig } from '../api'
+import { cleanupMissingProxies, fetchBrowserProxies, fetchBrowserProxyGroups, fetchBrowserProxyVirtualGroups, fetchBrowserSettings, saveBrowserProxies, updateProxySourceConfig } from '../api'
 import {
   buildChainImportCandidate,
   buildDirectImportCandidate,
@@ -48,6 +48,7 @@ export function ProxyPoolPage() {
   const navigate = useNavigate()
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
   const [displayList, setDisplayList] = useState<ProxyDisplayInfo[]>([])
+  const [globalCustomDns, setGlobalCustomDns] = useState('')
   const [virtualGroupMembersModal, setVirtualGroupMembersModal] = useState<{
     groupName: string
     strategy?: string
@@ -224,6 +225,9 @@ export function ProxyPoolPage() {
   useEffect(() => {
     void loadProxies()
     void loadBrowserSettings()
+    void fetchBrowserSettings()
+      .then(settings => setGlobalCustomDns(settings.bridgeCustomDns || ''))
+      .catch(() => setGlobalCustomDns(''))
   }, [loadProxies, loadBrowserSettings])
 
   const { protocolOptions, filteredList } = useProxyPoolFilter({
@@ -479,6 +483,7 @@ export function ProxyPoolPage() {
         filterKeyword={filterKeyword}
         filterProtocol={filterProtocol}
         filterAvailableOnly={filterAvailableOnly}
+        globalCustomDns={globalCustomDns}
         groups={groups}
         virtualGroupOptions={virtualGroupOptions}
         ipHealthMap={ipHealthMap}

@@ -147,6 +147,7 @@ export interface ProxyDisplayInfo {
   speedTestFingerprint?: string
   preferredKernel: string
   groupName: string
+  dnsServers?: string
   sourceId: string
   sourceUrl: string
   sourceAutoRefresh: boolean

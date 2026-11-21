@@ -16,6 +16,7 @@ interface ProxyPoolTableCardProps {
   filterKeyword: string
   filterProtocol: string
   filterAvailableOnly: boolean
+  globalCustomDns: string
   groups: string[]
   virtualGroupOptions: Array<{ value: string; label: string }>
   ipHealthMap: Record<string, ProxyIPHealthResult>
@@ -57,6 +58,7 @@ export function ProxyPoolTableCard({
   filterKeyword,
   filterProtocol,
   filterAvailableOnly,
+  globalCustomDns,
   groups,
   virtualGroupOptions,
   ipHealthMap,
@@ -241,6 +243,30 @@ export function ProxyPoolTableCard({
             </div>
           </div>
         )
+      },
+    },
+    {
+      key: 'dns',
+      title: 'DNS',
+      width: '90px',
+      render: (_, record) => {
+        if (globalCustomDns.trim()) {
+          return (
+            <span className="px-1.5 py-0.5 text-xs rounded bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
+              title="全局自定义桥接 DNS，覆盖所有节点">
+              自定义
+            </span>
+          )
+        }
+        if (record.dnsServers?.trim()) {
+          return (
+            <span className="px-1.5 py-0.5 text-xs rounded bg-[var(--color-bg-subtle)] text-[var(--color-text-secondary)]"
+              title="节点 DNS 来自订阅或手动填写；订阅刷新会同步">
+              节点
+            </span>
+          )
+        }
+        return <span className="text-[var(--color-text-muted)]" title="未配置 DNS，桥接回退系统/公共 DNS">-</span>
       },
     },
     {

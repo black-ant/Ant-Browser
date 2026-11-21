@@ -98,7 +98,7 @@ func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig 
 	}
 
 	// 订阅 DNS 必须参与桥接键与配置：节点域名解析结果不同会直接导致握手失败
-	dnsServers := proxyDNSServersFor(proxyConfig, proxies, proxyId)
+	dnsServers := BridgeDNSServers(m.Config, proxyConfig, proxies, proxyId)
 	key := ComputeBridgeKey(src, dnsServers, ProxyKernelMihomo)
 	unlock := m.lockLaunchForKey(key)
 	defer unlock()
@@ -278,7 +278,7 @@ func (m *ClashManager) TestNodeDelay(proxyId string, proxies []config.BrowserPro
 	if _, err := m.EnsureNodeBridge(src, proxies, proxyId); err != nil {
 		return TestResult{ProxyId: proxyId, Ok: false, Engine: "mihomo", Error: err.Error()}
 	}
-	dnsServers := proxyDNSServersFor(src, proxies, proxyId)
+	dnsServers := BridgeDNSServers(m.Config, src, proxies, proxyId)
 	key := ComputeBridgeKey(src, dnsServers, ProxyKernelMihomo)
 	m.mu.Lock()
 	bridge := m.NodeBridges[key]

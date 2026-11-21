@@ -613,3 +613,58 @@ func TestBuildRefreshedProxyPoolEndpointMatch(t *testing.T) {
 		t.Fatalf("对齐明细应记录端点配对: %+v", plan.result.Pairs)
 	}
 }
+
+// 订阅刷新必须把最新 dns 段写回该源所有节点，否则桥接会继续复用旧 DNS。
+func TestBuildRefreshedProxyPoolCarriesSubscriptionDNS(t *testing.T) {
+	const dnsYAML = "dns:\n  nameserver:\n    - 1.1.1.1\n  proxy-server-nameserver:\n    - https://doh.example.com/dns-query\n"
+	meta := proxySourceMeta{SourceID: "src-1", SourceURL: "https://sub.example.com/list", DnsServers: dnsYAML}
+	oldRow := testProxyRow("proxy-old-1", "美国 01", testClashNode(t, "美国 01", map[string]interface{}{"type": "ss"}), "src-1")
+	oldRow.DnsServers = "dns:\n  nameserver:\n    - 9.9.9.9\n"
+
+	plan := buildRefreshedProxyPool(
+		[]BrowserProxy{oldRow},
+		meta,
+		[]clashNode{
+			testClashNode(t, "美国 01", map[string]interface{}{"type": "ss"}),
+			testClashNode(t, "HK-01", map[string]interface{}{"type": "ss", "server": "5.6.7.8"}),
+		},
+		nil,
+		newTestIDGenerator(),
+		time.Now(),
+	)
+
+	sourceRows := 0
+	for _, row := range plan.merged {
+		if proxySourceKey(row) != proxySourceKey(oldRow) {
+			continue
+		}
+		sourceRows++
+		// NormalizeBrowserProxies 会 TrimSpace，比较时同样去掉首尾空白
+		if strings.TrimSpace(row.DnsServers) != strings.TrimSpace(dnsYAML) {
+			t.Fatalf("%s 的订阅 DNS 未随刷新更新: %q", row.ProxyId, row.DnsServers)
+		}
+	}
+	if sourceRows < 2 {
+		t.Fatalf("本源行数 = %d, 期望至少 2（旧节点 + 新增节点）", sourceRows)
+	}
+}
+
+func TestApplyFetchedSubscriptionDNS(t *testing.T) {
+	const newDNS = "dns:\n  nameserver:\n    - 1.1.1.1"
+
+	meta := proxySourceMeta{DnsServers: "dns:\n  nameserver:\n    - 9.9.9.9"}
+	applyFetchedSubscriptionDNS(&meta, map[string]interface{}{"dnsServers": " " + newDNS + " "})
+	if meta.DnsServers != newDNS {
+		t.Fatalf("dns = %q, want %q", meta.DnsServers, newDNS)
+	}
+
+	// 订阅本次没有 dns 段：保留旧值，不能误清空
+	applyFetchedSubscriptionDNS(&meta, map[string]interface{}{"dnsServers": "   "})
+	if meta.DnsServers != newDNS {
+		t.Fatalf("空 dns 段不得清空已有配置: %q", meta.DnsServers)
+	}
+	applyFetchedSubscriptionDNS(&meta, map[string]interface{}{})
+	if meta.DnsServers != newDNS {
+		t.Fatalf("缺少 dns 字段不得清空已有配置: %q", meta.DnsServers)
+	}
+}

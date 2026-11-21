@@ -29,8 +29,14 @@ func ComputeBridgeKey(proxyConfig string, dnsServers string, engine string) stri
 	case ProxyKernelXray:
 		return computeNodeKey(src + string(rune(0)) + dns)
 	case ProxyKernelSingBox:
+		if dns == "" {
+			return computeNodeKey(src)
+		}
 		return computeNodeKey(src + string(rune(0)) + dns + string(rune(0)) + ProxyKernelSingBox)
 	case ProxyKernelMihomo:
+		if dns == "" {
+			return computeNodeKey(src + string(rune(0)) + "mihomo")
+		}
 		return computeNodeKey(src + string(rune(0)) + dns + string(rune(0)) + "mihomo")
 	case ProxyKernelMieru:
 		return computeNodeKey(src + string(rune(0)) + "mieru")

@@ -300,6 +300,8 @@ export interface BrowserSettings {
   maxConcurrentInstances: number
   // xray 表示 Xray + sing-box 组合连接栈；mihomo 表示独立 Mihomo 连接栈。
   defaultConnectorType: 'xray' | 'mihomo' | string
+  /** 全局自定义桥接 DNS；留空则使用节点/订阅 DNS。每行一个地址或整段 dns: YAML */
+  bridgeCustomDns: string
 }
 
 export interface ProxyCheckTarget {

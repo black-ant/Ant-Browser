@@ -73,7 +73,7 @@ func (m *SingBoxManager) ensureBridgeContext(ctx context.Context, proxyConfig st
 	}
 
 	// 订阅 DNS 参与桥接键与配置，保证 proxy-server-nameserver 变更后重建桥接
-	dnsServers := proxyDNSServersFor(proxyConfig, proxies, proxyId)
+	dnsServers := BridgeDNSServers(m.Config, proxyConfig, proxies, proxyId)
 	key := ComputeBridgeKey(src, dnsServers, ProxyKernelSingBox)
 
 	if socksURL, reused := m.tryReuseBridge(key, pin); reused {

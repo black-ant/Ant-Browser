@@ -29,9 +29,10 @@ export function CoreSettingsCard({ settings, onEdit }: CoreSettingsCardProps) {
           <SettingsValue className="col-span-2 lg:col-span-3" label="用户数据根目录" value={settings.userDataRoot || '-'} />
           <SettingsValue className="lg:col-span-1" label="恢复历史标签" value={settings.restoreLastSession ? '开启' : '关闭'} />
           <SettingsValue className="lg:col-span-1" label="轻启动模式" value={settings.lightStartEnabled ? '开启' : '关闭'} />
+          <SettingsValue className="lg:col-span-1" label="桥接 DNS" value={settings.bridgeCustomDns.trim() ? '自定义' : '跟随订阅'} />
           <SettingsValue className="lg:col-span-2" label="启动就绪超时" value={`${settings.startReadyTimeoutMs} ms`} />
           <SettingsValue className="lg:col-span-2" label="启动稳定窗口" value={`${settings.startStableWindowMs} ms`} />
-          <SettingsList className="col-span-2 lg:col-span-3" label="默认启动页面" values={settings.defaultStartUrls} compact />
+          <SettingsList className="col-span-2 lg:col-span-2" label="默认启动页面" values={settings.defaultStartUrls} compact />
         </div>
         <div className="grid grid-cols-1 gap-3">
           <SettingsList label="默认指纹参数" values={settings.defaultFingerprintArgs} />

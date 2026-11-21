@@ -660,6 +660,17 @@ func buildRefreshedProxyPool(
 		result.Added++
 	}
 
+	// 订阅 DNS 随刷新更新：同一订阅的 dns 段变化（或首次出现）时必须写回该源所有节点，
+	// 否则桥接会继续复用旧 DNS，自动更新订阅拿到的 DNS 等于无效。
+	if dnsYAML := strings.TrimSpace(meta.DnsServers); dnsYAML != "" {
+		for index := range merged {
+			if proxySourceKey(merged[index]) != metaKey {
+				continue
+			}
+			merged[index].DnsServers = dnsYAML
+		}
+	}
+
 	normalized := proxy.NormalizeBrowserProxies(merged, generateID)
 	for _, row := range normalized {
 		if proxySourceKey(row) == metaKey {
@@ -792,6 +803,7 @@ func (a *App) refreshProxySourceWithMeta(pool []BrowserProxy, meta proxySourceMe
 		return ProxySourceRefreshResult{}, err
 	}
 	content, _ := fetched["content"].(string)
+	applyFetchedSubscriptionDNS(&meta, fetched)
 	payload, ok := parseClashPayload(content)
 	if !ok {
 		parseErr := fmt.Errorf("订阅内容不是有效的 Clash YAML")
@@ -845,6 +857,21 @@ func (a *App) refreshProxySourceWithMeta(pool []BrowserProxy, meta proxySourceMe
 		"at":             time.Now().Format(time.RFC3339),
 	})
 	return plan.result, nil
+}
+
+// applyFetchedSubscriptionDNS 用本次拉取到的 dns 段更新订阅源元数据。
+// 订阅本次没有 dns 段时保留旧值，避免个别订阅按 UA 返回精简内容时把可用 DNS 清空。
+func applyFetchedSubscriptionDNS(meta *proxySourceMeta, fetched map[string]interface{}) {
+	if meta == nil {
+		return
+	}
+	dnsYAML, ok := fetched["dnsServers"].(string)
+	if !ok {
+		return
+	}
+	if trimmed := strings.TrimSpace(dnsYAML); trimmed != "" {
+		meta.DnsServers = trimmed
+	}
 }
 
 // markProxySourceRefreshFailed 把刷新失败原因写到该源所有节点行上（成功刷新时清除）。

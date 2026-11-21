@@ -91,6 +91,8 @@ type Settings struct {
 	StartStableWindowMs    int      `json:"startStableWindowMs"`
 	MaxConcurrentInstances int      `json:"maxConcurrentInstances"`
 	DefaultConnectorType   string   `json:"defaultConnectorType"`
+	// BridgeCustomDNS 全局自定义桥接 DNS；留空则使用节点/订阅 DNS。
+	BridgeCustomDNS string `json:"bridgeCustomDns"`
 }
 
 // CoreInput 内核配置输入

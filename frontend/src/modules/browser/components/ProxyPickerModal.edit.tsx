@@ -97,7 +97,7 @@ export function ProxyEditModal({
           </FormItem>
         )}
 
-        <FormItem label="DNS 服务器（可选）">
+        <FormItem label="DNS 服务器（可选）" hint="节点 DNS 会随订阅刷新同步；要固定请用全局设置里的『自定义桥接 DNS』。每行一个地址或 dns: YAML">
           <Textarea
             value={editDnsServers}
             onChange={e => setEditDnsServers(e.target.value)}

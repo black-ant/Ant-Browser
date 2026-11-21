@@ -32,6 +32,7 @@ export function CoreManagementPage() {
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
     defaultConnectorType: 'xray',
+    bridgeCustomDns: '',
   })
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
   const [settingsForm, setSettingsForm] = useState<CoreSettingsForm>({
@@ -43,6 +44,7 @@ export function CoreManagementPage() {
     restoreLastSession: false,
     startReadyTimeoutMs: 3000,
     startStableWindowMs: 1200,
+    bridgeCustomDns: '',
   })
   const [savingSettings, setSavingSettings] = useState(false)
 
@@ -461,6 +463,7 @@ export function CoreManagementPage() {
       restoreLastSession: settings.restoreLastSession,
       startReadyTimeoutMs: settings.startReadyTimeoutMs,
       startStableWindowMs: settings.startStableWindowMs,
+      bridgeCustomDns: settings.bridgeCustomDns,
     })
     setSettingsModalOpen(true)
   }
@@ -480,6 +483,7 @@ export function CoreManagementPage() {
         startReadyTimeoutMs: Math.max(1000, Number(settingsForm.startReadyTimeoutMs) || 3000),
         startStableWindowMs: Math.max(0, Number(settingsForm.startStableWindowMs) || 1200),
         defaultConnectorType: settings.defaultConnectorType || 'xray',
+        bridgeCustomDns: settingsForm.bridgeCustomDns,
       }
       await saveBrowserSettings(newSettings)
       setSettings(newSettings)

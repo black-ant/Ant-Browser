@@ -28,6 +28,7 @@ export function createDefaultBrowserSettings(): BrowserSettings {
     startStableWindowMs: 1200,
     maxConcurrentInstances: 0,
     defaultConnectorType: 'xray',
+    bridgeCustomDns: '',
   }
 }
 

@@ -4,6 +4,7 @@ import (
 	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
+	"ant-chrome/backend/internal/proxy"
 	"context"
 	"fmt"
 	"os"
@@ -25,11 +26,16 @@ func (a *App) GetBrowserSettings() BrowserSettings {
 		StartStableWindowMs:    browserStartStableWindowMillis(a.config),
 		DefaultConnectorType:   config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType),
 		MaxConcurrentInstances: a.config.Browser.MaxConcurrentInstances,
+		BridgeCustomDNS:        config.BridgeCustomDNSValue(a.config),
 	}
 }
 
 func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	log := logger.New("Browser")
+	customDNS := strings.TrimSpace(settings.BridgeCustomDNS)
+	if customDNS != "" && !proxy.HasUsableDNS(customDNS) {
+		return fmt.Errorf("自定义桥接 DNS 未包含可用地址，请填写 IP、DoH/DoT 地址或完整 dns: YAML")
+	}
 	previousConnectorType := config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
 	a.config.Browser.UserDataRoot = strings.TrimSpace(settings.UserDataRoot)
 	a.config.Browser.DefaultFingerprintArgs = append([]string{}, settings.DefaultFingerprintArgs...)
@@ -45,6 +51,7 @@ func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
 	connectorType := config.NormalizeBrowserConnectorType(settings.DefaultConnectorType)
 	a.config.Browser.DefaultConnectorType = connectorType
 	a.config.Browser.MaxConcurrentInstances = settings.MaxConcurrentInstances
+	a.config.Browser.BridgeCustomDNS = customDNS
 	if a.config.Browser.MaxConcurrentInstances < 0 {
 		a.config.Browser.MaxConcurrentInstances = 0
 	}

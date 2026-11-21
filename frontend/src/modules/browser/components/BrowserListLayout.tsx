@@ -280,6 +280,14 @@ export function BrowserListSettingsModal({
             placeholder="启动 URL"
           />
         </FormItem>
+        <FormItem label="自定义桥接 DNS" hint="优先级高于节点/订阅 DNS，留空则跟随订阅；每行一个地址（如 1.1.1.1 或 https://doh.example.com/dns-query），也可粘贴完整 dns: YAML。对新建桥接立即生效，运行中的实例重启或重新测速后生效">
+          <Textarea
+            value={settings.bridgeCustomDns}
+            onChange={(event) => onSettingsChange({ bridgeCustomDns: event.target.value })}
+            rows={4}
+            placeholder="留空跟随订阅 DNS"
+          />
+        </FormItem>
         <FormItem label="轻启动模式" hint="先起空白页，实例就绪后再打开默认页面">
           <div className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] px-3 py-2">
             <span className="text-sm text-[var(--color-text-primary)]">延后打开启动页</span>

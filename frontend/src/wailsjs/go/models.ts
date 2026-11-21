@@ -2182,7 +2182,8 @@ export namespace browser {
 	    startStableWindowMs: number;
 	    maxConcurrentInstances: number;
 	    defaultConnectorType: string;
-	
+	    bridgeCustomDns: string;
+
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
@@ -2199,6 +2200,7 @@ export namespace browser {
 	        this.startStableWindowMs = source["startStableWindowMs"];
 	        this.maxConcurrentInstances = source["maxConcurrentInstances"];
 	        this.defaultConnectorType = source["defaultConnectorType"];
+	        this.bridgeCustomDns = source["bridgeCustomDns"];
 	    }
 	}
 	export class Tab {
@@ -2554,6 +2556,7 @@ export namespace proxy {
 	    enhancedMode: string;
 	    nameserverCount: number;
 	    fallbackCount: number;
+	    proxyServerNameserverCount: number;
 	    xrayServerCount: number;
 	    unsupported: string[];
 	
@@ -2568,6 +2571,7 @@ export namespace proxy {
 	        this.enhancedMode = source["enhancedMode"];
 	        this.nameserverCount = source["nameserverCount"];
 	        this.fallbackCount = source["fallbackCount"];
+	        this.proxyServerNameserverCount = source["proxyServerNameserverCount"];
 	        this.xrayServerCount = source["xrayServerCount"];
 	        this.unsupported = source["unsupported"];
 	    }
