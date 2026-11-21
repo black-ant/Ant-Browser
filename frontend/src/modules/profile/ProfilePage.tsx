@@ -149,15 +149,23 @@ export function ProfilePage() {
 
   const handleDownloadUpdate = async () => {
     if (downloading) return
-    if (testMode) {
-      runSimulatedDownload(true)
-      return
-    }
     setDownloadProxyOpen(true)
   }
 
   const handleConfirmDownloadProxy = async () => {
+    if (proxyMode === 'pool' && !proxyId) {
+      toast.error('请先选择代理节点')
+      return
+    }
+    if (proxyMode === 'custom' && !customProxy.trim()) {
+      toast.error('请填写代理地址')
+      return
+    }
     setDownloadProxyOpen(false)
+    if (testMode) {
+      runSimulatedDownload(true)
+      return
+    }
     let proxyConfig = ''
     if (proxyMode === 'pool') {
       const selected = proxyOptions.find(item => item.proxyId === proxyId)
