@@ -60,6 +60,7 @@ publish/output/
 # Internal docs / scratch files
 docs/*
 !docs/feature-difference-approval.md
+!docs/mcp-server.md
 # Release notes: one file per version, used by publish-all workflow
 !docs/changelogs/
 !docs/changelogs/*.md
