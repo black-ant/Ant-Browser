@@ -15,13 +15,19 @@ const directProxyID = "__direct__"
 func (m *Manager) ApplyDefaults(profile *Profile) (bool, string, error) {
 	defaultsChanged := false
 	log := logger.New("Browser")
-	if profile.FingerprintArgs == nil || len(profile.FingerprintArgs) == 0 {
-		if m.Config != nil {
-			profile.FingerprintArgs = append([]string{}, m.Config.Browser.DefaultFingerprintArgs...)
-			defaultsChanged = len(profile.FingerprintArgs) > 0
+	profile.CoreId = normalizeProfileCoreID(profile.CoreId)
+	if profile.CoreId == "" {
+		if defaultCore, ok := m.GetDefaultCore(); ok {
+			profile.CoreId = defaultCore.CoreId
 		}
 	}
-	upgradedFingerprintArgs := upgradeLegacyMinimalFingerprintArgs(profile.FingerprintArgs)
+	if len(profile.FingerprintArgs) == 0 {
+		// 全局 default_fingerprint_args 是按 fingerprint-chromium 写的，
+		// 直接套到 Cloak 实例上会产生一批无效参数，所以按后端过滤。
+		profile.FingerprintArgs = m.defaultFingerprintArgsForCore(profile.CoreId)
+		defaultsChanged = len(profile.FingerprintArgs) > 0
+	}
+	upgradedFingerprintArgs := m.upgradeLegacyMinimalFingerprintArgsForProfile(profile.CoreId, profile.FingerprintArgs)
 	if !stringSlicesEqual(profile.FingerprintArgs, upgradedFingerprintArgs) {
 		profile.FingerprintArgs = upgradedFingerprintArgs
 		defaultsChanged = true
@@ -34,12 +40,6 @@ func (m *Manager) ApplyDefaults(profile *Profile) (bool, string, error) {
 	}
 	if strings.TrimSpace(profile.UserDataDir) == "" {
 		profile.UserDataDir = profile.ProfileId
-	}
-	profile.CoreId = normalizeProfileCoreID(profile.CoreId)
-	if profile.CoreId == "" {
-		if defaultCore, ok := m.GetDefaultCore(); ok {
-			profile.CoreId = defaultCore.CoreId
-		}
 	}
 
 	proxyMode := NormalizeProxyMode(profile.ProxyMode)

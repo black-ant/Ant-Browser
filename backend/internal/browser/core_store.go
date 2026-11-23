@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"strings"
@@ -10,13 +11,21 @@ import (
 
 // ListCores 获取所有内核配置
 func (m *Manager) ListCores() []Core {
+	if m == nil {
+		return nil
+	}
 	if m.CoreDAO != nil {
 		cores, err := m.CoreDAO.List()
 		if err == nil {
 			// 同步到内存 config，供其他逻辑使用
-			m.Config.Browser.Cores = cores
+			if m.Config != nil {
+				m.Config.Browser.Cores = cores
+			}
 			return cores
 		}
+	}
+	if m.Config == nil {
+		return nil
 	}
 	return m.Config.Browser.Cores
 }
@@ -27,6 +36,8 @@ func (m *Manager) SaveCore(input CoreInput) error {
 	coreId := strings.TrimSpace(input.CoreId)
 	coreName := strings.TrimSpace(input.CoreName)
 	corePath := strings.TrimSpace(input.CorePath)
+	coreBackend := config.NormalizeCoreBackend(input.CoreBackend)
+	coreEnv := normalizeCoreEnvEntries(input.CoreEnv)
 
 	if coreName == "" {
 		return fmt.Errorf("内核名称不能为空")
@@ -45,13 +56,20 @@ func (m *Manager) SaveCore(input CoreInput) error {
 				_ = err
 			}
 		}
-		core := Core{CoreId: coreId, CoreName: coreName, CorePath: corePath, IsDefault: input.IsDefault}
+		core := Core{
+			CoreId:      coreId,
+			CoreName:    coreName,
+			CorePath:    corePath,
+			IsDefault:   input.IsDefault,
+			CoreBackend: coreBackend,
+			CoreEnv:     coreEnv,
+		}
 		if err := m.CoreDAO.Upsert(core); err != nil {
 			return err
 		}
 		// 同步内存
 		m.syncCoresFromDAO()
-		log.Info("内核配置保存", logger.F("core_id", coreId), logger.F("core_name", coreName))
+		log.Info("内核配置保存", logger.F("core_id", coreId), logger.F("core_name", coreName), logger.F("core_backend", coreBackend))
 		return nil
 	}
 
@@ -66,6 +84,8 @@ func (m *Manager) SaveCore(input CoreInput) error {
 	if existingIndex >= 0 {
 		m.Config.Browser.Cores[existingIndex].CoreName = coreName
 		m.Config.Browser.Cores[existingIndex].CorePath = corePath
+		m.Config.Browser.Cores[existingIndex].CoreBackend = coreBackend
+		m.Config.Browser.Cores[existingIndex].CoreEnv = coreEnv
 		if input.IsDefault {
 			m.clearDefaultCore()
 			m.Config.Browser.Cores[existingIndex].IsDefault = true
@@ -75,17 +95,19 @@ func (m *Manager) SaveCore(input CoreInput) error {
 			coreId = uuid.NewString()
 		}
 		newCore := Core{
-			CoreId:    coreId,
-			CoreName:  coreName,
-			CorePath:  corePath,
-			IsDefault: input.IsDefault || len(m.Config.Browser.Cores) == 0,
+			CoreId:      coreId,
+			CoreName:    coreName,
+			CorePath:    corePath,
+			IsDefault:   input.IsDefault || len(m.Config.Browser.Cores) == 0,
+			CoreBackend: coreBackend,
+			CoreEnv:     coreEnv,
 		}
 		if newCore.IsDefault {
 			m.clearDefaultCore()
 		}
 		m.Config.Browser.Cores = append(m.Config.Browser.Cores, newCore)
 	}
-	log.Info("内核配置保存（文件）", logger.F("core_id", coreId))
+	log.Info("内核配置保存（文件）", logger.F("core_id", coreId), logger.F("core_backend", coreBackend))
 	return m.Config.Save(m.ResolveRelativePath("config.yaml"))
 }
 

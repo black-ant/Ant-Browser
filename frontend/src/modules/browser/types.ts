@@ -126,6 +126,7 @@ export interface BrowserFingerprintCapabilityReport {
   profileId: string
   coreId: string
   coreName: string
+  coreBackend?: BrowserCoreBackend | string
   chromeVersion: string
   chromeMajor: number
   versionStatus: string
@@ -285,11 +286,16 @@ export interface ProxyCheckSettings {
   targets: ProxyCheckTarget[]
 }
 
+// 浏览器内核后端类型。空值按 fingerprint_chromium 兼容历史数据。
+export type BrowserCoreBackend = 'fingerprint_chromium' | 'cloak'
+
 export interface BrowserCore {
   coreId: string
   coreName: string
   corePath: string
   isDefault: boolean
+  coreBackend?: BrowserCoreBackend | string
+  coreEnv?: string[]
 }
 
 export interface BrowserCoreInput {
@@ -297,6 +303,8 @@ export interface BrowserCoreInput {
   coreName: string
   corePath: string
   isDefault: boolean
+  coreBackend?: BrowserCoreBackend | string
+  coreEnv?: string[]
 }
 
 export interface BrowserCoreValidateResult {
@@ -517,6 +525,7 @@ export interface BrowserCoreExtended {
   coreId: string
   chromeVersion: string
   instanceCount: number
+  coreBackend?: BrowserCoreBackend | string
 }
 
 export interface BrowserExtension {
