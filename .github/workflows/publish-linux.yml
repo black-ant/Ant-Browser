@@ -97,6 +97,23 @@ jobs:
           echo "value=$version" >> "$GITHUB_OUTPUT"
           echo "package version: $version"
 
+      # 版本以 tag / workflow_dispatch 输入为准：构建前写进 wails.json，
+      # 这样单分支发预览版时不用为了版本号再单独提交一次。
+      - name: Apply package version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const config = JSON.parse(fs.readFileSync("wails.json", "utf8"));
+            config.info = config.info || {};
+            config.info.productVersion = process.env.VERSION;
+            fs.writeFileSync("wails.json", JSON.stringify(config, null, 2) + "\n");
+          '
+          echo "wails.json productVersion = $(node -p "require('./wails.json').info.productVersion")"
+
       - name: Build Linux packages
         env:
           VERSION: ${{ steps.version.outputs.value }}
