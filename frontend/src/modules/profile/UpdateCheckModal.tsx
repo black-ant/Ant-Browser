@@ -1,4 +1,4 @@
-import { Download, ExternalLink } from 'lucide-react'
+import { CheckCircle2, Download, ExternalLink } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, ConfirmModal, FormItem, Input, Modal, Progress, Select, toast } from '../../shared/components'
 import { EventsOn, Quit } from '../../wailsjs/runtime/runtime'
@@ -8,6 +8,7 @@ import {
   checkAppUpdateWithChannel,
   downloadAppUpdateWithChannel,
   getDownloadedAppUpdate,
+  openUpdatePackageLocation,
 } from './api'
 import type { AppDownloadedUpdate, AppUpdateInfo, UpdateProgress } from './types'
 import { resolveUpdateError } from './updateErrors'
@@ -162,15 +163,10 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
     return () => off()
   }, [])
 
-  const handlePrimaryAction = async () => {
+  const startDownload = async (autoInstall: boolean) => {
     if (downloading || installing) return
-    // 本地已有可安装的包（版本匹配或当前检查失败），直接进入安装确认。
-    if (canInstallDownloaded) {
-      setConfirmInstall(true)
-      return
-    }
     if (!updateAvailable) {
-      toast.error('当前没有可安装的更新')
+      toast.error('当前没有可下载的更新')
       return
     }
     const selection = resolveProxySelection()
@@ -184,7 +180,7 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
     }
     const { proxyConfig, proxyID } = selection
 
-    autoInstallRef.current = true
+    autoInstallRef.current = autoInstall
     setDownloading(true)
     setProgress({
       phase: 'resolving',
@@ -202,6 +198,31 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
       autoInstallRef.current = false
       toast.error(resolveUpdateError(error, '启动下载失败'))
       setDownloading(false)
+    }
+  }
+
+  const handlePrimaryAction = async () => {
+    if (downloading || installing) return
+    // 本地已有可安装的包（版本匹配或当前检查失败），直接进入安装确认。
+    if (canInstallDownloaded) {
+      setConfirmInstall(true)
+      return
+    }
+    void startDownload(true)
+  }
+
+  const handleDownloadOnly = () => {
+    void startDownload(false)
+  }
+
+  const handleOpenLocation = async () => {
+    try {
+      const opened = await openUpdatePackageLocation()
+      if (!opened) {
+        toast.error('当前环境不支持打开文件位置')
+      }
+    } catch (error: any) {
+      toast.error(resolveUpdateError(error, '打开文件位置失败'))
     }
   }
 
@@ -236,7 +257,6 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
   // 检查失败时也允许安装已下载的包（版本由后端再次校验）；检查成功但已有更新版本时，要求版本匹配。
   const canInstallDownloaded = !!downloaded && (!info?.ok || (updateAvailable && downloadedMatchesLatest))
   const canDownloadAndInstall = updateAvailable || canInstallDownloaded
-  const showProgress = !!progress && (downloading || progress.phase === 'error' || (progress.phase === 'done' && canInstallDownloaded))
   const versionLabel = currentVersion || info?.currentVersion || '未知'
   const latestVersionLabel = info?.latestVersion
     ? `v${info.latestVersion}`
@@ -272,9 +292,13 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
         footer={
           <>
             <Button variant="secondary" onClick={onClose}>关闭</Button>
-            <Button onClick={() => { void handlePrimaryAction() }} loading={downloading} disabled={!canDownloadAndInstall || checking}>
+            <Button
+              onClick={() => { void handlePrimaryAction() }}
+              loading={downloading || installing}
+              disabled={!canDownloadAndInstall || checking}
+            >
               <Download className="h-4 w-4" />
-              下载并且安装
+              {canInstallDownloaded ? '退出并安装' : '下载并且安装'}
             </Button>
             <Button
               variant="ghost"
@@ -387,14 +411,34 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
             />
           ) : null}
 
-          {showProgress && progress ? (
+          {canInstallDownloaded && downloaded ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--color-success)]" />
+                <span className="shrink-0 text-sm text-[var(--color-text-primary)]">已下载 v{downloaded.version}</span>
+                <span className="truncate text-xs text-[var(--color-text-muted)]" title={downloaded.installerPath}>
+                  {downloaded.installerPath}
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => { void handleOpenLocation() }}>
+                打开地址
+              </Button>
+            </div>
+          ) : downloading || progress?.phase === 'error' ? (
             <div className="rounded-lg border border-[var(--color-border-muted)] px-3 py-2">
               <Progress
-                percent={progress.progress}
-                status={progress.phase === 'error' ? 'error' : progress.phase === 'done' ? 'success' : 'normal'}
+                percent={progress?.progress ?? 0}
+                status={progress?.phase === 'error' ? 'error' : 'normal'}
                 size="sm"
               />
-              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{progress.message}</p>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{progress?.message || '准备下载…'}</p>
+            </div>
+          ) : updateAvailable ? (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border-muted)] px-3 py-2">
+              <span className="text-xs text-[var(--color-text-muted)]">尚未下载</span>
+              <Button size="sm" variant="secondary" onClick={handleDownloadOnly} loading={downloading}>
+                下载
+              </Button>
             </div>
           ) : null}
         </div>

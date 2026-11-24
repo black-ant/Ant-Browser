@@ -410,6 +410,8 @@ export function OpenCorePath(arg1:string):Promise<void>;
 
 export function OpenProjectRoot():Promise<void>;
 
+export function OpenUpdatePackageLocation():Promise<void>;
+
 export function OpenUserDataDir(arg1:string):Promise<void>;
 
 export function OpenUserDataRoot():Promise<void>;

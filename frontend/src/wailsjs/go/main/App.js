@@ -802,6 +802,10 @@ export function OpenProjectRoot() {
   return window['go']['main']['App']['OpenProjectRoot']();
 }
 
+export function OpenUpdatePackageLocation() {
+  return window['go']['main']['App']['OpenUpdatePackageLocation']();
+}
+
 export function OpenUserDataDir(arg1) {
   return window['go']['main']['App']['OpenUserDataDir'](arg1);
 }

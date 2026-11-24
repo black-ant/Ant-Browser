@@ -108,6 +108,19 @@ func (a *App) GetDownloadedAppUpdate() *AppDownloadedUpdate {
 	}
 }
 
+// OpenUpdatePackageLocation 在系统文件管理器中定位已下载的更新包，方便用户直接运行。
+func (a *App) OpenUpdatePackageLocation() error {
+	downloaded := a.loadDownloadedUpdate()
+	if downloaded == nil {
+		return fmt.Errorf("没有已下载的更新包")
+	}
+	installerPath := a.updateDataPath("updates", downloaded.Version, downloaded.AssetName)
+	if _, err := os.Stat(installerPath); err != nil {
+		return fmt.Errorf("更新包不存在，请重新下载")
+	}
+	return revealFileInFileManager(installerPath)
+}
+
 // ClearDownloadedAppUpdate 丢弃已下载待安装的更新包，同时清掉安装文件避免占用磁盘。
 func (a *App) ClearDownloadedAppUpdate() error {
 	downloaded := a.loadDownloadedUpdate()

@@ -556,6 +556,21 @@ func TestDownloadedUpdateIgnoredWhenUnusable(t *testing.T) {
 	}
 }
 
+// 没有已下载包或安装包丢失时，打开文件位置必须明确报错，不能去调系统文件管理器。
+func TestOpenUpdatePackageLocationReportsMissingPackage(t *testing.T) {
+	app := newUpdateTestApp(t, "")
+	if err := app.OpenUpdatePackageLocation(); err == nil || !strings.Contains(err.Error(), "没有已下载的更新包") {
+		t.Fatalf("error = %v, want 没有已下载的更新包", err)
+	}
+
+	if err := app.saveDownloadedUpdate(downloadedUpdateInfo{Version: "1.9.9", AssetName: "setup.exe"}); err != nil {
+		t.Fatalf("save downloaded update failed: %v", err)
+	}
+	if err := app.OpenUpdatePackageLocation(); err == nil || !strings.Contains(err.Error(), "更新包不存在") {
+		t.Fatalf("error = %v, want 更新包不存在", err)
+	}
+}
+
 // 更新功能关闭时不再提示已下载的更新包，避免给出点了就会失败的安装入口。
 func TestDownloadedUpdateIgnoredWhenUpdateDisabled(t *testing.T) {
 	app := newUpdateTestApp(t, "")

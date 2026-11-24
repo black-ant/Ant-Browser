@@ -246,6 +246,10 @@ export async function clearDownloadedAppUpdate(): Promise<boolean> {
   return invokeUpdateMethod('ClearDownloadedAppUpdate')
 }
 
+export async function openUpdatePackageLocation(): Promise<boolean> {
+  return invokeUpdateMethod('OpenUpdatePackageLocation')
+}
+
 export async function checkForUpdates(): Promise<AppUpdateCheckResult> {
   const fallback: AppUpdateCheckResult = {
     ok: false,
