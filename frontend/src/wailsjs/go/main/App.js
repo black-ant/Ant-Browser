@@ -654,6 +654,14 @@ export function CheckAppUpdate() {
   return window['go']['main']['App']['CheckAppUpdate']();
 }
 
+export function CheckAppUpdateWithChannel(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CheckAppUpdateWithChannel'](arg1, arg2, arg3);
+}
+
+export function CheckAppUpdateWithProxySelection(arg1, arg2) {
+  return window['go']['main']['App']['CheckAppUpdateWithProxySelection'](arg1, arg2);
+}
+
 export function CheckForUpdates() {
   return window['go']['main']['App']['CheckForUpdates']();
 }
@@ -684,6 +692,10 @@ export function DeleteGroup(arg1) {
 
 export function DownloadAppUpdate(arg1, arg2) {
   return window['go']['main']['App']['DownloadAppUpdate'](arg1, arg2);
+}
+
+export function DownloadAppUpdateWithChannel(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['DownloadAppUpdateWithChannel'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function DownloadAppUpdateWithProxy(arg1, arg2, arg3) {

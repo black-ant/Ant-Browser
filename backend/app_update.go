@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/logger"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,7 +16,10 @@ const (
 	defaultUpdateRepo     = "black-ant/Ant-Browser"
 	latestReleaseAPIURL   = "https://api.github.com/repos/" + defaultUpdateRepo + "/releases/latest"
 	manifestAssetName     = "update-manifest.json"
-	updateCheckTimeout    = 5 * time.Second
+	updateCheckTimeout = 5 * time.Second
+	// updateResolveTimeout 用于下载前解析更新包地址：此时请求可能要走用户临时选择的代理节点，
+	// 内核桥接首次启动和跨境握手都明显慢于直连，5 秒检查超时会误判为失败。
+	updateResolveTimeout  = 20 * time.Second
 	updateDownloadTimeout = 30 * time.Minute
 )
 
@@ -54,9 +58,23 @@ type appUpdateReleaseAsset struct {
 }
 
 type githubLatestRelease struct {
-	TagName string                  `json:"tag_name"`
-	HTMLURL string                  `json:"html_url"`
-	Assets  []appUpdateReleaseAsset `json:"assets"`
+	TagName    string                  `json:"tag_name"`
+	HTMLURL    string                  `json:"html_url"`
+	Prerelease bool                    `json:"prerelease"`
+	Assets     []appUpdateReleaseAsset `json:"assets"`
+}
+
+// 更新通道：stable 只取非预发布版本，preview 只取预发布版本。
+const (
+	UpdateChannelStable  = "stable"
+	UpdateChannelPreview = "preview"
+)
+
+func normalizeUpdateChannel(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), UpdateChannelPreview) {
+		return UpdateChannelPreview
+	}
+	return UpdateChannelStable
 }
 
 type appUpdateManifest struct {
@@ -69,12 +87,22 @@ type appUpdateManifest struct {
 	} `json:"assets"`
 }
 
-func (a *App) updateReleaseAPIURL() string {
+func (a *App) updateRepo() string {
 	repo := defaultUpdateRepo
 	if a != nil && a.config != nil && strings.TrimSpace(a.config.Update.Repo) != "" {
 		repo = strings.TrimSpace(a.config.Update.Repo)
 	}
-	return fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	return repo
+}
+
+func (a *App) updateReleaseAPIURL() string {
+	return fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", a.updateRepo())
+}
+
+// updateReleasesListURL 用于预览通道：GitHub 的 /releases/latest 会跳过预发布版本，
+// 只能拉列表后按 prerelease 标记挑选。
+func (a *App) updateReleasesListURL() string {
+	return fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=30", a.updateRepo())
 }
 
 func (a *App) updateProxyConfig() string {
@@ -133,23 +161,46 @@ func (a *App) CheckForUpdates() map[string]interface{} {
 }
 
 // CheckAppUpdate 返回结构化的更新信息，包含各平台安装包与校验值。
+// 使用配置里的更新代理（默认直连）；需要在界面上临时指定节点时走 CheckAppUpdateWithProxySelection。
 func (a *App) CheckAppUpdate() AppUpdateInfo {
+	return a.CheckAppUpdateWithProxySelection(a.updateProxyConfig(), "")
+}
+
+// CheckAppUpdateWithProxySelection 允许前端先选代理再检查更新，不写入配置。
+// 更新清单放在 github.com 上，直连被阻断时只能靠代理节点读取，所以检查阶段也必须支持选节点。
+func (a *App) CheckAppUpdateWithProxySelection(proxyConfig string, proxyID string) AppUpdateInfo {
+	return a.CheckAppUpdateWithChannel(proxyConfig, proxyID, UpdateChannelStable)
+}
+
+// CheckAppUpdateWithChannel 在指定通道上检查更新：stable 只认非预发布版本，preview 只认预发布版本。
+func (a *App) CheckAppUpdateWithChannel(proxyConfig string, proxyID string, channel string) AppUpdateInfo {
 	if a == nil || a.config == nil || !a.config.Update.IsEnabled() {
 		currentVersion := ""
 		if a != nil {
 			currentVersion = normalizeUpdateVersion(a.appVersion())
 		}
-		return AppUpdateInfo{CurrentVersion: currentVersion, Error: "更新检查已关闭"}
+		return AppUpdateInfo{CurrentVersion: currentVersion, Assets: map[string]AppUpdateAsset{}, Error: "更新检查已关闭"}
 	}
-	client, err := a.updateHTTPClient()
+	client, err := a.updateHTTPClientForSelection(updateResolveTimeout, proxyConfig, proxyID)
 	if err != nil {
+		logger.New("AppUpdate").Warn("检查更新时构建代理客户端失败",
+			logger.F("proxy_id", strings.TrimSpace(proxyID)),
+			logger.F("error", err.Error()),
+		)
 		return AppUpdateInfo{
 			CurrentVersion: normalizeUpdateVersion(a.appVersion()),
 			Assets:         map[string]AppUpdateAsset{},
 			Error:          "更新代理配置错误: " + err.Error(),
 		}
 	}
-	return fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), client)
+	return fetchAppUpdateInfoForChannel(
+		context.Background(),
+		a.appVersion(),
+		normalizeUpdateChannel(channel),
+		a.updateReleaseAPIURL(),
+		a.updateReleasesListURL(),
+		client,
+	)
 }
 
 func checkForUpdates(ctx context.Context, currentVersion string, endpoint string, client *http.Client) updateCheckResult {
@@ -206,7 +257,90 @@ func checkForUpdates(ctx context.Context, currentVersion string, endpoint string
 	return result
 }
 
+func newUpdateRequest(ctx context.Context, endpoint string, currentVersion string) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建更新请求失败: %v", err)
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	request.Header.Set("User-Agent", "Ant-Browser/"+currentVersion)
+	return request, nil
+}
+
+// fetchUpdateRelease 按通道取目标 Release。
+// GitHub 的 /releases/latest 本身会跳过预发布版本，所以正式通道直接用 latest；
+// 预览通道拉列表并在 prerelease 标记的版本里取版本号最高的一个。
+func fetchUpdateRelease(ctx context.Context, channel string, latestURL string, listURL string, currentVersion string, client *http.Client) (*githubLatestRelease, error) {
+	if channel == UpdateChannelPreview {
+		if strings.TrimSpace(listURL) == "" {
+			return nil, fmt.Errorf("缺少预览通道地址")
+		}
+		request, err := newUpdateRequest(ctx, listURL, currentVersion)
+		if err != nil {
+			return nil, err
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			return nil, fmt.Errorf("更新检查请求失败: %v", err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("更新服务返回 HTTP %d", response.StatusCode)
+		}
+		var releases []githubLatestRelease
+		if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&releases); err != nil {
+			return nil, fmt.Errorf("更新信息解析失败: %v", err)
+		}
+		var best *githubLatestRelease
+		for index := range releases {
+			item := &releases[index]
+			if !item.Prerelease || normalizeUpdateVersion(item.TagName) == "" {
+				continue
+			}
+			if best == nil {
+				best = item
+				continue
+			}
+			comparison, compareErr := compareUpdateVersions(best.TagName, item.TagName)
+			if compareErr == nil && comparison < 0 {
+				best = item
+			}
+		}
+		if best == nil {
+			return nil, fmt.Errorf("预览通道当前没有可用的预览版本")
+		}
+		return best, nil
+	}
+
+	request, err := newUpdateRequest(ctx, latestURL, currentVersion)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("更新检查请求失败: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("更新服务返回 HTTP %d", response.StatusCode)
+	}
+	var release githubLatestRelease
+	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&release); err != nil {
+		return nil, fmt.Errorf("更新信息解析失败: %v", err)
+	}
+	if release.Prerelease {
+		return nil, fmt.Errorf("正式通道忽略了被标记为预览版的 Release")
+	}
+	return &release, nil
+}
+
+// fetchAppUpdateInfo 保持旧签名（正式通道），供既有测试与调用方使用。
 func fetchAppUpdateInfo(ctx context.Context, currentVersion string, endpoint string, client *http.Client) AppUpdateInfo {
+	return fetchAppUpdateInfoForChannel(ctx, currentVersion, UpdateChannelStable, endpoint, "", client)
+}
+
+func fetchAppUpdateInfoForChannel(ctx context.Context, currentVersion string, channel string, latestURL string, listURL string, client *http.Client) AppUpdateInfo {
 	info := AppUpdateInfo{
 		CurrentVersion: normalizeUpdateVersion(currentVersion),
 		Assets:         map[string]AppUpdateAsset{},
@@ -219,29 +353,9 @@ func fetchAppUpdateInfo(ctx context.Context, currentVersion string, endpoint str
 		client = &http.Client{Timeout: updateCheckTimeout}
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	release, err := fetchUpdateRelease(ctx, normalizeUpdateChannel(channel), latestURL, listURL, info.CurrentVersion, client)
 	if err != nil {
-		info.Error = fmt.Sprintf("创建更新请求失败: %v", err)
-		return info
-	}
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	request.Header.Set("User-Agent", "Ant-Browser/"+info.CurrentVersion)
-
-	response, err := client.Do(request)
-	if err != nil {
-		info.Error = fmt.Sprintf("更新检查请求失败: %v", err)
-		return info
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		info.Error = fmt.Sprintf("更新服务返回 HTTP %d", response.StatusCode)
-		return info
-	}
-
-	var release githubLatestRelease
-	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&release); err != nil {
-		info.Error = fmt.Sprintf("更新信息解析失败: %v", err)
+		info.Error = err.Error()
 		return info
 	}
 	info.LatestVersion = normalizeUpdateVersion(release.TagName)

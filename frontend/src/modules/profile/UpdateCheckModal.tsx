@@ -1,21 +1,26 @@
-import { Download, ExternalLink, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Download, ExternalLink } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, ConfirmModal, FormItem, Input, Modal, Progress, Select, toast } from '../../shared/components'
 import { EventsOn, Quit } from '../../wailsjs/runtime/runtime'
-import { fetchBrowserProxies } from '../browser/api'
-import type { BrowserProxy } from '../browser/types'
 import { useLayoutStore } from '../../store/layoutStore'
 import {
   applyAppUpdate,
-  checkAppUpdate,
-  downloadAppUpdateWithProxySelection,
+  checkAppUpdateWithChannel,
+  downloadAppUpdateWithChannel,
   getDownloadedAppUpdate,
 } from './api'
 import type { AppDownloadedUpdate, AppUpdateInfo, UpdateProgress } from './types'
-
-function normalizeVersion(value: string): string {
-  return value.trim().replace(/^[vV]/, '')
-}
+import { resolveUpdateError } from './updateErrors'
+import {
+  loadUpdateChannel,
+  loadUpdateProxySelection,
+  normalizeUpdateVersion,
+  saveUpdateChannel,
+  saveUpdateCheckSnapshot,
+  saveUpdateProxySelection,
+  type UpdateChannel,
+} from './updatePrefs'
+import { useUpdateDownloadProxies } from './useUpdateDownloadProxies'
 
 interface UpdateCheckModalProps {
   open: boolean
@@ -31,25 +36,69 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
   const [installing, setInstalling] = useState(false)
   const [progress, setProgress] = useState<UpdateProgress | null>(null)
   const [confirmInstall, setConfirmInstall] = useState(false)
-  const [proxyMode, setProxyMode] = useState<'direct' | 'pool' | 'custom'>('direct')
-  const [proxyId, setProxyId] = useState('')
-  const [customProxy, setCustomProxy] = useState('')
-  const [proxyOptions, setProxyOptions] = useState<BrowserProxy[]>([])
+  // 恢复上次检查/下载用的代理，避免每次打开都退回直连（直连读取不到更新清单）。
+  const [savedSelection] = useState(() => loadUpdateProxySelection())
+  const [channel, setChannel] = useState<UpdateChannel>(() => loadUpdateChannel())
+  const [proxyMode, setProxyMode] = useState<'direct' | 'pool' | 'custom'>(savedSelection?.mode ?? 'direct')
+  const [proxyId, setProxyId] = useState(savedSelection?.proxyId ?? '')
+  const [customProxy, setCustomProxy] = useState(savedSelection?.customProxy ?? '')
   const [downloaded, setDownloaded] = useState<AppDownloadedUpdate | null>(null)
+  const { options: proxyOptions, ready: proxyOptionsReady } = useUpdateDownloadProxies(open)
+  // 下载完成后自动进入安装确认；用户中途关掉弹窗则不打扰。
+  const autoInstallRef = useRef(false)
+  const openRef = useRef(open)
+
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
+
+  useEffect(() => {
+    saveUpdateProxySelection({ mode: proxyMode, proxyId, customProxy })
+  }, [proxyMode, proxyId, customProxy])
+
+  useEffect(() => {
+    saveUpdateChannel(channel)
+  }, [channel])
+
+  const selectedPoolProxy = proxyMode === 'pool'
+    ? proxyOptions.find(item => item.proxy.proxyId === proxyId)?.proxy
+    : undefined
+
+  // 检查和下载共用同一份代理选择；返回 null 表示「选了代理池但没选到可用节点」。
+  const resolveProxySelection = (): { proxyConfig: string; proxyID: string } | null => {
+    if (proxyMode === 'custom') {
+      return { proxyConfig: customProxy.trim(), proxyID: '' }
+    }
+    if (proxyMode === 'pool') {
+      if (!selectedPoolProxy) return null
+      return { proxyConfig: selectedPoolProxy.proxyConfig?.trim() || '', proxyID: selectedPoolProxy.proxyId }
+    }
+    return { proxyConfig: '', proxyID: '' }
+  }
 
   const runCheck = async () => {
     if (checking) return
+    const selection = resolveProxySelection()
+    if (!selection) {
+      toast.error(proxyId ? '所选节点已不可用，请重新选择' : '请先选择代理节点')
+      return
+    }
     setChecking(true)
     try {
-      const result = await checkAppUpdate()
+      const result = await checkAppUpdateWithChannel(selection.proxyConfig, selection.proxyID, channel)
       setInfo(result)
       setAppUpdateAvailable(result.ok && result.updateAvailable)
+      if (result.ok) {
+        // 记下成功结果：后台检查（直连）失败时，侧边栏红点仍能靠这份记录保留。
+        saveUpdateCheckSnapshot({
+          updateAvailable: result.updateAvailable,
+          latestVersion: result.latestVersion,
+          checkedAt: new Date().toISOString(),
+          channel,
+        })
+      }
       if (result.ok && result.updateAvailable) {
         toast.success(`发现新版本 v${result.latestVersion}`)
-      } else if (result.ok) {
-        toast.success('已是最新版本')
-      } else {
-        toast.error(result.error || '检查更新失败')
       }
     } catch (error: any) {
       setInfo({
@@ -61,10 +110,10 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
         notesUrl: '',
         force: false,
         assets: {},
-        error: error?.message || '检查更新失败',
+        error: resolveUpdateError(error, '检查更新失败'),
       })
-      setAppUpdateAvailable(false)
-      toast.error(error?.message || '检查更新失败')
+      // 检查失败时保留上次的红点状态：失败不等于没有新版本。
+      toast.error(resolveUpdateError(error, '检查更新失败'))
     } finally {
       setChecking(false)
     }
@@ -72,14 +121,23 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
 
   useEffect(() => {
     if (!open) return
-    if (!downloading) void runCheck()
-    void fetchBrowserProxies()
-      .then((list) => setProxyOptions(list.filter((item) => item.proxyId && item.proxyId !== '__direct__')))
-      .catch(() => setProxyOptions([]))
     void getDownloadedAppUpdate()
       .then(setDownloaded)
       .catch(() => setDownloaded(null))
   }, [open])
+
+  // 打开或切换代理后自动检查：代理池模式要等节点列表就绪且能匹配到上次的节点。
+  // 自定义代理地址不在这里触发（否则每敲一个字符都会请求一次），改为输入框失焦时检查。
+  useEffect(() => {
+    if (!open) return
+    if (proxyMode === 'pool' && (!proxyOptionsReady || !selectedPoolProxy)) return
+    const timer = window.setTimeout(() => {
+      if (downloading || installing) return
+      void runCheck()
+    }, 300)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, channel, proxyMode, proxyId, proxyOptionsReady, selectedPoolProxy?.proxyId])
 
   useEffect(() => {
     const off = EventsOn('app:update:progress', (payload: UpdateProgress) => {
@@ -88,38 +146,45 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
       if (payload.phase === 'done' || payload.phase === 'error') {
         setDownloading(false)
         if (payload.phase === 'error') {
+          autoInstallRef.current = false
           toast.error(payload.message || '更新下载失败')
         } else {
           void getDownloadedAppUpdate()
             .then(setDownloaded)
             .catch(() => setDownloaded(null))
+          if (autoInstallRef.current) {
+            autoInstallRef.current = false
+            if (openRef.current) setConfirmInstall(true)
+          }
         }
       }
     })
     return () => off()
   }, [])
 
-  const handleDownload = async () => {
-    if (downloading) return
-    if (proxyMode === 'pool' && !proxyId) {
-      toast.error('请先选择代理节点')
+  const handlePrimaryAction = async () => {
+    if (downloading || installing) return
+    // 本地已有可安装的包（版本匹配或当前检查失败），直接进入安装确认。
+    if (canInstallDownloaded) {
+      setConfirmInstall(true)
+      return
+    }
+    if (!updateAvailable) {
+      toast.error('当前没有可安装的更新')
+      return
+    }
+    const selection = resolveProxySelection()
+    if (!selection) {
+      toast.error(proxyId ? '所选节点已不可用，请重新选择' : '请先选择代理节点')
       return
     }
     if (proxyMode === 'custom' && !customProxy.trim()) {
       toast.error('请填写代理地址')
       return
     }
+    const { proxyConfig, proxyID } = selection
 
-    let proxyConfig = ''
-    let proxyID = ''
-    if (proxyMode === 'pool') {
-      const selected = proxyOptions.find((item) => item.proxyId === proxyId)
-      proxyConfig = selected?.proxyConfig?.trim() || ''
-      proxyID = selected?.proxyId || proxyId
-    } else if (proxyMode === 'custom') {
-      proxyConfig = customProxy.trim()
-    }
-
+    autoInstallRef.current = true
     setDownloading(true)
     setProgress({
       phase: 'resolving',
@@ -127,13 +192,15 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
       message: proxyConfig || proxyID ? '准备下载（使用指定代理）' : '准备下载（直连）',
     })
     try {
-      const started = await downloadAppUpdateWithProxySelection('', '', proxyConfig, proxyID)
+      const started = await downloadAppUpdateWithChannel('', '', proxyConfig, proxyID, channel)
       if (!started) {
+        autoInstallRef.current = false
         toast.error('当前环境不支持应用内更新')
         setDownloading(false)
       }
     } catch (error: any) {
-      toast.error(error?.message || '启动下载失败')
+      autoInstallRef.current = false
+      toast.error(resolveUpdateError(error, '启动下载失败'))
       setDownloading(false)
     }
   }
@@ -150,8 +217,8 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
       toast.success('即将退出并安装更新')
       window.setTimeout(() => Quit(), 800)
     } catch (error: any) {
-      toast.error(error?.message || '准备安装失败')
-      // 安装包可能已被清理，重新读取一次状态，避免按钮继续停在“退出并安装”。
+      toast.error(resolveUpdateError(error, '准备安装失败'))
+      // 安装包可能已被清理，重新读取一次状态，避免按钮继续停在可安装状态。
       void getDownloadedAppUpdate()
         .then(setDownloaded)
         .catch(() => setDownloaded(null))
@@ -165,8 +232,11 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
   const downloadedMatchesLatest =
     !!downloaded &&
     !!info?.latestVersion &&
-    normalizeVersion(downloaded.version) === normalizeVersion(info.latestVersion)
-  const canInstallDownloaded = updateAvailable && downloadedMatchesLatest
+    normalizeUpdateVersion(downloaded.version) === normalizeUpdateVersion(info.latestVersion)
+  // 检查失败时也允许安装已下载的包（版本由后端再次校验）；检查成功但已有更新版本时，要求版本匹配。
+  const canInstallDownloaded = !!downloaded && (!info?.ok || (updateAvailable && downloadedMatchesLatest))
+  const canDownloadAndInstall = updateAvailable || canInstallDownloaded
+  const showProgress = !!progress && (downloading || progress.phase === 'error' || (progress.phase === 'done' && canInstallDownloaded))
   const versionLabel = currentVersion || info?.currentVersion || '未知'
   const latestVersionLabel = info?.latestVersion
     ? `v${info.latestVersion}`
@@ -202,16 +272,26 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
         footer={
           <>
             <Button variant="secondary" onClick={onClose}>关闭</Button>
-            <Button onClick={() => { void runCheck() }} loading={checking}>
-              <RefreshCw className="h-4 w-4" />
-              重新检查
+            <Button onClick={() => { void handlePrimaryAction() }} loading={downloading} disabled={!canDownloadAndInstall || checking}>
+              <Download className="h-4 w-4" />
+              下载并且安装
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={!info?.releaseUrl}
+              onClick={() => {
+                if (info?.releaseUrl) window.open(info.releaseUrl, '_blank', 'noopener,noreferrer')
+              }}
+            >
+              打开项目页
+              <ExternalLink className="h-3.5 w-3.5" />
             </Button>
           </>
         }
       >
         <div className="space-y-4">
           <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-muted)] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-5">
                 <div>
                   <p className="text-xs text-[var(--color-text-muted)]">当前版本</p>
@@ -231,120 +311,91 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
                 {statusLabel}
               </span>
             </div>
-            <p className="mt-3 border-t border-[var(--color-border-muted)] pt-3 text-xs text-[var(--color-text-muted)]">
-              {checking
-                ? '正在获取最新版本信息…'
-                : updateAvailable
-                  ? '检测到可用更新，请选择下载代理后下载当前平台安装包。'
-                  : info?.ok
-                    ? '当前版本已包含最新发布内容。'
-                    : info
-                      ? '检查更新失败，请查看下方原因。'
-                      : '点击“重新检查”获取最新版本信息。'}
-            </p>
           </div>
 
-          {updateAvailable ? (
+          <div className="space-y-3 rounded-lg border border-[var(--color-border-muted)] p-3">
+            <FormItem label="更新通道" hint="正式版只更新稳定发布；预览版会包含标记为预发布的版本">
+              <Select
+                value={channel}
+                onChange={(event) => setChannel(event.target.value as UpdateChannel)}
+                options={[
+                  { value: 'stable', label: '正式版' },
+                  { value: 'preview', label: '预览版' },
+                ]}
+              />
+            </FormItem>
+            <FormItem label="检查 / 下载代理">
+              <Select
+                value={proxyMode}
+                onChange={(event) => setProxyMode(event.target.value as 'direct' | 'pool' | 'custom')}
+                options={[
+                  { value: 'direct', label: '直连' },
+                  { value: 'pool', label: '使用代理池节点' },
+                  { value: 'custom', label: '自定义代理地址' },
+                ]}
+              />
+            </FormItem>
+            {proxyMode === 'pool' ? (
+              <>
+                <FormItem label="代理节点">
+                  <Select
+                    value={proxyId}
+                    onChange={(event) => setProxyId(event.target.value)}
+                    options={proxyOptions.map(({ proxy, latencyMs }) => ({
+                      value: proxy.proxyId,
+                      label: `${proxy.proxyName || proxy.proxyId} · ${latencyMs}ms`,
+                    }))}
+                  />
+                </FormItem>
+                {proxyOptions.length === 0 ? (
+                  <p className="text-xs text-[var(--color-warning)]">
+                    暂无可用节点，请先到代理池测速，或改用直连/自定义代理。
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {proxyMode === 'custom' ? (
+              <FormItem label="代理地址" hint="例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080">
+                <Input
+                  value={customProxy}
+                  onChange={(event) => setCustomProxy(event.target.value)}
+                  onBlur={() => {
+                    if (customProxy.trim()) void runCheck()
+                  }}
+                  placeholder="socks5://127.0.0.1:7890"
+                />
+              </FormItem>
+            ) : null}
+          </div>
+
+          {info && !info.ok ? (
             <Alert
-              type="warning"
-              title={`发现新版本 v${info.latestVersion}`}
+              type="error"
+              title="查不到最新版本信息"
               message={
-                <div className="flex flex-wrap items-center gap-2">
-                  <span>建议更新以获得最新功能与修复。</span>
-                  {info.notesUrl ? (
-                    <button
-                      type="button"
-                      className="underline underline-offset-2 hover:text-[var(--color-accent)]"
-                      onClick={() => window.open(info.notesUrl, '_blank', 'noopener,noreferrer')}
-                    >
-                      查看更新说明
-                    </button>
+                <div className="space-y-1">
+                  <p>
+                    {info.error.includes('预览版本')
+                      ? '预览通道当前没有可用的预览版本，可切换回正式版。'
+                      : '当前网络或代理节点读不到 GitHub 上的更新清单，请在上方切换代理或节点。'}
+                  </p>
+                  {info.error ? (
+                    <p className="break-all text-xs text-[var(--color-text-muted)]">{info.error}</p>
                   ) : null}
                 </div>
               }
             />
-          ) : info?.ok ? (
-            <Alert type="success" title="已是最新版本" message={`当前版本 v${versionLabel} 已是最新版本。`} />
-          ) : info ? (
-            <Alert type="error" title="检查更新失败" message={info.error || '检查更新失败'} />
           ) : null}
 
-          {updateAvailable ? (
-            <>
-              <div className="space-y-3 rounded-lg border border-[var(--color-border-muted)] p-3">
-                <FormItem label="下载代理">
-                  <Select
-                    value={proxyMode}
-                    onChange={(event) => setProxyMode(event.target.value as 'direct' | 'pool' | 'custom')}
-                    options={[
-                      { value: 'direct', label: '直连' },
-                      { value: 'pool', label: '使用代理池节点' },
-                      { value: 'custom', label: '自定义代理地址' },
-                    ]}
-                  />
-                </FormItem>
-                {proxyMode === 'pool' ? (
-                  <FormItem label="代理节点">
-                    <Select
-                      value={proxyId}
-                      onChange={(event) => setProxyId(event.target.value)}
-                      options={proxyOptions.map((item) => ({
-                        value: item.proxyId,
-                        label: item.proxyName || item.proxyId,
-                      }))}
-                    />
-                  </FormItem>
-                ) : null}
-                {proxyMode === 'custom' ? (
-                  <FormItem label="代理地址" hint="例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080">
-                    <Input
-                      value={customProxy}
-                      onChange={(event) => setCustomProxy(event.target.value)}
-                      placeholder="socks5://127.0.0.1:7890"
-                    />
-                  </FormItem>
-                ) : null}
-              </div>
-
-              {progress ? (
-                <div className="rounded-lg border border-[var(--color-border-muted)] px-3 py-2">
-                  <Progress
-                    percent={progress.progress}
-                    status={progress.phase === 'error' ? 'error' : progress.phase === 'done' ? 'success' : 'normal'}
-                    size="sm"
-                  />
-                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">{progress.message}</p>
-                </div>
-              ) : null}
-
-              {canInstallDownloaded && progress?.phase !== 'done' ? (
-                <p className="text-xs text-[var(--color-text-muted)]">
-                  本地已下载 v{downloaded?.version}，无需重新下载。
-                </p>
-              ) : null}
-
-              <div className="flex flex-wrap justify-end gap-2">
-                {info.releaseUrl ? (
-                  <Button
-                    variant="ghost"
-                    onClick={() => window.open(info.releaseUrl, '_blank', 'noopener,noreferrer')}
-                  >
-                    打开下载页
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                ) : null}
-                {progress?.phase === 'done' || canInstallDownloaded ? (
-                  <Button onClick={() => setConfirmInstall(true)} loading={installing}>
-                    退出并安装
-                  </Button>
-                ) : (
-                  <Button onClick={() => { void handleDownload() }} loading={downloading}>
-                    <Download className="h-4 w-4" />
-                    {progress?.phase === 'error' ? '重新下载' : '下载更新'}
-                  </Button>
-                )}
-              </div>
-            </>
+          {showProgress && progress ? (
+            <div className="rounded-lg border border-[var(--color-border-muted)] px-3 py-2">
+              <Progress
+                percent={progress.progress}
+                status={progress.phase === 'error' ? 'error' : progress.phase === 'done' ? 'success' : 'normal'}
+                size="sm"
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{progress.message}</p>
+            </div>
           ) : null}
         </div>
       </Modal>

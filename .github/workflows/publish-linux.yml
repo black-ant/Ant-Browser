@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ inputs.version }}"
-          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?) ]]; then
             version="${BASH_REMATCH[1]}"
           fi
           if [[ -z "$version" ]]; then

@@ -198,20 +198,27 @@ func main() {
 		lifecycle.Log(appRoot, "runtime_layout.error", map[string]interface{}{"error": err.Error()})
 	}
 	lifecycle.Log(appRoot, "process.start", map[string]interface{}{"dev": isDevMode})
-	singleInstance, primaryInstance, err := singleinstance.Acquire(appRoot)
-	if err != nil {
-		log.Printf("单实例检查失败: %v", err)
-		lifecycle.Log(appRoot, "single_instance.error", map[string]interface{}{"error": err.Error()})
-	}
-	lifecycle.Log(appRoot, "single_instance.checked", map[string]interface{}{"primary": primaryInstance})
-	if !primaryInstance {
-		lifecycle.Log(appRoot, "process.exit.non_primary", nil)
-		if startupDebugEnabled {
-			log.Printf("检测到已有应用实例，已请求唤醒并退出当前进程")
+	// 绑定生成模式（-tags bindings）只跑 wails.Run 产出前端绑定，不能抢单实例锁，
+	// 否则本机已有实例运行时生成程序会直接退出，导致绑定静默停留在旧版本。
+	var singleInstance *singleinstance.Guard
+	if !bindingsGenerationMode {
+		var primaryInstance bool
+		var acquireErr error
+		singleInstance, primaryInstance, acquireErr = singleinstance.Acquire(appRoot)
+		if acquireErr != nil {
+			log.Printf("单实例检查失败: %v", acquireErr)
+			lifecycle.Log(appRoot, "single_instance.error", map[string]interface{}{"error": acquireErr.Error()})
 		}
-		return
+		lifecycle.Log(appRoot, "single_instance.checked", map[string]interface{}{"primary": primaryInstance})
+		if !primaryInstance {
+			lifecycle.Log(appRoot, "process.exit.non_primary", nil)
+			if startupDebugEnabled {
+				log.Printf("检测到已有应用实例，已请求唤醒并退出当前进程")
+			}
+			return
+		}
+		defer singleInstance.Close()
 	}
-	defer singleInstance.Close()
 	defer lifecycle.Log(appRoot, "process.defer_exit", nil)
 	if startupDebugEnabled && backend.RuntimeUsesDetachedState(appRoot) {
 		log.Printf("检测到安装目录需要只读运行，状态目录切换到: %s", backend.RuntimeStateRoot(appRoot))
@@ -247,26 +254,28 @@ func main() {
 
 	var wailsCtx context.Context
 	startupReached := make(chan struct{})
-	go func() {
-		for activation := range singleInstance.Activations() {
-			if wailsCtx == nil {
-				select {
-				case <-startupReached:
-				case <-time.After(12 * time.Second):
-				}
+	if singleInstance != nil {
+		go func() {
+			for activation := range singleInstance.Activations() {
 				if wailsCtx == nil {
-					activation.Complete()
-					continue
+					select {
+					case <-startupReached:
+					case <-time.After(12 * time.Second):
+					}
+					if wailsCtx == nil {
+						activation.Complete()
+						continue
+					}
 				}
+				runtime.WindowShow(wailsCtx)
+				runtime.WindowUnminimise(wailsCtx)
+				runtime.WindowSetAlwaysOnTop(wailsCtx, true)
+				runtime.WindowSetAlwaysOnTop(wailsCtx, false)
+				singleinstance.ActivateExistingWindow(os.Getpid())
+				activation.Complete()
 			}
-			runtime.WindowShow(wailsCtx)
-			runtime.WindowUnminimise(wailsCtx)
-			runtime.WindowSetAlwaysOnTop(wailsCtx, true)
-			runtime.WindowSetAlwaysOnTop(wailsCtx, false)
-			singleinstance.ActivateExistingWindow(os.Getpid())
-			activation.Complete()
-		}
-	}()
+		}()
+	}
 
 	if startupDebugEnabled {
 		go func() {

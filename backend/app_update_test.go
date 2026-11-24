@@ -128,6 +128,66 @@ func TestFetchAppUpdateInfoParsesManifestAssets(t *testing.T) {
 	}
 }
 
+// 预览通道：从 Release 列表里挑带 prerelease 标记的版本，并同样读取更新清单。
+func TestFetchAppUpdateInfoPreviewChannelPicksPrerelease(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		base := strings.TrimSuffix(server.URL, "/")
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/manifest"):
+			_, _ = writer.Write([]byte(`{"version":"1.9.8-beta.1","assets":{"windows-amd64":{"name":"setup.exe","sha256":"abc123"}}}`))
+		case strings.HasSuffix(request.URL.Path, "/list"):
+			_, _ = writer.Write([]byte(fmt.Sprintf(
+				`[{"tag_name":"v1.9.8-beta.1","html_url":"https://example.com/beta","prerelease":true,"assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"},{"name":"update-manifest.json","browser_download_url":"%s/manifest"}]},{"tag_name":"v1.9.7","html_url":"https://example.com/stable","prerelease":false,"assets":[]}]`,
+				base, base,
+			)))
+		default:
+			_, _ = writer.Write([]byte(`{"tag_name":"v1.9.7","html_url":"https://example.com/stable","prerelease":false,"assets":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.7", UpdateChannelPreview, server.URL+"/latest", server.URL+"/list", server.Client())
+	if !info.OK || !info.UpdateAvailable {
+		t.Fatalf("预览通道结果异常: %+v", info)
+	}
+	if info.LatestVersion != "1.9.8-beta.1" {
+		t.Fatalf("latest = %q, want 1.9.8-beta.1", info.LatestVersion)
+	}
+	if _, ok := info.Assets["windows-amd64"]; !ok {
+		t.Fatalf("预览版本缺少安装包: %+v", info.Assets)
+	}
+}
+
+// 预览通道没有任何预发布版本时必须明确提示，不能悄悄退回正式版。
+func TestFetchAppUpdateInfoPreviewChannelWithoutPrerelease(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`[{"tag_name":"v1.9.7","prerelease":false,"assets":[]}]`))
+	}))
+	defer server.Close()
+
+	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.6", UpdateChannelPreview, server.URL+"/latest", server.URL+"/list", server.Client())
+	if info.OK || !strings.Contains(info.Error, "预览版本") {
+		t.Fatalf("update info = %+v, want 预览版本缺失提示", info)
+	}
+}
+
+// 正式通道必须拒绝被标记为预发布的 Release。
+func TestFetchAppUpdateInfoStableChannelRejectsPrerelease(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"tag_name":"v1.9.8-beta.1","prerelease":true,"assets":[]}`))
+	}))
+	defer server.Close()
+
+	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.7", UpdateChannelStable, server.URL+"/latest", server.URL+"/list", server.Client())
+	if info.OK || !strings.Contains(info.Error, "预览版") {
+		t.Fatalf("update info = %+v, want 拒绝预览版", info)
+	}
+}
+
 func TestFetchAppUpdateInfoReportsMissingManifest(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -277,6 +337,24 @@ func TestCheckAppUpdateSurfacesProxyConfigError(t *testing.T) {
 	}
 	if info.Assets == nil {
 		t.Fatal("assets 不能为 nil，前端按对象渲染")
+	}
+}
+
+// 检查更新也必须支持临时指定代理：坏代理/未知节点都明确报错，不回退直连。
+func TestCheckAppUpdateWithProxySelectionRejectsBadSelection(t *testing.T) {
+	app := newUpdateTestApp(t, "")
+
+	badProxy := app.CheckAppUpdateWithProxySelection("https://127.0.0.1:443", "")
+	if badProxy.OK || !strings.Contains(badProxy.Error, "更新代理配置错误") {
+		t.Fatalf("bad proxy info = %+v", badProxy)
+	}
+	if badProxy.Assets == nil {
+		t.Fatal("assets 不能为 nil，前端按对象渲染")
+	}
+
+	unknownNode := app.CheckAppUpdateWithProxySelection("", "missing-proxy")
+	if unknownNode.OK || !strings.Contains(unknownNode.Error, "代理节点不存在") {
+		t.Fatalf("unknown node info = %+v", unknownNode)
 	}
 }
 

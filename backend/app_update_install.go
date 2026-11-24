@@ -141,27 +141,49 @@ func (a *App) emitUpdateProgress(ctx context.Context, phase string, progress int
 	a.emitRuntimeEventWithContext(ctx, updateProgressEvent, payload)
 }
 
-func (a *App) updateAsset(version string, assetKey string, proxyConfig string, proxyID string) (AppUpdateAsset, string, error) {
+func (a *App) updateAsset(version string, assetKey string, proxyConfig string, proxyID string, channel string) (AppUpdateAsset, string, error) {
 	if a == nil || a.config == nil || !a.config.Update.IsEnabled() {
 		return AppUpdateAsset{}, "", fmt.Errorf("更新检查已关闭")
 	}
 	version = strings.TrimSpace(version)
 	assetKey = strings.TrimSpace(assetKey)
+	channel = normalizeUpdateChannel(channel)
 	if assetKey == "" {
 		assetKey = updateAssetKey()
 	}
-	client, err := a.updateHTTPClientForSelection(updateCheckTimeout, proxyConfig, proxyID)
+	client, err := a.updateHTTPClientForSelection(updateResolveTimeout, proxyConfig, proxyID)
 	if err != nil {
+		logger.New("AppUpdate").Warn("下载更新时构建代理客户端失败",
+			logger.F("proxy_id", proxyID),
+			logger.F("error", err.Error()),
+		)
 		return AppUpdateAsset{}, "", fmt.Errorf("更新代理配置错误: %w", err)
 	}
-	info := fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), client)
+	info := fetchAppUpdateInfoForChannel(
+		context.Background(),
+		a.appVersion(),
+		channel,
+		a.updateReleaseAPIURL(),
+		a.updateReleasesListURL(),
+		client,
+	)
 	if !info.OK {
+		logger.New("AppUpdate").Warn("下载更新时获取更新信息失败",
+			logger.F("proxy_id", proxyID),
+			logger.F("channel", channel),
+			logger.F("error", info.Error),
+		)
 		return AppUpdateAsset{}, "", fmt.Errorf("获取更新信息失败: %s", info.Error)
 	}
 	if version == "" {
+		if !info.UpdateAvailable {
+			return AppUpdateAsset{}, "", fmt.Errorf("当前已是最新版本")
+		}
 		version = info.LatestVersion
-	}
-	if !info.UpdateAvailable && version == info.CurrentVersion {
+	} else if comparison, compareErr := compareUpdateVersions(info.CurrentVersion, version); compareErr != nil {
+		return AppUpdateAsset{}, "", fmt.Errorf("版本号无效: %s", version)
+	} else if comparison >= 0 {
+		// 预览通道的最新预发布版本可能低于当前正式版，这里必须拦住，避免“更新”成更低版本。
 		return AppUpdateAsset{}, "", fmt.Errorf("当前已是最新版本")
 	}
 	asset, ok := info.Assets[assetKey]
@@ -173,21 +195,26 @@ func (a *App) updateAsset(version string, assetKey string, proxyConfig string, p
 
 // DownloadAppUpdate 使用配置里的代理后台下载更新包。
 func (a *App) DownloadAppUpdate(version string, assetKey string) error {
-	return a.downloadAppUpdate(version, assetKey, a.updateProxyConfig(), "")
+	return a.downloadAppUpdate(version, assetKey, a.updateProxyConfig(), "", UpdateChannelStable)
 }
 
 // DownloadAppUpdateWithProxy 允许前端临时指定代理下载更新包，不写入配置。
 func (a *App) DownloadAppUpdateWithProxy(version string, assetKey string, proxyConfig string) error {
-	return a.downloadAppUpdate(version, assetKey, proxyConfig, "")
+	return a.downloadAppUpdate(version, assetKey, proxyConfig, "", UpdateChannelStable)
 }
 
 // DownloadAppUpdateWithProxySelection 允许前端指定代理地址或代理池节点 ID 下载更新包。
 func (a *App) DownloadAppUpdateWithProxySelection(version string, assetKey string, proxyConfig string, proxyID string) error {
-	return a.downloadAppUpdate(version, assetKey, proxyConfig, proxyID)
+	return a.downloadAppUpdate(version, assetKey, proxyConfig, proxyID, UpdateChannelStable)
 }
 
-func (a *App) downloadAppUpdate(version string, assetKey string, proxyConfig string, proxyID string) error {
-	asset, version, err := a.updateAsset(version, assetKey, proxyConfig, proxyID)
+// DownloadAppUpdateWithChannel 允许前端同时指定更新通道（正式 / 预览）。
+func (a *App) DownloadAppUpdateWithChannel(version string, assetKey string, proxyConfig string, proxyID string, channel string) error {
+	return a.downloadAppUpdate(version, assetKey, proxyConfig, proxyID, channel)
+}
+
+func (a *App) downloadAppUpdate(version string, assetKey string, proxyConfig string, proxyID string, channel string) error {
+	asset, version, err := a.updateAsset(version, assetKey, proxyConfig, proxyID, channel)
 	if err != nil {
 		return err
 	}

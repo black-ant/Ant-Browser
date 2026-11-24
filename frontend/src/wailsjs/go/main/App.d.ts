@@ -336,6 +336,10 @@ export function BrowserSnapshotRestore(arg1:string,arg2:string):Promise<void>;
 
 export function CheckAppUpdate():Promise<backend.AppUpdateInfo>;
 
+export function CheckAppUpdateWithChannel(arg1:string,arg2:string,arg3:string):Promise<backend.AppUpdateInfo>;
+
+export function CheckAppUpdateWithProxySelection(arg1:string,arg2:string):Promise<backend.AppUpdateInfo>;
+
 export function CheckForUpdates():Promise<Record<string, any>>;
 
 export function ClearAppLogs():Promise<void>;
@@ -351,6 +355,8 @@ export function DeleteBrowserProxyVirtualGroup(arg1:string):Promise<void>;
 export function DeleteGroup(arg1:string):Promise<void>;
 
 export function DownloadAppUpdate(arg1:string,arg2:string):Promise<void>;
+
+export function DownloadAppUpdateWithChannel(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
 
 export function DownloadAppUpdateWithProxy(arg1:string,arg2:string,arg3:string):Promise<void>;
 

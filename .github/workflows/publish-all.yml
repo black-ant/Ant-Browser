@@ -43,14 +43,15 @@ jobs:
           version="${INPUT_VERSION:-}"
           version="${version#v}"
           version="${version#V}"
-          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          # 预览版号形如 1.9.8-beta.1，后缀必须保留，否则 tag、manifest 与安装包名会对不上
+          if [[ -z "$version" && "$GITHUB_REF_NAME" =~ ^[vV]?([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?) ]]; then
             version="${BASH_REMATCH[1]}"
           fi
           if [[ -z "$version" ]]; then
             version="$(node -p "require('./wails.json').info.productVersion")"
           fi
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            echo "::error::版本号格式无效: $version（期望 1.9.1 这种形式）"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::版本号格式无效: $version（期望 1.9.1 或 1.9.8-beta.1 这种形式）"
             exit 1
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
@@ -202,15 +203,24 @@ jobs:
             notes_args=(--notes-file release-notes.md)
           fi
 
+          # 带 -beta 之类后缀的版本标记为 prerelease：GitHub 的 /releases/latest 会自动跳过它，
+          # 正式通道不受影响，预览通道靠 prerelease 标记识别。
+          prerelease_args=()
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease_args=(--prerelease)
+          fi
+
           if gh release view "$tag" >/dev/null 2>&1; then
             # release 已存在（重跑），有 CHANGELOG 条目时刷新正文；gh release edit 不支持 --generate-notes
             if [ "$NOTES_FOUND" = "true" ]; then
-              gh release edit "$tag" --notes-file release-notes.md
+              gh release edit "$tag" --notes-file release-notes.md "${prerelease_args[@]}"
+            elif [ ${#prerelease_args[@]} -gt 0 ]; then
+              gh release edit "$tag" "${prerelease_args[@]}"
             fi
           elif gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
             # tag 已存在（上次打包残留），直接复用，不移动指向
-            gh release create "$tag" "${notes_args[@]}" --title "$tag"
+            gh release create "$tag" "${notes_args[@]}" "${prerelease_args[@]}" --title "$tag"
           else
-            gh release create "$tag" --target "$GITHUB_SHA" "${notes_args[@]}" --title "$tag"
+            gh release create "$tag" --target "$GITHUB_SHA" "${notes_args[@]}" "${prerelease_args[@]}" --title "$tag"
           fi
           gh release upload "$tag" "${files[@]}" --clobber

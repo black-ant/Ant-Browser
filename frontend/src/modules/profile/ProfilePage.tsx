@@ -20,7 +20,7 @@ import { useLayoutStore } from '../../store/layoutStore'
 import {
   applyAppUpdate,
   applyPendingAppUpdate,
-  checkAppUpdate,
+  checkAppUpdateWithSavedProxy,
   clearDownloadedAppUpdate,
   clearPendingAppUpdate,
   createDefaultProfilePageData,
@@ -30,9 +30,10 @@ import {
   loadCurrentAppVersion,
   loadProfilePageData,
 } from './api'
-import { fetchBrowserProxies } from '../browser/api'
-import type { BrowserProxy } from '../browser/types'
 import type { AppDownloadedUpdate, AppUpdateInfo, IconKey, ProfilePageData, UpdatePendingInfo, UpdateProgress } from './types'
+import { resolveUpdateError } from './updateErrors'
+import { loadUpdateChannel, saveUpdateCheckSnapshot } from './updatePrefs'
+import { useUpdateDownloadProxies } from './useUpdateDownloadProxies'
 
 const ICON_MAP = {
   'book-open': BookOpen,
@@ -67,7 +68,7 @@ export function ProfilePage() {
   const [proxyMode, setProxyMode] = useState<'direct' | 'pool' | 'custom'>('direct')
   const [proxyId, setProxyId] = useState('')
   const [customProxy, setCustomProxy] = useState('')
-  const [proxyOptions, setProxyOptions] = useState<BrowserProxy[]>([])
+  const { options: proxyOptions } = useUpdateDownloadProxies(true)
   const simulationTimersRef = useRef<number[]>([])
 
   const clearSimulationTimers = () => {
@@ -98,12 +99,6 @@ export function ProfilePage() {
     }
 
     void syncProfile()
-
-    void fetchBrowserProxies()
-      .then(list => {
-        if (active) setProxyOptions(list.filter(item => item.proxyId && item.proxyId !== '__direct__'))
-      })
-      .catch(() => {})
 
     void loadCurrentAppVersion()
       .then((version) => {
@@ -163,9 +158,17 @@ export function ProfilePage() {
     if (testMode) resetUpdateSimulation()
     setCheckingUpdate(true)
     try {
-      const info = await checkAppUpdate()
+      const info = await checkAppUpdateWithSavedProxy()
       setUpdateCheck(info)
       useLayoutStore.getState().setAppUpdateAvailable(info.ok && info.updateAvailable)
+      if (info.ok) {
+        saveUpdateCheckSnapshot({
+          updateAvailable: info.updateAvailable,
+          latestVersion: info.latestVersion,
+          checkedAt: new Date().toISOString(),
+          channel: loadUpdateChannel(),
+        })
+      }
       if (info.ok && info.updateAvailable) {
         toast.success(`发现新版本 v${info.latestVersion}`)
       } else if (info.ok) {
@@ -183,10 +186,10 @@ export function ProfilePage() {
         notesUrl: '',
         force: false,
         assets: {},
-        error: error?.message || '检查更新失败',
+        error: resolveUpdateError(error, '检查更新失败'),
       })
-      useLayoutStore.getState().setAppUpdateAvailable(false)
-      toast.error(error?.message || '检查更新失败')
+      // 检查失败时保留上次的红点状态：失败不等于没有新版本。
+      toast.error(resolveUpdateError(error, '检查更新失败'))
     } finally {
       setCheckingUpdate(false)
     }
@@ -198,8 +201,11 @@ export function ProfilePage() {
   }
 
   const handleConfirmDownloadProxy = async () => {
-    if (proxyMode === 'pool' && !proxyId) {
-      toast.error('请先选择代理节点')
+    const selectedPoolProxy = proxyMode === 'pool'
+      ? proxyOptions.find(item => item.proxy.proxyId === proxyId)?.proxy
+      : undefined
+    if (proxyMode === 'pool' && !selectedPoolProxy) {
+      toast.error(proxyId ? '所选节点已不可用，请重新选择' : '请先选择代理节点')
       return
     }
     if (proxyMode === 'custom' && !customProxy.trim()) {
@@ -213,10 +219,9 @@ export function ProfilePage() {
     }
     let proxyConfig = ''
     let proxyID = ''
-    if (proxyMode === 'pool') {
-      const selected = proxyOptions.find(item => item.proxyId === proxyId)
-      proxyConfig = selected?.proxyConfig?.trim() || ''
-      proxyID = selected?.proxyId || proxyId
+    if (selectedPoolProxy) {
+      proxyConfig = selectedPoolProxy.proxyConfig?.trim() || ''
+      proxyID = selectedPoolProxy.proxyId
     } else if (proxyMode === 'custom') {
       proxyConfig = customProxy.trim()
     }
@@ -234,7 +239,7 @@ export function ProfilePage() {
         setDownloading(false)
       }
     } catch (error: any) {
-      toast.error(error?.message || '启动下载失败')
+      toast.error(resolveUpdateError(error, '启动下载失败'))
       setDownloading(false)
     }
   }
@@ -251,7 +256,7 @@ export function ProfilePage() {
       toast.success('即将退出并安装更新')
       window.setTimeout(() => Quit(), 800)
     } catch (error: any) {
-      toast.error(error?.message || '准备安装失败')
+      toast.error(resolveUpdateError(error, '准备安装失败'))
       // 安装包可能已被清理，重新读取一次状态，避免留下点了就报错的入口。
       void getPendingAppUpdate().then(setPendingUpdate).catch(() => {})
       void getDownloadedAppUpdate().then(setDownloadedUpdate).catch(() => {})
@@ -275,7 +280,7 @@ export function ProfilePage() {
       }
       setConfirmInstall(true)
     } catch (error: any) {
-      toast.error(error?.message || '重新准备安装失败')
+      toast.error(resolveUpdateError(error, '重新准备安装失败'))
       // 安装包可能已经丢失，刷新一次状态让提示变成明确失败态。
       void getPendingAppUpdate().then(setPendingUpdate).catch(() => {})
     } finally {
@@ -301,7 +306,7 @@ export function ProfilePage() {
     setDownloadedUpdate(null)
     setUpdateCheck({
       ok: true,
-      currentVersion: appVersion || '1.9.7',
+      currentVersion: appVersion || '1.9.8',
       latestVersion: '99.0.0-test',
       updateAvailable: true,
       releaseUrl: '',
@@ -495,7 +500,7 @@ export function ProfilePage() {
                   onClick={() => {
                     void clearPendingAppUpdate()
                       .then(() => setPendingUpdate(null))
-                      .catch((error: any) => toast.error(error?.message || '清除安装提示失败'))
+                      .catch((error: any) => toast.error(resolveUpdateError(error, '清除安装提示失败')))
                   }}
                 >
                   清除提示
@@ -515,7 +520,7 @@ export function ProfilePage() {
                     onClick={() => {
                       void clearPendingAppUpdate()
                         .then(() => setPendingUpdate(null))
-                        .catch((error: any) => toast.error(error?.message || '清除安装提示失败'))
+                        .catch((error: any) => toast.error(resolveUpdateError(error, '清除安装提示失败')))
                     }}
                   >
                     忽略
@@ -537,7 +542,7 @@ export function ProfilePage() {
                   onClick={() => {
                     void clearDownloadedAppUpdate()
                       .then(() => setDownloadedUpdate(null))
-                      .catch((error: any) => toast.error(error?.message || '清除已下载更新失败'))
+                      .catch((error: any) => toast.error(resolveUpdateError(error, '清除已下载更新失败')))
                   }}
                 >
                   忽略
@@ -667,13 +672,20 @@ export function ProfilePage() {
             />
           </FormItem>
           {proxyMode === 'pool' ? (
-            <FormItem label="代理节点">
-              <Select
-                value={proxyId}
-                onChange={event => setProxyId(event.target.value)}
-                options={proxyOptions.map(item => ({ value: item.proxyId, label: item.proxyName || item.proxyId }))}
-              />
-            </FormItem>
+            <>
+              <FormItem label="代理节点">
+                <Select
+                  value={proxyId}
+                  onChange={event => setProxyId(event.target.value)}
+                  options={proxyOptions.map(({ proxy, latencyMs }) => ({ value: proxy.proxyId, label: `${proxy.proxyName || proxy.proxyId} · ${latencyMs}ms` }))}
+                />
+              </FormItem>
+              {proxyOptions.length === 0 ? (
+                <p className="text-xs text-[var(--color-warning)]">
+                  暂无可用节点，请先到代理池测速，或改用直连/自定义代理。
+                </p>
+              ) : null}
+            </>
           ) : null}
           {proxyMode === 'custom' ? (
             <FormItem label="代理地址" hint="例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080">

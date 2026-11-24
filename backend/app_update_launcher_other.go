@@ -23,7 +23,8 @@ func (a *App) launchUpdateWaiter(pending UpdatePendingInfo) error {
 	}
 	script := fmt.Sprintf(`#!/bin/sh
 while kill -0 %d 2>/dev/null; do sleep 0.5; done
-exec %s %s
+%s %s
+rm -f "$0"
 `, pending.PID, opener, shellQuote(pending.InstallerPath))
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		return err
