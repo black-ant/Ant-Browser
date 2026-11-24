@@ -552,31 +552,17 @@ export function ProfilePage() {
           ) : null}
           <div className="flex flex-col gap-3 border-b border-[var(--color-border-muted)] pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="font-semibold text-[var(--color-text-primary)]">
-                当前版本 {appVersion ? `v${appVersion}` : '未知'}
+              <p className="flex flex-wrap items-center gap-2 font-semibold text-[var(--color-text-primary)]">
+                <span>当前版本 {appVersion ? `v${appVersion}` : '未知'}</span>
+                {updateCheck?.ok && updateCheck.updateAvailable ? (
+                  <span className="text-sm font-normal text-[var(--color-warning)]">
+                    最新 v{updateCheck.latestVersion}
+                  </span>
+                ) : null}
               </p>
-              {updateCheck?.ok && updateCheck.updateAvailable ? (
-                <Alert
-                  type="warning"
-                  title={`发现新版本 v${updateCheck.latestVersion}`}
-                  message={
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span>当前版本 v{appVersion || updateCheck.currentVersion || '未知'}，建议更新以获得最新功能与修复。</span>
-                      {updateCheck.notesUrl ? (
-                        <button
-                          type="button"
-                          className="underline underline-offset-2 hover:text-[var(--color-accent)]"
-                          onClick={() => openExternal(updateCheck.notesUrl)}
-                        >
-                          查看更新说明
-                        </button>
-                      ) : null}
-                    </div>
-                  }
-                />
-              ) : updateCheck?.ok ? (
+              {updateCheck?.ok && !updateCheck.updateAvailable ? (
                 <p className="text-sm text-[var(--color-text-muted)]">已是最新版本</p>
-              ) : updateCheck ? (
+              ) : updateCheck && !updateCheck.ok ? (
                 <Alert type="error" title="检查更新失败" message={updateCheck.error || '检查更新失败'} />
               ) : null}
             </div>
