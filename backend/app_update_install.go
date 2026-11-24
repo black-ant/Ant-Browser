@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	updateProgressEvent = "app:update:progress"
-	updatePendingEvent  = "app:update:pending"
-	updatePendingFile   = "update-pending.json"
+	updateProgressEvent  = "app:update:progress"
+	updatePendingEvent   = "app:update:pending"
+	updatePendingFile    = "update-pending.json"
+	downloadedUpdateFile = "downloaded-update.json"
 )
 
 // UpdateProgress 是更新下载/安装进度事件的数据。
@@ -36,6 +37,90 @@ type UpdatePendingInfo struct {
 	InstallerPath string `json:"installerPath"`
 	PID           int    `json:"pid"`
 	CreatedAt     string `json:"createdAt"`
+	// Missing 表示安装包已不存在（被删除或移动），前端据此显示明确失败提示，而不是静默隐藏。
+	Missing bool `json:"missing"`
+}
+
+type downloadedUpdateInfo struct {
+	Version   string `json:"version"`
+	AssetName string `json:"assetName"`
+}
+
+// AppDownloadedUpdate 描述已下载、尚未安装的更新包，供重启后继续安装。
+type AppDownloadedUpdate struct {
+	Version       string `json:"version"`
+	AssetName     string `json:"assetName"`
+	InstallerPath string `json:"installerPath"`
+}
+
+func (a *App) downloadedUpdatePath() string {
+	return a.updateDataPath("updates", downloadedUpdateFile)
+}
+
+func (a *App) saveDownloadedUpdate(info downloadedUpdateInfo) error {
+	path := a.downloadedUpdatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func (a *App) loadDownloadedUpdate() *downloadedUpdateInfo {
+	data, err := os.ReadFile(a.downloadedUpdatePath())
+	if err != nil {
+		return nil
+	}
+	var info downloadedUpdateInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(info.Version) == "" || strings.TrimSpace(info.AssetName) == "" {
+		return nil
+	}
+	return &info
+}
+
+// GetDownloadedAppUpdate 返回本地已下载、待安装的更新包，供重启后继续安装。
+// 更新功能已关闭、版本已安装或安装包已丢失时返回 nil：这几种情况都无需再提示安装。
+func (a *App) GetDownloadedAppUpdate() *AppDownloadedUpdate {
+	if a == nil || a.config == nil || !a.config.Update.IsEnabled() {
+		return nil
+	}
+	downloaded := a.loadDownloadedUpdate()
+	if downloaded == nil {
+		return nil
+	}
+	if comparison, err := compareUpdateVersions(a.appVersion(), downloaded.Version); err != nil || comparison >= 0 {
+		return nil
+	}
+	installerPath := a.updateDataPath("updates", downloaded.Version, downloaded.AssetName)
+	if _, err := os.Stat(installerPath); err != nil {
+		return nil
+	}
+	return &AppDownloadedUpdate{
+		Version:       downloaded.Version,
+		AssetName:     downloaded.AssetName,
+		InstallerPath: installerPath,
+	}
+}
+
+// ClearDownloadedAppUpdate 丢弃已下载待安装的更新包，同时清掉安装文件避免占用磁盘。
+func (a *App) ClearDownloadedAppUpdate() error {
+	downloaded := a.loadDownloadedUpdate()
+	if err := os.Remove(a.downloadedUpdatePath()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if downloaded == nil {
+		return nil
+	}
+	installerPath := a.updateDataPath("updates", downloaded.Version, downloaded.AssetName)
+	_ = os.Remove(installerPath)
+	_ = os.Remove(filepath.Dir(installerPath))
+	return nil
 }
 
 func updateAssetKey() string {
@@ -56,7 +141,7 @@ func (a *App) emitUpdateProgress(ctx context.Context, phase string, progress int
 	a.emitRuntimeEventWithContext(ctx, updateProgressEvent, payload)
 }
 
-func (a *App) updateAsset(version string, assetKey string, proxyConfig string) (AppUpdateAsset, string, error) {
+func (a *App) updateAsset(version string, assetKey string, proxyConfig string, proxyID string) (AppUpdateAsset, string, error) {
 	if a == nil || a.config == nil || !a.config.Update.IsEnabled() {
 		return AppUpdateAsset{}, "", fmt.Errorf("更新检查已关闭")
 	}
@@ -65,7 +150,11 @@ func (a *App) updateAsset(version string, assetKey string, proxyConfig string) (
 	if assetKey == "" {
 		assetKey = updateAssetKey()
 	}
-	info := fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), a.updateHTTPClientFor(proxyConfig))
+	client, err := a.updateHTTPClientForSelection(updateCheckTimeout, proxyConfig, proxyID)
+	if err != nil {
+		return AppUpdateAsset{}, "", fmt.Errorf("更新代理配置错误: %w", err)
+	}
+	info := fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), client)
 	if !info.OK {
 		return AppUpdateAsset{}, "", fmt.Errorf("获取更新信息失败: %s", info.Error)
 	}
@@ -84,123 +173,130 @@ func (a *App) updateAsset(version string, assetKey string, proxyConfig string) (
 
 // DownloadAppUpdate 使用配置里的代理后台下载更新包。
 func (a *App) DownloadAppUpdate(version string, assetKey string) error {
-	return a.downloadAppUpdate(version, assetKey, a.updateProxyConfig())
+	return a.downloadAppUpdate(version, assetKey, a.updateProxyConfig(), "")
 }
 
 // DownloadAppUpdateWithProxy 允许前端临时指定代理下载更新包，不写入配置。
 func (a *App) DownloadAppUpdateWithProxy(version string, assetKey string, proxyConfig string) error {
-	return a.downloadAppUpdate(version, assetKey, proxyConfig)
+	return a.downloadAppUpdate(version, assetKey, proxyConfig, "")
 }
 
-func (a *App) downloadAppUpdate(version string, assetKey string, proxyConfig string) error {
-	asset, version, err := a.updateAsset(version, assetKey, proxyConfig)
+// DownloadAppUpdateWithProxySelection 允许前端指定代理地址或代理池节点 ID 下载更新包。
+func (a *App) DownloadAppUpdateWithProxySelection(version string, assetKey string, proxyConfig string, proxyID string) error {
+	return a.downloadAppUpdate(version, assetKey, proxyConfig, proxyID)
+}
+
+func (a *App) downloadAppUpdate(version string, assetKey string, proxyConfig string, proxyID string) error {
+	asset, version, err := a.updateAsset(version, assetKey, proxyConfig, proxyID)
 	if err != nil {
 		return err
+	}
+	client, err := a.updateDownloadHTTPClientFor(proxyConfig, proxyID)
+	if err != nil {
+		return fmt.Errorf("更新代理配置错误: %w", err)
 	}
 	return a.startBackgroundTask(func(ctx context.Context) {
 		log := logger.New("AppUpdate")
 		emit := func(phase string, progress int, message string) {
 			a.emitUpdateProgress(ctx, phase, progress, message)
 		}
-		emit("resolving", 5, "准备下载更新包")
 		log.Info("开始下载应用更新", logger.F("version", version), logger.F("asset", asset.Name))
-
-		targetDir := a.updateDataPath("updates", version)
-		if err := os.MkdirAll(targetDir, 0o755); err != nil {
-			emit("error", 0, "创建更新目录失败: "+err.Error())
+		if err := a.downloadUpdatePackage(ctx, version, asset, client, emit); err != nil {
+			emit("error", 0, err.Error())
 			return
 		}
-		targetPath := filepath.Join(targetDir, asset.Name)
-		tempPath := targetPath + ".part"
-		out, err := os.Create(tempPath)
-		if err != nil {
-			emit("error", 0, "创建临时文件失败: "+err.Error())
-			return
-		}
-		defer out.Close()
-
-		client := a.updateHTTPClientFor(proxyConfig)
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.URL, nil)
-		if err != nil {
-			emit("error", 0, "创建下载请求失败: "+err.Error())
-			return
-		}
-		request.Header.Set("User-Agent", "Ant-Browser-Updater/"+a.appVersion())
-		response, err := client.Do(request)
-		if err != nil {
-			emit("error", 0, "下载更新包失败: "+err.Error())
-			return
-		}
-		defer response.Body.Close()
-		if response.StatusCode != http.StatusOK {
-			emit("error", 0, fmt.Sprintf("下载更新包失败: HTTP %d", response.StatusCode))
-			return
-		}
-
-		total := response.ContentLength
-		var written int64
-		buffer := make([]byte, 128*1024)
-		lastPercent := -1
-		for {
-			readCount, readErr := response.Body.Read(buffer)
-			if readCount > 0 {
-				count, writeErr := out.Write(buffer[:readCount])
-				written += int64(count)
-				if writeErr != nil {
-					emit("error", 0, "写入更新包失败: "+writeErr.Error())
-					return
-				}
-				if total > 0 {
-					percent := 5 + int(written*70/total)
-					if percent != lastPercent {
-						lastPercent = percent
-						emit("downloading", percent, fmt.Sprintf("下载中 %d%%", percent))
-					}
-				}
-			}
-			if readErr != nil {
-				if readErr != io.EOF {
-					emit("error", 0, "下载更新包失败: "+readErr.Error())
-					return
-				}
-				break
-			}
-		}
-		if err := out.Sync(); err != nil {
-			emit("error", 0, "写入更新包失败: "+err.Error())
-			return
-		}
-		if err := out.Close(); err != nil {
-			emit("error", 0, "关闭更新包失败: "+err.Error())
-			return
-		}
-
-		emit("verifying", 80, "校验更新包")
-		if a.config.Update.VerifySHA256() && strings.TrimSpace(asset.SHA256) != "" {
-			sum, hashErr := sha256File(tempPath)
-			if hashErr != nil {
-				_ = os.Remove(tempPath)
-				emit("error", 0, "校验更新包失败: "+hashErr.Error())
-				return
-			}
-			if !strings.EqualFold(sum, strings.TrimSpace(asset.SHA256)) {
-				_ = os.Remove(tempPath)
-				emit("error", 0, "校验更新包失败：SHA256 不匹配")
-				return
-			}
-		}
-		// Windows 上目标文件已存在时 Rename 会失败，先清掉旧包
-		if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
-			emit("error", 0, "清理旧更新包失败: "+err.Error())
-			return
-		}
-		if err := os.Rename(tempPath, targetPath); err != nil {
-			emit("error", 0, "保存更新包失败: "+err.Error())
-			return
-		}
-		log.Info("应用更新包已下载", logger.F("version", version), logger.F("path", targetPath))
-		emit("done", 100, "更新包已就绪，可以退出并安装")
+		log.Info("应用更新包已下载", logger.F("version", version), logger.F("path", a.updateDataPath("updates", version, asset.Name)))
 	})
+}
+
+// downloadUpdatePackage 下载安装包并做 SHA256 校验与落盘；返回的错误文本直接展示给用户。
+func (a *App) downloadUpdatePackage(ctx context.Context, version string, asset AppUpdateAsset, client *http.Client, emit func(phase string, progress int, message string)) error {
+	emit("resolving", 5, "准备下载更新包")
+
+	targetDir := a.updateDataPath("updates", version)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return fmt.Errorf("创建更新目录失败: %s", err.Error())
+	}
+	targetPath := filepath.Join(targetDir, asset.Name)
+	tempPath := targetPath + ".part"
+	// 下载或校验中途失败时不留下半成品；成功 rename 后该路径已不存在，删除是空操作。
+	defer func() { _ = os.Remove(tempPath) }()
+	out, err := os.Create(tempPath)
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %s", err.Error())
+	}
+	defer out.Close()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.URL, nil)
+	if err != nil {
+		return fmt.Errorf("创建下载请求失败: %s", err.Error())
+	}
+	request.Header.Set("User-Agent", "Ant-Browser-Updater/"+a.appVersion())
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("下载更新包失败: %s", err.Error())
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("下载更新包失败: HTTP %d", response.StatusCode)
+	}
+
+	total := response.ContentLength
+	var written int64
+	buffer := make([]byte, 128*1024)
+	lastPercent := -1
+	for {
+		readCount, readErr := response.Body.Read(buffer)
+		if readCount > 0 {
+			count, writeErr := out.Write(buffer[:readCount])
+			written += int64(count)
+			if writeErr != nil {
+				return fmt.Errorf("写入更新包失败: %s", writeErr.Error())
+			}
+			if total > 0 {
+				percent := 5 + int(written*70/total)
+				if percent != lastPercent {
+					lastPercent = percent
+					emit("downloading", percent, fmt.Sprintf("下载中 %d%%", percent))
+				}
+			}
+		}
+		if readErr != nil {
+			if readErr != io.EOF {
+				return fmt.Errorf("下载更新包失败: %s", readErr.Error())
+			}
+			break
+		}
+	}
+	if err := out.Sync(); err != nil {
+		return fmt.Errorf("写入更新包失败: %s", err.Error())
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("关闭更新包失败: %s", err.Error())
+	}
+
+	emit("verifying", 80, "校验更新包")
+	if a.config.Update.VerifySHA256() && strings.TrimSpace(asset.SHA256) != "" {
+		sum, hashErr := sha256File(tempPath)
+		if hashErr != nil {
+			return fmt.Errorf("校验更新包失败: %s", hashErr.Error())
+		}
+		if !strings.EqualFold(sum, strings.TrimSpace(asset.SHA256)) {
+			return fmt.Errorf("校验更新包失败：SHA256 不匹配")
+		}
+	}
+	// Windows 上目标文件已存在时 Rename 会失败，先清掉旧包
+	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("清理旧更新包失败: %s", err.Error())
+	}
+	if err := os.Rename(tempPath, targetPath); err != nil {
+		return fmt.Errorf("保存更新包失败: %s", err.Error())
+	}
+	if err := a.saveDownloadedUpdate(downloadedUpdateInfo{Version: version, AssetName: asset.Name}); err != nil {
+		return fmt.Errorf("记录更新包信息失败: %s", err.Error())
+	}
+	emit("done", 100, "更新包已就绪，可以退出并安装")
+	return nil
 }
 
 func sha256File(path string) (string, error) {
@@ -217,6 +313,8 @@ func sha256File(path string) (string, error) {
 }
 
 // GetPendingAppUpdate 返回上次未完成的安装任务，供启动时提示。
+// 该标记对应的版本已经装上时视为过期记录直接忽略；安装包丢失时仍返回状态并标记 Missing，
+// 让前端给出“安装包已丢失，请重新下载”的明确提示，而不是静默隐藏。
 func (a *App) GetPendingAppUpdate() *UpdatePendingInfo {
 	path := a.updateDataPath(updatePendingFile)
 	data, err := os.ReadFile(path)
@@ -227,8 +325,11 @@ func (a *App) GetPendingAppUpdate() *UpdatePendingInfo {
 	if err := json.Unmarshal(data, &pending); err != nil || strings.TrimSpace(pending.InstallerPath) == "" {
 		return nil
 	}
-	if _, err := os.Stat(pending.InstallerPath); err != nil {
+	if comparison, compareErr := compareUpdateVersions(a.appVersion(), pending.Version); compareErr == nil && comparison >= 0 {
 		return nil
+	}
+	if _, err := os.Stat(pending.InstallerPath); err != nil {
+		pending.Missing = true
 	}
 	return &pending
 }
@@ -256,7 +357,13 @@ func (a *App) startupInitAutoUpdateCheck() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
-			info := fetchAppUpdateInfo(ctx, a.appVersion(), a.updateReleaseAPIURL(), a.updateHTTPClient())
+			var info AppUpdateInfo
+			client, err := a.updateHTTPClient()
+			if err != nil {
+				logger.New("AppUpdate").Warn("自动检查更新代理配置失败", logger.F("error", err.Error()))
+			} else {
+				info = fetchAppUpdateInfo(ctx, a.appVersion(), a.updateReleaseAPIURL(), client)
+			}
 			if ctx.Err() != nil {
 				return
 			}
@@ -283,20 +390,33 @@ func (a *App) NotifyPendingAppUpdate() {
 
 // ApplyAppUpdate 写入安装标记并拉起脱离主进程的等待脚本；调用方随后退出应用。
 func (a *App) ApplyAppUpdate(version string, assetKey string) error {
-	asset, version, err := a.updateAsset(version, assetKey, a.updateProxyConfig())
-	if err != nil {
-		return err
+	if a == nil || a.config == nil || !a.config.Update.IsEnabled() {
+		return fmt.Errorf("更新检查已关闭")
 	}
-	installerPath := a.updateDataPath("updates", version, asset.Name)
+	downloaded := a.loadDownloadedUpdate()
+	if downloaded == nil {
+		return fmt.Errorf("没有已下载的更新包，请先下载")
+	}
+	if requested := strings.TrimSpace(version); requested != "" &&
+		normalizeUpdateVersion(requested) != normalizeUpdateVersion(downloaded.Version) {
+		return fmt.Errorf("更新包版本与待安装版本不一致")
+	}
+	installerPath := a.updateDataPath("updates", downloaded.Version, downloaded.AssetName)
 	if _, err := os.Stat(installerPath); err != nil {
 		return fmt.Errorf("更新包不存在，请先下载: %s", installerPath)
 	}
 
 	pending := UpdatePendingInfo{
-		Version:       version,
+		Version:       downloaded.Version,
 		InstallerPath: installerPath,
 		PID:           os.Getpid(),
 		CreatedAt:     time.Now().Format(time.RFC3339),
+	}
+	// 同一进程、同一个安装包已经安排过等待脚本时直接复用，重复拉起会让安装包被执行两次。
+	if previous := a.GetPendingAppUpdate(); previous != nil && !previous.Missing &&
+		previous.PID == pending.PID && previous.InstallerPath == pending.InstallerPath {
+		logger.New("AppUpdate").Info("退出后安装已安排，跳过重复拉起", logger.F("version", pending.Version), logger.F("path", installerPath))
+		return nil
 	}
 	if err := a.savePendingUpdate(pending); err != nil {
 		return err
@@ -318,6 +438,11 @@ func (a *App) ApplyPendingAppUpdate() error {
 	}
 	if _, err := os.Stat(pending.InstallerPath); err != nil {
 		return fmt.Errorf("待安装更新包不存在: %w", err)
+	}
+	// 当前进程已经安排过等待脚本：重复拉起会让同一个安装包被执行两次。
+	if pending.PID == os.Getpid() {
+		logger.New("AppUpdate").Info("退出后安装已安排，跳过重复拉起", logger.F("version", pending.Version), logger.F("path", pending.InstallerPath))
+		return nil
 	}
 
 	pending.PID = os.Getpid()

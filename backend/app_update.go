@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	defaultUpdateRepo   = "black-ant/Ant-Browser"
-	latestReleaseAPIURL = "https://api.github.com/repos/" + defaultUpdateRepo + "/releases/latest"
-	manifestAssetName   = "update-manifest.json"
-	updateCheckTimeout  = 5 * time.Second
+	defaultUpdateRepo     = "black-ant/Ant-Browser"
+	latestReleaseAPIURL   = "https://api.github.com/repos/" + defaultUpdateRepo + "/releases/latest"
+	manifestAssetName     = "update-manifest.json"
+	updateCheckTimeout    = 5 * time.Second
+	updateDownloadTimeout = 30 * time.Minute
 )
 
 type updateCheckResult struct {
@@ -83,21 +84,44 @@ func (a *App) updateProxyConfig() string {
 	return strings.TrimSpace(a.config.Update.Proxy)
 }
 
-func (a *App) updateHTTPClient() *http.Client {
+func (a *App) updateHTTPClient() (*http.Client, error) {
 	return a.updateHTTPClientFor(a.updateProxyConfig())
 }
 
-func (a *App) updateHTTPClientFor(proxyConfig string) *http.Client {
-	client, _, err := a.unifiedProxyCoreHTTPClient(updateCheckTimeout, strings.TrimSpace(proxyConfig))
-	if err != nil || client == nil {
-		return &http.Client{Timeout: updateCheckTimeout}
+func (a *App) updateHTTPClientFor(proxyConfig string) (*http.Client, error) {
+	return a.updateHTTPClientForSelection(updateCheckTimeout, proxyConfig, "")
+}
+
+func (a *App) updateDownloadHTTPClientFor(proxyConfig string, proxyID string) (*http.Client, error) {
+	return a.updateHTTPClientForSelection(updateDownloadTimeout, proxyConfig, proxyID)
+}
+
+func (a *App) updateHTTPClientForSelection(timeout time.Duration, proxyConfig string, proxyID string) (*http.Client, error) {
+	client, _, err := a.unifiedProxyCoreHTTPClientForProxyID(timeout, strings.TrimSpace(proxyConfig), strings.TrimSpace(proxyID))
+	if err != nil {
+		return nil, err
 	}
-	return client
+	if client == nil {
+		return nil, fmt.Errorf("更新代理不可用")
+	}
+	return client, nil
 }
 
 // CheckForUpdates 保持旧接口，兼容已生成的前端绑定。
 func (a *App) CheckForUpdates() map[string]interface{} {
-	result := checkForUpdates(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), a.updateHTTPClient())
+	currentVersion := normalizeUpdateVersion(a.appVersion())
+	client, err := a.updateHTTPClient()
+	if err != nil {
+		return map[string]interface{}{
+			"ok":              false,
+			"currentVersion":  currentVersion,
+			"latestVersion":   "",
+			"updateAvailable": false,
+			"releaseUrl":      "",
+			"error":           "更新代理配置错误: " + err.Error(),
+		}
+	}
+	result := checkForUpdates(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), client)
 	return map[string]interface{}{
 		"ok":              result.OK,
 		"currentVersion":  result.CurrentVersion,
@@ -117,7 +141,15 @@ func (a *App) CheckAppUpdate() AppUpdateInfo {
 		}
 		return AppUpdateInfo{CurrentVersion: currentVersion, Error: "更新检查已关闭"}
 	}
-	return fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), a.updateHTTPClient())
+	client, err := a.updateHTTPClient()
+	if err != nil {
+		return AppUpdateInfo{
+			CurrentVersion: normalizeUpdateVersion(a.appVersion()),
+			Assets:         map[string]AppUpdateAsset{},
+			Error:          "更新代理配置错误: " + err.Error(),
+		}
+	}
+	return fetchAppUpdateInfo(context.Background(), a.appVersion(), a.updateReleaseAPIURL(), client)
 }
 
 func checkForUpdates(ctx context.Context, currentVersion string, endpoint string, client *http.Client) updateCheckResult {
@@ -231,13 +263,28 @@ func fetchAppUpdateInfo(ctx context.Context, currentVersion string, endpoint str
 	for _, asset := range release.Assets {
 		downloadURLs[asset.Name] = asset.BrowserDownloadURL
 	}
+	manifestFound := false
 	for _, asset := range release.Assets {
 		if !strings.EqualFold(asset.Name, manifestAssetName) {
 			continue
 		}
+		manifestFound = true
 		manifest, manifestErr := fetchUpdateManifest(ctx, asset.BrowserDownloadURL, client)
 		if manifestErr != nil || manifest == nil {
-			continue
+			detail := "未知错误"
+			if manifestErr != nil {
+				detail = manifestErr.Error()
+			}
+			info.OK = false
+			info.UpdateAvailable = false
+			info.Error = "读取更新清单失败: " + detail
+			return info
+		}
+		if normalizeUpdateVersion(manifest.Version) != info.LatestVersion {
+			info.OK = false
+			info.UpdateAvailable = false
+			info.Error = "更新清单版本与 Release 不一致"
+			return info
 		}
 		info.Force = manifest.Force
 		if strings.TrimSpace(manifest.NotesURL) != "" {
@@ -255,6 +302,26 @@ func fetchAppUpdateInfo(ctx context.Context, currentVersion string, endpoint str
 			}
 		}
 		break
+	}
+	if info.UpdateAvailable {
+		if !manifestFound {
+			info.OK = false
+			info.UpdateAvailable = false
+			info.Error = "Release 缺少 update-manifest.json"
+			return info
+		}
+		if len(info.Assets) == 0 {
+			info.OK = false
+			info.UpdateAvailable = false
+			info.Error = "当前平台没有可用的更新包"
+			return info
+		}
+		if _, ok := info.Assets[updateAssetKey()]; !ok {
+			info.OK = false
+			info.UpdateAvailable = false
+			info.Error = "当前平台没有可用的更新包: " + updateAssetKey()
+			return info
+		}
 	}
 	return info
 }

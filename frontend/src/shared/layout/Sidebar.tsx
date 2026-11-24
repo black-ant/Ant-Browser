@@ -20,6 +20,7 @@ import {
   Globe,
   Bot,
   Puzzle,
+  RefreshCw,
   Tag,
   User,
   type LucideIcon,
@@ -29,6 +30,9 @@ import { useLayoutStore } from "../../store/layoutStore";
 import { projectConfig, navigationConfig } from "../../config";
 import { useNotificationStore } from "../../store/notificationStore";
 import { GetAppConfig } from "../../wailsjs/go/main/App";
+import { EventsOn } from "../../wailsjs/runtime/runtime";
+import { checkAppUpdate } from "../../modules/profile/api";
+import { UpdateCheckModal } from "../../modules/profile/UpdateCheckModal";
 
 // 导入应用logo
 import logoImage from "../../resources/images/logo.png";
@@ -61,8 +65,9 @@ function getIcon(iconName: string): LucideIcon {
 
 export function Sidebar() {
   const location = useLocation();
-  const { sidebarCollapsed, toggleSidebar } = useLayoutStore();
+  const { sidebarCollapsed, toggleSidebar, appUpdateAvailable, setAppUpdateAvailable } = useLayoutStore();
   const [appVersion, setAppVersion] = useState("");
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const { notifications } = useNotificationStore();
   const unreadNotificationCount = notifications.filter((notification) => !notification.read).length;
 
@@ -79,6 +84,27 @@ export function Sidebar() {
         setAppVersion("");
       });
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void checkAppUpdate()
+      .then((info) => {
+        if (active) setAppUpdateAvailable(info.ok && info.updateAvailable);
+      })
+      .catch(() => {
+        if (active) setAppUpdateAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [setAppUpdateAvailable]);
+
+  useEffect(() => {
+    const off = EventsOn('app:update:available', (payload) => {
+      if (payload?.updateAvailable !== false) setAppUpdateAvailable(true);
+    });
+    return () => off();
+  }, [setAppUpdateAvailable]);
 
   const isItemActive = (path: string) =>
     location.pathname === path ||
@@ -202,22 +228,49 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-[var(--color-border-muted)] p-3">
-        <Link
-          to="/profile"
-          title={sidebarCollapsed ? "关于我" : undefined}
-          className={clsx(
-            "flex items-center rounded-lg transition-all duration-150",
-            isItemActive("/profile")
-              ? "bg-[var(--color-accent)] text-[var(--color-text-inverse)] shadow-sm"
-              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-accent-muted)] hover:text-[var(--color-text-primary)]",
-            sidebarCollapsed
-              ? "relative mx-auto h-10 w-10 justify-center"
-              : "gap-3 px-3 py-2.5",
-          )}
-        >
-          <User className="h-[18px] w-[18px] shrink-0" />
-          {!sidebarCollapsed && <span className="truncate text-sm font-medium">关于我</span>}
-        </Link>
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={() => setUpdateModalOpen(true)}
+            title={sidebarCollapsed ? "检测更新" : undefined}
+            className={clsx(
+              "flex items-center rounded-lg transition-all duration-150 text-[var(--color-text-secondary)] hover:bg-[var(--color-accent-muted)] hover:text-[var(--color-text-primary)]",
+              sidebarCollapsed
+                ? "relative mx-auto h-10 w-10 justify-center"
+                : "gap-3 px-3 py-2.5 w-full",
+            )}
+          >
+            <RefreshCw className="h-[18px] w-[18px] shrink-0" />
+            {!sidebarCollapsed && <span className="truncate text-sm font-medium">检测更新</span>}
+            {appUpdateAvailable ? (
+              <span
+                aria-label="有可用更新"
+                className={clsx(
+                  "rounded-full bg-[var(--color-error)]",
+                  sidebarCollapsed
+                    ? "absolute right-1 top-1 h-2 w-2"
+                    : "ml-auto h-2 w-2 shrink-0",
+                )}
+              />
+            ) : null}
+          </button>
+          <Link
+            to="/profile"
+            title={sidebarCollapsed ? "关于我" : undefined}
+            className={clsx(
+              "flex items-center rounded-lg transition-all duration-150",
+              isItemActive("/profile")
+                ? "bg-[var(--color-accent)] text-[var(--color-text-inverse)] shadow-sm"
+                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-accent-muted)] hover:text-[var(--color-text-primary)]",
+              sidebarCollapsed
+                ? "relative mx-auto h-10 w-10 justify-center"
+                : "gap-3 px-3 py-2.5",
+            )}
+          >
+            <User className="h-[18px] w-[18px] shrink-0" />
+            {!sidebarCollapsed && <span className="truncate text-sm font-medium">关于我</span>}
+          </Link>
+        </div>
       </div>
 
       {/* Toggle Button */}
@@ -242,6 +295,12 @@ export function Sidebar() {
           )}
         </button>
       </div>
+
+      <UpdateCheckModal
+        open={updateModalOpen}
+        onClose={() => setUpdateModalOpen(false)}
+        currentVersion={appVersion}
+      />
     </aside>
   );
 }

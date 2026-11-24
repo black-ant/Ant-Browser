@@ -55,4 +55,12 @@ export interface UpdatePendingInfo {
   installerPath: string
   pid: number
   createdAt: string
+  // 安装包已丢失（被删除或移动）时为 true，此时只能提示用户重新下载。
+  missing?: boolean
+}
+
+export interface AppDownloadedUpdate {
+  version: string
+  assetName: string
+  installerPath: string
 }

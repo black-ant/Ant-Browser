@@ -13,23 +13,26 @@ import {
   Download,
   AlertTriangle,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, ConfirmModal, FormItem, Input, Modal, Progress, Select, toast } from '../../shared/components'
-import { EventsOff, EventsOn, Quit } from '../../wailsjs/runtime/runtime'
+import { EventsOn, Quit } from '../../wailsjs/runtime/runtime'
+import { useLayoutStore } from '../../store/layoutStore'
 import {
   applyAppUpdate,
   applyPendingAppUpdate,
   checkAppUpdate,
+  clearDownloadedAppUpdate,
   clearPendingAppUpdate,
   createDefaultProfilePageData,
-  downloadAppUpdateWithProxy,
+  downloadAppUpdateWithProxySelection,
+  getDownloadedAppUpdate,
   getPendingAppUpdate,
   loadCurrentAppVersion,
   loadProfilePageData,
 } from './api'
 import { fetchBrowserProxies } from '../browser/api'
 import type { BrowserProxy } from '../browser/types'
-import type { AppUpdateInfo, IconKey, ProfilePageData, UpdatePendingInfo, UpdateProgress } from './types'
+import type { AppDownloadedUpdate, AppUpdateInfo, IconKey, ProfilePageData, UpdatePendingInfo, UpdateProgress } from './types'
 
 const ICON_MAP = {
   'book-open': BookOpen,
@@ -56,6 +59,7 @@ export function ProfilePage() {
   const [downloading, setDownloading] = useState(false)
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
   const [pendingUpdate, setPendingUpdate] = useState<UpdatePendingInfo | null>(null)
+  const [downloadedUpdate, setDownloadedUpdate] = useState<AppDownloadedUpdate | null>(null)
   const [confirmInstall, setConfirmInstall] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [testMode, setTestMode] = useState(false)
@@ -64,6 +68,25 @@ export function ProfilePage() {
   const [proxyId, setProxyId] = useState('')
   const [customProxy, setCustomProxy] = useState('')
   const [proxyOptions, setProxyOptions] = useState<BrowserProxy[]>([])
+  const simulationTimersRef = useRef<number[]>([])
+
+  const clearSimulationTimers = () => {
+    simulationTimersRef.current.forEach(timer => window.clearTimeout(timer))
+    simulationTimersRef.current = []
+  }
+
+  const resetUpdateSimulation = () => {
+    clearSimulationTimers()
+    setTestMode(false)
+    setUpdateCheck(null)
+    setUpdateProgress(null)
+    setPendingUpdate(null)
+    setDownloadedUpdate(null)
+    setConfirmInstall(false)
+    // 重新读取真实的 pending / 已下载状态，避免模拟状态把真实更新包一起藏起来。
+    void getPendingAppUpdate().then(setPendingUpdate).catch(() => {})
+    void getDownloadedAppUpdate().then(setDownloadedUpdate).catch(() => {})
+  }
 
   useEffect(() => {
     let active = true
@@ -90,7 +113,7 @@ export function ProfilePage() {
         if (active) setAppVersion('')
       })
 
-    EventsOn('app:update:progress', (payload: UpdateProgress) => {
+    const offProgress = EventsOn('app:update:progress', (payload: UpdateProgress) => {
       if (!active || !payload) return
       setUpdateProgress(payload)
       if (payload.phase === 'done' || payload.phase === 'error') {
@@ -99,25 +122,35 @@ export function ProfilePage() {
           toast.error(payload.message || '更新下载失败')
         } else {
           // 新包已就绪：清掉旧 pending，避免确认时走“重新打开旧安装包”分支
-          void clearPendingAppUpdate().then(() => setPendingUpdate(null))
+          void clearPendingAppUpdate()
+            .then(() => setPendingUpdate(null))
+            .catch(() => setPendingUpdate(null))
+          void getDownloadedAppUpdate()
+            .then((downloaded) => { if (active) setDownloadedUpdate(downloaded) })
+            .catch(() => {})
         }
       }
     })
-    EventsOn('app:update:pending', (payload: UpdatePendingInfo) => {
+    const offPending = EventsOn('app:update:pending', (payload: UpdatePendingInfo) => {
       if (active && payload) setPendingUpdate(payload)
     })
-    EventsOn('app:update:available', (payload: AppUpdateInfo) => {
-      if (active && payload) setUpdateCheck(payload)
+    const offAvailable = EventsOn('app:update:available', (payload: AppUpdateInfo) => {
+      if (!active || !payload) return
+      setUpdateCheck(payload)
+      useLayoutStore.getState().setAppUpdateAvailable(true)
     })
     void getPendingAppUpdate()
       .then((pending) => { if (active) setPendingUpdate(pending) })
       .catch(() => {})
+    void getDownloadedAppUpdate()
+      .then((downloaded) => { if (active) setDownloadedUpdate(downloaded) })
+      .catch(() => {})
 
     return () => {
       active = false
-      EventsOff('app:update:progress')
-      EventsOff('app:update:pending')
-      EventsOff('app:update:available')
+      offProgress()
+      offPending()
+      offAvailable()
     }
   }, [])
 
@@ -127,9 +160,19 @@ export function ProfilePage() {
 
   const handleCheckForUpdates = async () => {
     if (checkingUpdate) return
+    if (testMode) resetUpdateSimulation()
     setCheckingUpdate(true)
     try {
-      setUpdateCheck(await checkAppUpdate())
+      const info = await checkAppUpdate()
+      setUpdateCheck(info)
+      useLayoutStore.getState().setAppUpdateAvailable(info.ok && info.updateAvailable)
+      if (info.ok && info.updateAvailable) {
+        toast.success(`发现新版本 v${info.latestVersion}`)
+      } else if (info.ok) {
+        toast.success('已是最新版本')
+      } else {
+        toast.error(info.error || '检查更新失败')
+      }
     } catch (error: any) {
       setUpdateCheck({
         ok: false,
@@ -142,6 +185,8 @@ export function ProfilePage() {
         assets: {},
         error: error?.message || '检查更新失败',
       })
+      useLayoutStore.getState().setAppUpdateAvailable(false)
+      toast.error(error?.message || '检查更新失败')
     } finally {
       setCheckingUpdate(false)
     }
@@ -167,9 +212,11 @@ export function ProfilePage() {
       return
     }
     let proxyConfig = ''
+    let proxyID = ''
     if (proxyMode === 'pool') {
       const selected = proxyOptions.find(item => item.proxyId === proxyId)
-      proxyConfig = selected?.proxyConfig?.trim() || proxyId
+      proxyConfig = selected?.proxyConfig?.trim() || ''
+      proxyID = selected?.proxyId || proxyId
     } else if (proxyMode === 'custom') {
       proxyConfig = customProxy.trim()
     }
@@ -178,10 +225,10 @@ export function ProfilePage() {
     setUpdateProgress({
       phase: 'resolving',
       progress: 0,
-      message: proxyConfig ? '准备下载（使用指定代理）' : '准备下载（直连）',
+      message: proxyConfig || proxyID ? '准备下载（使用指定代理）' : '准备下载（直连）',
     })
     try {
-      const started = await downloadAppUpdateWithProxy('', '', proxyConfig)
+      const started = await downloadAppUpdateWithProxySelection('', '', proxyConfig, proxyID)
       if (!started) {
         toast.error('当前环境不支持应用内更新')
         setDownloading(false)
@@ -196,7 +243,7 @@ export function ProfilePage() {
     setConfirmInstall(false)
     setInstalling(true)
     try {
-      const started = await applyAppUpdate(pendingUpdate?.version || '', '')
+      const started = await applyAppUpdate(downloadedUpdate?.version || '', '')
       if (!started) {
         toast.error('当前环境不支持自动安装')
         return
@@ -205,6 +252,9 @@ export function ProfilePage() {
       window.setTimeout(() => Quit(), 800)
     } catch (error: any) {
       toast.error(error?.message || '准备安装失败')
+      // 安装包可能已被清理，重新读取一次状态，避免留下点了就报错的入口。
+      void getPendingAppUpdate().then(setPendingUpdate).catch(() => {})
+      void getDownloadedAppUpdate().then(setDownloadedUpdate).catch(() => {})
     } finally {
       setInstalling(false)
     }
@@ -215,31 +265,43 @@ export function ProfilePage() {
       setConfirmInstall(true)
       return
     }
-    const started = await applyPendingAppUpdate()
-    if (!started) {
-      toast.error('当前环境不支持自动安装')
-      return
+    if (installing) return
+    setInstalling(true)
+    try {
+      const started = await applyPendingAppUpdate()
+      if (!started) {
+        toast.error('当前环境不支持自动安装')
+        return
+      }
+      setConfirmInstall(true)
+    } catch (error: any) {
+      toast.error(error?.message || '重新准备安装失败')
+      // 安装包可能已经丢失，刷新一次状态让提示变成明确失败态。
+      void getPendingAppUpdate().then(setPendingUpdate).catch(() => {})
+    } finally {
+      setInstalling(false)
     }
-    setConfirmInstall(true)
   }
 
   const runSimulatedDownload = (autoConfirm = false) => {
+    clearSimulationTimers()
     setUpdateProgress({ phase: 'resolving', progress: 0, message: '准备下载更新包' })
-    window.setTimeout(() => {
+    simulationTimersRef.current.push(window.setTimeout(() => {
       setUpdateProgress({ phase: 'downloading', progress: 60, message: '测试模式：模拟下载中' })
-    }, 300)
-    window.setTimeout(() => {
+    }, 300))
+    simulationTimersRef.current.push(window.setTimeout(() => {
       setUpdateProgress({ phase: 'done', progress: 100, message: '测试模式：下载完成' })
       if (autoConfirm) setConfirmInstall(true)
-    }, 1200)
+    }, 1200))
   }
 
   const handleSimulateUpdate = () => {
     setTestMode(true)
     setPendingUpdate(null)
+    setDownloadedUpdate(null)
     setUpdateCheck({
       ok: true,
-      currentVersion: appVersion || '1.9.5',
+      currentVersion: appVersion || '1.9.7',
       latestVersion: '99.0.0-test',
       updateAvailable: true,
       releaseUrl: '',
@@ -253,25 +315,24 @@ export function ProfilePage() {
   }
 
   const handleSimulatePending = () => {
+    clearSimulationTimers()
     setTestMode(true)
     setUpdateCheck(null)
     setUpdateProgress(null)
+    setDownloadedUpdate(null)
     setPendingUpdate({
       version: '99.0.0-test',
       installerPath: '',
       pid: 0,
       createdAt: '',
+      missing: false,
     })
     setConfirmInstall(true)
     toast.success('已模拟待安装状态')
   }
 
   const handleClearTest = () => {
-    setTestMode(false)
-    setUpdateCheck(null)
-    setUpdateProgress(null)
-    setPendingUpdate(null)
-    setConfirmInstall(false)
+    resetUpdateSimulation()
     toast.success('已清除测试状态')
   }
 
@@ -422,14 +483,65 @@ export function ProfilePage() {
       >
         <div className="space-y-4 text-[15px] leading-8 text-[var(--color-text-secondary)]">
           {pendingUpdate ? (
+            pendingUpdate.missing ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-error)]/30 bg-[var(--color-error)]/10 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 text-[var(--color-text-primary)]">
+                  <AlertTriangle className="h-4 w-4 text-[var(--color-error)]" />
+                  上次下载的安装包已丢失（v{pendingUpdate.version || '未知'}），请重新下载更新
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void clearPendingAppUpdate()
+                      .then(() => setPendingUpdate(null))
+                      .catch((error: any) => toast.error(error?.message || '清除安装提示失败'))
+                  }}
+                >
+                  清除提示
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 text-[var(--color-text-primary)]">
+                  <AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />
+                  上次下载的安装包尚未安装（v{pendingUpdate.version || '未知'}）
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => { void handlePendingInstall() }} loading={installing}>重新打开安装</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      void clearPendingAppUpdate()
+                        .then(() => setPendingUpdate(null))
+                        .catch((error: any) => toast.error(error?.message || '清除安装提示失败'))
+                    }}
+                  >
+                    忽略
+                  </Button>
+                </div>
+              </div>
+            )
+          ) : downloadedUpdate ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-3 py-2 text-sm">
               <div className="flex items-center gap-2 text-[var(--color-text-primary)]">
-                <AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />
-                上次下载的安装包尚未安装（v{pendingUpdate.version || '未知'}）
+                <Download className="h-4 w-4 text-[var(--color-warning)]" />
+                已下载 v{downloadedUpdate.version}，可直接安装
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => { void handlePendingInstall() }}>重新打开安装</Button>
-                <Button size="sm" variant="ghost" onClick={() => { void clearPendingAppUpdate().then(() => setPendingUpdate(null)) }}>忽略</Button>
+                <Button size="sm" onClick={() => setConfirmInstall(true)} loading={installing}>退出并安装</Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void clearDownloadedAppUpdate()
+                      .then(() => setDownloadedUpdate(null))
+                      .catch((error: any) => toast.error(error?.message || '清除已下载更新失败'))
+                  }}
+                >
+                  忽略
+                </Button>
               </div>
             </div>
           ) : null}

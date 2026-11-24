@@ -662,6 +662,10 @@ export function ClearAppLogs() {
   return window['go']['main']['App']['ClearAppLogs']();
 }
 
+export function ClearDownloadedAppUpdate() {
+  return window['go']['main']['App']['ClearDownloadedAppUpdate']();
+}
+
 export function ClearPendingAppUpdate() {
   return window['go']['main']['App']['ClearPendingAppUpdate']();
 }
@@ -684,6 +688,10 @@ export function DownloadAppUpdate(arg1, arg2) {
 
 export function DownloadAppUpdateWithProxy(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadAppUpdateWithProxy'](arg1, arg2, arg3);
+}
+
+export function DownloadAppUpdateWithProxySelection(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DownloadAppUpdateWithProxySelection'](arg1, arg2, arg3, arg4);
 }
 
 export function FetchRemoteAuthorProfile(arg1, arg2) {
@@ -720,6 +728,10 @@ export function GetBrowserSettings() {
 
 export function GetDashboardStats() {
   return window['go']['main']['App']['GetDashboardStats']();
+}
+
+export function GetDownloadedAppUpdate() {
+  return window['go']['main']['App']['GetDownloadedAppUpdate']();
 }
 
 export function GetInterceptor() {

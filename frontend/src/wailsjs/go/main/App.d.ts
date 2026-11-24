@@ -340,6 +340,8 @@ export function CheckForUpdates():Promise<Record<string, any>>;
 
 export function ClearAppLogs():Promise<void>;
 
+export function ClearDownloadedAppUpdate():Promise<void>;
+
 export function ClearPendingAppUpdate():Promise<void>;
 
 export function CreateGroup(arg1:browser.GroupInput):Promise<browser.Group>;
@@ -351,6 +353,8 @@ export function DeleteGroup(arg1:string):Promise<void>;
 export function DownloadAppUpdate(arg1:string,arg2:string):Promise<void>;
 
 export function DownloadAppUpdateWithProxy(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function DownloadAppUpdateWithProxySelection(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function FetchRemoteAuthorProfile(arg1:string,arg2:number):Promise<Record<string, any>>;
 
@@ -369,6 +373,8 @@ export function GetBackupFileInfo(arg1:string):Promise<Record<string, any>>;
 export function GetBrowserSettings():Promise<browser.Settings>;
 
 export function GetDashboardStats():Promise<Record<string, any>>;
+
+export function GetDownloadedAppUpdate():Promise<backend.AppDownloadedUpdate>;
 
 export function GetInterceptor():Promise<logger.MethodInterceptor>;
 

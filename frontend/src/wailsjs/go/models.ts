@@ -274,6 +274,22 @@ export namespace automation {
 
 export namespace backend {
 	
+	export class AppDownloadedUpdate {
+	    version: string;
+	    assetName: string;
+	    installerPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppDownloadedUpdate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.assetName = source["assetName"];
+	        this.installerPath = source["installerPath"];
+	    }
+	}
 	export class AppUpdateAsset {
 	    name: string;
 	    url: string;
@@ -1758,6 +1774,7 @@ export namespace backend {
 	    installerPath: string;
 	    pid: number;
 	    createdAt: string;
+	    missing: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdatePendingInfo(source);
@@ -1769,6 +1786,7 @@ export namespace backend {
 	        this.installerPath = source["installerPath"];
 	        this.pid = source["pid"];
 	        this.createdAt = source["createdAt"];
+	        this.missing = source["missing"];
 	    }
 	}
 

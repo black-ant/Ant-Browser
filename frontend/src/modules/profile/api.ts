@@ -1,5 +1,5 @@
 import profilePageConfig from '../../config/profile.config'
-import type { AppUpdateCheckResult, AppUpdateInfo, AuthorProfile, IconKey, ProfileChannel, ProfilePageData, ProfileProject, UpdatePendingInfo } from './types'
+import type { AppDownloadedUpdate, AppUpdateCheckResult, AppUpdateInfo, AuthorProfile, IconKey, ProfileChannel, ProfilePageData, ProfileProject, UpdatePendingInfo } from './types'
 
 const PROFILE_ICON_KEYS: IconKey[] = [
   'book-open',
@@ -142,6 +142,10 @@ export async function downloadAppUpdateWithProxy(version: string, assetKey: stri
   return invokeUpdateMethod('DownloadAppUpdateWithProxy', version, assetKey, proxyConfig)
 }
 
+export async function downloadAppUpdateWithProxySelection(version: string, assetKey: string, proxyConfig: string, proxyId: string): Promise<boolean> {
+  return invokeUpdateMethod('DownloadAppUpdateWithProxySelection', version, assetKey, proxyConfig, proxyId)
+}
+
 export async function applyPendingAppUpdate(): Promise<boolean> {
   return invokeUpdateMethod('ApplyPendingAppUpdate')
 }
@@ -160,6 +164,22 @@ export async function getPendingAppUpdate(): Promise<UpdatePendingInfo | null> {
 
 export async function clearPendingAppUpdate(): Promise<boolean> {
   return invokeUpdateMethod('ClearPendingAppUpdate')
+}
+
+export async function getDownloadedAppUpdate(): Promise<AppDownloadedUpdate | null> {
+  const bindings: any = await getBindings()
+  const goApp = (window as any).go?.main?.App
+  let raw: any
+  if (bindings?.GetDownloadedAppUpdate) {
+    raw = await bindings.GetDownloadedAppUpdate()
+  } else if (goApp?.GetDownloadedAppUpdate) {
+    raw = await goApp.GetDownloadedAppUpdate()
+  }
+  return raw?.installerPath ? raw as AppDownloadedUpdate : null
+}
+
+export async function clearDownloadedAppUpdate(): Promise<boolean> {
+  return invokeUpdateMethod('ClearDownloadedAppUpdate')
 }
 
 export async function checkForUpdates(): Promise<AppUpdateCheckResult> {
