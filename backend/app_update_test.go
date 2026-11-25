@@ -106,7 +106,7 @@ func TestFetchAppUpdateInfoParsesManifestAssets(t *testing.T) {
 		}
 		base := strings.TrimSuffix(server.URL, "/")
 		_, _ = writer.Write([]byte(fmt.Sprintf(
-			`{"tag_name":"v1.9.6","html_url":"https://example.com/release","assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"},{"name":"update-manifest.json","browser_download_url":"%s/manifest"}]}`,
+			`[{"tag_name":"v1.9.6","html_url":"https://example.com/release","prerelease":false,"assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"},{"name":"update-manifest.json","browser_download_url":"%s/manifest"}]}]`,
 			base, base,
 		)))
 	}))
@@ -148,7 +148,7 @@ func TestFetchAppUpdateInfoPreviewChannelPicksPrerelease(t *testing.T) {
 	}))
 	defer server.Close()
 
-	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.7", UpdateChannelPreview, server.URL+"/latest", server.URL+"/list", server.Client())
+	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.7", UpdateChannelPreview, "", server.URL+"/list", server.Client())
 	if !info.OK || !info.UpdateAvailable {
 		t.Fatalf("预览通道结果异常: %+v", info)
 	}
@@ -168,7 +168,7 @@ func TestFetchAppUpdateInfoPreviewChannelWithoutPrerelease(t *testing.T) {
 	}))
 	defer server.Close()
 
-	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.6", UpdateChannelPreview, server.URL+"/latest", server.URL+"/list", server.Client())
+	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.6", UpdateChannelPreview, "", server.URL+"/list", server.Client())
 	if info.OK || !strings.Contains(info.Error, "预览版本") {
 		t.Fatalf("update info = %+v, want 预览版本缺失提示", info)
 	}
@@ -178,13 +178,46 @@ func TestFetchAppUpdateInfoPreviewChannelWithoutPrerelease(t *testing.T) {
 func TestFetchAppUpdateInfoStableChannelRejectsPrerelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"tag_name":"v1.9.8-beta.1","prerelease":true,"assets":[]}`))
+		_, _ = writer.Write([]byte(`[{"tag_name":"v1.9.8-beta.1","prerelease":true,"assets":[]}]`))
 	}))
 	defer server.Close()
 
-	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.7", UpdateChannelStable, server.URL+"/latest", server.URL+"/list", server.Client())
-	if info.OK || !strings.Contains(info.Error, "预览版") {
+	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.7", UpdateChannelStable, "", server.URL+"/list", server.Client())
+	if info.OK || !strings.Contains(info.Error, "没有可用的正式版本") {
 		t.Fatalf("update info = %+v, want 拒绝预览版", info)
+	}
+}
+
+// 指定版本：从列表里精确匹配目标版本；可选版本最多 2 个且都高于当前版本。
+func TestFetchAppUpdateInfoSelectsRequestedVersion(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		base := strings.TrimSuffix(server.URL, "/")
+		if strings.HasPrefix(request.URL.Path, "/manifest/") {
+			version := strings.TrimPrefix(request.URL.Path, "/manifest/")
+			_, _ = writer.Write([]byte(fmt.Sprintf(`{"version":%q,"assets":{"windows-amd64":{"name":"setup.exe","sha256":"abc123"}}}`, version)))
+			return
+		}
+		release := func(version string) string {
+			return fmt.Sprintf(`{"tag_name":"v%s","html_url":"https://example.com/%s","prerelease":false,"assets":[{"name":"setup.exe","browser_download_url":"%s/setup-%s"},{"name":"update-manifest.json","browser_download_url":"%s/manifest/%s"}]}`,
+				version, version, base, version, base, version)
+		}
+		_, _ = writer.Write([]byte("[" + release("1.9.9") + "," + release("1.9.8") + "," + release("1.9.7") + "]"))
+	}))
+	defer server.Close()
+
+	info := fetchAppUpdateInfoForChannel(context.Background(), "1.9.6", UpdateChannelStable, "1.9.8", server.URL+"/list", server.Client())
+	if !info.OK || !info.UpdateAvailable || info.LatestVersion != "1.9.8" {
+		t.Fatalf("指定版本结果异常: %+v", info)
+	}
+	if len(info.Versions) != 2 || info.Versions[0] != "1.9.9" || info.Versions[1] != "1.9.8" {
+		t.Fatalf("可选版本 = %v, want [1.9.9 1.9.8]", info.Versions)
+	}
+
+	missing := fetchAppUpdateInfoForChannel(context.Background(), "1.9.6", UpdateChannelStable, "1.9.1", server.URL+"/list", server.Client())
+	if missing.OK || !strings.Contains(missing.Error, "没有找到版本") {
+		t.Fatalf("缺失版本结果 = %+v, want 没有找到版本", missing)
 	}
 }
 
@@ -194,7 +227,7 @@ func TestFetchAppUpdateInfoReportsMissingManifest(t *testing.T) {
 		writer.Header().Set("Content-Type", "application/json")
 		base := strings.TrimSuffix(server.URL, "/")
 		_, _ = writer.Write([]byte(fmt.Sprintf(
-			`{"tag_name":"v1.9.6","html_url":"https://example.com/release","assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"}]}`,
+			`[{"tag_name":"v1.9.6","html_url":"https://example.com/release","prerelease":false,"assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"}]}]`,
 			base,
 		)))
 	}))
@@ -219,7 +252,7 @@ func TestFetchAppUpdateInfoReportsMissingPlatformAsset(t *testing.T) {
 		}
 		base := strings.TrimSuffix(server.URL, "/")
 		_, _ = writer.Write([]byte(fmt.Sprintf(
-			`{"tag_name":"v1.9.6","html_url":"https://example.com/release","assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"},{"name":"update-manifest.json","browser_download_url":"%s/manifest"}]}`,
+			`[{"tag_name":"v1.9.6","html_url":"https://example.com/release","prerelease":false,"assets":[{"name":"setup.exe","browser_download_url":"%s/setup.exe"},{"name":"update-manifest.json","browser_download_url":"%s/manifest"}]}]`,
 			base, base,
 		)))
 	}))

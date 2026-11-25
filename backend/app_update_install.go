@@ -176,7 +176,7 @@ func (a *App) updateAsset(version string, assetKey string, proxyConfig string, p
 		context.Background(),
 		a.appVersion(),
 		channel,
-		a.updateReleaseAPIURL(),
+		version,
 		a.updateReleasesListURL(),
 		client,
 	)

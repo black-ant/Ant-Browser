@@ -315,6 +315,7 @@ export namespace backend {
 	    notesUrl: string;
 	    force: boolean;
 	    assets: Record<string, AppUpdateAsset>;
+	    versions: string[];
 	    error: string;
 	
 	    static createFrom(source: any = {}) {
@@ -331,6 +332,7 @@ export namespace backend {
 	        this.notesUrl = source["notesUrl"];
 	        this.force = source["force"];
 	        this.assets = this.convertValues(source["assets"], AppUpdateAsset, true);
+	        this.versions = source["versions"];
 	        this.error = source["error"];
 	    }
 	

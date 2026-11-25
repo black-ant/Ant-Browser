@@ -654,6 +654,10 @@ export function CheckAppUpdate() {
   return window['go']['main']['App']['CheckAppUpdate']();
 }
 
+export function CheckAppUpdateVersion(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CheckAppUpdateVersion'](arg1, arg2, arg3, arg4);
+}
+
 export function CheckAppUpdateWithChannel(arg1, arg2, arg3) {
   return window['go']['main']['App']['CheckAppUpdateWithChannel'](arg1, arg2, arg3);
 }

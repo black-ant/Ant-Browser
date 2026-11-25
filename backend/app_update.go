@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -49,8 +50,13 @@ type AppUpdateInfo struct {
 	NotesURL        string                    `json:"notesUrl"`
 	Force           bool                      `json:"force"`
 	Assets          map[string]AppUpdateAsset `json:"assets"`
-	Error           string                    `json:"error"`
+	// Versions 是当前通道下高于当前版本的可选版本（按版本降序，最多 updateVersionOptionLimit 个）。
+	Versions []string `json:"versions"`
+	Error    string   `json:"error"`
 }
+
+// 版本下拉只允许少量选项：多版本并存容易出现清单/资产与版本对不上的问题。
+const updateVersionOptionLimit = 2
 
 type appUpdateReleaseAsset struct {
 	Name               string `json:"name"`
@@ -174,6 +180,11 @@ func (a *App) CheckAppUpdateWithProxySelection(proxyConfig string, proxyID strin
 
 // CheckAppUpdateWithChannel 在指定通道上检查更新：stable 只认非预发布版本，preview 只认预发布版本。
 func (a *App) CheckAppUpdateWithChannel(proxyConfig string, proxyID string, channel string) AppUpdateInfo {
+	return a.CheckAppUpdateVersion(proxyConfig, proxyID, channel, "")
+}
+
+// CheckAppUpdateVersion 允许查看指定版本的更新信息；version 为空时取通道内最新版本。
+func (a *App) CheckAppUpdateVersion(proxyConfig string, proxyID string, channel string, version string) AppUpdateInfo {
 	if a == nil || a.config == nil || !a.config.Update.IsEnabled() {
 		currentVersion := ""
 		if a != nil {
@@ -197,7 +208,7 @@ func (a *App) CheckAppUpdateWithChannel(proxyConfig string, proxyID string, chan
 		context.Background(),
 		a.appVersion(),
 		normalizeUpdateChannel(channel),
-		a.updateReleaseAPIURL(),
+		version,
 		a.updateReleasesListURL(),
 		client,
 	)
@@ -268,52 +279,12 @@ func newUpdateRequest(ctx context.Context, endpoint string, currentVersion strin
 	return request, nil
 }
 
-// fetchUpdateRelease 按通道取目标 Release。
-// GitHub 的 /releases/latest 本身会跳过预发布版本，所以正式通道直接用 latest；
-// 预览通道拉列表并在 prerelease 标记的版本里取版本号最高的一个。
-func fetchUpdateRelease(ctx context.Context, channel string, latestURL string, listURL string, currentVersion string, client *http.Client) (*githubLatestRelease, error) {
-	if channel == UpdateChannelPreview {
-		if strings.TrimSpace(listURL) == "" {
-			return nil, fmt.Errorf("缺少预览通道地址")
-		}
-		request, err := newUpdateRequest(ctx, listURL, currentVersion)
-		if err != nil {
-			return nil, err
-		}
-		response, err := client.Do(request)
-		if err != nil {
-			return nil, fmt.Errorf("更新检查请求失败: %v", err)
-		}
-		defer response.Body.Close()
-		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("更新服务返回 HTTP %d", response.StatusCode)
-		}
-		var releases []githubLatestRelease
-		if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&releases); err != nil {
-			return nil, fmt.Errorf("更新信息解析失败: %v", err)
-		}
-		var best *githubLatestRelease
-		for index := range releases {
-			item := &releases[index]
-			if !item.Prerelease || normalizeUpdateVersion(item.TagName) == "" {
-				continue
-			}
-			if best == nil {
-				best = item
-				continue
-			}
-			comparison, compareErr := compareUpdateVersions(best.TagName, item.TagName)
-			if compareErr == nil && comparison < 0 {
-				best = item
-			}
-		}
-		if best == nil {
-			return nil, fmt.Errorf("预览通道当前没有可用的预览版本")
-		}
-		return best, nil
+// fetchUpdateReleases 拉取 Release 列表：正式/预览通道共用，便于列出版本供选择。
+func fetchUpdateReleases(ctx context.Context, listURL string, currentVersion string, client *http.Client) ([]githubLatestRelease, error) {
+	if strings.TrimSpace(listURL) == "" {
+		return nil, fmt.Errorf("缺少更新列表地址")
 	}
-
-	request, err := newUpdateRequest(ctx, latestURL, currentVersion)
+	request, err := newUpdateRequest(ctx, listURL, currentVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -325,22 +296,44 @@ func fetchUpdateRelease(ctx context.Context, channel string, latestURL string, l
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("更新服务返回 HTTP %d", response.StatusCode)
 	}
-	var release githubLatestRelease
-	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&release); err != nil {
+	var releases []githubLatestRelease
+	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&releases); err != nil {
 		return nil, fmt.Errorf("更新信息解析失败: %v", err)
 	}
-	if release.Prerelease {
-		return nil, fmt.Errorf("正式通道忽略了被标记为预览版的 Release")
+	return releases, nil
+}
+
+// filterReleasesByChannel 过滤出当前通道的版本并按版本号降序排列。
+func filterReleasesByChannel(releases []githubLatestRelease, channel string) []githubLatestRelease {
+	filtered := make([]githubLatestRelease, 0, len(releases))
+	for _, item := range releases {
+		if normalizeUpdateVersion(item.TagName) == "" {
+			continue
+		}
+		if channel == UpdateChannelPreview {
+			if !item.Prerelease {
+				continue
+			}
+		} else if item.Prerelease {
+			continue
+		}
+		filtered = append(filtered, item)
 	}
-	return &release, nil
+	sort.SliceStable(filtered, func(left int, right int) bool {
+		comparison, err := compareUpdateVersions(filtered[left].TagName, filtered[right].TagName)
+		return err == nil && comparison > 0
+	})
+	return filtered
 }
 
-// fetchAppUpdateInfo 保持旧签名（正式通道），供既有测试与调用方使用。
+// fetchAppUpdateInfo 保持旧签名（正式通道最新版本），供既有测试与调用方使用。
 func fetchAppUpdateInfo(ctx context.Context, currentVersion string, endpoint string, client *http.Client) AppUpdateInfo {
-	return fetchAppUpdateInfoForChannel(ctx, currentVersion, UpdateChannelStable, endpoint, "", client)
+	return fetchAppUpdateInfoForChannel(ctx, currentVersion, UpdateChannelStable, "", endpoint, client)
 }
 
-func fetchAppUpdateInfoForChannel(ctx context.Context, currentVersion string, channel string, latestURL string, listURL string, client *http.Client) AppUpdateInfo {
+// fetchAppUpdateInfoForChannel 按通道取更新信息；targetVersion 非空时取指定版本。
+// 不论正式还是预览通道，先拉列表再按通道过滤，这样同一个响应就能支撑版本下拉。
+func fetchAppUpdateInfoForChannel(ctx context.Context, currentVersion string, channel string, targetVersion string, listURL string, client *http.Client) AppUpdateInfo {
 	info := AppUpdateInfo{
 		CurrentVersion: normalizeUpdateVersion(currentVersion),
 		Assets:         map[string]AppUpdateAsset{},
@@ -353,10 +346,36 @@ func fetchAppUpdateInfoForChannel(ctx context.Context, currentVersion string, ch
 		client = &http.Client{Timeout: updateCheckTimeout}
 	}
 
-	release, err := fetchUpdateRelease(ctx, normalizeUpdateChannel(channel), latestURL, listURL, info.CurrentVersion, client)
+	releases, err := fetchUpdateReleases(ctx, listURL, info.CurrentVersion, client)
 	if err != nil {
 		info.Error = err.Error()
 		return info
+	}
+	normalizedChannel := normalizeUpdateChannel(channel)
+	candidates := filterReleasesByChannel(releases, normalizedChannel)
+	if len(candidates) == 0 {
+		if normalizedChannel == UpdateChannelPreview {
+			info.Error = "预览通道当前没有可用的预览版本"
+		} else {
+			info.Error = "没有可用的正式版本"
+		}
+		return info
+	}
+
+	release := candidates[0]
+	if wanted := normalizeUpdateVersion(targetVersion); wanted != "" {
+		matched := false
+		for _, item := range candidates {
+			if normalizeUpdateVersion(item.TagName) == wanted {
+				release = item
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			info.Error = "没有找到版本 v" + wanted
+			return info
+		}
 	}
 	info.LatestVersion = normalizeUpdateVersion(release.TagName)
 	info.ReleaseURL = strings.TrimSpace(release.HTMLURL)
@@ -372,6 +391,18 @@ func fetchAppUpdateInfoForChannel(ctx context.Context, currentVersion string, ch
 	}
 	info.OK = true
 	info.UpdateAvailable = comparison < 0
+	// 只列高于当前版本的版本，最多 updateVersionOptionLimit 个，避免归档版本带来的不一致。
+	for _, item := range candidates {
+		candidateVersion := normalizeUpdateVersion(item.TagName)
+		candidateComparison, compareErr := compareUpdateVersions(info.CurrentVersion, candidateVersion)
+		if compareErr != nil || candidateComparison >= 0 {
+			continue
+		}
+		info.Versions = append(info.Versions, candidateVersion)
+		if len(info.Versions) >= updateVersionOptionLimit {
+			break
+		}
+	}
 
 	downloadURLs := make(map[string]string, len(release.Assets))
 	for _, asset := range release.Assets {

@@ -336,6 +336,8 @@ export function BrowserSnapshotRestore(arg1:string,arg2:string):Promise<void>;
 
 export function CheckAppUpdate():Promise<backend.AppUpdateInfo>;
 
+export function CheckAppUpdateVersion(arg1:string,arg2:string,arg3:string,arg4:string):Promise<backend.AppUpdateInfo>;
+
 export function CheckAppUpdateWithChannel(arg1:string,arg2:string,arg3:string):Promise<backend.AppUpdateInfo>;
 
 export function CheckAppUpdateWithProxySelection(arg1:string,arg2:string):Promise<backend.AppUpdateInfo>;

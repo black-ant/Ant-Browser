@@ -42,6 +42,8 @@ export interface AppUpdateInfo extends AppUpdateCheckResult {
   notesUrl: string
   force: boolean
   assets: Record<string, AppUpdateAsset>
+  // 当前通道下高于当前版本的可选版本（按版本降序，最多 2 个）。
+  versions?: string[]
 }
 
 export interface UpdateProgress {

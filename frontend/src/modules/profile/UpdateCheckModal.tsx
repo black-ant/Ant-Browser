@@ -5,7 +5,7 @@ import { EventsOn, Quit } from '../../wailsjs/runtime/runtime'
 import { useLayoutStore } from '../../store/layoutStore'
 import {
   applyAppUpdate,
-  checkAppUpdateWithChannel,
+  checkAppUpdateVersion,
   downloadAppUpdateWithChannel,
   getDownloadedAppUpdate,
   openUpdatePackageLocation,
@@ -40,6 +40,8 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
   // 恢复上次检查/下载用的代理，避免每次打开都退回直连（直连读取不到更新清单）。
   const [savedSelection] = useState(() => loadUpdateProxySelection())
   const [channel, setChannel] = useState<UpdateChannel>(() => loadUpdateChannel())
+  // 空字符串表示跟随通道内的最新版本，非空表示用户指定了具体版本。
+  const [checkVersion, setCheckVersion] = useState('')
   const [proxyMode, setProxyMode] = useState<'direct' | 'pool' | 'custom'>(savedSelection?.mode ?? 'direct')
   const [proxyId, setProxyId] = useState(savedSelection?.proxyId ?? '')
   const [customProxy, setCustomProxy] = useState(savedSelection?.customProxy ?? '')
@@ -86,10 +88,10 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
     }
     setChecking(true)
     try {
-      const result = await checkAppUpdateWithChannel(selection.proxyConfig, selection.proxyID, channel)
+      const result = await checkAppUpdateVersion(selection.proxyConfig, selection.proxyID, channel, checkVersion)
       setInfo(result)
       setAppUpdateAvailable(result.ok && result.updateAvailable)
-      if (result.ok) {
+      if (result.ok && checkVersion === '') {
         // 记下成功结果：后台检查（直连）失败时，侧边栏红点仍能靠这份记录保留。
         saveUpdateCheckSnapshot({
           updateAvailable: result.updateAvailable,
@@ -97,6 +99,10 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
           checkedAt: new Date().toISOString(),
           channel,
         })
+      }
+      if (!result.ok && checkVersion !== '') {
+        // 指定版本不存在时退回“最新版本”，避免下拉卡在一个查不到的版本上。
+        setCheckVersion('')
       }
       if (result.ok && result.updateAvailable) {
         toast.success(`发现新版本 v${result.latestVersion}`)
@@ -138,7 +144,7 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
     }, 300)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, channel, proxyMode, proxyId, proxyOptionsReady, selectedPoolProxy?.proxyId])
+  }, [open, channel, checkVersion, proxyMode, proxyId, proxyOptionsReady, selectedPoolProxy?.proxyId])
 
   useEffect(() => {
     const off = EventsOn('app:update:progress', (payload: UpdateProgress) => {
@@ -188,7 +194,8 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
       message: proxyConfig || proxyID ? '准备下载（使用指定代理）' : '准备下载（直连）',
     })
     try {
-      const started = await downloadAppUpdateWithChannel('', '', proxyConfig, proxyID, channel)
+      // 显式传版本：用户可能在下拉里选了非最新版本，后端按版本精确解析资产。
+      const started = await downloadAppUpdateWithChannel(info.latestVersion, '', proxyConfig, proxyID, channel)
       if (!started) {
         autoInstallRef.current = false
         toast.error('当前环境不支持应用内更新')
@@ -341,13 +348,25 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
             <FormItem label="更新通道" hint="正式版只更新稳定发布；预览版会包含标记为预发布的版本">
               <Select
                 value={channel}
-                onChange={(event) => setChannel(event.target.value as UpdateChannel)}
+                onChange={(event) => {
+                  setChannel(event.target.value as UpdateChannel)
+                  setCheckVersion('')
+                }}
                 options={[
                   { value: 'stable', label: '正式版' },
                   { value: 'preview', label: '预览版' },
                 ]}
               />
             </FormItem>
+            {info?.ok && (info.versions?.length ?? 0) > 1 ? (
+              <FormItem label="版本" hint="只列出高于当前版本的最新两个版本">
+                <Select
+                  value={checkVersion || info.latestVersion}
+                  onChange={(event) => setCheckVersion(event.target.value)}
+                  options={(info.versions || []).map((version) => ({ value: version, label: `v${version}` }))}
+                />
+              </FormItem>
+            ) : null}
             <FormItem label="检查 / 下载代理">
               <Select
                 value={proxyMode}

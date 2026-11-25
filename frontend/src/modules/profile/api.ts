@@ -92,6 +92,7 @@ function normalizeUpdateInfo(raw: any): AppUpdateInfo {
     notesUrl: typeof raw?.notesUrl === 'string' ? raw.notesUrl.trim() : '',
     force: raw?.force === true,
     assets: raw?.assets && typeof raw.assets === 'object' ? raw.assets : {},
+    versions: Array.isArray(raw?.versions) ? raw.versions.filter((item: any) => typeof item === 'string' && item) : [],
     error: typeof raw?.error === 'string' ? raw.error.trim() : '',
   }
 }
@@ -148,6 +149,26 @@ export async function checkAppUpdateWithChannel(proxyConfig: string, proxyId: st
     raw = await goApp.CheckAppUpdateWithChannel(proxyConfig, proxyId, channel)
   } else {
     return checkAppUpdateWithProxySelection(proxyConfig, proxyId)
+  }
+  return normalizeUpdateInfo(raw)
+}
+
+// 查看指定版本的更新信息；version 为空表示当前通道的最新版本。
+export async function checkAppUpdateVersion(
+  proxyConfig: string,
+  proxyId: string,
+  channel: UpdateChannel,
+  version: string,
+): Promise<AppUpdateInfo> {
+  const bindings: any = await getBindings()
+  const goApp = (window as any).go?.main?.App
+  let raw: any
+  if (bindings?.CheckAppUpdateVersion) {
+    raw = await bindings.CheckAppUpdateVersion(proxyConfig, proxyId, channel, version)
+  } else if (goApp?.CheckAppUpdateVersion) {
+    raw = await goApp.CheckAppUpdateVersion(proxyConfig, proxyId, channel, version)
+  } else {
+    return checkAppUpdateWithChannel(proxyConfig, proxyId, channel)
   }
   return normalizeUpdateInfo(raw)
 }
