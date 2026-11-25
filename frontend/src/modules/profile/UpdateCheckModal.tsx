@@ -18,7 +18,6 @@ import {
   loadUpdateProxySelection,
   normalizeUpdateVersion,
   saveUpdateChannel,
-  saveUpdateCheckSnapshot,
   saveUpdateProxySelection,
   type UpdateChannel,
 } from './updatePrefs'
@@ -92,15 +91,6 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
       const result = await checkAppUpdateVersion(selection.proxyConfig, selection.proxyID, channel, checkVersion)
       setInfo(result)
       setAppUpdateAvailable(result.ok && result.updateAvailable)
-      if (result.ok && checkVersion === '') {
-        // 记下成功结果：后台检查（直连）失败时，侧边栏红点仍能靠这份记录保留。
-        saveUpdateCheckSnapshot({
-          updateAvailable: result.updateAvailable,
-          latestVersion: result.latestVersion,
-          checkedAt: new Date().toISOString(),
-          channel,
-        })
-      }
       if (!result.ok && checkVersion !== '') {
         // 指定版本不存在时退回“最新版本”，避免下拉卡在一个查不到的版本上。
         setCheckVersion('')

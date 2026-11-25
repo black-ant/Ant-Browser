@@ -33,7 +33,6 @@ import {
 import type { AppDownloadedUpdate, AppUpdateInfo, IconKey, ProfilePageData, UpdatePendingInfo, UpdateProgress } from './types'
 import { ProxyNodeSelect } from './ProxyNodeSelect'
 import { resolveUpdateError } from './updateErrors'
-import { loadUpdateChannel, saveUpdateCheckSnapshot } from './updatePrefs'
 import { useUpdateDownloadProxies } from './useUpdateDownloadProxies'
 
 const ICON_MAP = {
@@ -162,14 +161,6 @@ export function ProfilePage() {
       const info = await checkAppUpdateWithSavedProxy()
       setUpdateCheck(info)
       useLayoutStore.getState().setAppUpdateAvailable(info.ok && info.updateAvailable)
-      if (info.ok) {
-        saveUpdateCheckSnapshot({
-          updateAvailable: info.updateAvailable,
-          latestVersion: info.latestVersion,
-          checkedAt: new Date().toISOString(),
-          channel: loadUpdateChannel(),
-        })
-      }
       if (info.ok && info.updateAvailable) {
         toast.success(`发现新版本 v${info.latestVersion}`)
       } else if (info.ok) {

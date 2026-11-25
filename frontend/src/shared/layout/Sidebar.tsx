@@ -31,8 +31,7 @@ import { projectConfig, navigationConfig } from "../../config";
 import { useNotificationStore } from "../../store/notificationStore";
 import { GetAppConfig } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
-import { checkAppUpdateWithSavedProxy, getDownloadedAppUpdate } from "../../modules/profile/api";
-import { loadUpdateChannel, loadUpdateCheckSnapshot, normalizeUpdateVersion, saveUpdateCheckSnapshot } from "../../modules/profile/updatePrefs";
+import { checkAppUpdateWithSavedProxy } from "../../modules/profile/api";
 import { UpdateCheckModal } from "../../modules/profile/UpdateCheckModal";
 
 // 导入应用logo
@@ -86,19 +85,12 @@ export function Sidebar() {
       });
   }, []);
 
+  // 红点只反映检查结果：查到了就亮，查不到就不亮；检查失败时保持原状态（无法判断）。
   useEffect(() => {
     let active = true;
     void checkAppUpdateWithSavedProxy()
       .then((info) => {
-        if (!active) return;
-        // 检查失败（例如直连读不到 GitHub）时保留上次结果，红点不能被误清除。
-        if (!info.ok) return;
-        saveUpdateCheckSnapshot({
-          updateAvailable: info.updateAvailable,
-          latestVersion: info.latestVersion,
-          checkedAt: new Date().toISOString(),
-          channel: loadUpdateChannel(),
-        });
+        if (!active || !info.ok) return;
         setAppUpdateAvailable(info.updateAvailable);
       })
       .catch(() => {});
@@ -106,35 +98,6 @@ export function Sidebar() {
       active = false;
     };
   }, [setAppUpdateAvailable]);
-
-  // 本地已下载且版本高于当前的更新包也是“有更新”的确凿证据，不依赖网络。
-  useEffect(() => {
-    let active = true;
-    void getDownloadedAppUpdate()
-      .then((pkg) => {
-        if (active && pkg) setAppUpdateAvailable(true);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [appVersion, setAppUpdateAvailable]);
-
-  // 后台检查常常因直连被阻断而失败，用上次成功的结果兜底，保证有新版本时红点还在。
-  useEffect(() => {
-    if (!appVersion) return;
-    const snapshot = loadUpdateCheckSnapshot();
-    if (!snapshot?.updateAvailable || !snapshot.latestVersion) return;
-    // 红点跟随当前通道：切到预览版后，正式版的检查结果不应再提示。
-    if (snapshot.channel !== loadUpdateChannel()) return;
-    if (normalizeUpdateVersion(snapshot.latestVersion) === normalizeUpdateVersion(appVersion)) {
-      // 已经装上这个版本：清掉红点与记录，避免长期挂着不存在的更新。
-      setAppUpdateAvailable(false);
-      saveUpdateCheckSnapshot({ ...snapshot, updateAvailable: false });
-      return;
-    }
-    setAppUpdateAvailable(true);
-  }, [appVersion, setAppUpdateAvailable]);
 
   useEffect(() => {
     const off = EventsOn('app:update:available', (payload) => {

@@ -1,19 +1,11 @@
-// 更新检查的本地记忆：上次成功的检查结果、更新通道、上次使用的检查/下载代理。
-// 直连访问 github.com 被阻断时，后台检查必然失败；靠这些记忆保证红点不会丢、弹窗不用每次重选节点。
+// 更新检查的本地偏好：更新通道、上次使用的检查/下载代理。
+// 红点只由实际检查结果决定，这里不缓存“上次检查到的新版本”。
 
-const CHECK_SNAPSHOT_KEY = 'ant.update.checkSnapshot'
 const PROXY_SELECTION_KEY = 'ant.update.proxySelection'
 const CHANNEL_KEY = 'ant.update.channel'
 
 export type UpdateProxyMode = 'direct' | 'pool' | 'custom'
 export type UpdateChannel = 'stable' | 'preview'
-
-export interface UpdateCheckSnapshot {
-  updateAvailable: boolean
-  latestVersion: string
-  checkedAt: string
-  channel: UpdateChannel
-}
 
 export interface UpdateProxySelection {
   mode: UpdateProxyMode
@@ -58,24 +50,6 @@ export function saveUpdateChannel(channel: UpdateChannel): void {
   } catch {
     // 忽略
   }
-}
-
-export function loadUpdateCheckSnapshot(): UpdateCheckSnapshot | null {
-  const snapshot = readJSON<UpdateCheckSnapshot>(CHECK_SNAPSHOT_KEY)
-  if (!snapshot || typeof snapshot.updateAvailable !== 'boolean' || typeof snapshot.latestVersion !== 'string') {
-    return null
-  }
-  return {
-    updateAvailable: snapshot.updateAvailable,
-    latestVersion: snapshot.latestVersion,
-    checkedAt: typeof snapshot.checkedAt === 'string' ? snapshot.checkedAt : '',
-    // 旧版本快照没有通道字段，按正式版处理。
-    channel: snapshot.channel === 'preview' ? 'preview' : 'stable',
-  }
-}
-
-export function saveUpdateCheckSnapshot(snapshot: UpdateCheckSnapshot): void {
-  writeJSON(CHECK_SNAPSHOT_KEY, snapshot)
 }
 
 export function loadUpdateProxySelection(): UpdateProxySelection | null {
