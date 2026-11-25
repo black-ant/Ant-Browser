@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, ExternalLink } from 'lucide-react'
+import { CheckCircle2, Download, ExternalLink, FolderOpen } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, ConfirmModal, FormItem, Input, Modal, Progress, Select, toast } from '../../shared/components'
 import { EventsOn, Quit } from '../../wailsjs/runtime/runtime'
@@ -431,15 +431,21 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
           ) : null}
 
           {canInstallDownloaded && downloaded ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2">
+            <div className="flex items-center gap-3 rounded-lg border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 px-3 py-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--color-success)]" />
                 <span className="shrink-0 text-sm text-[var(--color-text-primary)]">已下载 v{downloaded.version}</span>
                 <span className="truncate text-xs text-[var(--color-text-muted)]" title={downloaded.installerPath}>
                   {downloaded.installerPath}
                 </span>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => { void handleOpenLocation() }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="shrink-0"
+                onClick={() => { void handleOpenLocation() }}
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
                 打开地址
               </Button>
             </div>
