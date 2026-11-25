@@ -349,7 +349,7 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
                 ]}
               />
             </FormItem>
-            {info?.ok && (info.versions?.length ?? 0) > 1 ? (
+            {info?.ok && (info.versions?.length ?? 0) > 0 ? (
               <FormItem label="版本" hint="只列出高于当前版本的最新两个版本">
                 <Select
                   value={checkVersion || info.latestVersion}
