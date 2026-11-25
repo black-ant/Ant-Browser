@@ -31,7 +31,7 @@ import { projectConfig, navigationConfig } from "../../config";
 import { useNotificationStore } from "../../store/notificationStore";
 import { GetAppConfig } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
-import { checkAppUpdateWithSavedProxy } from "../../modules/profile/api";
+import { checkAppUpdateWithSavedProxy, getDownloadedAppUpdate } from "../../modules/profile/api";
 import { loadUpdateChannel, loadUpdateCheckSnapshot, normalizeUpdateVersion, saveUpdateCheckSnapshot } from "../../modules/profile/updatePrefs";
 import { UpdateCheckModal } from "../../modules/profile/UpdateCheckModal";
 
@@ -106,6 +106,19 @@ export function Sidebar() {
       active = false;
     };
   }, [setAppUpdateAvailable]);
+
+  // 本地已下载且版本高于当前的更新包也是“有更新”的确凿证据，不依赖网络。
+  useEffect(() => {
+    let active = true;
+    void getDownloadedAppUpdate()
+      .then((pkg) => {
+        if (active && pkg) setAppUpdateAvailable(true);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [appVersion, setAppUpdateAvailable]);
 
   // 后台检查常常因直连被阻断而失败，用上次成功的结果兜底，保证有新版本时红点还在。
   useEffect(() => {
