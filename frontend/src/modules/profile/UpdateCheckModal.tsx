@@ -235,7 +235,7 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
         toast.error('当前环境不支持自动安装')
         return
       }
-      toast.success('即将退出并安装更新')
+      toast.success('即将退出并静默安装')
       window.setTimeout(() => Quit(), 800)
     } catch (error: any) {
       toast.error(resolveUpdateError(error, '准备安装失败'))
@@ -447,7 +447,7 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
       <ConfirmModal
         open={confirmInstall}
         title="退出并安装更新"
-        content="应用将立即退出，随后自动打开已下载的安装包。系统可能弹出权限确认，请按提示完成安装。"
+        content="应用将立即退出，安装包会在后台静默安装，完成后自动启动新版本。若静默安装失败，会自动弹出安装向导。"
         confirmText="退出并安装"
         onClose={() => setConfirmInstall(false)}
         onConfirm={() => { void handleInstall() }}
