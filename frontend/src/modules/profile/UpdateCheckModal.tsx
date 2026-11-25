@@ -10,6 +10,7 @@ import {
   getDownloadedAppUpdate,
   openUpdatePackageLocation,
 } from './api'
+import { ProxyNodeSelect } from './ProxyNodeSelect'
 import type { AppDownloadedUpdate, AppUpdateInfo, UpdateProgress } from './types'
 import { resolveUpdateError } from './updateErrors'
 import {
@@ -381,12 +382,13 @@ export function UpdateCheckModal({ open, onClose, currentVersion }: UpdateCheckM
             {proxyMode === 'pool' ? (
               <>
                 <FormItem label="代理节点">
-                  <Select
+                  <ProxyNodeSelect
                     value={proxyId}
-                    onChange={(event) => setProxyId(event.target.value)}
+                    onChange={setProxyId}
                     options={proxyOptions.map(({ proxy, latencyMs }) => ({
                       value: proxy.proxyId,
-                      label: `${proxy.proxyName || proxy.proxyId} · ${latencyMs}ms`,
+                      label: proxy.proxyName || proxy.proxyId,
+                      latencyMs,
                     }))}
                   />
                 </FormItem>

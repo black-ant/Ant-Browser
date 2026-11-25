@@ -31,6 +31,7 @@ import {
   loadProfilePageData,
 } from './api'
 import type { AppDownloadedUpdate, AppUpdateInfo, IconKey, ProfilePageData, UpdatePendingInfo, UpdateProgress } from './types'
+import { ProxyNodeSelect } from './ProxyNodeSelect'
 import { resolveUpdateError } from './updateErrors'
 import { loadUpdateChannel, saveUpdateCheckSnapshot } from './updatePrefs'
 import { useUpdateDownloadProxies } from './useUpdateDownloadProxies'
@@ -660,10 +661,14 @@ export function ProfilePage() {
           {proxyMode === 'pool' ? (
             <>
               <FormItem label="代理节点">
-                <Select
+                <ProxyNodeSelect
                   value={proxyId}
-                  onChange={event => setProxyId(event.target.value)}
-                  options={proxyOptions.map(({ proxy, latencyMs }) => ({ value: proxy.proxyId, label: `${proxy.proxyName || proxy.proxyId} · ${latencyMs}ms` }))}
+                  onChange={setProxyId}
+                  options={proxyOptions.map(({ proxy, latencyMs }) => ({
+                    value: proxy.proxyId,
+                    label: proxy.proxyName || proxy.proxyId,
+                    latencyMs,
+                  }))}
                 />
               </FormItem>
               {proxyOptions.length === 0 ? (
