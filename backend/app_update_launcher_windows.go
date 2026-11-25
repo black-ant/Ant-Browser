@@ -45,10 +45,18 @@ if ($RelaunchPath -and (Test-Path -LiteralPath $RelaunchPath)) {
 }
 
 # 静默安装：NSIS 的 /S 不弹界面；安装完成后由脚本重新拉起新版本。
+# 安装包内部遇到被占用文件时会弹 MessageBox，静默模式下也会显示，所以这里必须带超时，
+# 避免等待脚本永久挂住、既不重启也不报错。
 $silentOk = $false
+$installStuck = $false
 for ($attempt = 1; $attempt -le 3; $attempt++) {
     try {
-        $proc = Start-Process -FilePath $Installer -ArgumentList '/S' -Wait -PassThru -ErrorAction Stop
+        $proc = Start-Process -FilePath $Installer -ArgumentList '/S' -PassThru -ErrorAction Stop
+        if (-not $proc.WaitForExit(180000)) {
+            Write-Log "silent install still running after 180s (attempt $attempt), leaving it to the user"
+            $installStuck = $true
+            break
+        }
         Write-Log "silent install finished (attempt $attempt) exit=$($proc.ExitCode)"
         if ($proc.ExitCode -eq 0) { $silentOk = $true; break }
     } catch {
@@ -66,7 +74,7 @@ if ($silentOk -and $before -and $after -and ($before -eq $after)) {
     $silentOk = $false
 }
 
-if (-not $silentOk) {
+if (-not $silentOk -and -not $installStuck) {
     # 静默失败时退回可见安装向导，避免用户什么都没看到。
     try {
         Start-Process -FilePath $Installer -ErrorAction Stop
@@ -74,6 +82,11 @@ if (-not $silentOk) {
     } catch {
         Write-Log "interactive installer failed: $($_.Exception.Message)"
     }
+    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+    exit 1
+}
+if ($installStuck) {
+    # 已有安装实例在运行，不再启动第二个，避免重复安装。
     Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
     exit 1
 }
