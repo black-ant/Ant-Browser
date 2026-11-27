@@ -72,22 +72,29 @@ func (s *LaunchServer) apiAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		cfg := s.apiAuthConfig()
-		if !cfg.Active() {
-			next.ServeHTTP(w, r)
+		if !s.authorizeAPIKey(w, r) {
 			return
 		}
-
-		providedKey := strings.TrimSpace(r.Header.Get(cfg.Header))
-		if subtle.ConstantTimeCompare([]byte(providedKey), []byte(cfg.APIKey)) != 1 {
-			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
-				"ok":         false,
-				"error":      "unauthorized: invalid api key",
-				"authHeader": cfg.Header,
-			})
-			return
-		}
-
 		next.ServeHTTP(w, r)
 	})
+}
+
+// authorizeAPIKey 在 API 认证生效时校验请求头里的 key，不通过就写 401 并返回 false。
+// 认证未生效时直接放行。WebSocket 升级请求同样走这里，key 放在升级请求头里。
+func (s *LaunchServer) authorizeAPIKey(w http.ResponseWriter, r *http.Request) bool {
+	cfg := s.apiAuthConfig()
+	if !cfg.Active() {
+		return true
+	}
+
+	providedKey := strings.TrimSpace(r.Header.Get(cfg.Header))
+	if subtle.ConstantTimeCompare([]byte(providedKey), []byte(cfg.APIKey)) == 1 {
+		return true
+	}
+	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+		"ok":         false,
+		"error":      "unauthorized: invalid api key",
+		"authHeader": cfg.Header,
+	})
+	return false
 }
